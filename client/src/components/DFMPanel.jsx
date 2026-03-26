@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { classNames } from '../utils/format';
 
 export default function DFMPanel({ dfm, dfmAll, process }) {
-  const [viewProcess, setViewProcess] = useState(process || 'sheetmetal');
+  const [viewProcess, setViewProcess] = useState(process || '3d-printing');
   const activeDfm = dfmAll?.[viewProcess] || dfm;
 
   if (!activeDfm) return null;
@@ -35,7 +35,7 @@ export default function DFMPanel({ dfm, dfmAll, process }) {
               style={{ fontSize: 10, padding: '4px 10px' }}
               onClick={() => setViewProcess(p)}
             >
-              {p === 'sheetmetal' ? 'Sheet Metal' : p === 'cnc' ? 'CNC' : '3D Print'}
+              {p === '3d-printing' ? '3D Print' : p}
             </button>
           ))}
         </div>
@@ -47,16 +47,16 @@ export default function DFMPanel({ dfm, dfmAll, process }) {
         background: 'var(--bg-primary)', borderRadius: 'var(--radius-md)',
       }}>
         <span style={{ fontSize: 11 }}>
-          <span style={{ color: 'var(--success-text)' }}>✓ {summary.passCount}</span> pass
+          <span style={{ color: 'var(--success-text)' }}>â {summary.passCount}</span> pass
         </span>
         {summary.warnCount > 0 && (
           <span style={{ fontSize: 11 }}>
-            <span style={{ color: 'var(--warn-text)' }}>⚠ {summary.warnCount}</span> warnings
+            <span style={{ color: 'var(--warn-text)' }}>â  {summary.warnCount}</span> warnings
           </span>
         )}
         {summary.failCount > 0 && (
           <span style={{ fontSize: 11 }}>
-            <span style={{ color: 'var(--error-text)' }}>✕ {summary.failCount}</span> failures
+            <span style={{ color: 'var(--error-text)' }}>â {summary.failCount}</span> failures
           </span>
         )}
       </div>
