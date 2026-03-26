@@ -1,0 +1,11 @@
+node_modules/
+data/
+uploads/
+.env
+.env.*
+!.env.example
+dist/
+dist-new/
+*.log
+.DS_Store
+.windows-ready

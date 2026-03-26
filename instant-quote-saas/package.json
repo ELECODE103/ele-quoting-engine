@@ -1,0 +1,21 @@
+{
+  "name": "instant-quote-saas",
+  "version": "1.0.0",
+  "description": "Production-ready instant quoting platform for 3D parts",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "node server/index.js",
+    "client": "cd client && npx vite --port 3001",
+    "build": "cd client && npx vite build",
+    "start": "NODE_ENV=production node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "cors": "^2.8.5",
+    "uuid": "^9.0.0",
+    "occt-import-js": "^0.0.23",
+    "three": "^0.160.0",
+    "concurrently": "^8.2.2"
+  }
+}
