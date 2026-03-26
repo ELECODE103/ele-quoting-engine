@@ -267,3 +267,4 @@ select.input option {
 .font-display { font-family: var(--font-display); }
 .font-bold { font-weight: 600; }
 .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* test */
