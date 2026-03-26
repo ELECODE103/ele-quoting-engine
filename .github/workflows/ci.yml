@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & Verify
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install server dependencies
+        run: npm ci
+
+      - name: Install client dependencies
+        run: cd client && npm ci
+
+      - name: Build client
+        run: cd client && npm run build
+
+      - name: Verify server starts
+        run: |
+          # Start server in background with test env
+          NODE_ENV=production PORT=3000 USE_SQLITE=true JWT_SECRET=test-secret node server/index.js &
+          SERVER_PID=$!
+
+          # Wait for server to be ready
+          for i in {1..30}; do
+            if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "Server is healthy!"
+              break
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 1
+          done
+
+          # Check health endpoint
+          HEALTH=$(curl -s http://localhost:3000/api/health)
+          echo "Health response: $HEALTH"
+
+          # Verify response contains "ok"
+          echo "$HEALTH" | grep -q '"status":"ok"' || (echo "Health check failed!" && exit 1)
+
+          # Clean up
+          kill $SERVER_PID 2>/dev/null || true
+          echo "Server verification passed!"
+
+      - name: Check for security issues
+        run: npm audit --audit-level=high || true
