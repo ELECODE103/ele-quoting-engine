@@ -1,11 +1,55 @@
+# Dependencies
 node_modules/
-data/
-uploads/
+client/node_modules/
+
+# Build output
+client/dist/
+client/dist-new/
+dist/
+dist-new/
+
+# Environment
 .env
 .env.*
 !.env.example
-dist/
-dist-new/
-*.log
+
+# Database
+data/
+
+# Uploads (user files)
+uploads/
+
+# OS files
 .DS_Store
+Thumbs.db
 .windows-ready
+
+# IDE
+.vscode/
+.idea/
+
+# Vite temp files
+*.timestamp-*.mjs
+
+# Logs
+*.log
+
+# Agent-generated junk docs
+COMPLETION_CHECKLIST.md
+DOCUMENTATION_INDEX.md
+FILES_CREATED.md
+IMPLEMENTATION_CHECKLIST.md
+IMPLEMENTATION_COMPLETE.md
+IMPLEMENTATION_SUMMARY.md
+MODULE_STRUCTURE.md
+PDF_GENERATION_SETUP.md
+PDF_IMPLEMENTATION_SUMMARY.txt
+PDF_QUICK_START.md
+QUICK_REFERENCE.md
+README_SQLITE.md
+SQLITE_MIGRATION.md
+SQLITE_SETUP_GUIDE.md
+TASK_COMPLETION_REPORT.md
+.commit-msg
+validate-sqlite-layer.js
+test-pdf-module.js

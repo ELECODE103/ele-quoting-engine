@@ -3,10 +3,29 @@
  */
 const BASE = '/api';
 
+let authToken = null;
+
+export function setAuthToken(token) {
+  authToken = token;
+}
+
+export function getAuthToken() {
+  return authToken;
+}
+
 async function request(path, options = {}) {
   const url = `${BASE}${path}`;
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers,
     ...options,
   });
   if (!res.ok) {
@@ -83,4 +102,19 @@ export const api = {
 
   async getAdminQuotes() { return request('/admin/quotes'); },
   async getAdminStats() { return request('/admin/stats'); },
+
+  // Auth
+  async login(email, password) {
+    return request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+  },
+  async register(name, email, password, company = '') {
+    return request('/auth/register', { method: 'POST', body: JSON.stringify({ name, email, password, company }) });
+  },
+
+  // Orders
+  async getOrders() { return request('/orders'); },
+  async getOrderById(id) { return request(`/orders/${id}`); },
+  async createOrder(quoteId, shippingAddress) {
+    return request('/orders', { method: 'POST', body: JSON.stringify({ quoteId, shippingAddress }) });
+  },
 };

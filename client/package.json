@@ -12,6 +12,7 @@
     "@rollup/rollup-linux-x64-gnu": "^4.60.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-router-dom": "^7.13.2",
     "three": "^0.160.0"
   },
   "devDependencies": {

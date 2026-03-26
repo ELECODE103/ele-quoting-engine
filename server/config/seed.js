@@ -1,7 +1,13 @@
 /**
  * Seeds the database with default materials, finishes, lead times, and pricing rules.
  */
-const { JsonDB } = require("../models/db");
+const {
+  materialsDB,
+  finishesDB,
+  leadTimesDB,
+  pricingDB,
+  processesDB,
+} = require("../models");
 const {
   DEFAULT_MATERIALS,
   DEFAULT_FINISHES,
@@ -12,17 +18,10 @@ const {
 
 function seedDatabase() {
   try {
-    const materialsDB = new JsonDB("materials");
-    const finishesDB = new JsonDB("finishes");
-    const leadTimesDB = new JsonDB("lead_times");
-    const pricingDB = new JsonDB("pricing_rules");
-    const processesDB = new JsonDB("processes");
-
     // Detect stale data: if materials exist but lack the 'process' field, re-seed
     const existingMats = materialsDB.getAll();
     if (existingMats.length > 0 && !existingMats[0].process) {
       console.log("  Upgrading database: re-seeding with multi-process data...");
-      // Clear old data
       for (const m of existingMats) materialsDB.delete(m.id);
       const existingFins = finishesDB.getAll();
       for (const f of existingFins) finishesDB.delete(f.id);

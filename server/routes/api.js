@@ -5,7 +5,7 @@ const fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 const { parseFile } = require("../parsers/fileParser");
 const { PricingEngine } = require("../services/pricingEngine");
-const { JsonDB } = require("../models/db");
+const { materialsDB, finishesDB, leadTimesDB, pricingDB, quotesDB, partsDB } = require("../models");
 const { MANUFACTURING_PROCESSES } = require("../config/defaults");
 
 const router = express.Router();
@@ -36,14 +36,6 @@ const upload = multer({
     }
   },
 });
-
-// DB instances
-const materialsDB = new JsonDB("materials");
-const finishesDB = new JsonDB("finishes");
-const leadTimesDB = new JsonDB("lead_times");
-const pricingDB = new JsonDB("pricing_rules");
-const quotesDB = new JsonDB("quotes");
-const partsDB = new JsonDB("parts");
 
 const pricingEngine = new PricingEngine();
 
