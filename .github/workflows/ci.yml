@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   build:
@@ -36,11 +36,8 @@ jobs:
 
       - name: Verify server starts
         run: |
-          # Start server in background with test env
           NODE_ENV=production PORT=3000 USE_SQLITE=true JWT_SECRET=test-secret node server/index.js &
           SERVER_PID=$!
-
-          # Wait for server to be ready
           for i in {1..30}; do
             if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
               echo "Server is healthy!"
@@ -49,15 +46,9 @@ jobs:
             echo "Waiting for server... ($i/30)"
             sleep 1
           done
-
-          # Check health endpoint
           HEALTH=$(curl -s http://localhost:3000/api/health)
           echo "Health response: $HEALTH"
-
-          # Verify response contains "ok"
           echo "$HEALTH" | grep -q '"status":"ok"' || (echo "Health check failed!" && exit 1)
-
-          # Clean up
           kill $SERVER_PID 2>/dev/null || true
           echo "Server verification passed!"
 
