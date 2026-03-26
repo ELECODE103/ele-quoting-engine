@@ -70,8 +70,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
                 {li.fileName}
               </div>
               <div style={{ color: 'var(--text-dim)', fontSize: 10 }}>
-                ×{li.quantity} · {li.meta?.process === 'cnc' ? 'CNC' : li.meta?.process === '3d-printing' ? '3DP' : 'SM'} · {li.meta.materialSlug}
-                {li.meta.thicknessMm ? ` · ${li.meta.thicknessMm}mm` : ''}
+                Ã{li.quantity} Â· 3DP Â· {li.meta.materialSlug}
               </div>
             </div>
             <div style={{ color: 'var(--text-secondary)', fontWeight: 500, marginLeft: 8 }}>
@@ -89,7 +88,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
         )}
         <Row label="Shipping estimate" value={formatCurrency(quote.shippingEstimate)} />
         {quote.nestingApplied && (
-          <Row label="Nesting discount" value="Applied ✓" color="var(--success-text)" />
+          <Row label="Nesting discount" value="Applied â" color="var(--success-text)" />
         )}
         <Row label={`Weight: ${formatWeight(quote.totalWeight)}`} value="" muted />
 
@@ -102,7 +101,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
           <span>{formatCurrency(quote.orderTotal)}</span>
         </div>
         <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
-          {quote.partCount} part{quote.partCount !== 1 ? 's' : ''} · {quote.totalUnits} total units
+          {quote.partCount} part{quote.partCount !== 1 ? 's' : ''} Â· {quote.totalUnits} total units
         </div>
       </div>
 
@@ -111,7 +110,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
         className="btn btn-primary btn-lg"
         style={{ width: '100%', marginTop: 20, justifyContent: 'center', animation: 'pulseGlow 2.5s infinite' }}
       >
-        Proceed to Checkout →
+        Proceed to Checkout â
       </button>
       <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-dim)', marginTop: 8 }}>
         Final price confirmed at checkout with full nesting optimization.
