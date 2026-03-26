@@ -9,44 +9,48 @@ export default function Header() {
   const isActive = (path) => location.pathname === path;
 
   const btnStyle = (path) => ({
-    fontSize: 11,
-    padding: '6px 14px',
-    borderRadius: 6,
+    fontSize: 13,
+    padding: '8px 16px',
+    borderRadius: 8,
     border: 'none',
     cursor: 'pointer',
-    fontWeight: 600,
-    letterSpacing: '0.3px',
-    textTransform: 'uppercase',
+    fontWeight: 500,
+    letterSpacing: '-0.01em',
     transition: 'all 0.15s',
-    background: isActive(path) ? 'var(--accent)' : 'transparent',
-    color: isActive(path) ? '#fff' : 'var(--text-secondary)',
+    background: isActive(path) ? 'var(--accent-bg)' : 'transparent',
+    color: isActive(path) ? 'var(--accent)' : 'var(--text-muted)',
+    fontFamily: 'var(--font-body)',
   });
 
   return (
     <header style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '14px 28px', borderBottom: '1px solid var(--border-primary)',
-      background: 'var(--bg-secondary)',
+      padding: '12px 28px', borderBottom: '1px solid var(--border-primary)',
+      background: '#fff',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{
-          width: 32, height: 32, borderRadius: 6,
-          background: 'linear-gradient(135deg, var(--accent-dark, #1a5ae0), var(--accent, #2b6ff2))',
+          width: 32, height: 32, borderRadius: 8,
+          background: 'var(--accent)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round">
-            <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-            <line x1="12" y1="22.08" x2="12" y2="12" />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+            <path d="M2 17l10 5 10-5" />
+            <path d="M2 12l10 5 10-5" />
           </svg>
         </div>
-        <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.5px', color: 'var(--text-primary)' }}
-              onClick={() => navigate('/')} role="button" tabIndex={0}>
-          INSTANT QUOTE
+        <span style={{
+          fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700,
+          letterSpacing: '-0.5px', color: 'var(--text-primary)', cursor: 'pointer',
+        }}
+              onClick={() => navigate('/landing')} role="button" tabIndex={0}>
+          Nord MFG
         </span>
         <span style={{
-          fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
-          background: 'rgba(59,130,246,0.15)', color: 'var(--accent, #3b82f6)',
+          fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+          background: 'var(--accent-light)', color: 'var(--accent)',
+          letterSpacing: '0.05em',
         }}>BETA</span>
       </div>
 
@@ -69,7 +73,7 @@ export default function Header() {
             ...btnStyle('/logout'),
             marginLeft: 8,
             background: 'transparent',
-            color: 'var(--text-secondary)',
+            color: 'var(--text-muted)',
           }} onClick={() => { logout(); navigate('/'); }}>
             Logout
           </button>
@@ -79,6 +83,7 @@ export default function Header() {
             marginLeft: 8,
             background: 'var(--accent)',
             color: '#fff',
+            borderRadius: 8,
           }} onClick={() => navigate('/login')}>
             Sign In
           </button>
