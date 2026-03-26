@@ -5,6 +5,7 @@
 const express = require("express");
 const { ordersDB, orderItemsDB, quotesDB, partsDB } = require("../models");
 const { authenticate, requireAdmin } = require("./auth");
+const { sanitizeString, nonNegativeNumber } = require("../middleware/validate");
 
 const router = express.Router();
 
@@ -25,7 +26,6 @@ router.post("/", authenticate, (req, res) => {
       shippingCost,
       notes,
     } = req.body;
-
     if (!quoteId) {
       return res.status(400).json({ error: "Quote ID is required" });
     }
@@ -36,23 +36,25 @@ router.post("/", authenticate, (req, res) => {
       return res.status(404).json({ error: "Quote not found" });
     }
 
+    // Sanitize all user-provided shipping fields
+    const cleanShippingCost = nonNegativeNumber(shippingCost, 0);
+
     // Create the order
     const order = ordersDB.insert({
       userId: req.user.userId,
       quoteId,
       status: "pending_payment",
-      shippingName: shippingName || "",
-      shippingAddress: shippingAddress || "",
-      shippingCity: shippingCity || "",
-      shippingState: shippingState || "",
-      shippingZip: shippingZip || "",
-      shippingCountry: shippingCountry || "US",
-      shippingMethod: shippingMethod || "standard",
-      shippingCost: shippingCost || 0,
+      shippingName: sanitizeString(shippingName || "", 200),
+      shippingAddress: sanitizeString(shippingAddress || "", 500),
+      shippingCity: sanitizeString(shippingCity || "", 100),
+      shippingState: sanitizeString(shippingState || "", 100),
+      shippingZip: sanitizeString(shippingZip || "", 20),
+      shippingCountry: sanitizeString(shippingCountry || "US", 5),
+      shippingMethod: sanitizeString(shippingMethod || "standard", 50),
+      shippingCost: cleanShippingCost,
       subtotal: quote.orderTotal || quote.subtotal || 0,
       tax: 0,
-      total: (quote.orderTotal || quote.subtotal || 0) + (shippingCost || 0),
-      notes: notes || "",
+      total: (quote.orderTotal || quote.subtotal || 0) + cleanShippingCost,      notes: sanitizeString(notes || "", 2000),
     });
 
     // Create order items from quote line items
@@ -81,8 +83,7 @@ router.post("/", authenticate, (req, res) => {
       status: order.status,
       total: order.total,
     });
-  } catch (err) {
-    console.error("Order creation error:", err);
+  } catch (err) {    console.error("Order creation error:", err);
     res.status(500).json({ error: "Failed to create order" });
   }
 });
@@ -114,7 +115,6 @@ router.get("/", authenticate, (req, res) => {
     res.status(500).json({ error: "Failed to retrieve orders" });
   }
 });
-
 // ═══════════════════════════════════════════════════════════════
 // GET /api/orders/:id — Get order details
 // ═══════════════════════════════════════════════════════════════
@@ -142,8 +142,7 @@ router.get("/:id", authenticate, (req, res) => {
 const VALID_STATUSES = [
   "pending_payment",
   "paid",
-  "received",
-  "in_production",
+  "received",  "in_production",
   "quality_check",
   "packing",
   "shipped",
@@ -162,8 +161,8 @@ router.put("/:id/status", authenticate, requireAdmin, (req, res) => {
     }
 
     const updates = { status };
-    if (trackingNumber) updates.trackingNumber = trackingNumber;
-    if (notes) updates.notes = notes;
+    if (trackingNumber) updates.trackingNumber = sanitizeString(trackingNumber, 100);
+    if (notes) updates.notes = sanitizeString(notes, 2000);
 
     const updated = ordersDB.update(req.params.id, updates);
     if (!updated) return res.status(404).json({ error: "Order not found" });
@@ -172,8 +171,7 @@ router.put("/:id/status", authenticate, requireAdmin, (req, res) => {
 
     res.json(updated);
   } catch (err) {
-    console.error("Status update error:", err);
-    res.status(500).json({ error: "Failed to update order status" });
+    console.error("Status update error:", err);    res.status(500).json({ error: "Failed to update order status" });
   }
 });
 
@@ -202,8 +200,7 @@ router.get("/:id/traveler", authenticate, (req, res) => {
     });
 
     res.json({
-      order: {
-        id: order.id,
+      order: {        id: order.id,
         status: order.status,
         createdAt: order.createdAt,
         shippingName: order.shippingName,
@@ -232,8 +229,7 @@ router.get("/admin/queue", authenticate, requireAdmin, (req, res) => {
       orders = orders.filter((o) => o.status === status);
     }
 
-    // Sort by date, oldest first (FIFO production)
-    orders.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    // Sort by date, oldest first (FIFO production)    orders.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
     // Enrich with items
     const result = orders.map((order) => {

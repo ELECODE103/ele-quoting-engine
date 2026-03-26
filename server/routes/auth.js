@@ -6,6 +6,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { usersDB } = require("../models");
+const { sanitizeString, isValidEmail } = require("../middleware/validate");
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
@@ -27,7 +28,6 @@ function authenticate(req, res, next) {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 }
-
 // ─── Middleware: require admin role ──────────────────────────────
 function requireAdmin(req, res, next) {
   if (req.user.role !== "admin") {
@@ -47,9 +47,21 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: "Please enter a valid email address" });
+    }
+
     if (password.length < 8) {
       return res.status(400).json({ error: "Password must be at least 8 characters" });
     }
+
+    if (password.length > 128) {
+      return res.status(400).json({ error: "Password must be under 128 characters" });
+    }
+    // Sanitize optional fields
+    const cleanName = sanitizeString(name || "", 100);
+    const cleanCompany = sanitizeString(company || "", 100);
+    const cleanPhone = sanitizeString(phone || "", 30);
 
     // Check if email already exists
     const existing = usersDB.getAll().find((u) => u.email === email.toLowerCase());
@@ -64,9 +76,9 @@ router.post("/register", async (req, res) => {
     const user = usersDB.insert({
       email: email.toLowerCase().trim(),
       passwordHash,
-      name: name || "",
-      company: company || "",
-      phone: phone || "",
+      name: cleanName,
+      company: cleanCompany,
+      phone: cleanPhone,
       role: "customer",
     });
 
@@ -76,7 +88,6 @@ router.post("/register", async (req, res) => {
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
-
     res.status(201).json({
       token,
       user: {
@@ -108,7 +119,6 @@ router.post("/login", async (req, res) => {
     if (!user) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
-
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
       return res.status(401).json({ error: "Invalid email or password" });
@@ -138,8 +148,7 @@ router.post("/login", async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════
 // GET /api/auth/profile
-// ═══════════════════════════════════════════════════════════════
-router.get("/profile", authenticate, (req, res) => {
+// ═══════════════════════════════════════════════════════════════router.get("/profile", authenticate, (req, res) => {
   const user = usersDB.getById(req.user.userId);
   if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -159,9 +168,15 @@ router.get("/profile", authenticate, (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 router.put("/profile", authenticate, (req, res) => {
   const { name, company, phone } = req.body;
-  const updated = usersDB.update(req.user.userId, { name, company, phone });
-  if (!updated) return res.status(404).json({ error: "User not found" });
 
+  // Sanitize all inputs
+  const updates = {};
+  if (name !== undefined) updates.name = sanitizeString(name, 100);
+  if (company !== undefined) updates.company = sanitizeString(company, 100);
+  if (phone !== undefined) updates.phone = sanitizeString(phone, 30);
+
+  const updated = usersDB.update(req.user.userId, updates);
+  if (!updated) return res.status(404).json({ error: "User not found" });
   res.json({
     id: updated.id,
     email: updated.email,
