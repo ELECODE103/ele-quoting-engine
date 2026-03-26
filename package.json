@@ -6,8 +6,9 @@
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "node server/index.js",
     "client": "cd client && npx vite --port 3001",
-    "build": "cd client && npx vite build",
-    "start": "NODE_ENV=production node server/index.js"
+    "build": "cd client && npm install && npx vite build",
+    "start": "NODE_ENV=production node server/index.js",
+    "postinstall": "cd client && npm install"
   },
   "dependencies": {
     "sql.js": "^1.9.0",
