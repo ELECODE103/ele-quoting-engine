@@ -159,7 +159,7 @@ export default function QuoteBuilder() {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: parts.length > 0 ? '300px 1fr 340px' : '1fr', minHeight: 'calc(100vh - 53px)' }}>
 
-      {/* âââ LEFT SIDEBAR: Parts List âââ */}
+      {/* ═══ LEFT SIDEBAR: Parts List ═══ */}
       {parts.length > 0 && (
         <aside style={{ borderRight: '1px solid var(--border-primary)', padding: 16, overflowY: 'auto', background: 'var(--bg-secondary)' }}>
           <div className="flex-between" style={{ marginBottom: 16 }}>
@@ -193,14 +193,14 @@ export default function QuoteBuilder() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 16, color: 'var(--accent)',
                 }}>
-                  â²
+                  ▲
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="truncate" style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>
                     {pt.fileName}
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>
-                    {formatDim(pt.geometry?.flatWidth || 0)} Ã {formatDim(pt.geometry?.flatHeight || 0)} Â· qty {pt.quantity}
+                    {formatDim(pt.geometry?.flatWidth || 0)} × {formatDim(pt.geometry?.flatHeight || 0)} · qty {pt.quantity}
                   </div>
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
@@ -212,7 +212,7 @@ export default function QuoteBuilder() {
         </aside>
       )}
 
-      {/* âââ CENTER: Upload / Preview / Config âââ */}
+      {/* ═══ CENTER: Upload / Preview / Config ═══ */}
       <main style={{
         padding: parts.length > 0 ? 24 : 48,
         display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -259,8 +259,8 @@ export default function QuoteBuilder() {
         {uploading && (
           <div className="flex-col fade-in" style={{ alignItems: 'center', gap: 20, paddingTop: 48 }}>
             <div className="spinner" style={{ width: 40, height: 40, borderWidth: 3 }} />
-            <div className="font-display" style={{ fontSize: 14, color: 'var(--text-muted)' }}>Analyzing geometryâ¦</div>
-            <div style={{ fontSize: 11, color: 'var(--accent)' }}>Parsing mesh Â· Extracting features Â· Running DFM checks</div>
+            <div className="font-display" style={{ fontSize: 14, color: 'var(--text-muted)' }}>Analyzing geometry…</div>
+            <div style={{ fontSize: 11, color: 'var(--accent)' }}>Parsing mesh · Extracting features · Running DFM checks</div>
           </div>
         )}
 
@@ -269,7 +269,7 @@ export default function QuoteBuilder() {
           <div className="card fade-up" style={{ padding: 16, marginBottom: 16, borderColor: 'var(--error-bg)', maxWidth: 720, width: '100%' }}>
             {uploadErrors.map((err, i) => (
               <div key={i} style={{ fontSize: 12, color: 'var(--error-text)', marginBottom: 4 }}>
-                â  {err.fileName}: {err.error}
+                ⚠ {err.fileName}: {err.error}
               </div>
             ))}
           </div>
@@ -284,7 +284,7 @@ export default function QuoteBuilder() {
               padding: '6px 14px', borderRadius: 8, marginBottom: 16,
               background: 'var(--accent-bg)', border: '1px solid var(--accent)',
             }}>
-              <span style={{ fontSize: 14 }}>â²</span>
+              <span style={{ fontSize: 14 }}>▲</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>3D Printing</span>
             </div>
 
@@ -327,10 +327,10 @@ export default function QuoteBuilder() {
                     padding: '10px 16px', background: 'linear-gradient(transparent, rgba(8,12,20,0.9))',
                     display: 'flex', gap: 16, fontSize: 10, color: 'var(--text-dim)',
                   }}>
-                    <span>{formatDim(active.geometry?.flatWidth || 0)} Ã {formatDim(active.geometry?.flatHeight || 0)}</span>
-                    <span>Area: {((active.geometry?.flatArea || 0) / 645.16).toFixed(1)} inÂ²</span>
+                    <span>{formatDim(active.geometry?.flatWidth || 0)} × {formatDim(active.geometry?.flatHeight || 0)}</span>
+                    <span>Area: {((active.geometry?.flatArea || 0) / 645.16).toFixed(1)} in²</span>
                     <span>{(active.geometry?.triangleCount || 0).toLocaleString()} triangles</span>
-                    <span style={{ marginLeft: 'auto' }}>Drag to orbit Â· Scroll to zoom</span>
+                    <span style={{ marginLeft: 'auto' }}>Drag to orbit · Scroll to zoom</span>
                   </div>
                 </div>
               </div>
@@ -396,9 +396,9 @@ export default function QuoteBuilder() {
           <div style={{ maxWidth: 900, margin: '40px auto 0', padding: '0 32px' }}>
             <div className="grid-3">
               {[
-                { icon: 'â¡', title: 'Real Geometry Parsing', desc: 'STL and STEP files parsed with OpenCascade WASM. Volume, surface area, bounding box, and overhangs extracted automatically.' },
-                { icon: 'ð', title: 'DFM Analysis', desc: 'Automated printability checks flag thin walls, unsupported overhangs, minimum feature sizes, and more before you order.' },
-                { icon: 'ð°', title: 'Instant Pricing', desc: 'Material volume, print time, support structures, finish cost, and volume discounts â all calculated from your actual part geometry.' },
+                { icon: '⚡', title: 'Real Geometry Parsing', desc: 'STL and STEP files parsed with OpenCascade WASM. Volume, surface area, bounding box, and overhangs extracted automatically.' },
+                { icon: '🔍', title: 'DFM Analysis', desc: 'Automated printability checks flag thin walls, unsupported overhangs, minimum feature sizes, and more before you order.' },
+                { icon: '💰', title: 'Instant Pricing', desc: 'Material volume, print time, support structures, finish cost, and volume discounts — all calculated from your actual part geometry.' },
               ].map((f, i) => (
                 <div key={i} className="card fade-up" style={{ padding: 24, animationDelay: `${200 + i * 120}ms` }}>
                   <div style={{ fontSize: 28, marginBottom: 12 }}>{f.icon}</div>
@@ -413,7 +413,7 @@ export default function QuoteBuilder() {
         )}
       </main>
 
-      {/* âââ RIGHT SIDEBAR: Order Summary âââ */}
+      {/* ═══ RIGHT SIDEBAR: Order Summary ═══ */}
       {parts.length > 0 && (
         <OrderSummary
           quote={quote}
