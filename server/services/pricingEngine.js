@@ -73,7 +73,7 @@ class PricingEngine {
     const volumeIn3 = flatAreaIn2 * thicknessIn;
     const weightLb = volumeIn3 * density;
     const weightKg = weightLb * 0.4536;
-    const materialCost = weightKg * material.pricePerKg;
+    const materialCost = weightKg * (material.pricePerKg || material.costPerKg || 1.0);
 
     // ─── 2. LASER CUTTING COST ─────────────────
     const perimeterMm = geometry.estimatedPerimeter || 0;
@@ -91,8 +91,9 @@ class PricingEngine {
 
     // ─── 5. FINISH COST ────────────────────────
     const surfaceAreaIn2 = (geometry.surfaceArea || flatAreaMm2 * 2) / 645.16;
+    const surfaceAreaDm2 = surfaceAreaIn2 * 0.064516; // in² to dm²
     const finishCost = finish
-      ? finish.pricePerPart + surfaceAreaIn2 * finish.pricePerSqIn
+      ? (finish.pricePerPart || finish.minCost || 0) + surfaceAreaIn2 * (finish.pricePerSqIn || 0) + surfaceAreaDm2 * (finish.costPerDm2 || 0)
       : 0;
 
     // ─── PER-UNIT SUBTOTAL ─────────────────────
@@ -198,7 +199,7 @@ class PricingEngine {
     const weightLb = stockVolumeIn3 * density;
     const weightKg = weightLb * 0.4536;
 
-    const materialCost = weightKg * material.pricePerKg;
+    const materialCost = weightKg * (material.pricePerKg || material.costPerKg || 1.0);
 
     // ─── 2. MATERIAL REMOVAL & MACHINE TIME ────
     const partVolumeMm3 = geometry.volume || (bbox.width * bbox.height * bbox.depth * 0.5); // estimate if not provided
@@ -236,8 +237,9 @@ class PricingEngine {
 
     // ─── 5. FINISH COST ────────────────────────
     const surfaceAreaIn2 = (geometry.surfaceArea || (bbox.width * bbox.height * 2)) / 645.16;
+    const surfaceAreaDm2 = surfaceAreaIn2 * 0.064516; // in² to dm²
     const finishCost = finish
-      ? finish.pricePerPart + surfaceAreaIn2 * finish.pricePerSqIn
+      ? (finish.pricePerPart || finish.minCost || 0) + surfaceAreaIn2 * (finish.pricePerSqIn || 0) + surfaceAreaDm2 * (finish.costPerDm2 || 0)
       : 0;
 
     // ─── PER-UNIT SUBTOTAL ─────────────────────
@@ -384,8 +386,9 @@ class PricingEngine {
 
     // ─── 5. FINISH COST ────────────────────────
     const surfaceAreaIn2 = (geometry.surfaceArea || (bbox.width * bbox.height * 2)) / 645.16;
+    const surfaceAreaDm2 = surfaceAreaIn2 * 0.064516; // in² to dm²
     const finishCost = finish
-      ? finish.pricePerPart + surfaceAreaIn2 * finish.pricePerSqIn
+      ? (finish.pricePerPart || finish.minCost || 0) + surfaceAreaIn2 * (finish.pricePerSqIn || 0) + surfaceAreaDm2 * (finish.costPerDm2 || 0)
       : 0;
 
     // ─── PER-UNIT SUBTOTAL ─────────────────────
