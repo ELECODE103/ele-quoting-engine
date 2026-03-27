@@ -114,7 +114,7 @@ export const api = {
   // Orders
   async getOrders() { return request('/orders'); },
   async getOrderById(id) { return request(`/orders/${id}`); },
-  async createOrder(quoteId, shippingAddress) {
-    return request('/orders', { method: 'POST', body: JSON.stringify({ quoteId, shippingAddress }) });
+  async createOrder(quoteId, shippingFields) {
+    return request('/orders', { method: 'POST', body: JSON.stringify({ quoteId, ...shippingFields }) });
   },
 };
