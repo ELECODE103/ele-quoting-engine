@@ -13,7 +13,7 @@ export default function CustomerDashboard() {
     const fetchOrders = async () => {
       try {
         const data = await api.getOrders();
-        setOrders(data.orders || []);
+        setOrders(Array.isArray(data) ? data : (data.orders || []));
       } catch (err) {
         setError(err.message || 'Failed to load orders');
       } finally {
@@ -105,7 +105,7 @@ export default function CustomerDashboard() {
                       </span>
                     </td>
                     <td style={{ padding: '12px 16px', color: 'var(--text-primary)', fontSize: 12, textAlign: 'right', fontWeight: 500 }}>
-                      {formatCurrency(order.totalPrice)}
+                      {formatCurrency(order.total)}
                     </td>
                     <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                       <button
