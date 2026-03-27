@@ -5,7 +5,7 @@ export default function LandingPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#fff' }}>
-      {/* âââ Nav âââ */}
+      {/* ─── Nav ─── */}
       <nav style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '16px 40px', maxWidth: 1280, margin: '0 auto',
@@ -47,7 +47,7 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* âââ Hero âââ */}
+      {/* ─── Hero ─── */}
       <section style={{
         padding: '80px 40px 60px',
         maxWidth: 1280, margin: '0 auto',
@@ -109,7 +109,7 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Hero visual â Upload card mockup */}
+        {/* Hero visual — Upload card mockup */}
         <div style={{
           background: 'var(--bg-secondary)', borderRadius: 20, padding: 40,
           border: '1px solid var(--border-primary)',
@@ -148,10 +148,10 @@ export default function LandingPage() {
                 background: 'var(--accent-light)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 16,
-              }}>â²</div>
+              }}>▲</div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>bracket-v2.stl</div>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>PLA+ FDM Â· 0.2mm layers</div>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>PLA+ FDM · 0.2mm layers</div>
               </div>
             </div>
             <div style={{
@@ -162,7 +162,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* âââ Trust bar âââ */}
+      {/* ─── Trust bar ─── */}
       <section style={{
         padding: '32px 40px',
         borderTop: '1px solid var(--border-subtle)',
@@ -191,7 +191,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* âââ Technologies âââ */}
+      {/* ─── Technologies ─── */}
       <section style={{
         padding: '80px 40px', maxWidth: 1280, margin: '0 auto',
       }}>
@@ -280,7 +280,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* âââ How It Works âââ */}
+      {/* ─── How It Works ─── */}
       <section id="how-it-works" style={{
         padding: '80px 40px',
         background: 'var(--bg-secondary)',
@@ -343,7 +343,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* âââ Features âââ */}
+      {/* ─── Features ─── */}
       <section style={{ padding: '80px 40px', maxWidth: 1280, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 60 }}>
           <h2 style={{
@@ -360,32 +360,32 @@ export default function LandingPage() {
         <div className="grid-3">
           {[
             {
-              icon: 'â¡',
+              icon: '⚡',
               title: 'Real Geometry Parsing',
               desc: 'STL and STEP files are parsed with OpenCascade WASM. Volume, surface area, bounding box, and feature count extracted automatically.',
             },
             {
-              icon: 'ð',
+              icon: '🔍',
               title: 'Instant DFM Analysis',
               desc: 'Automated design-for-manufacturability checks flag issues like thin walls, unsupported overhangs, and minimum feature sizes before you order.',
             },
             {
-              icon: 'ð°',
+              icon: '💰',
               title: 'Transparent Pricing',
               desc: 'See exactly how your price is calculated: material volume, print time, support structures, and finish cost with full per-unit breakdown.',
             },
             {
-              icon: 'ð',
+              icon: '📐',
               title: '3D Part Preview',
               desc: 'Interactive WebGL viewer lets you orbit, zoom, and inspect your part in 3D before committing to a print.',
             },
             {
-              icon: 'ð¦',
+              icon: '📦',
               title: 'Volume Discounts',
               desc: 'Quantity pricing is calculated automatically. Order more parts and see your per-unit cost drop in real time.',
             },
             {
-              icon: 'ð',
+              icon: '🚀',
               title: 'Fast Turnaround',
               desc: 'Standard and rush lead times available. Pick the timeline that works for your project and see the price adjust instantly.',
             },
@@ -408,7 +408,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* âââ CTA âââ */}
+      {/* ─── CTA ─── */}
       <section style={{
         padding: '80px 40px',
         background: 'var(--bg-dark)',
@@ -435,7 +435,7 @@ export default function LandingPage() {
         </button>
       </section>
 
-      {/* âââ Footer âââ */}
+      {/* ─── Footer ─── */}
       <footer style={{
         padding: '32px 40px',
         borderTop: '1px solid var(--border-subtle)',
