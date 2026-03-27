@@ -31,6 +31,15 @@ function seedDatabase() {
       for (const proc of existingProcs) processesDB.delete(proc.id);
     }
 
+    // Detect missing pricing columns: re-seed materials & finishes if pricing data is null
+    const existingMats2 = materialsDB.getAll();
+    if (existingMats2.length > 0 && existingMats2[0].pricePerKg == null && existingMats2[0].pricePerCm3 == null) {
+      console.log("  Upgrading database: re-seeding materials and finishes with pricing data...");
+      for (const m of existingMats2) materialsDB.delete(m.id);
+      const existingFins2 = finishesDB.getAll();
+      for (const f of existingFins2) finishesDB.delete(f.id);
+    }
+
     // Only seed if empty
     if (materialsDB.getAll().length === 0) {
       console.log("  Seeding materials...");
