@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
-import { formatCurrency, formatDate } from '../utils/format';
+import { formatCurrency } from '../utils/format';
 
 export default function OrderTrackingPage() {
   const { orderId } = useParams();
@@ -24,11 +24,10 @@ export default function OrderTrackingPage() {
     fetchOrder();
   }, [orderId]);
 
-  const statuses = ['received', 'in_production', 'qc', 'shipped', 'delivered'];
+  const statuses = ['pending_payment', 'paid', 'received', 'in_production', 'quality_check', 'shipped', 'delivered'];
 
   const getStatusIndex = (status) => {
-    const normalizedStatus = status.toLowerCase().replace(/ /g, '_');
-    return statuses.indexOf(normalizedStatus);
+    return statuses.indexOf(status);
   };
 
   const formatStatusLabel = (status) => {
@@ -40,10 +39,10 @@ export default function OrderTrackingPage() {
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         <button
           className="btn btn-ghost"
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/')}
           style={{ marginBottom: 24 }}
         >
-          ← Back to Orders
+          \u2190 Back to Orders
         </button>
 
         {loading && (
@@ -87,20 +86,20 @@ export default function OrderTrackingPage() {
 
                 <div>
                   <div className="field-label" style={{ marginBottom: 4 }}>Total Price</div>
-                  <div style={{ color: 'var(--accent)', fontSize: 14, fontWeight: 600 }}>{formatCurrency(order.totalPrice)}</div>
+                  <div style={{ color: 'var(--accent)', fontSize: 14, fontWeight: 600 }}>{formatCurrency(order.total)}</div>
                 </div>
 
                 <div>
-                  <div className="field-label" style={{ marginBottom: 4 }}>Quantity</div>
+                  <div className="field-label" style={{ marginBottom: 4 }}>Parts</div>
                   <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 500 }}>
-                    {order.quantity || 1} part{(order.quantity || 1) !== 1 ? 's' : ''}
+                    {order.items?.length || order.itemCount || 1} part{(order.items?.length || order.itemCount || 1) !== 1 ? 's' : ''}
                   </div>
                 </div>
 
                 <div>
                   <div className="field-label" style={{ marginBottom: 4 }}>Lead Time</div>
                   <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 500 }}>
-                    {order.leadTime || 'Standard'}
+                    Standard
                   </div>
                 </div>
               </div>
@@ -123,50 +122,32 @@ export default function OrderTrackingPage() {
 
                   return (
                     <div key={status} style={{ display: 'flex', marginBottom: idx < statuses.length - 1 ? 24 : 0 }}>
-                      {/* Timeline Dot */}
                       <div style={{ position: 'relative', width: 40, display: 'flex', justifyContent: 'center' }}>
-                        <div
-                          style={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: '50%',
-                            background: isActive ? 'var(--accent)' : 'var(--border-primary)',
-                            border: isActive ? '3px solid var(--bg-primary)' : 'none',
-                            zIndex: 2,
-                            transition: 'all 0.3s',
-                          }}
-                        />
-                        {/* Timeline Line */}
+                        <div style={{
+                          width: 16, height: 16, borderRadius: '50%',
+                          background: isActive ? 'var(--accent)' : 'var(--border-primary)',
+                          border: isActive ? '3px solid var(--bg-primary)' : 'none',
+                          zIndex: 2, transition: 'all 0.3s',
+                        }} />
                         {idx < statuses.length - 1 && (
-                          <div
-                            style={{
-                              position: 'absolute',
-                              top: 16,
-                              left: '50%',
-                              transform: 'translateX(-50%)',
-                              width: 2,
-                              height: 24,
-                              background: isCompleted ? 'var(--accent)' : 'var(--border-primary)',
-                              transition: 'all 0.3s',
-                            }}
-                          />
+                          <div style={{
+                            position: 'absolute', top: 16, left: '50%',
+                            transform: 'translateX(-50%)', width: 2, height: 24,
+                            background: isCompleted ? 'var(--accent)' : 'var(--border-primary)',
+                            transition: 'all 0.3s',
+                          }} />
                         )}
                       </div>
-
-                      {/* Status Label */}
                       <div style={{ paddingLeft: 16, paddingTop: 0 }}>
                         <div style={{
                           color: isActive ? 'var(--accent)' : 'var(--text-muted)',
-                          fontSize: 12,
-                          fontWeight: 600,
-                          textTransform: 'capitalize',
+                          fontSize: 12, fontWeight: 600, textTransform: 'capitalize',
                         }}>
                           {formatStatusLabel(status)}
                         </div>
                         <div style={{
                           color: isActive ? 'var(--text-secondary)' : 'var(--text-dim)',
-                          fontSize: 11,
-                          marginTop: 4,
+                          fontSize: 11, marginTop: 4,
                         }}>
                           {isCompleted ? 'Completed' : isActive ? 'In progress' : 'Pending'}
                         </div>
@@ -178,7 +159,7 @@ export default function OrderTrackingPage() {
             </div>
 
             {/* Shipping Info */}
-            {order.shippingAddress && (
+            {(order.shippingName || order.shippingAddress) && (
               <div style={{
                 background: 'var(--bg-card)',
                 border: '1px solid var(--border-primary)',
@@ -187,9 +168,10 @@ export default function OrderTrackingPage() {
               }}>
                 <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>Shipping Address</h2>
                 <div style={{ color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.8 }}>
-                  <div>{order.shippingAddress.street}</div>
-                  <div>{order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zip}</div>
-                  <div>{order.shippingAddress.country}</div>
+                  {order.shippingName && <div>{order.shippingName}</div>}
+                  {order.shippingAddress && <div>{order.shippingAddress}</div>}
+                  <div>{[order.shippingCity, order.shippingState].filter(Boolean).join(', ')} {order.shippingZip || ''}</div>
+                  {order.shippingCountry && <div>{order.shippingCountry}</div>}
                 </div>
               </div>
             )}
