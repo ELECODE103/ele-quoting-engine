@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
+import { setAuthToken } from './api';
 
 export const AuthContext = createContext(null);
 
@@ -12,6 +13,7 @@ export function AuthProvider({ children }) {
     const savedToken = localStorage.getItem('authToken');
     if (savedToken) {
       setTokenState(savedToken);
+      setAuthToken(savedToken);
       try {
         // Decode JWT to get user info (basic decode, no verification)
         const parts = savedToken.split('.');
@@ -31,12 +33,14 @@ export function AuthProvider({ children }) {
   const login = useCallback((newToken, userData) => {
     localStorage.setItem('authToken', newToken);
     setTokenState(newToken);
+    setAuthToken(newToken);
     setUser(userData);
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem('authToken');
     setTokenState(null);
+    setAuthToken(null);
     setUser(null);
   }, []);
 
