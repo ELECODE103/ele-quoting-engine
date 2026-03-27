@@ -47,11 +47,7 @@ export default function Header() {
               onClick={() => navigate('/landing')} role="button" tabIndex={0}>
           Nord MFG
         </span>
-        <span style={{
-          fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
-          background: 'var(--accent-light)', color: 'var(--accent)',
-          letterSpacing: '0.05em',
-        }}>BETA</span>
+
       </div>
 
       <nav style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
