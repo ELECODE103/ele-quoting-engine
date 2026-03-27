@@ -7,7 +7,7 @@ const { v4: uuidv4 } = require("uuid");
 
 // Mapping of JS field names → SQLite JSON column names per table
 const JSON_COLUMNS = {
-  materials: { grades: "grades_json", thicknesses: "thicknesses_json" },
+  materials: { grades: "grades_json", thicknesses: "thicknesses_json", layerHeights: "layer_heights_json" },
   finishes: {},
   lead_times: {},
   pricing_rules: { rules: "rules_json" },
@@ -61,6 +61,11 @@ const FIELD_TO_COLUMN = {
   costPerDm2: "cost_per_dm2",
   minCost: "min_cost",
   leadDays: "lead_days",
+  pricePerKg: "price_per_kg",
+  pricePerCm3: "price_per_cm3",
+  defaultLayerHeight: "default_layer_height",
+  pricePerPart: "price_per_part",
+  pricePerSqIn: "price_per_sq_in",
 };
 
 // Reverse mapping for deserialization
