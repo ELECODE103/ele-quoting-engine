@@ -188,6 +188,23 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
 
     // Run schema
     dbInstance.run(SCHEMA);
+
+    // Migrate: add columns that may be missing on existing databases
+    const migrations = [
+      'ALTER TABLE materials ADD COLUMN category TEXT',
+      'ALTER TABLE materials ADD COLUMN price_per_kg REAL',
+      'ALTER TABLE materials ADD COLUMN price_per_cm3 REAL',
+      'ALTER TABLE materials ADD COLUMN machinability REAL',
+      'ALTER TABLE materials ADD COLUMN default_layer_height REAL',
+      'ALTER TABLE materials ADD COLUMN color TEXT',
+      'ALTER TABLE materials ADD COLUMN layer_heights_json TEXT',
+      'ALTER TABLE finishes ADD COLUMN price_per_part REAL',
+      'ALTER TABLE finishes ADD COLUMN price_per_sq_in REAL',
+    ];
+    for (const sql of migrations) {
+      try { dbInstance.run(sql); } catch (e) { /* column already exists */ }
+    }
+
     saveToDisk();
     readyResolve();
   } catch (err) {
