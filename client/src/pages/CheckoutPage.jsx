@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 import { formatCurrency } from '../utils/format';
@@ -14,7 +14,12 @@ export default function CheckoutPage() {
   const [country, setCountry] = useState('US');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [quoteTotal] = useState(1250.00); // Placeholder
+  const [quoteData, setQuoteData] = useState(null);
+  const [name, setName] = useState('');
+
+  useEffect(() => {
+    api.getQuoteById(quoteId).then(q => setQuoteData(q)).catch(err => setError('Could not load quote: ' + err.message));
+  }, [quoteId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,8 +27,7 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
-      const shippingAddress = { street, city, state, zip, country };
-      const result = await api.createOrder(quoteId, shippingAddress);
+      const result = await api.createOrder(quoteId, { shippingName: name, shippingAddress: street, shippingCity: city, shippingState: state, shippingZip: zip, shippingCountry: country });
       if (result.orderId) {
         navigate(`/orders/${result.orderId}`);
       }
@@ -52,6 +56,18 @@ export default function CheckoutPage() {
             <p style={{ color: 'var(--text-muted)', marginBottom: 32 }}>Provide shipping details</p>
 
             <form onSubmit={handleSubmit}>
+              <div style={{ marginBottom: 16 }}>
+                <label className="field-label">Full Name</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="John Smith"
+                  required
+                />
+              </div>
+
               <div style={{ marginBottom: 16 }}>
                 <label className="field-label">Street Address</label>
                 <input
@@ -152,18 +168,18 @@ export default function CheckoutPage() {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Subtotal</span>
-                  <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>{formatCurrency(quoteTotal)}</span>
+                  <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>{quoteData ? formatCurrency(quoteData.subtotal) : '...'}</span>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Shipping</span>
-                  <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>TBD</span>
+                  <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>{quoteData ? formatCurrency(quoteData.shippingEstimate) : 'TBD'}</span>
                 </div>
 
                 <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 12, marginTop: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}>Total</span>
-                    <span style={{ color: 'var(--accent)', fontSize: 16, fontWeight: 700 }}>{formatCurrency(quoteTotal)}</span>
+                    <span style={{ color: 'var(--accent)', fontSize: 16, fontWeight: 700 }}>{quoteData ? formatCurrency(quoteData.orderTotal) : '...'}</span>
                   </div>
                 </div>
               </div>
