@@ -148,7 +148,8 @@ router.post("/login", async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════
 // GET /api/auth/profile
-// ═══════════════════════════════════════════════════════════════router.get("/profile", authenticate, (req, res) => {
+// ═══════════════════════════════════════════════════════════════
+router.get("/profile", authenticate, (req, res) => {
   const user = usersDB.getById(req.user.userId);
   if (!user) return res.status(404).json({ error: "User not found" });
 
