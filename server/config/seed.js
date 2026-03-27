@@ -55,6 +55,13 @@ function seedDatabase() {
       }
     }
 
+    // Detect missing lead time days: re-seed if days field is null
+    const existingLTs = leadTimesDB.getAll();
+    if (existingLTs.length > 0 && !existingLTs[0].days) {
+      console.log("  Upgrading database: re-seeding lead times with days data...");
+      for (const lt of existingLTs) leadTimesDB.delete(lt.id);
+    }
+
     if (leadTimesDB.getAll().length === 0) {
       console.log("  Seeding lead times...");
       for (const lt of DEFAULT_LEAD_TIMES) {
