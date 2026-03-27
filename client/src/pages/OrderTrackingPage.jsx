@@ -42,7 +42,7 @@ export default function OrderTrackingPage() {
           onClick={() => navigate('/')}
           style={{ marginBottom: 24 }}
         >
-          \u2190 Back to Orders
+          ← Back to Orders
         </button>
 
         {loading && (
