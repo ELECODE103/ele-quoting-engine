@@ -114,6 +114,7 @@ const SCHEMA = `
     id TEXT PRIMARY KEY,
     slug TEXT,
     name TEXT,
+    days TEXT,
     days_min INTEGER,
     days_max INTEGER,
     multiplier REAL,
@@ -200,6 +201,7 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       'ALTER TABLE materials ADD COLUMN layer_heights_json TEXT',
       'ALTER TABLE finishes ADD COLUMN price_per_part REAL',
       'ALTER TABLE finishes ADD COLUMN price_per_sq_in REAL',
+      'ALTER TABLE lead_times ADD COLUMN days TEXT',
     ];
     for (const sql of migrations) {
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }
