@@ -9,8 +9,130 @@ const { sanitizeString, nonNegativeNumber } = require("../middleware/validate");
 
 const router = express.Router();
 
+// Initialize Stripe (only if key is configured)
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? require("stripe")(process.env.STRIPE_SECRET_KEY)
+  : null;
+
 // ═══════════════════════════════════════════════════════════════
-// POST /api/orders — Create order from a quote
+// POST /api/orders/checkout-session — Create Stripe Checkout Session
+// ═══════════════════════════════════════════════════════════════
+router.post("/checkout-session", authenticate, async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(503).json({ error: "Payment processing is not configured" });
+    }
+
+    const {
+      quoteId,
+      shippingName,
+      shippingAddress,
+      shippingCity,
+      shippingState,
+      shippingZip,
+      shippingCountry,
+    } = req.body;
+
+    if (!quoteId) {
+      return res.status(400).json({ error: "Quote ID is required" });
+    }
+
+    // Retrieve the quote
+    const quote = quotesDB.getById(quoteId);
+    if (!quote) {
+      return res.status(404).json({ error: "Quote not found" });
+    }
+
+    const orderTotal = quote.orderTotal || quote.subtotal || 0;
+    if (orderTotal <= 0) {
+      return res.status(400).json({ error: "Invalid order total" });
+    }
+
+    // Create the order with pending_payment status
+    const order = ordersDB.insert({
+      userId: req.user.userId,
+      quoteId,
+      status: "pending_payment",
+      shippingName: sanitizeString(shippingName || "", 200),
+      shippingAddress: sanitizeString(shippingAddress || "", 500),
+      shippingCity: sanitizeString(shippingCity || "", 100),
+      shippingState: sanitizeString(shippingState || "", 100),
+      shippingZip: sanitizeString(shippingZip || "", 20),
+      shippingCountry: sanitizeString(shippingCountry || "US", 5),
+      shippingMethod: "standard",
+      shippingCost: 0,
+      subtotal: orderTotal,
+      tax: 0,
+      total: orderTotal,
+      notes: "",
+    });
+
+    // Create order items from quote line items
+    const lineItems = quote.lineItems || [];
+    for (const item of lineItems) {
+      orderItemsDB.insert({
+        orderId: order.id,
+        partId: item.partId,
+        fileName: item.fileName,
+        process: item.meta?.process || "fdm",
+        materialSlug: item.materialSlug || "",
+        materialName: item.materialName || "",
+        finishSlug: item.finishSlug || "",
+        finishName: item.finishName || "",
+        quantity: item.quantity || 1,
+        unitPrice: item.unitPrice || 0,
+        lineTotal: item.lineTotal || 0,
+      });
+    }
+
+    // Update quote status
+    quotesDB.update(quoteId, { status: "ordered" });
+
+    // Build Stripe line items description
+    const partNames = lineItems.map(i => i.fileName || "3D printed part").join(", ");
+    const description = partNames.length > 200 ? partNames.substring(0, 197) + "..." : partNames;
+
+    // Determine base URL for redirects
+    const baseUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get("host")}`;
+
+    // Create Stripe Checkout Session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "payment",
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: `Nord MFG Order — ${lineItems.length} part${lineItems.length !== 1 ? "s" : ""}`,
+              description: description || "Custom 3D printed parts",
+            },
+            unit_amount: Math.round(orderTotal * 100), // Stripe uses cents
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        orderId: order.id,
+        quoteId: quoteId,
+        userId: req.user.userId,
+      },
+      success_url: `${baseUrl}/orders/${order.id}?paid=true`,
+      cancel_url: `${baseUrl}/checkout/${quoteId}?cancelled=true`,
+    });
+
+    // Store stripe session ID on the order for reference
+    ordersDB.update(order.id, { stripeSessionId: session.id });
+
+    res.json({ sessionUrl: session.url, orderId: order.id });
+  } catch (err) {
+    console.error("Checkout session error:", err);
+    res.status(500).json({ error: "Failed to create checkout session" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// POST /api/orders — Create order from a quote (legacy / admin)
 // ═══════════════════════════════════════════════════════════════
 router.post("/", authenticate, (req, res) => {
   try {
