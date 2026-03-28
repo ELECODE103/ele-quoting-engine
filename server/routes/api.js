@@ -8,11 +8,12 @@ const { PricingEngine } = require("../services/pricingEngine");
 const { materialsDB, finishesDB, leadTimesDB, pricingDB, quotesDB, partsDB } = require("../models");
 const { MANUFACTURING_PROCESSES } = require("../config/defaults");
 const { authenticate, requireAdmin } = require("./auth");
-const { sanitizeString, isValidSlug } = require("../middleware/validate");
+const { sanitizeString, isValidSlug, nonNegativeNumber, positiveInt } = require("../middleware/validate");
+const { validateFileContent } = require("../middleware/fileValidator");
 
 const router = express.Router();
 
-// ─── FILE UPLOAD CONFIG ──────────────────────────────────────
+// âââ FILE UPLOAD CONFIG ââââââââââââââââââââââââââââââââââââââ
 const uploadDir = path.join(__dirname, "..", "..", "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -28,7 +29,7 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
-    fileFilter: (req, file, cb) => {
+  fileFilter: (req, file, cb) => {
     const allowed = [".step", ".stp", ".stl", ".3mf", ".iges", ".igs"];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) {
@@ -41,15 +42,33 @@ const upload = multer({
 
 const pricingEngine = new PricingEngine();
 
-// ═══════════════════════════════════════════════════════════════
+// âââ Admin field whitelists (prevent mass assignment) ââââââââ
+const MATERIAL_FIELDS = ["name", "slug", "process", "subProcess", "category", "density", "costPerKg", "costPerSheet", "grades", "thicknesses", "active", "description", "color"];
+const FINISH_FIELDS = ["name", "slug", "process", "costPerSqMm", "costFlat", "minCost", "active", "description", "category"];
+const PRICING_FIELDS = ["sheetCutRate", "bendRate", "setupFee", "markupPercent", "minimumOrder", "cncRate", "printRate", "finishMultiplier"];
+const LEAD_TIME_FIELDS = ["name", "slug", "days", "multiplier", "active", "description"];
+
+/** Pick only allowed fields from an object */
+function whitelist(body, allowedFields) {
+  const cleaned = {};
+  for (const key of allowedFields) {
+    if (body[key] !== undefined) {
+      cleaned[key] = body[key];
+    }
+  }
+  return cleaned;
+}
+
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // FILE UPLOAD & PARSING
-// ═══════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 /**
  * POST /api/upload
  * Upload one or more CAD files, parse geometry, return analysis.
+ * Requires authentication. Files validated for magic bytes.
  */
-router.post("/upload", upload.array("files", 20), async (req, res) => {
+router.post("/upload", authenticate, upload.array("files", 20), validateFileContent, async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: "No files uploaded" });
@@ -84,7 +103,8 @@ router.post("/upload", upload.array("files", 20), async (req, res) => {
             flatHeight: parsed.geometry.flatHeight,
             flatArea: parsed.geometry.flatArea,
             estimatedPerimeter: parsed.geometry.estimatedPerimeter,
-            estimatedHoles: parsed.geometry.estimatedHoles,            estimatedBends: parsed.geometry.estimatedBends,
+            estimatedHoles: parsed.geometry.estimatedHoles,
+            estimatedBends: parsed.geometry.estimatedBends,
             estimatedSlots: parsed.geometry.estimatedSlots,
             units: parsed.geometry.units,
           },
@@ -110,9 +130,9 @@ router.post("/upload", upload.array("files", 20), async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // INSTANT QUOTE
-// ═══════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 /**
  * POST /api/quote
  * Calculate instant quote for configured parts.
@@ -193,9 +213,9 @@ router.get("/quote/:id", (req, res) => {
   res.json(quote);
 });
 
-// ═══════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // MATERIALS & CONFIG (public)
-// ═══════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 router.get("/processes", (req, res) => {
   res.json(MANUFACTURING_PROCESSES.filter(p => p.active));
@@ -225,21 +245,23 @@ router.get("/lead-times", (req, res) => {
   res.json(leadTimesDB.getAll().filter((lt) => lt.active));
 });
 
-// ═══════════════════════════════════════════════════════════════
-// ADMIN — Materials CRUD
-// ═══════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ADMIN â Materials CRUD (whitelisted fields)
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 router.get("/admin/materials", authenticate, requireAdmin, (req, res) => {
   res.json(materialsDB.getAll());
 });
 
 router.put("/admin/materials/:id", authenticate, requireAdmin, (req, res) => {
-  const updated = materialsDB.update(req.params.id, req.body);
+  const safe = whitelist(req.body, MATERIAL_FIELDS);
+  const updated = materialsDB.update(req.params.id, safe);
   if (!updated) return res.status(404).json({ error: "Material not found" });
   res.json(updated);
 });
 
 router.post("/admin/materials", authenticate, requireAdmin, (req, res) => {
-  const material = materialsDB.insert(req.body);
+  const safe = whitelist(req.body, MATERIAL_FIELDS);
+  const material = materialsDB.insert(safe);
   res.status(201).json(material);
 });
 
@@ -249,27 +271,29 @@ router.delete("/admin/materials/:id", authenticate, requireAdmin, (req, res) => 
   res.json({ success: true });
 });
 
-// ═══════════════════════════════════════════════════════════════
-// ADMIN — Finishes CRUD
-// ═══════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ADMIN â Finishes CRUD (whitelisted fields)
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 router.get("/admin/finishes", authenticate, requireAdmin, (req, res) => {
   res.json(finishesDB.getAll());
 });
 router.put("/admin/finishes/:id", authenticate, requireAdmin, (req, res) => {
-  const updated = finishesDB.update(req.params.id, req.body);
+  const safe = whitelist(req.body, FINISH_FIELDS);
+  const updated = finishesDB.update(req.params.id, safe);
   if (!updated) return res.status(404).json({ error: "Finish not found" });
   res.json(updated);
 });
 
 router.post("/admin/finishes", authenticate, requireAdmin, (req, res) => {
-  const finish = finishesDB.insert(req.body);
+  const safe = whitelist(req.body, FINISH_FIELDS);
+  const finish = finishesDB.insert(safe);
   res.status(201).json(finish);
 });
 
-// ═══════════════════════════════════════════════════════════════
-// ADMIN — Pricing Rules
-// ═══════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ADMIN â Pricing Rules (whitelisted fields)
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 router.get("/admin/pricing", authenticate, requireAdmin, (req, res) => {
   const rules = pricingDB.getAll();
@@ -277,41 +301,45 @@ router.get("/admin/pricing", authenticate, requireAdmin, (req, res) => {
 });
 
 router.put("/admin/pricing", authenticate, requireAdmin, (req, res) => {
+  const safe = whitelist(req.body, PRICING_FIELDS);
   const rules = pricingDB.getAll();
   if (rules.length > 0) {
-    const updated = pricingDB.update(rules[0].id, req.body);
-    // Update engine
-    Object.assign(pricingEngine.rules, req.body);
+    const updated = pricingDB.update(rules[0].id, safe);
+    // Update engine with whitelisted fields only
+    Object.assign(pricingEngine.rules, safe);
     res.json(updated);
-  } else {    const created = pricingDB.insert(req.body);
+  } else {
+    const created = pricingDB.insert(safe);
     res.json(created);
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// ADMIN — Lead Times
-// ═══════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ADMIN â Lead Times (whitelisted fields)
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 router.get("/admin/lead-times", authenticate, requireAdmin, (req, res) => {
   res.json(leadTimesDB.getAll());
 });
 
 router.put("/admin/lead-times/:id", authenticate, requireAdmin, (req, res) => {
-  const updated = leadTimesDB.update(req.params.id, req.body);
+  const safe = whitelist(req.body, LEAD_TIME_FIELDS);
+  const updated = leadTimesDB.update(req.params.id, safe);
   if (!updated) return res.status(404).json({ error: "Lead time not found" });
   res.json(updated);
 });
 
-// ═══════════════════════════════════════════════════════════════
-// ADMIN — Quotes / Orders
-// ═══════════════════════════════════════════════════════════════
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ADMIN â Quotes / Orders
+// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 router.get("/admin/quotes", authenticate, requireAdmin, (req, res) => {
   const quotes = quotesDB.getAll().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   res.json(quotes);
 });
 
-router.get("/admin/stats", authenticate, requireAdmin, (req, res) => {  const quotes = quotesDB.getAll();
+router.get("/admin/stats", authenticate, requireAdmin, (req, res) => {
+  const quotes = quotesDB.getAll();
   const parts = partsDB.getAll();
   const totalRevenue = quotes.reduce((sum, q) => sum + (q.orderTotal || 0), 0);
   const avgOrderValue = quotes.length > 0 ? totalRevenue / quotes.length : 0;
