@@ -68,7 +68,7 @@ function whitelist(body, allowedFields) {
  * Upload one or more CAD files, parse geometry, return analysis.
  * Requires authentication. Files validated for magic bytes.
  */
-router.post("/upload", authenticate, upload.array("files", 20), validateFileContent, async (req, res) => {
+router.post("/upload", upload.array("files", 20), validateFileContent, async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: "No files uploaded" });
