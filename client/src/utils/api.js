@@ -117,4 +117,12 @@ export const api = {
   async createOrder(quoteId, shippingFields) {
     return request('/orders', { method: 'POST', body: JSON.stringify({ quoteId, ...shippingFields }) });
   },
+
+  // Stripe Checkout
+  async createCheckoutSession(quoteId, shippingFields) {
+    return request('/orders/checkout-session', {
+      method: 'POST',
+      body: JSON.stringify({ quoteId, ...shippingFields }),
+    });
+  },
 };
