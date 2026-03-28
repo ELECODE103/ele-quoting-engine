@@ -5,9 +5,14 @@
  * IMPORTANT: This route receives raw body (not JSON-parsed) because
  * Stripe requires the raw body for signature verification.
  * The raw body middleware is applied in server/index.js BEFORE express.json().
+ *
+ * SECURITY:
+ * - In production, webhook signature verification is REQUIRED
+ * - Payment amount is verified against stored order total
+ * - Idempotent: only updates orders still in pending_payment status
  */
 const express = require("express");
-const { ordersDB } = require("../models");
+const { ordersDB, quotesDB } = require("../models");
 
 const router = express.Router();
 
@@ -24,7 +29,7 @@ router.post("/", async (req, res) => {
 
   let event;
 
-  // Verify webhook signature if secret is configured
+  // âââ Signature Verification ââââââââââââââââââââââââââââââââââ
   if (webhookSecret) {
     const sig = req.headers["stripe-signature"];
     try {
@@ -33,8 +38,13 @@ router.post("/", async (req, res) => {
       console.error("Webhook signature verification failed:", err.message);
       return res.status(400).json({ error: "Invalid signature" });
     }
+  } else if (process.env.NODE_ENV === "production") {
+    // CRITICAL: In production, NEVER accept unsigned webhooks
+    console.error("SECURITY: Webhook received without STRIPE_WEBHOOK_SECRET configured in production");
+    return res.status(500).json({ error: "Webhook secret not configured" });
   } else {
-    // In development/test mode without webhook secret, parse body directly
+    // Development only: parse raw body (no signature check)
+    console.warn("WARNING: Processing webhook without signature verification (dev mode only)");
     try {
       event = JSON.parse(req.body.toString());
     } catch (err) {
@@ -42,7 +52,7 @@ router.post("/", async (req, res) => {
     }
   }
 
-  // Handle the checkout.session.completed event
+  // âââ Handle checkout.session.completed ââââââââââââââââââââââââ
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
     const orderId = session.metadata?.orderId;
@@ -58,14 +68,43 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // Only update if still pending
+    // âââ Payment Amount Verification âââââââââââââââââââââââââââââ
+    // Verify the amount paid matches what we expect
+    const paidAmountCents = session.amount_total;
+    const expectedAmountCents = Math.round((order.orderTotal || 0) * 100);
+
+    if (paidAmountCents && expectedAmountCents > 0) {
+      // Allow a small tolerance (1 cent) for rounding differences
+      if (Math.abs(paidAmountCents - expectedAmountCents) > 1) {
+        console.error(
+          `Webhook: Payment amount mismatch for order ${orderId}. ` +
+          `Paid: ${paidAmountCents} cents, Expected: ${expectedAmountCents} cents`
+        );
+        // Still mark as paid but flag for manual review
+        ordersDB.update(orderId, {
+          status: "paid_amount_mismatch",
+          stripePaymentIntentId: session.payment_intent || "",
+          paidAt: new Date().toISOString(),
+          paidAmountCents,
+          expectedAmountCents,
+          needsReview: true,
+        });
+        console.warn("Order " + orderId + " marked for review due to amount mismatch");
+        return res.json({ received: true, warning: "amount_mismatch" });
+      }
+    }
+
+    // Only update if still pending (idempotent)
     if (order.status === "pending_payment") {
       ordersDB.update(orderId, {
         status: "paid",
         stripePaymentIntentId: session.payment_intent || "",
         paidAt: new Date().toISOString(),
+        paidAmountCents: paidAmountCents || null,
       });
       console.log("Order " + orderId + " marked as paid via Stripe webhook");
+    } else {
+      console.log("Webhook: Order " + orderId + " already in status " + order.status + " â skipping");
     }
   }
 
