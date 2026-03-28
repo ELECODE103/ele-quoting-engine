@@ -47,6 +47,10 @@ app.use(cors({
   credentials: true,
 }));
 
+// ─── Stripe Webhook (raw body — must be before express.json) ────
+const stripeWebhook = require("./routes/stripeWebhook");
+app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhook);
+
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
