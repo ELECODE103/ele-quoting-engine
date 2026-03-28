@@ -5,14 +5,55 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
 const { usersDB } = require("../models");
 const { sanitizeString, isValidEmail } = require("../middleware/validate");
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
+
+// --- JWT Secret: REQUIRE in production, warn in dev ---
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  if (process.env.NODE_ENV === "production") {
+    console.error("FATAL: JWT_SECRET environment variable is required in production");
+    process.exit(1);
+  } else {
+    console.warn("WARNING: JWT_SECRET not set - using insecure dev fallback. Do NOT use in production.");
+  }
+}
+const EFFECTIVE_JWT_SECRET = JWT_SECRET || "dev-secret-DO-NOT-USE-IN-PROD";
 const JWT_EXPIRES_IN = "7d";
 
-// ─── Middleware: authenticate JWT ────────────────────────────────
+// --- Rate Limiters for Auth Endpoints ---
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  max: 5,                     // 5 login attempts per IP per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts. Please try again in 15 minutes." },
+  skipSuccessfulRequests: true,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,  // 1 hour
+  max: 10,                    // 10 registrations per IP per hour
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many registration attempts. Please try again later." },
+});
+
+// --- Password Complexity Validator ---
+function validatePasswordComplexity(password) {
+  const errors = [];
+  if (password.length < 8) errors.push("at least 8 characters");
+  if (password.length > 128) errors.push("under 128 characters");
+  if (!/[A-Z]/.test(password)) errors.push("one uppercase letter");
+  if (!/[a-z]/.test(password)) errors.push("one lowercase letter");
+  if (!/[0-9]/.test(password)) errors.push("one number");
+  return errors;
+}
+
+// --- Middleware: authenticate JWT ---
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -21,14 +62,14 @@ function authenticate(req, res, next) {
 
   try {
     const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, EFFECTIVE_JWT_SECRET);
     req.user = decoded;
     next();
   } catch (err) {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 }
-// ─── Middleware: require admin role ──────────────────────────────
+// --- Middleware: require admin role ---
 function requireAdmin(req, res, next) {
   if (req.user.role !== "admin") {
     return res.status(403).json({ error: "Admin access required" });
@@ -36,10 +77,8 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// ═══════════════════════════════════════════════════════════════
 // POST /api/auth/register
-// ═══════════════════════════════════════════════════════════════
-router.post("/register", async (req, res) => {
+router.post("/register", registerLimiter, async (req, res) => {
   try {
     const { email, password, name, company, phone } = req.body;
 
@@ -51,13 +90,14 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Please enter a valid email address" });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    // Password complexity validation
+    const pwErrors = validatePasswordComplexity(password);
+    if (pwErrors.length > 0) {
+      return res.status(400).json({
+        error: `Password must contain: ${pwErrors.join(", ")}`,
+      });
     }
 
-    if (password.length > 128) {
-      return res.status(400).json({ error: "Password must be under 128 characters" });
-    }
     // Sanitize optional fields
     const cleanName = sanitizeString(name || "", 100);
     const cleanCompany = sanitizeString(company || "", 100);
@@ -85,7 +125,7 @@ router.post("/register", async (req, res) => {
     // Generate token
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
+      EFFECTIVE_JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
     res.status(201).json({
@@ -104,10 +144,8 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
 // POST /api/auth/login
-// ═══════════════════════════════════════════════════════════════
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -126,7 +164,7 @@ router.post("/login", async (req, res) => {
 
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
+      EFFECTIVE_JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
 
@@ -146,9 +184,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
 // GET /api/auth/profile
-// ═══════════════════════════════════════════════════════════════
 router.get("/profile", authenticate, (req, res) => {
   const user = usersDB.getById(req.user.userId);
   if (!user) return res.status(404).json({ error: "User not found" });
@@ -164,9 +200,7 @@ router.get("/profile", authenticate, (req, res) => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════════
 // PUT /api/auth/profile
-// ═══════════════════════════════════════════════════════════════
 router.put("/profile", authenticate, (req, res) => {
   const { name, company, phone } = req.body;
 
