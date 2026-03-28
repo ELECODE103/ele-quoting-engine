@@ -3,14 +3,18 @@
  * Keeps route handlers clean; centralises security logic.
  */
 
-// ─── Sanitisers ──────────────────────────────────────────────
+// âââ Sanitisers ââââââââââââââââââââââââââââââââââââââââââââââ
 
-/** Strip HTML/script tags and trim whitespace */
+/** Strip HTML/script tags, JS protocol handlers, event handlers, and control chars */
 function sanitizeString(val, maxLength = 500) {
   if (typeof val !== "string") return "";
   return val
-    .replace(/<[^>]*>/g, "")   // strip HTML tags
-    .replace(/[<>]/g, "")      // remove stray angle brackets
+    .replace(/<script[\s\S]*?<\/script>/gi, "")  // strip script blocks
+    .replace(/<[^>]*>/g, "")                       // strip HTML tags
+    .replace(/[<>]/g, "")                          // remove stray angle brackets
+    .replace(/javascript\s*:/gi, "")               // block javascript: protocol
+    .replace(/on\w+\s*=/gi, "")                    // strip inline event handlers
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "") // remove control characters
     .trim()
     .slice(0, maxLength);
 }
@@ -45,7 +49,7 @@ function isValidUUID(val) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
 }
 
-// ─── Express middleware factory ──────────────────────────────
+// âââ Express middleware factory ââââââââââââââââââââââââââââââ
 
 /**
  * Validate request body fields.
@@ -55,7 +59,8 @@ function isValidUUID(val) {
  *
  * Field types: "string", "email", "number", "positiveInt", "slug", "uuid", "boolean"
  * Prefix with "?" to mark optional: "?string"
- */function validateBody(schema) {
+ */
+function validateBody(schema) {
   return (req, res, next) => {
     const errors = [];
 
@@ -85,7 +90,8 @@ function isValidUUID(val) {
             errors.push(`${field} must be a non-empty string`);
           } else if (val.length > 1000) {
             errors.push(`${field} must be under 1000 characters`);
-          }          break;
+          }
+          break;
         case "number":
           if (typeof val !== "number" || !Number.isFinite(val)) {
             errors.push(`${field} must be a valid number`);
