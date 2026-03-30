@@ -1,6 +1,6 @@
 {
   "name": "instant-quote-saas",
-  "version": "1.1.0",
+  "version": "1.0.0",
   "description": "Production-ready instant quoting platform for 3D parts",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
@@ -11,19 +11,20 @@
     "postinstall": "cd client && npm install"
   },
   "dependencies": {
-    "sql.js": "^1.9.0",
+    "adm-zip": "^0.5.16",
     "bcryptjs": "^2.4.3",
     "concurrently": "^8.2.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.4",
+    "fast-xml-parser": "^5.5.9",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "occt-import-js": "^0.0.23",
     "pdfkit": "^0.13.0",
-    "stripe": "^14.14.0",
+    "sql.js": "^1.9.0",
     "three": "^0.160.0",
     "uuid": "^9.0.0"
   }
