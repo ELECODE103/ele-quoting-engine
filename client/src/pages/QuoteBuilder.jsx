@@ -221,7 +221,7 @@ export default function QuoteBuilder() {
       }}>
         <input
           ref={fileRef} type="file" multiple
-          accept=".step,.stp,.stl,.3mf,.iges,.igs,.dxf,.svg"
+          accept=".step,.stp,.stl,.3mf,.iges,.igs"
           style={{ display: 'none' }}
           onChange={(e) => handleFiles(e.target.files)}
         />
