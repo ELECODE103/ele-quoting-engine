@@ -187,3 +187,5 @@ npm run start          # Start production server (serves client from dist/)
 1. Add parser function in `server/parsers/fileParser.js`
 2. Add extension to `multer` filter in `server/routes/api.js`
 3. The parser must return the same geometry shape: `{ boundingBox, surfaceArea, volume, triangleCount, estimatedThickness, flatWidth, flatHeight, flatArea, estimatedPerimeter, estimatedHoles, estimatedBends, units, meshData }`
+
+<!-- deploy trigger -->
