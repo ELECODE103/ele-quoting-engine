@@ -948,7 +948,7 @@ function runDFMAnalysis(geometry, options = {}) {
 // âââ MAIN PARSE FUNCTION ââââââââââââââââââââââââââââââââââââââ
 async function parseFile(filePath, processOptions = {}) {
   const ext = path.extname(filePath).toLowerCase();
-  const buffer = fs.readFileSync(file@ath);
+  const buffer = fs.readFileSync(filePath);
 
   let geometry;
 
