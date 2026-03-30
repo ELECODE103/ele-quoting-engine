@@ -97,7 +97,7 @@ export default function LandingPage() {
           </div>
 
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-            {['STL', 'STEP', '3MF', 'OBJ'].map((f) => (
+            {['STL', 'STEP', '3MF', 'IGES'].map((f) => (
               <span key={f} style={{
                 fontSize: 12, padding: '5px 12px', borderRadius: 6,
                 background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)',
