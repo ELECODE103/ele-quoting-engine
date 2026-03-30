@@ -36,7 +36,7 @@ jobs:
 
       - name: Verify server starts
         run: |
-          NODE_ENV=production PORT=3000 USE_SQLITE=true JWT_SECRET=test-secret node server/index.js &
+          NODE_ENV=production PORT=3000 USE_SQLITE=true JWT_SECRET=test-secret STRIPE_SECRET_KEY=sk_test_ci_dummy node server/index.js &
           SERVER_PID=$!
           for i in {1..30}; do
             if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
