@@ -1,5 +1,5 @@
 /**
- * 3D File Parser — extracts real geometry from STEP and STL files.
+ * 3D File Parser â extracts real geometry from STEP and STL files.
  *
  * Uses occt-import-js (OpenCascade compiled to WASM) for STEP/IGES parsing,
  * and a custom binary STL parser for STL files.
@@ -10,7 +10,7 @@
 const fs = require("fs");
 const path = require("path");
 
-// ─── STL PARSER (Binary + ASCII) ──────────────────────────────
+// âââ STL PARSER (Binary + ASCII) ââââââââââââââââââââââââââââââ
 function parseSTL(buffer) {
   // Detect ASCII vs binary
   const header = buffer.slice(0, 80).toString("ascii");
@@ -67,7 +67,7 @@ function parseSTLAscii(text) {
   return analyzeTriangleMesh(vertices, normals, triangleCount);
 }
 
-// ─── GEOMETRY ANALYSIS ────────────────────────────────────────
+// âââ GEOMETRY ANALYSIS ââââââââââââââââââââââââââââââââââââââââ
 function analyzeTriangleMesh(vertices, normals, triangleCount) {
   if (triangleCount === 0) {
     throw new Error("No triangles found in mesh");
@@ -128,7 +128,7 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
   const flatHeight = dims[1];
 
   // Cut perimeter estimate: approximate from surface area and thickness
-  // For sheet metal: perimeter ≈ (surfaceArea - 2 * flatArea) / thickness
+  // For sheet metal: perimeter â (surfaceArea - 2 * flatArea) / thickness
   const flatArea = flatWidth * flatHeight;
   const edgeSurfaceArea = Math.max(totalSurfaceArea - 2 * flatArea * 0.7, flatArea * 0.1);
   const estimatedPerimeter = estimatedThickness > 0.01 ? edgeSurfaceArea / estimatedThickness : flatWidth * 2 + flatHeight * 2;
@@ -152,7 +152,7 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
     estimatedBends: features.bends,
     estimatedSlots: features.slots,
 
-    // Units (STL files don't specify units — assume mm)
+    // Units (STL files don't specify units â assume mm)
     units: "mm",
 
     // Mesh for preview (downsampled if huge)
@@ -210,115 +210,8 @@ function downsampleVertices(vertices, maxVerts) {
   return result;
 }
 
-// ─── STEP PARSER (via occt-import-js) ─────────────────────────
-async function parseSTEP(buffer) {
-  const occtImportJs = require("occt-import-js");
-  const occt = await (typeof occtImportJs === "function" ? occtImportJs() : occtImportJs.default());
-
-  // Load the STEP file
-  const fileBuffer = new Uint8Array(buffer);
-  const result = occt.ReadStepFile(fileBuffer, null);
-
-  if (!result.success) {
-    throw new Error("Failed to parse STEP file: " + (result.error || "Unknown error"));
-  }
-
-  // Extract mesh data from all bodies
-  const allVertices = [];
-  const allNormals = [];
-  let totalTriangles = 0;
-
-  for (const mesh of result.meshes) {
-    const positions = mesh.attributes.position.array;
-    const normalArr = mesh.attributes.normal ? mesh.attributes.normal.array : null;
-
-    if (mesh.index) {
-      // Indexed geometry
-      const indices = mesh.index.array;
-      for (let i = 0; i < indices.length; i += 3) {
-        for (let v = 0; v < 3; v++) {
-          const idx = indices[i + v];
-          allVertices.push([
-            positions[idx * 3],
-            positions[idx * 3 + 1],
-            positions[idx * 3 + 2],
-          ]);
-          if (normalArr) {
-            allNormals.push([
-              normalArr[idx * 3],
-              normalArr[idx * 3 + 1],
-              normalArr[idx * 3 + 2],
-            ]);
-          }
-        }
-        totalTriangles++;
-      }
-    } else {
-      // Non-indexed
-      for (let i = 0; i < positions.length; i += 9) {
-        for (let v = 0; v < 3; v++) {
-          allVertices.push([
-            positions[i + v * 3],
-            positions[i + v * 3 + 1],
-            positions[i + v * 3 + 2],
-          ]);
-          if (normalArr) {
-            allNormals.push([
-              normalArr[i + v * 3],
-              normalArr[i + v * 3 + 1],
-              normalArr[i + v * 3 + 2],
-            ]);
-          }
-        }
-        totalTriangles++;
-      }
-    }
-  }
-
-  // If no normals provided, generate flat normals
-  if (allNormals.length === 0) {
-    for (let i = 0; i < totalTriangles; i++) {
-      const v0 = allVertices[i * 3];
-      const v1 = allVertices[i * 3 + 1];
-      const v2 = allVertices[i * 3 + 2];
-      const ax = v1[0] - v0[0], ay = v1[1] - v0[1], az = v1[2] - v0[2];
-      const bx = v2[0] - v0[0], by = v2[1] - v0[1], bz = v2[2] - v0[2];
-      const nx = ay * bz - az * by;
-      const ny = az * bx - ax * bz;
-      const nz = ax * by - ay * bx;
-      const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-      const n = [nx / len, ny / len, nz / len];
-      allNormals.push(n, n, n);
-    }
-  }
-
-  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles);
-
-  // STEP files typically use mm
-  analysis.units = "mm";
-
-  // STEP files have better topology data — extract face/edge counts
-  analysis.faceCount = result.meshes.length;
-  analysis.edgeCount = result.meshes.reduce((sum, m) => {
-    return sum + (m.index ? m.index.array.length / 3 : 0);
-  }, 0);
-
-  return analysis;
-}
-
-// ─── IGES PARSER (via occt-import-js) ─────────────────────────
-async function parseIGES(buffer) {
-  const occtImportJs = require("occt-import-js");
-  const occt = await (typeof occtImportJs === "function" ? occtImportJs() : occtImportJs.default());
-
-  const fileBuffer = new Uint8Array(buffer);
-  const result = occt.ReadIgesFile(fileBuffer, null);
-
-  if (!result.success) {
-    throw new Error("Failed to parse IGES file: " + (result.error || "Unknown error"));
-  }
-
-  // The rest is identical to parseSTEP — extract mesh data from all bodies
+// âââ Shared: extract meshes from occt-import-js result âââââââ
+function extractOcctMeshes(result) {
   const allVertices = [];
   const allNormals = [];
   let totalTriangles = 0;
@@ -348,6 +241,7 @@ async function parseIGES(buffer) {
     }
   }
 
+  // Generate flat normals if none provided
   if (allNormals.length === 0) {
     for (let i = 0; i < totalTriangles; i++) {
       const v0 = allVertices[i * 3], v1 = allVertices[i * 3 + 1], v2 = allVertices[i * 3 + 2];
@@ -360,14 +254,245 @@ async function parseIGES(buffer) {
     }
   }
 
+  return { allVertices, allNormals, totalTriangles };
+}
+
+// âââ STEP PARSER (via occt-import-js) â hardened ââââââââââââ
+const STEP_TIMEOUT_MS = 30000; // 30-second max parse time
+
+async function parseSTEP(buffer) {
+  let occt;
+  try {
+    const occtImportJs = require("occt-import-js");
+    occt = await (typeof occtImportJs === "function" ? occtImportJs() : occtImportJs.default());
+  } catch (initErr) {
+    throw new Error("STEP parser failed to initialize. Please try again or export as STL.");
+  }
+
+  // Parse with timeout protection
+  const fileBuffer = new Uint8Array(buffer);
+  let result;
+  try {
+    result = await Promise.race([
+      Promise.resolve(occt.ReadStepFile(fileBuffer, null)),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("STEP parsing timed out after 30 seconds. The file may be too complex â try simplifying or exporting as STL.")), STEP_TIMEOUT_MS)
+      ),
+    ]);
+  } catch (parseErr) {
+    if (parseErr.message.includes("timed out")) throw parseErr;
+    throw new Error("Failed to read STEP file. The file may be corrupt or from an unsupported CAD version. Try re-exporting from your CAD software.");
+  }
+
+  if (!result.success) {
+    throw new Error("STEP parse failed: " + (result.error || "The file structure could not be read. Try re-exporting as STEP AP214 or AP242."));
+  }
+
+  if (!result.meshes || result.meshes.length === 0) {
+    throw new Error("STEP file contains no geometry. It may be an empty assembly or contain only metadata.");
+  }
+
+  // Extract meshes from all bodies (assembly support)
+  const { allVertices, allNormals, totalTriangles } = extractOcctMeshes(result);
+
+  if (totalTriangles === 0) {
+    throw new Error("STEP file parsed but produced no triangles. The geometry may be too small or degenerate.");
+  }
+
+  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles);
+
+  analysis.units = "mm";
+  analysis.bodyCount = result.meshes.length; // Assembly: number of bodies
+  analysis.isAssembly = result.meshes.length > 1;
+  analysis.faceCount = result.meshes.length;
+  analysis.edgeCount = result.meshes.reduce((sum, m) => sum + (m.index ? m.index.array.length / 3 : 0), 0);
+
+  // Mesh density check: warn if very few triangles for the bounding box size
+  const bboxVolume = analysis.boundingBox.width * analysis.boundingBox.height * analysis.boundingBox.depth;
+  if (bboxVolume > 1000 && totalTriangles < 50) {
+    analysis.warnings = analysis.warnings || [];
+    analysis.warnings.push("Low mesh density detected. Geometry measurements may be approximate. Consider re-exporting with finer tessellation.");
+  }
+
+  return analysis;
+}
+
+// âââ 3MF PARSER âââââââââââââââââââââââââââââââââââââââââââââ
+async function parse3MF(buffer) {
+  const AdmZip = require("adm-zip");
+  const { XMLParser } = require("fast-xml-parser");
+
+  // 1. Extract ZIP archive
+  let zip;
+  try {
+    zip = new AdmZip(buffer);
+  } catch (zipErr) {
+    throw new Error("Invalid 3MF file: could not open as ZIP archive. The file may be corrupt.");
+  }
+
+  // 2. Find the 3D model file
+  const modelEntry = zip.getEntry("3D/3dmodel.model");
+  if (!modelEntry) {
+    throw new Error("Invalid 3MF file: missing 3D/3dmodel.model. This may not be a valid 3MF archive.");
+  }
+
+  const modelXml = zip.readAsText(modelEntry);
+  if (!modelXml || modelXml.length === 0) {
+    throw new Error("Invalid 3MF file: the model file is empty.");
+  }
+
+  // 3. Parse XML
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: "@_",
+    isArray: (name) => ["object", "vertex", "triangle", "component", "item"].includes(name),
+  });
+
+  let parsed;
+  try {
+    parsed = parser.parse(modelXml);
+  } catch (xmlErr) {
+    throw new Error("Invalid 3MF file: XML parsing failed. The model file may be malformed.");
+  }
+
+  // Navigate to model root â handle namespace prefix variations
+  const model = parsed.model || parsed["model:model"] || (parsed["?xml"] ? Object.values(parsed).find(v => typeof v === "object" && v !== null && !Array.isArray(v)) : null);
+  if (!model) {
+    throw new Error("Invalid 3MF file: no <model> element found.");
+  }
+
+  // 4. Unit normalization â 3MF spec supports: micron, millimeter, centimeter, inch, foot, meter
+  const unitAttr = model["@_unit"] || "millimeter";
+  const UNIT_TO_MM = {
+    micron: 0.001,
+    millimeter: 1,
+    centimeter: 10,
+    inch: 25.4,
+    foot: 304.8,
+    meter: 1000,
+  };
+  const scale = UNIT_TO_MM[unitAttr.toLowerCase()] || 1;
+
+  // 5. Extract mesh objects
+  const resources = model.resources || model["model:resources"];
+  if (!resources) {
+    throw new Error("Invalid 3MF file: no <resources> element found.");
+  }
+
+  let objects = resources.object || resources["model:object"] || [];
+  if (!Array.isArray(objects)) objects = [objects];
+
+  const allVertices = [];
+  const allNormals = [];
+  let totalTriangles = 0;
+
+  for (const obj of objects) {
+    const mesh = obj.mesh || obj["model:mesh"];
+    if (!mesh) continue; // Skip non-mesh objects (e.g., components-only)
+
+    // Extract vertices
+    const verticesContainer = mesh.vertices || mesh["model:vertices"];
+    if (!verticesContainer) continue;
+    let vertexList = verticesContainer.vertex || verticesContainer["model:vertex"] || [];
+    if (!Array.isArray(vertexList)) vertexList = [vertexList];
+
+    const verts = vertexList.map((v) => [
+      parseFloat(v["@_x"] || 0) * scale,
+      parseFloat(v["@_y"] || 0) * scale,
+      parseFloat(v["@_z"] || 0) * scale,
+    ]);
+
+    // Extract triangles
+    const trianglesContainer = mesh.triangles || mesh["model:triangles"];
+    if (!trianglesContainer) continue;
+    let triangleList = trianglesContainer.triangle || trianglesContainer["model:triangle"] || [];
+    if (!Array.isArray(triangleList)) triangleList = [triangleList];
+
+    for (const tri of triangleList) {
+      const i0 = parseInt(tri["@_v1"], 10);
+      const i1 = parseInt(tri["@_v2"], 10);
+      const i2 = parseInt(tri["@_v3"], 10);
+
+      if (isNaN(i0) || isNaN(i1) || isNaN(i2)) continue;
+      if (i0 >= verts.length || i1 >= verts.length || i2 >= verts.length) continue;
+
+      const v0 = verts[i0], v1 = verts[i1], v2 = verts[i2];
+      allVertices.push(v0, v1, v2);
+
+      // Compute face normal from winding order
+      const ax = v1[0] - v0[0], ay = v1[1] - v0[1], az = v1[2] - v0[2];
+      const bx = v2[0] - v0[0], by = v2[1] - v0[1], bz = v2[2] - v0[2];
+      const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+      const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+      const n = [nx / len, ny / len, nz / len];
+      allNormals.push(n, n, n);
+
+      totalTriangles++;
+    }
+  }
+
+  if (totalTriangles === 0) {
+    throw new Error("3MF file contains no mesh geometry. The file may contain only metadata or component references without embedded meshes.");
+  }
+
+  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles);
+
+  analysis.units = "mm";
+  analysis.sourceUnit = unitAttr;
+  analysis.bodyCount = objects.filter((o) => o.mesh || o["model:mesh"]).length;
+  analysis.isAssembly = analysis.bodyCount > 1;
+
+  // Extract material metadata if present (for future use)
+  const baseMaterials = resources.basematerials || resources["model:basematerials"];
+  if (baseMaterials) {
+    analysis.materialMetadata = { hasEmbeddedMaterials: true };
+  }
+
+  return analysis;
+}
+
+// âââ IGES PARSER (via occt-import-js) âââââââââââââââââââââââââ
+async function parseIGES(buffer) {
+  let occt;
+  try {
+    const occtImportJs = require("occt-import-js");
+    occt = await (typeof occtImportJs === "function" ? occtImportJs() : occtImportJs.default());
+  } catch (initErr) {
+    throw new Error("IGES parser failed to initialize. Please try again or export as STL.");
+  }
+
+  const fileBuffer = new Uint8Array(buffer);
+  let result;
+  try {
+    result = occt.ReadIgesFile(fileBuffer, null);
+  } catch (parseErr) {
+    throw new Error("Failed to read IGES file. The file may be corrupt or from an unsupported version.");
+  }
+
+  if (!result.success) {
+    throw new Error("IGES parse failed: " + (result.error || "Unknown error. Try re-exporting from your CAD software."));
+  }
+
+  if (!result.meshes || result.meshes.length === 0) {
+    throw new Error("IGES file contains no geometry.");
+  }
+
+  const { allVertices, allNormals, totalTriangles } = extractOcctMeshes(result);
+
+  if (totalTriangles === 0) {
+    throw new Error("IGES file parsed but produced no triangles.");
+  }
+
   const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles);
   analysis.units = "mm";
+  analysis.bodyCount = result.meshes.length;
+  analysis.isAssembly = result.meshes.length > 1;
   analysis.faceCount = result.meshes.length;
   analysis.edgeCount = result.meshes.reduce((sum, m) => sum + (m.index ? m.index.array.length / 3 : 0), 0);
   return analysis;
 }
 
-// ─── DFM (Design for Manufacturability) Analysis ──────────────
+// âââ DFM (Design for Manufacturability) Analysis ââââââââââââââ
 
 // Sheet Metal DFM (original function, renamed)
 function runSheetMetalDFM(geometry, materialThicknessMm) {
@@ -382,8 +507,8 @@ function runSheetMetalDFM(geometry, materialThicknessMm) {
     pass: minDim >= 3.0, // 3mm minimum
     severity: minDim >= 3.0 ? "pass" : "fail",
     detail: minDim >= 3.0
-      ? `Smallest dimension is ${minDim.toFixed(1)}mm — above 3mm minimum`
-      : `Smallest dimension is ${minDim.toFixed(1)}mm — below 3mm minimum. Part may be too fragile.`,
+      ? `Smallest dimension is ${minDim.toFixed(1)}mm â above 3mm minimum`
+      : `Smallest dimension is ${minDim.toFixed(1)}mm â below 3mm minimum. Part may be too fragile.`,
   });
 
   // 2. Maximum part size (typical laser bed: 3000x1500mm)
@@ -394,7 +519,7 @@ function runSheetMetalDFM(geometry, materialThicknessMm) {
     pass: maxDim <= 3000,
     severity: maxDim <= 3000 ? "pass" : maxDim <= 4000 ? "warn" : "fail",
     detail: maxDim <= 3000
-      ? `Largest dimension ${maxDim.toFixed(0)}mm fits standard sheet (3000×1500mm)`
+      ? `Largest dimension ${maxDim.toFixed(0)}mm fits standard sheet (3000Ã1500mm)`
       : `Largest dimension ${maxDim.toFixed(0)}mm may exceed standard sheet size`,
   });
 
@@ -404,9 +529,9 @@ function runSheetMetalDFM(geometry, materialThicknessMm) {
     checks.push({
       id: "hole-edge-distance",
       label: "Hole-to-Edge Distance",
-      pass: true, // Heuristic — can't measure exactly from mesh alone
+      pass: true, // Heuristic â can't measure exactly from mesh alone
       severity: "pass",
-      detail: `${geometry.estimatedHoles} hole(s) detected. Minimum recommended distance from edge: ${minHoleEdge.toFixed(1)}mm (2× thickness)`,
+      detail: `${geometry.estimatedHoles} hole(s) detected. Minimum recommended distance from edge: ${minHoleEdge.toFixed(1)}mm (2Ã thickness)`,
     });
   }
 
@@ -430,7 +555,7 @@ function runSheetMetalDFM(geometry, materialThicknessMm) {
       label: "Bend Relief Clearance",
       pass: null,
       severity: "warn",
-      detail: `Verify bend relief width ≥ ${thickness.toFixed(1)}mm and depth ≥ ${(thickness + 0.5).toFixed(1)}mm at all bend intersections`,
+      detail: `Verify bend relief width â¥ ${thickness.toFixed(1)}mm and depth â¥ ${(thickness + 0.5).toFixed(1)}mm at all bend intersections`,
     });
   }
 
@@ -442,8 +567,8 @@ function runSheetMetalDFM(geometry, materialThicknessMm) {
       pass: true,
       severity: thickness <= 3.0 ? "pass" : "warn",
       detail: thickness <= 3.0
-        ? `Recommended min hole Ø: ${thickness.toFixed(1)}mm (= material thickness)`
-        : `Thick material (${thickness.toFixed(1)}mm) — verify holes Ø ≥ ${thickness.toFixed(1)}mm for clean cuts`,
+        ? `Recommended min hole Ã: ${thickness.toFixed(1)}mm (= material thickness)`
+        : `Thick material (${thickness.toFixed(1)}mm) â verify holes Ã â¥ ${thickness.toFixed(1)}mm for clean cuts`,
     });
   }
 
@@ -453,7 +578,7 @@ function runSheetMetalDFM(geometry, materialThicknessMm) {
     label: "Nesting Compatibility",
     pass: true,
     severity: "pass",
-    detail: `Part can be nested. Estimated flat area: ${geometry.flatArea.toFixed(0)}mm² (${(geometry.flatArea / 645.16).toFixed(1)} in²)`,
+    detail: `Part can be nested. Estimated flat area: ${geometry.flatArea.toFixed(0)}mmÂ² (${(geometry.flatArea / 645.16).toFixed(1)} inÂ²)`,
   });
 
   // 7. Aspect ratio check
@@ -520,7 +645,7 @@ function runCNCDFM(geometry, options = {}) {
     pass: fitsEnvelope,
     severity: fitsEnvelope ? "pass" : "warn",
     detail: fitsEnvelope
-      ? `Part dimensions (${width.toFixed(0)}×${height.toFixed(0)}×${depth.toFixed(0)}mm) fit standard 3-axis CNC (${cncMaxX}×${cncMaxY}×${cncMaxZ}mm)`
+      ? `Part dimensions (${width.toFixed(0)}Ã${height.toFixed(0)}Ã${depth.toFixed(0)}mm) fit standard 3-axis CNC (${cncMaxX}Ã${cncMaxY}Ã${cncMaxZ}mm)`
       : `Part exceeds typical CNC envelope. X: ${width.toFixed(0)}mm (max ${cncMaxX}), Y: ${height.toFixed(0)}mm (max ${cncMaxY}), Z: ${depth.toFixed(0)}mm (max ${cncMaxZ}mm)`,
   });
 
@@ -531,7 +656,7 @@ function runCNCDFM(geometry, options = {}) {
     label: "Internal Corner Radius",
     pass: true,
     severity: "warn",
-    detail: `Verify all internal corners have minimum radius ≥ ${minCornerRadius}mm to allow tool access`,
+    detail: `Verify all internal corners have minimum radius â¥ ${minCornerRadius}mm to allow tool access`,
   });
 
   // 4. Deep pocket ratio (depth-to-width)
@@ -545,13 +670,13 @@ function runCNCDFM(geometry, options = {}) {
     severity: depthToWidthRatio <= maxRatio ? "pass" : "warn",
     detail: depthToWidthRatio <= maxRatio
       ? `Depth-to-width ratio ${depthToWidthRatio.toFixed(2)}:1 is acceptable (< ${maxRatio}:1)`
-      : `High depth-to-width ratio ${depthToWidthRatio.toFixed(2)}:1. Recommend ≤ ${maxRatio}:1 to avoid tool deflection and chatter`,
+      : `High depth-to-width ratio ${depthToWidthRatio.toFixed(2)}:1. Recommend â¤ ${maxRatio}:1 to avoid tool deflection and chatter`,
   });
 
   // 5. Undercut detection (from normal analysis)
   // Count downward-facing triangles as potential undercut indicators
   let downwardTriangles = 0;
-  // This is estimated from geometry — exact count would need normal array access
+  // This is estimated from geometry â exact count would need normal array access
   // Using heuristic: high aspect ratio + significant volume suggest complex geometry
   const hasComplexGeometry = geometry.estimatedBends > 2 || geometry.estimatedSlots > 1;
   const estimatedUndercutRisk = hasComplexGeometry ? "high" : "low";
@@ -585,7 +710,7 @@ function runCNCDFM(geometry, options = {}) {
     pass: volumeRatio >= 0.3,
     severity: volumeRatio >= 0.3 ? "pass" : volumeRatio >= 0.2 ? "warn" : "fail",
     detail: volumeRatio >= 0.3
-      ? `Part volume ${(volumeRatio * 100).toFixed(1)}% of bounding box — efficient machining`
+      ? `Part volume ${(volumeRatio * 100).toFixed(1)}% of bounding box â efficient machining`
       : `Part volume ${(volumeRatio * 100).toFixed(1)}% of bounding box. Heavy stock removal may be expensive`,
   });
 
@@ -604,7 +729,7 @@ function runCNCDFM(geometry, options = {}) {
     label: "Tolerance Capability",
     pass: true,
     severity: "pass",
-    detail: `Standard CNC tolerance: ±0.05mm. Precision work available: ±0.025mm (higher cost)`,
+    detail: `Standard CNC tolerance: Â±0.05mm. Precision work available: Â±0.025mm (higher cost)`,
   });
 
   // 10. Process-specific checks
@@ -654,9 +779,9 @@ function runPrintingDFM(geometry, options = {}) {
 
   // Process-specific thresholds
   const processThresholds = {
-    fdm: { minWall: 0.8, maxX: 300, maxY: 300, maxZ: 400, tolerance: "±0.5mm", warping: true },
-    sla: { minWall: 0.5, maxX: 145, maxY: 145, maxZ: 175, tolerance: "±0.1mm", warping: false },
-    sls: { minWall: 0.7, maxX: 300, maxY: 300, maxZ: 300, tolerance: "±0.3mm", warping: false },
+    fdm: { minWall: 0.8, maxX: 300, maxY: 300, maxZ: 400, tolerance: "Â±0.5mm", warping: true },
+    sla: { minWall: 0.5, maxX: 145, maxY: 145, maxZ: 175, tolerance: "Â±0.1mm", warping: false },
+    sls: { minWall: 0.7, maxX: 300, maxY: 300, maxZ: 300, tolerance: "Â±0.3mm", warping: false },
   };
   const thresh = processThresholds[subProcess] || processThresholds.fdm;
 
@@ -679,7 +804,7 @@ function runPrintingDFM(geometry, options = {}) {
     pass: fitsVolume,
     severity: fitsVolume ? "pass" : "fail",
     detail: fitsVolume
-      ? `Part (${width.toFixed(0)}×${height.toFixed(0)}×${depth.toFixed(0)}mm) fits ${subProcess.toUpperCase()} build platform (${thresh.maxX}×${thresh.maxY}×${thresh.maxZ}mm)`
+      ? `Part (${width.toFixed(0)}Ã${height.toFixed(0)}Ã${depth.toFixed(0)}mm) fits ${subProcess.toUpperCase()} build platform (${thresh.maxX}Ã${thresh.maxY}Ã${thresh.maxZ}mm)`
       : `Part exceeds ${subProcess.toUpperCase()} build volume. X: ${width.toFixed(0)}/${thresh.maxX}, Y: ${height.toFixed(0)}/${thresh.maxY}, Z: ${depth.toFixed(0)}/${thresh.maxZ}mm`,
   });
 
@@ -689,7 +814,7 @@ function runPrintingDFM(geometry, options = {}) {
   const overhangSeverity = subProcess === "fdm" ? estimatedOverhangPercent > 25 ? "fail" : "warn" : "pass";
   checks.push({
     id: "print-overhang",
-    label: "Overhang Surfaces (>45°)",
+    label: "Overhang Surfaces (>45Â°)",
     pass: estimatedOverhangPercent <= (subProcess === "fdm" ? 25 : 50),
     severity: overhangSeverity,
     detail: `Estimated ${estimatedOverhangPercent}% of surface overhangs. ${
@@ -720,7 +845,7 @@ function runPrintingDFM(geometry, options = {}) {
     pass: featureSize >= 1.0,
     severity: featureSize >= 1.0 ? "pass" : featureSize >= 0.5 ? "warn" : "fail",
     detail: featureSize >= 1.0
-      ? `Features ≥ ${featureSize.toFixed(2)}mm will print crisply`
+      ? `Features â¥ ${featureSize.toFixed(2)}mm will print crisply`
       : featureSize >= 0.5
       ? `Fine features (${featureSize.toFixed(2)}mm). Consider thicker walls for strength`
       : `Features too small (${featureSize.toFixed(2)}mm) for reliable printing`,
@@ -769,7 +894,7 @@ function runPrintingDFM(geometry, options = {}) {
       pass: !flatSurfaceRisk,
       severity: flatSurfaceRisk ? "warn" : "pass",
       detail: flatSurfaceRisk
-        ? `Large flat base (${(width * height).toFixed(0)}mm²) may warp. Use brim or raft for adhesion`
+        ? `Large flat base (${(width * height).toFixed(0)}mmÂ²) may warp. Use brim or raft for adhesion`
         : `Warping risk is low for this geometry`,
     });
   }
@@ -805,7 +930,7 @@ function runPrintingDFM(geometry, options = {}) {
   };
 }
 
-// DFM Router — dispatches to process-specific DFM function
+// DFM Router â dispatches to process-specific DFM function
 function runDFMAnalysis(geometry, options = {}) {
   const process = options.process || "sheetmetal";
   switch (process) {
@@ -820,10 +945,10 @@ function runDFMAnalysis(geometry, options = {}) {
   }
 }
 
-// ─── MAIN PARSE FUNCTION ──────────────────────────────────────
+// âââ MAIN PARSE FUNCTION ââââââââââââââââââââââââââââââââââââââ
 async function parseFile(filePath, processOptions = {}) {
   const ext = path.extname(filePath).toLowerCase();
-  const buffer = fs.readFileSync(filePath);
+  const buffer = fs.readFileSync(file@ath);
 
   let geometry;
 
@@ -836,9 +961,8 @@ async function parseFile(filePath, processOptions = {}) {
       geometry = await parseSTEP(buffer);
       break;
     case ".3mf":
-      // 3MF is a ZIP containing XML + mesh data
-      // For now, extract and parse the contained STL-like mesh
-      throw new Error("3MF support coming soon — please export as STEP or STL");
+      geometry = await parse3MF(buffer);
+      break;
     case ".iges":
     case ".igs":
       geometry = await parseIGES(buffer);
@@ -869,4 +993,4 @@ async function parseFile(filePath, processOptions = {}) {
   };
 }
 
-module.exports = { parseFile, parseSTL, parseSTEP, parseIGES, runDFMAnalysis, runSheetMetalDFM, runCNCDFM, runPrintingDFM };
+module.exports = { parseFile, parseSTL, parseSTEP, parseIGES, parse3MF, runDFMAnalysis, runSheetMetalDFM, runCNCDFM, runPrintingDFM };
