@@ -357,4 +357,57 @@ router.get("/admin/stats", authenticate, requireAdmin, (req, res) => {
   });
 });
 
+// ———————————————————————————————————————————————————————————
+// ADMIN — Database Backup
+// Downloads the SQLite database file for safekeeping.
+// IMPORTANT: Railway uses ephemeral storage — the database
+// resets on every deploy. Download backups before deploying.
+// ———————————————————————————————————————————————————————————
+
+router.get("/admin/backup/db", authenticate, requireAdmin, (req, res) => {
+  const { saveToDisk, DB_PATH } = require("../models/database");
+  try {
+    // Flush in-memory changes to disk before sending
+    saveToDisk();
+    if (!fs.existsSync(DB_PATH)) {
+      return res.status(404).json({ error: "Database file not found" });
+    }
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    res.setHeader("Content-Disposition", `attachment; filename="nordmfg-backup-${timestamp}.db"`);
+    res.setHeader("Content-Type", "application/x-sqlite3");
+    const stream = fs.createReadStream(DB_PATH);
+    stream.pipe(res);
+  } catch (err) {
+    console.error("Backup error:", err);
+    res.status(500).json({ error: "Backup failed" });
+  }
+});
+
+// JSON export of all data (portable backup, no SQLite dependency to restore)
+router.get("/admin/backup/json", authenticate, requireAdmin, (req, res) => {
+  try {
+    const { ordersDB } = require("../models");
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      version: "1.0",
+      data: {
+        materials: materialsDB.getAll(),
+        finishes: finishesDB.getAll(),
+        pricingRules: pricingDB.getAll(),
+        leadTimes: leadTimesDB.getAll(),
+        quotes: quotesDB.getAll(),
+        parts: partsDB.getAll(),
+        orders: ordersDB.getAll(),
+      },
+    };
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    res.setHeader("Content-Disposition", `attachment; filename="nordmfg-backup-${timestamp}.json"`);
+    res.setHeader("Content-Type", "application/json");
+    res.json(backup);
+  } catch (err) {
+    console.error("JSON backup error:", err);
+    res.status(500).json({ error: "Backup failed" });
+  }
+});
+
 module.exports = router;
