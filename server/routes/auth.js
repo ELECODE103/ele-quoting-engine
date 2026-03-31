@@ -22,7 +22,7 @@ if (!JWT_SECRET) {
   }
 }
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || "dev-secret-DO-NOT-USE-IN-PROD";
-const JWT_EXPIRES_IN = "7d";
+const JWT_EXPIRES_IN = "24h";
 
 // --- Rate Limiters for Auth Endpoints ---
 const loginLimiter = rateLimit({

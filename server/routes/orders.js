@@ -43,6 +43,11 @@ router.post("/checkout-session", authenticate, async (req, res) => {
       return res.status(404).json({ error: "Quote not found" });
     }
 
+    // Security: verify quote belongs to requesting user
+    if (quote.userId && quote.userId !== req.user.userId && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     const orderTotal = quote.orderTotal || quote.subtotal || 0;
     if (orderTotal <= 0) {
       return res.status(400).json({ error: "Invalid order total" });
@@ -156,6 +161,11 @@ router.post("/", authenticate, (req, res) => {
     const quote = quotesDB.getById(quoteId);
     if (!quote) {
       return res.status(404).json({ error: "Quote not found" });
+    }
+
+    // Security: verify quote belongs to requesting user
+    if (quote.userId && quote.userId !== req.user.userId && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Access denied" });
     }
 
     // Sanitize all user-provided shipping fields

@@ -341,6 +341,12 @@ async function parse3MF(buffer) {
     throw new Error("Invalid 3MF file: the model file is empty.");
   }
 
+  // Security: reject oversized XML to prevent XML bomb / DoS attacks
+  const MAX_MODEL_XML_SIZE = 50 * 1024 * 1024; // 50MB
+  if (modelXml.length > MAX_MODEL_XML_SIZE) {
+    throw new Error("3MF model XML exceeds maximum allowed size (50MB). The file may be malformed.");
+  }
+
   // 3. Parse XML
   const parser = new XMLParser({
     ignoreAttributes: false,
@@ -386,6 +392,9 @@ async function parse3MF(buffer) {
   const allNormals = [];
   let totalTriangles = 0;
 
+  // Security: limit total triangles to prevent memory exhaustion
+  const MAX_TRIANGLES = 5000000; // 5 million triangles max
+
   for (const obj of objects) {
     const mesh = obj.mesh || obj["model:mesh"];
     if (!mesh) continue; // Skip non-mesh objects (e.g., components-only)
@@ -428,6 +437,9 @@ async function parse3MF(buffer) {
       allNormals.push(n, n, n);
 
       totalTriangles++;
+      if (totalTriangles > MAX_TRIANGLES) {
+        throw new Error("3MF file exceeds maximum triangle count (5M). Please simplify the model or export as STL.");
+      }
     }
   }
 
