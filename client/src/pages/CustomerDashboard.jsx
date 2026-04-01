@@ -72,7 +72,7 @@ export default function CustomerDashboard() {
             <p style={{ color: 'var(--text-muted)', marginBottom: 24 }}>No orders yet</p>
             <button
               className="btn btn-primary btn-lg"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/quote')}
             >
               Get a Quote
             </button>
