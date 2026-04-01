@@ -22,7 +22,7 @@ export default function LoginPage() {
         setAuthToken(result.token);
         const decoded = JSON.parse(atob(result.token.split('.')[1]));
         login(result.token, decoded);
-        navigate('/');
+        navigate('/quote');
       }
     } catch (err) {
       setError(err.message || 'Login failed');
