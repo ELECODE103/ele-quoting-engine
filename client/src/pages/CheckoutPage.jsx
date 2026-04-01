@@ -59,7 +59,7 @@ export default function CheckoutPage() {
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
         <button
           className="btn btn-ghost"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/quote')}
           style={{ marginBottom: 24 }}
         >
           ← Back to Quote
