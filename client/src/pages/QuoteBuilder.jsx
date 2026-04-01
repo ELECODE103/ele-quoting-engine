@@ -18,7 +18,6 @@ export default function QuoteBuilder() {
   const [activePart, setActivePart] = useState(null);
   const [selectedLeadTime, setSelectedLeadTime] = useState('standard');
   const [selectedProcess, setSelectedProcess] = useState('3d-printing');
-h
   // Quote from server
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
