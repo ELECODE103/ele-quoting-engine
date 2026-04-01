@@ -39,7 +39,7 @@ export default function OrderTrackingPage() {
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         <button
           className="btn btn-ghost"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/quote')}
           style={{ marginBottom: 24 }}
         >
           ← Back to Orders
