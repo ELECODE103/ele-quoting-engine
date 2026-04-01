@@ -18,7 +18,7 @@ export default function QuoteBuilder() {
   const [activePart, setActivePart] = useState(null);
   const [selectedLeadTime, setSelectedLeadTime] = useState('standard');
   const [selectedProcess, setSelectedProcess] = useState('3d-printing');
-
+h
   // Quote from server
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -242,8 +242,8 @@ export default function QuoteBuilder() {
               Upload Your Parts
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.7, maxWidth: 440 }}>
-              Drag & drop STEP, STL, or IGES files.<br />
-              Real geometry extraction with instant DFM analysis and pricing.
+              Drag & drop your CAD files to get an instant quote.<br />
+              Custom parts manufactured and delivered to your door.
             </div>
             <div style={{ marginTop: 24, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
               {['STEP', 'STL', 'IGES', '3MF'].map((f) => (
@@ -259,8 +259,8 @@ export default function QuoteBuilder() {
         {uploading && (
           <div className="flex-col fade-in" style={{ alignItems: 'center', gap: 20, paddingTop: 48 }}>
             <div className="spinner" style={{ width: 40, height: 40, borderWidth: 3 }} />
-            <div className="font-display" style={{ fontSize: 14, color: 'var(--text-muted)' }}>Analyzing geometry…</div>
-            <div style={{ fontSize: 11, color: 'var(--accent)' }}>Parsing mesh · Extracting features · Running DFM checks</div>
+            <div className="font-display" style={{ fontSize: 14, color: 'var(--text-muted)' }}>Analyzing your part…</div>
+            <div style={{ fontSize: 11, color: 'var(--accent)' }}>This will only take a moment</div>
           </div>
         )}
 
@@ -394,14 +394,17 @@ export default function QuoteBuilder() {
         {/* Features callout (empty state) */}
         {parts.length === 0 && !uploading && (
           <div style={{ maxWidth: 900, margin: '40px auto 0', padding: '0 32px' }}>
-            <div className="grid-3">
+            <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', color: 'var(--accent)' }}>HOW IT WORKS</span>
+              </div>
+              <div className="grid-3">
               {[
-                { icon: '⚡', title: 'Real Geometry Parsing', desc: 'STL and STEP files parsed with OpenCascade WASM. Volume, surface area, bounding box, and overhangs extracted automatically.' },
-                { icon: '🔍', title: 'DFM Analysis', desc: 'Automated printability checks flag thin walls, unsupported overhangs, minimum feature sizes, and more before you order.' },
-                { icon: '💰', title: 'Instant Pricing', desc: 'Material volume, print time, support structures, finish cost, and volume discounts — all calculated from your actual part geometry.' },
+                { step: '1', title: 'Upload Your Design', desc: 'Drop in your CAD file — we accept STEP, STL, IGES, and 3MF. Get an instant quote in seconds.' },
+                { step: '2', title: 'Configure & Order', desc: 'Choose your material, finish, and quantity. Review your quote and place your order securely online.' },
+                { step: '3', title: 'We Deliver', desc: 'Our team manufactures your parts to spec and ships them straight to your door.' },
               ].map((f, i) => (
-                <div key={i} className="card fade-up" style={{ padding: 24, animationDelay: `${200 + i * 120}ms` }}>
-                  <div style={{ fontSize: 28, marginBottom: 12 }}>{f.icon}</div>
+                <div key={i} className="card fade-up" style={{ padding: 24, textAlign: 'center', animationDelay: `${200 + i * 120}ms` }}>
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, margin: '0 auto 12px' }}>{f.step}</div>
                   <div className="font-display" style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>
                     {f.title}
                   </div>
