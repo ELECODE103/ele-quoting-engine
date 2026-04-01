@@ -44,14 +44,14 @@ export default function Header() {
           fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700,
           letterSpacing: '-0.5px', color: 'var(--text-primary)', cursor: 'pointer',
         }}
-              onClick={() => navigate('/landing')} role="button" tabIndex={0}>
+              onClick={() => navigate('/')} role="button" tabIndex={0}>
           Nord MFG
         </span>
 
       </div>
 
       <nav style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        <button style={btnStyle('/')} onClick={() => navigate('/')}>
+        <button style={btnStyle('/quote')} onClick={() => navigate('/quote')}>
           Quote Builder
         </button>
         {isAuthenticated && (
