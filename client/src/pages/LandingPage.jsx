@@ -39,7 +39,7 @@ export default function LandingPage() {
           </button>
           <button
             className="btn btn-primary"
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/quote')}
             style={{ fontSize: 13 }}
           >
             Get Instant Quote
@@ -82,7 +82,7 @@ export default function LandingPage() {
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 40 }}>
             <button
               className="btn btn-primary btn-lg"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/quote')}
             >
               Start Your Quote
             </button>
@@ -428,7 +428,7 @@ export default function LandingPage() {
         </p>
         <button
           className="btn btn-primary btn-lg"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/quote')}
           style={{ fontSize: 16, padding: '16px 36px' }}
         >
           Get Your Instant Quote
