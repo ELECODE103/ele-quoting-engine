@@ -27,7 +27,7 @@ export default function App() {
       {/* Public routes */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      <Route path="/landing" element={<LandingPage />} />
+      <Route path="/" element={<LandingPage />} />
 
       {/* Protected routes */}
       <Route
@@ -36,7 +36,7 @@ export default function App() {
           <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
             <Header />
             <Routes>
-              <Route path="/" element={<QuoteBuilder />} />
+              <Route path="/quote" element={<QuoteBuilder />} />
               <Route path="/admin" element={<AdminPanel />} />
               <Route path="/dashboard" element={isAuthenticated ? <CustomerDashboard /> : <Navigate to="/login" />} />
               <Route path="/checkout/:quoteId" element={isAuthenticated ? <CheckoutPage /> : <Navigate to="/login" />} />
