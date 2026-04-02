@@ -34,57 +34,66 @@ export default function ThreeViewer({ positions, color = '#4F8CFF', style }) {
     const grid = new THREE.GridHelper(200, 20, 0x1E3A5F, 0x111827);
     scene.add(grid);
 
-    // Lights
-    const ambient = new THREE.AmbientLight(0x404060, 0.6);
+    // Lights — tuned for MeshStandardMaterial (PBR)
+    const ambient = new THREE.AmbientLight(0x8090b0, 0.5);
     scene.add(ambient);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+
+    // Hemisphere light for natural sky/ground fill
+    const hemiLight = new THREE.HemisphereLight(0xb0c4de, 0x1a1a2e, 0.6);
+    scene.add(hemiLight);
+
+    // Key light (main)
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
     dirLight.position.set(5, 10, 7);
     scene.add(dirLight);
-    const dirLight2 = new THREE.DirectionalLight(0x4F8CFF, 0.3);
+
+    // Fill light (subtle blue accent)
+    const dirLight2 = new THREE.DirectionalLight(0x4F8CFF, 0.4);
     dirLight2.position.set(-5, -3, -5);
     scene.add(dirLight2);
+
+    // Rim light (back edge definition)
+    const dirLight3 = new THREE.DirectionalLight(0xffffff, 0.3);
+    dirLight3.position.set(-3, 5, -8);
+    scene.add(dirLight3);
 
     // Build mesh from positions
     if (positions && positions.length >= 9) {
       const geom = new THREE.BufferGeometry();
       const posArray = new Float32Array(positions);
       geom.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+
+      // Compute smooth vertex normals
       geom.computeVertexNormals();
 
-      // Center and scale to fit
+      // Center horizontally and sit on the grid plane (Y=0)
       geom.computeBoundingBox();
       const box = geom.boundingBox;
       const center = new THREE.Vector3();
       box.getCenter(center);
-      geom.translate(-center.x, -center.y, -center.z);
-
       const size = new THREE.Vector3();
       box.getSize(size);
+      // Center X/Z, but shift so bottom of part is at Y=0 (sits on grid)
+      geom.translate(-center.x, -box.min.y, -center.z);
+
       const maxDim = Math.max(size.x, size.y, size.z);
       const scale = maxDim > 0 ? 80 / maxDim : 1;
       geom.scale(scale, scale, scale);
 
-      // Main mesh
-      const mat = new THREE.MeshPhongMaterial({
+      // Main mesh — solid, high-quality shading
+      const mat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(color),
-        specular: 0x222244,
-        shininess: 40,
-        transparent: true,
-        opacity: 0.85,
+        metalness: 0.15,
+        roughness: 0.55,
         side: THREE.DoubleSide,
+        flatShading: false,
       });
       const mesh = new THREE.Mesh(geom, mat);
       scene.add(mesh);
 
-      // Wireframe overlay
-      const wire = new THREE.WireframeGeometry(geom);
-      const lineMat = new THREE.LineBasicMaterial({ color: new THREE.Color(color), opacity: 0.15, transparent: true });
-      const wireframe = new THREE.LineSegments(wire, lineMat);
-      scene.add(wireframe);
-
-      // Edges for visual clarity
-      const edges = new THREE.EdgesGeometry(geom, 30);
-      const edgeMat = new THREE.LineBasicMaterial({ color: new THREE.Color(color), opacity: 0.5, transparent: true });
+      // Only show sharp feature edges (not every triangle edge)
+      const edges = new THREE.EdgesGeometry(geom, 24);
+      const edgeMat = new THREE.LineBasicMaterial({ color: new THREE.Color(color), opacity: 0.3, transparent: true });
       const edgeLines = new THREE.LineSegments(edges, edgeMat);
       scene.add(edgeLines);
     } else {
