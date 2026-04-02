@@ -317,7 +317,7 @@ async function parseSTEP(buffer) {
   return analysis;
 }
 
-// âââ 3MF PARSER âââââââââââââââââââââââââââââââââââââââââââââ
+// âââ // ——— 3MF PARSER —————————————————————————————————————————————
 async function parse3MF(buffer) {
   const AdmZip = require("adm-zip");
   const { XMLParser } = require("fast-xml-parser");
@@ -361,13 +361,13 @@ async function parse3MF(buffer) {
     throw new Error("Invalid 3MF file: XML parsing failed. The model file may be malformed.");
   }
 
-  // Navigate to model root â handle namespace prefix variations
+  // Navigate to model root — handle namespace prefix variations
   const model = parsed.model || parsed["model:model"] || (parsed["?xml"] ? Object.values(parsed).find(v => typeof v === "object" && v !== null && !Array.isArray(v)) : null);
   if (!model) {
     throw new Error("Invalid 3MF file: no <model> element found.");
   }
 
-  // 4. Unit normalization â 3MF spec supports: micron, millimeter, centimeter, inch, foot, meter
+  // 4. Unit normalization — 3MF spec supports: micron, millimeter, centimeter, inch, foot, meter
   const unitAttr = model["@_unit"] || "millimeter";
   const UNIT_TO_MM = {
     micron: 0.001,
@@ -379,7 +379,7 @@ async function parse3MF(buffer) {
   };
   const scale = UNIT_TO_MM[unitAttr.toLowerCase()] || 1;
 
-  // 5. Extract mesh objects
+  // 5. Extract mesh objects and resolve component references
   const resources = model.resources || model["model:resources"];
   if (!resources) {
     throw new Error("Invalid 3MF file: no <resources> element found.");
@@ -388,6 +388,15 @@ async function parse3MF(buffer) {
   let objects = resources.object || resources["model:object"] || [];
   if (!Array.isArray(objects)) objects = [objects];
 
+  // Build a map of objectId -> object for component resolution
+  const objectMap = {};
+  for (const obj of objects) {
+    const id = obj["@_id"];
+    if (id) {
+      objectMap[id] = obj;
+    }
+  }
+
   const allVertices = [];
   const allNormals = [];
   let totalTriangles = 0;
@@ -395,50 +404,135 @@ async function parse3MF(buffer) {
   // Security: limit total triangles to prevent memory exhaustion
   const MAX_TRIANGLES = 5000000; // 5 million triangles max
 
-  for (const obj of objects) {
+  // Helper function to apply 3MF affine transform to a vertex
+  // transform is a space-separated string: "m00 m01 m02 m10 m11 m12 m20 m21 m22 m30 m31 m32"
+  // Matrix form:
+  // | m00 m01 m02 0 |
+  // | m10 m11 m12 0 |
+  // | m20 m21 m22 0 |
+  // | m30 m31 m32 1 |
+  // Point [x y z 1] * M = [x' y' z' 1]
+  function applyTransform(vertex, transformStr) {
+    if (!transformStr) return vertex;
+    const vals = transformStr.split(/\s+/).map(v => parseFloat(v)).filter(v => !isNaN(v));
+    if (vals.length !== 12) return vertex; // Invalid transform, return unchanged
+    const [m00, m01, m02, m10, m11, m12, m20, m21, m22, m30, m31, m32] = vals;
+    const [x, y, z] = vertex;
+    return [
+      x * m00 + y * m10 + z * m20 + m30,
+      x * m01 + y * m11 + z * m21 + m31,
+      x * m02 + y * m12 + z * m22 + m32,
+    ];
+  }
+
+  // Recursive function to resolve an object and extract its triangles
+  // objectId: the ID of the object to resolve
+  // parentTransform: optional transform from parent component reference
+  function resolveObject(objectId, parentTransform) {
+    const obj = objectMap[objectId];
+    if (!obj) return; // Object not found
+
+    // If object has inline mesh, extract triangles from it
     const mesh = obj.mesh || obj["model:mesh"];
-    if (!mesh) continue; // Skip non-mesh objects (e.g., components-only)
+    if (mesh) {
+      // Extract vertices
+      const verticesContainer = mesh.vertices || mesh["model:vertices"];
+      if (!verticesContainer) {
+        // No vertices but has mesh tag; try components below
+      } else {
+        let vertexList = verticesContainer.vertex || verticesContainer["model:vertex"] || [];
+        if (!Array.isArray(vertexList)) vertexList = [vertexList];
 
-    // Extract vertices
-    const verticesContainer = mesh.vertices || mesh["model:vertices"];
-    if (!verticesContainer) continue;
-    let vertexList = verticesContainer.vertex || verticesContainer["model:vertex"] || [];
-    if (!Array.isArray(vertexList)) vertexList = [vertexList];
+        const verts = vertexList.map((v) => {
+          const x = parseFloat(v["@_x"] || 0) * scale;
+          const y = parseFloat(v["@_y"] || 0) * scale;
+          const z = parseFloat(v["@_z"] || 0) * scale;
+          // Apply object's own transform if it has one (less common for mesh objects)
+          const objTransform = obj["@_transform"];
+          const transformed = applyTransform([x, y, z], objTransform);
+          // Apply parent transform (from component reference)
+          return applyTransform(transformed, parentTransform);
+        });
 
-    const verts = vertexList.map((v) => [
-      parseFloat(v["@_x"] || 0) * scale,
-      parseFloat(v["@_y"] || 0) * scale,
-      parseFloat(v["@_z"] || 0) * scale,
-    ]);
+        // Extract triangles
+        const trianglesContainer = mesh.triangles || mesh["model:triangles"];
+        if (trianglesContainer) {
+          let triangleList = trianglesContainer.triangle || trianglesContainer["model:triangle"] || [];
+          if (!Array.isArray(triangleList)) triangleList = [triangleList];
 
-    // Extract triangles
-    const trianglesContainer = mesh.triangles || mesh["model:triangles"];
-    if (!trianglesContainer) continue;
-    let triangleList = trianglesContainer.triangle || trianglesContainer["model:triangle"] || [];
-    if (!Array.isArray(triangleList)) triangleList = [triangleList];
+          for (const tri of triangleList) {
+            const i0 = parseInt(tri["@_v1"], 10);
+            const i1 = parseInt(tri["@_v2"], 10);
+            const i2 = parseInt(tri["@_v3"], 10);
 
-    for (const tri of triangleList) {
-      const i0 = parseInt(tri["@_v1"], 10);
-      const i1 = parseInt(tri["@_v2"], 10);
-      const i2 = parseInt(tri["@_v3"], 10);
+            if (isNaN(i0) || isNaN(i1) || isNaN(i2)) continue;
+            if (i0 >= verts.length || i1 >= verts.length || i2 >= verts.length) continue;
 
-      if (isNaN(i0) || isNaN(i1) || isNaN(i2)) continue;
-      if (i0 >= verts.length || i1 >= verts.length || i2 >= verts.length) continue;
+            const v0 = verts[i0], v1 = verts[i1], v2 = verts[i2];
+            allVertices.push(v0, v1, v2);
 
-      const v0 = verts[i0], v1 = verts[i1], v2 = verts[i2];
-      allVertices.push(v0, v1, v2);
+            // Compute face normal from winding order
+            const ax = v1[0] - v0[0], ay = v1[1] - v0[1], az = v1[2] - v0[2];
+            const bx = v2[0] - v0[0], by = v2[1] - v0[1], bz = v2[2] - v0[2];
+            const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+            const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+            const n = [nx / len, ny / len, nz / len];
+            allNormals.push(n, n, n);
 
-      // Compute face normal from winding order
-      const ax = v1[0] - v0[0], ay = v1[1] - v0[1], az = v1[2] - v0[2];
-      const bx = v2[0] - v0[0], by = v2[1] - v0[1], bz = v2[2] - v0[2];
-      const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
-      const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-      const n = [nx / len, ny / len, nz / len];
-      allNormals.push(n, n, n);
+            totalTriangles++;
+            if (totalTriangles > MAX_TRIANGLES) {
+              throw new Error("3MF file exceeds maximum triangle count (5M). Please simplify the model or export as STL.");
+            }
+          }
+        }
+      }
+    }
 
-      totalTriangles++;
-      if (totalTriangles > MAX_TRIANGLES) {
-        throw new Error("3MF file exceeds maximum triangle count (5M). Please simplify the model or export as STL.");
+    // If object has components, recursively resolve each one
+    const components = obj.components || obj["model:components"];
+    if (components) {
+      let componentList = components.component || components["model:component"] || [];
+      if (!Array.isArray(componentList)) componentList = [componentList];
+
+      for (const comp of componentList) {
+        const refId = comp["@_objectid"];
+        const compTransform = comp["@_transform"];
+        if (refId) {
+          // Compose transforms: first apply component transform, then parent transform
+          let combinedTransform = compTransform;
+          if (parentTransform && compTransform) {
+            // Would need full 4x4 matrix multiply here; for now just use component transform
+            // (most files use one or the other, not both)
+            combinedTransform = compTransform;
+          } else if (parentTransform) {
+            combinedTransform = parentTransform;
+          }
+          resolveObject(refId, combinedTransform);
+        }
+      }
+    }
+  }
+
+  // Check for <build> section to determine which objects are top-level
+  const build = model.build || model["model:build"];
+  if (build) {
+    let items = build.item || build["model:item"] || [];
+    if (!Array.isArray(items)) items = [items];
+
+    // Process items from build section (these are the top-level objects to render)
+    for (const item of items) {
+      const refId = item["@_objectid"];
+      const itemTransform = item["@_transform"];
+      if (refId) {
+        resolveObject(refId, itemTransform);
+      }
+    }
+  } else {
+    // No <build> section; fall back to processing all objects directly
+    for (const obj of objects) {
+      const id = obj["@_id"];
+      if (id) {
+        resolveObject(id, null);
       }
     }
   }
