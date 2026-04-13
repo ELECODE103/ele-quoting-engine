@@ -9,6 +9,7 @@ export default function AdminPanel() {
   const [leadTimes, setLeadTimes] = useState([]);
   const [pricing, setPricing] = useState({});
   const [quotes, setQuotes] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({});
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -17,13 +18,14 @@ export default function AdminPanel() {
 
   async function loadData() {
     try {
-      const [mats, fins, lts, pr, qs, st] = await Promise.all([
+      const [mats, fins, lts, pr, qs, st, ord] = await Promise.all([
         api.getAdminMaterials(),
         api.getAdminFinishes(),
         api.getAdminLeadTimes(),
         api.getPricingRules(),
         api.getAdminQuotes(),
         api.getAdminStats(),
+        api.getOrders(),
       ]);
       setMaterials(mats);
       setFinishes(fins);
@@ -31,6 +33,7 @@ export default function AdminPanel() {
       setPricing(pr);
       setQuotes(qs);
       setStats(st);
+      setOrders(ord);
     } catch (err) {
       console.error('Admin load error:', err);
     }
@@ -66,6 +69,15 @@ export default function AdminPanel() {
     setSaving(false);
   }
 
+  async function advanceOrderStatus(orderId, newStatus) {
+    setSaving(true);
+    try {
+      await api.updateOrderStatus(orderId, { status: newStatus });
+      await loadData();
+    } catch (err) { alert('Update failed: ' + err.message); }
+    setSaving(false);
+  }
+
   async function savePricingRules() {
     setSaving(true);
     try {
@@ -76,6 +88,7 @@ export default function AdminPanel() {
   }
 
   const tabs = [
+    { key: 'orders', label: 'Orders' },
     { key: 'materials', label: 'Materials' },
     { key: 'finishes', label: 'Finishes' },
     { key: 'lead-times', label: 'Lead Times' },
@@ -116,6 +129,86 @@ export default function AdminPanel() {
           </button>
         ))}
       </div>
+
+      {/* ─── ORDERS TAB ─── */}
+      {tab === 'orders' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {orders.length === 0 ? (
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-dim)' }}>
+              No orders yet. Orders appear here when customers complete Stripe checkout.
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}>
+                  {['Date', 'Order ID', 'Customer', 'Items', 'Total', 'Status', 'Action'].map((h) => (
+                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((o) => {
+                  const nextMap = {
+                    paid: 'received',
+                    received: 'in_production',
+                    in_production: 'quality_check',
+                    quality_check: 'packing',
+                    packing: 'shipped',
+                    shipped: 'delivered',
+                  };
+                  const next = nextMap[o.status];
+                  const statusColor = {
+                    pending_payment: 'var(--text-muted)',
+                    paid: '#4F8CFF',
+                    received: '#4F8CFF',
+                    in_production: '#F5A623',
+                    quality_check: '#F5A623',
+                    packing: '#F5A623',
+                    shipped: '#7ED321',
+                    delivered: '#7ED321',
+                    cancelled: '#E94E4E',
+                    paid_amount_mismatch: '#E94E4E',
+                  }[o.status] || 'var(--text-muted)';
+                  return (
+                    <tr key={o.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '10px 14px', color: 'var(--text-dim)' }}>
+                        {new Date(o.createdAt).toLocaleString()}
+                      </td>
+                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 11 }}>
+                        <a href={`/orders/${o.id}`} style={{ color: 'var(--accent)' }}>{String(o.id).slice(0, 8)}</a>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>{o.shippingName || '—'}</td>
+                      <td style={{ padding: '10px 14px' }}>{o.itemCount}</td>
+                      <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--accent)' }}>
+                        {formatCurrency(o.total)}
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <span style={{ color: statusColor, fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>
+                          {o.status.replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        {next && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 11, padding: '4px 10px' }}
+                            disabled={saving}
+                            onClick={() => advanceOrderStatus(o.id, next)}
+                          >
+                            → {next.replace(/_/g, ' ')}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {/* ─── MATERIALS TAB ─── */}
       {tab === 'materials' && (
