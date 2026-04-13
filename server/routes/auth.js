@@ -112,14 +112,19 @@ router.post("/register", registerLimiter, async (req, res) => {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // Auto-promote owner based on ADMIN_EMAIL env var (survives DB resets)
+    const adminEmail = (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+    const normalizedEmail = email.toLowerCase().trim();
+    const role = adminEmail && normalizedEmail === adminEmail ? "admin" : "customer";
+
     // Create user
     const user = usersDB.insert({
-      email: email.toLowerCase().trim(),
+      email: normalizedEmail,
       passwordHash,
       name: cleanName,
       company: cleanCompany,
       phone: cleanPhone,
-      role: "customer",
+      role,
     });
 
     // Generate token
