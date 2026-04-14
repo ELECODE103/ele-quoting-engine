@@ -357,6 +357,30 @@ router.get("/admin/stats", authenticate, requireAdmin, (req, res) => {
   });
 });
 
+// ADMIN — Parts / All Uploads (newest first, filters orphans)
+router.get("/admin/parts", authenticate, requireAdmin, (req, res) => {
+  try {
+    const parts = partsDB.getAll();
+    // Sort newest first
+    parts.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    // Strip heavy fields (geometry meshData, dfm) to keep payload small
+    const slim = parts.map((p) => ({
+      id: p.id,
+      fileName: p.fileName,
+      storedName: p.storedName,
+      fileSize: p.fileSize,
+      createdAt: p.createdAt,
+      boundingBox: p.geometry?.boundingBox || null,
+      volume: p.geometry?.volume || null,
+      triangleCount: p.geometry?.triangleCount || null,
+    }));
+    res.json(slim);
+  } catch (err) {
+    console.error("Admin parts list error:", err);
+    res.status(500).json({ error: "Failed to retrieve parts" });
+  }
+});
+
 // ———————————————————————————————————————————————————————————
 // ADMIN — Database Backup
 // Downloads the SQLite database file for safekeeping.
