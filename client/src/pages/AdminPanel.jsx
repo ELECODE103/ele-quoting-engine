@@ -105,10 +105,10 @@ export default function AdminPanel() {
       {/* Stats bar */}
       <div className="grid-4" style={{ marginBottom: 32 }}>
         {[
-          { label: 'Total Quotes', value: stats.totalQuotes || 0 },
-          { label: 'Today', value: stats.quotesToday || 0 },
-          { label: 'Parts Analyzed', value: stats.totalParts || 0 },
-          { label: 'Est. Revenue', value: formatCurrency(stats.totalRevenue || 0) },
+          { label: 'Total Orders', value: stats.totalOrders || 0 },
+          { label: 'Paid Revenue', value: formatCurrency(stats.paidRevenue || 0) },
+          { label: 'Open Quotes', value: stats.openQuotes || 0 },
+          { label: 'Uploads (30d)', value: stats.uploads30d || 0 },
         ].map((s, i) => (
           <div key={i} className="card fade-up" style={{ padding: 20, animationDelay: `${i * 60}ms` }}>
             <div style={{ fontSize: 10, color: 'var(--text-dim)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
