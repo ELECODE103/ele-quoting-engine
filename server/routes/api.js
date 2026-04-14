@@ -339,22 +339,48 @@ router.get("/admin/quotes", authenticate, requireAdmin, (req, res) => {
 });
 
 router.get("/admin/stats", authenticate, requireAdmin, (req, res) => {
-  const quotes = quotesDB.getAll();
-  const parts = partsDB.getAll();
-  const totalRevenue = quotes.reduce((sum, q) => sum + (q.orderTotal || 0), 0);
-  const avgOrderValue = quotes.length > 0 ? totalRevenue / quotes.length : 0;
+  try {
+    const { ordersDB } = require("../models");
+    const quotes = quotesDB.getAll();
+    const parts = partsDB.getAll();
+    const orders = ordersDB.getAll();
 
-  res.json({
-    totalQuotes: quotes.length,
-    totalParts: parts.length,
-    totalRevenue,
-    avgOrderValue,
-    quotesToday: quotes.filter((q) => {
-      const d = new Date(q.createdAt);
-      const today = new Date();
-      return d.toDateString() === today.toDateString();
-    }).length,
-  });
+    // Fulfilled order statuses — money we actually got (or will get on shipment)
+    const PAID_STATUSES = ["paid", "received", "in_production", "quality_check", "packing", "shipped", "delivered"];
+    const paidOrders = orders.filter((o) => PAID_STATUSES.includes(o.status));
+    const paidRevenue = paidOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+
+    // Open pipeline: draft quotes waiting to be purchased
+    const openQuotes = quotes.filter((q) => q.status === "draft").length;
+
+    // Activity: parts uploaded in the last 30 days
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const uploads30d = parts.filter((p) => {
+      const t = p.createdAt ? new Date(p.createdAt).getTime() : 0;
+      return t >= cutoff;
+    }).length;
+
+    res.json({
+      // New, real metrics
+      totalOrders: paidOrders.length,
+      paidRevenue,
+      openQuotes,
+      uploads30d,
+      // Legacy fields kept for backwards compatibility
+      totalQuotes: quotes.length,
+      totalParts: parts.length,
+      totalRevenue: paidRevenue,
+      avgOrderValue: paidOrders.length > 0 ? paidRevenue / paidOrders.length : 0,
+      quotesToday: quotes.filter((q) => {
+        const d = new Date(q.createdAt);
+        const today = new Date();
+        return d.toDateString() === today.toDateString();
+      }).length,
+    });
+  } catch (err) {
+    console.error("Stats error:", err);
+    res.status(500).json({ error: "Failed to compute stats" });
+  }
 });
 
 // ADMIN — Parts / All Uploads (newest first, filters orphans)
