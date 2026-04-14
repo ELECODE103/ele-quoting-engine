@@ -52,6 +52,7 @@ const FIELD_TO_COLUMN = {
   stripePaymentId: "stripe_payment_id",
   stripeSessionId: "stripe_session_id",
   trackingNumber: "tracking_number",
+  shippedAt: "shipped_at",
   leadTimeSlug: "lead_time_slug",
   leadTimeMultiplier: "lead_time_multiplier",
   orderTotal: "order_total",
