@@ -238,7 +238,11 @@ router.get("/", authenticate, (req, res) => {
     // Attach item count
     const result = orders.map((order) => {
       const items = orderItemsDB.query((i) => i.orderId === order.id);
-      return { ...order, itemCount: items.length };
+      const enrichedItems = items.map((it) => {
+        const part = it.partId ? partsDB.getById(it.partId) : null;
+        return { ...it, storedName: part?.storedName || null };
+      });
+      return { ...order, items: enrichedItems, itemCount: items.length };
     });
 
     res.json(result);
@@ -261,7 +265,11 @@ router.get("/:id", authenticate, (req, res) => {
     }
 
     const items = orderItemsDB.query((i) => i.orderId === order.id);
-    res.json({ ...order, items });
+    const enrichedItems = items.map((it) => {
+      const part = it.partId ? partsDB.getById(it.partId) : null;
+      return { ...it, storedName: part?.storedName || null };
+    });
+    res.json({ ...order, items: enrichedItems });
   } catch (err) {
     console.error("Order detail error:", err);
     res.status(500).json({ error: "Failed to retrieve order" });
