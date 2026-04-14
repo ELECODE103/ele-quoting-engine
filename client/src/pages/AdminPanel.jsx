@@ -10,6 +10,7 @@ export default function AdminPanel() {
   const [pricing, setPricing] = useState({});
   const [quotes, setQuotes] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [parts, setParts] = useState([]);
   const [stats, setStats] = useState({});
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -18,7 +19,7 @@ export default function AdminPanel() {
 
   async function loadData() {
     try {
-      const [mats, fins, lts, pr, qs, st, ord] = await Promise.all([
+      const [mats, fins, lts, pr, qs, st, ord, prt] = await Promise.all([
         api.getAdminMaterials(),
         api.getAdminFinishes(),
         api.getAdminLeadTimes(),
@@ -26,6 +27,7 @@ export default function AdminPanel() {
         api.getAdminQuotes(),
         api.getAdminStats(),
         api.getOrders(),
+        api.getAdminParts(),
       ]);
       setMaterials(mats);
       setFinishes(fins);
@@ -34,6 +36,7 @@ export default function AdminPanel() {
       setQuotes(qs);
       setStats(st);
       setOrders(ord);
+      setParts(prt);
     } catch (err) {
       console.error('Admin load error:', err);
     }
@@ -89,6 +92,7 @@ export default function AdminPanel() {
 
   const tabs = [
     { key: 'orders', label: 'Orders' },
+    { key: 'parts', label: 'Parts' },
     { key: 'materials', label: 'Materials' },
     { key: 'finishes', label: 'Finishes' },
     { key: 'lead-times', label: 'Lead Times' },
@@ -226,7 +230,58 @@ export default function AdminPanel() {
       )}
 
       {/* ─── MATERIALS TAB ─── */}
-      {tab === 'materials' && (
+      {tab === 'parts' && (
+          <div>
+            <h2 style={{ marginBottom: '16px' }}>All Uploaded Parts ({parts.length})</h2>
+            <p style={{ color: '#666', marginBottom: '16px', fontSize: '13px' }}>
+              Every CAD file uploaded by customers, including parts that never became orders. Newest first.
+            </p>
+            {parts.length === 0 ? (
+              <p style={{ color: '#999' }}>No uploads yet.</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: '#f5f5f5', textAlign: 'left' }}>
+                    {['Uploaded', 'File Name', 'Size', 'Triangles', 'Bounding Box (mm)', 'Download'].map((h) => (
+                      <th key={h} style={{ padding: '10px 14px', borderBottom: '1px solid #ddd' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {parts.map((p) => {
+                    const bb = p.boundingBox;
+                    const bbStr = bb ? `${Math.round(bb.x || bb.width || 0)} × ${Math.round(bb.y || bb.height || 0)} × ${Math.round(bb.z || bb.depth || 0)}` : '—';
+                    const sizeKb = p.fileSize ? (p.fileSize / 1024).toFixed(1) + ' KB' : '—';
+                    const dateStr = p.createdAt ? new Date(p.createdAt).toLocaleString() : '—';
+                    return (
+                      <tr key={p.id} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '10px 14px' }}>{dateStr}</td>
+                        <td style={{ padding: '10px 14px', fontFamily: 'monospace' }}>{p.fileName}</td>
+                        <td style={{ padding: '10px 14px' }}>{sizeKb}</td>
+                        <td style={{ padding: '10px 14px' }}>{p.triangleCount?.toLocaleString() || '—'}</td>
+                        <td style={{ padding: '10px 14px' }}>{bbStr}</td>
+                        <td style={{ padding: '10px 14px' }}>
+                          {p.storedName ? (
+                            <button
+                              onClick={() => api.downloadPart(p.id, p.fileName).catch(e => alert('Download failed: ' + e.message))}
+                              style={{ fontSize: '12px', padding: '6px 12px', cursor: 'pointer', border: '1px solid #4F8CFF', background: '#4F8CFF', color: '#fff', borderRadius: '3px' }}
+                            >
+                              Download
+                            </button>
+                          ) : (
+                            <span style={{ color: '#999' }}>missing</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {tab === 'materials' && (
         <div className="card" style={{ overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
