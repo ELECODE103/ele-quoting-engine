@@ -114,6 +114,25 @@ export const api = {
   // Orders
   async getOrders() { return request('/orders'); },
   async getOrderById(id) { return request(`/orders/${id}`); },
+  async downloadPart(partId, fileName) {
+    const headers = {};
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+    const res = await fetch(`${BASE}/parts/${partId}/download`, { headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || `Download failed: ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName || `part-${partId}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+
   async updateOrderStatus(id, data) {
     return request(`/orders/${id}/status`, { method: 'PUT', body: JSON.stringify(data) });
   },
