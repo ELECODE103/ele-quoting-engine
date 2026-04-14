@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { formatCurrency } from '../utils/format';
+import OrderDetailDrawer from '../components/OrderDetailDrawer';
 
 export default function AdminPanel() {
   const [tab, setTab] = useState('materials');
@@ -14,6 +15,7 @@ export default function AdminPanel() {
   const [stats, setStats] = useState({});
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [drawerOrderId, setDrawerOrderId] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -176,12 +178,25 @@ export default function AdminPanel() {
                     paid_amount_mismatch: '#E94E4E',
                   }[o.status] || 'var(--text-muted)';
                   return (
-                    <tr key={o.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <tr
+                      key={o.id}
+                      style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}
+                      onClick={(e) => {
+                        if (e.target.closest('button') || e.target.closest('a')) return;
+                        setDrawerOrderId(o.id);
+                      }}
+                    >
                       <td style={{ padding: '10px 14px', color: 'var(--text-dim)' }}>
                         {new Date(o.createdAt).toLocaleString()}
                       </td>
                       <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 11 }}>
-                        <a href={`/orders/${o.id}`} style={{ color: 'var(--accent)' }}>{String(o.id).slice(0, 8)}</a>
+                        <a
+                          onClick={(e) => { e.preventDefault(); setDrawerOrderId(o.id); }}
+                          href={`#order-${o.id}`}
+                          style={{ color: 'var(--accent)' }}
+                        >
+                          {String(o.id).slice(0, 8)}
+                        </a>
                       </td>
                       <td style={{ padding: '10px 14px' }}>{o.shippingName || '—'}</td>
                       <td style={{ padding: '10px 14px' }}>{o.itemCount}</td>
@@ -473,6 +488,15 @@ export default function AdminPanel() {
             {saving ? 'Saving…' : 'Save Pricing Rules'}
           </button>
         </div>
+      )}
+
+      {/* ─── ORDER DETAIL DRAWER ─── */}
+      {drawerOrderId && (
+        <OrderDetailDrawer
+          orderId={drawerOrderId}
+          onClose={() => setDrawerOrderId(null)}
+          onUpdated={loadData}
+        />
       )}
 
       {/* ─── QUOTES TAB ─── */}
