@@ -135,9 +135,6 @@ app.use("/api/orders", orderRoutes);
 const pdfRoutes = require("./routes/pdf");
 app.use("/api/pdf", pdfRoutes);
 
-// Serve uploaded file thumbnails
-app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
-
 // In production, serve the built client
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "..", "client", "dist")));
