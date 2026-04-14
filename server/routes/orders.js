@@ -240,7 +240,12 @@ router.get("/", authenticate, (req, res) => {
       const items = orderItemsDB.query((i) => i.orderId === order.id);
       const enrichedItems = items.map((it) => {
         const part = it.partId ? partsDB.getById(it.partId) : null;
-        return { ...it, storedName: part?.storedName || null };
+        return {
+        ...it,
+        storedName: part?.storedName || null,
+        geometry: part?.geometry || null,
+        dfm: part?.dfm || null,
+      };
       });
       return { ...order, items: enrichedItems, itemCount: items.length };
     });
@@ -292,7 +297,7 @@ const VALID_STATUSES = [
 
 router.put("/:id/status", authenticate, requireAdmin, (req, res) => {
   try {
-    const { status, trackingNumber, notes } = req.body;
+    const { status, trackingNumber, carrier, shippedAt, notes } = req.body;
 
     if (!status || !VALID_STATUSES.includes(status)) {
       return res.status(400).json({
@@ -301,8 +306,18 @@ router.put("/:id/status", authenticate, requireAdmin, (req, res) => {
     }
 
     const updates = { status };
-    if (trackingNumber) updates.trackingNumber = sanitizeString(trackingNumber, 100);
-    if (notes) updates.notes = sanitizeString(notes, 2000);
+    if (trackingNumber !== undefined) updates.trackingNumber = sanitizeString(trackingNumber, 100);
+    if (carrier !== undefined) updates.carrier = sanitizeString(carrier, 50);
+    if (shippedAt !== undefined) updates.shippedAt = sanitizeString(shippedAt, 40);
+    if (notes !== undefined) updates.notes = sanitizeString(notes, 2000);
+
+    // Auto-stamp shippedAt when transitioning to shipped if not provided
+    if (status === "shipped" && !updates.shippedAt) {
+      const existing = ordersDB.getById(req.params.id);
+      if (existing && !existing.shippedAt) {
+        updates.shippedAt = new Date().toISOString();
+      }
+    }
 
     const updated = ordersDB.update(req.params.id, updates);
     if (!updated) return res.status(404).json({ error: "Order not found" });
