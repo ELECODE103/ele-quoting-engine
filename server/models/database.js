@@ -46,6 +46,8 @@ const SCHEMA = `
     stripe_payment_id TEXT,
     stripe_session_id TEXT,
     tracking_number TEXT,
+    carrier TEXT,
+    shipped_at TEXT,
     notes TEXT,
     created_at TEXT,
     updated_at TEXT
@@ -202,6 +204,8 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       'ALTER TABLE finishes ADD COLUMN price_per_part REAL',
       'ALTER TABLE finishes ADD COLUMN price_per_sq_in REAL',
       'ALTER TABLE lead_times ADD COLUMN days TEXT',
+      'ALTER TABLE orders ADD COLUMN carrier TEXT',
+      'ALTER TABLE orders ADD COLUMN shipped_at TEXT',
     ];
     for (const sql of migrations) {
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }
