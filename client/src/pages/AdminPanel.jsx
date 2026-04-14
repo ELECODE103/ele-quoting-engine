@@ -141,7 +141,7 @@ export default function AdminPanel() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}>
-                  {['Date', 'Order ID', 'Customer', 'Items', 'Total', 'Status', 'Action'].map((h) => (
+                  {['Date', 'Order ID', 'Customer', 'Items', 'Total', 'Status', 'Files', 'Action'].map((h) => (
                     <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                       {h}
                     </th>
@@ -181,6 +181,21 @@ export default function AdminPanel() {
                       </td>
                       <td style={{ padding: '10px 14px' }}>{o.shippingName || '—'}</td>
                       <td style={{ padding: '10px 14px' }}>{o.itemCount}</td>
+                      <td style={{ padding: '10px 14px' }}>
+                        {(o.items || []).filter(it => it.storedName).map((it, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => api.downloadPart(it.partId, it.fileName).catch(e => alert('Download failed: ' + e.message))}
+                            title={it.fileName}
+                            style={{ fontSize: '11px', padding: '4px 8px', marginRight: '4px', marginBottom: '2px', cursor: 'pointer', border: '1px solid #4F8CFF', background: '#fff', color: '#4F8CFF', borderRadius: '3px' }}
+                          >
+                            {(it.fileName || 'file').length > 18 ? (it.fileName || 'file').slice(0, 15) + '...' : (it.fileName || 'file')}
+                          </button>
+                        ))}
+                        {(!o.items || o.items.filter(it => it.storedName).length === 0) && (
+                          <span style={{ color: '#999', fontSize: '11px' }}>—</span>
+                        )}
+                      </td>
                       <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--accent)' }}>
                         {formatCurrency(o.total)}
                       </td>
