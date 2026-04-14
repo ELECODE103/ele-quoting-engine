@@ -102,6 +102,7 @@ export const api = {
 
   async getAdminQuotes() { return request('/admin/quotes'); },
   async getAdminStats() { return request('/admin/stats'); },
+  async getAdminParts() { return request('/admin/parts'); },
 
   // Auth
   async login(email, password) {
