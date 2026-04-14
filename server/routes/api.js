@@ -14,7 +14,7 @@ const { validateFileContent } = require("../middleware/fileValidator");
 const router = express.Router();
 
 // âââ FILE UPLOAD CONFIG ââââââââââââââââââââââââââââââââââââââ
-const uploadDir = path.join(__dirname, "..", "..", "uploads");
+const uploadDir = path.join(__dirname, "..", "..", "data", "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -408,6 +408,16 @@ router.get("/admin/backup/json", authenticate, requireAdmin, (req, res) => {
     console.error("JSON backup error:", err);
     res.status(500).json({ error: "Backup failed" });
   }
+});
+
+router.get("/parts/:partId/download", authenticate, requireAdmin, (req, res) => {
+  const part = partsDB.getById(req.params.partId);
+  if (!part) return res.status(404).json({ error: "Part not found" });
+  const safeName = path.basename(part.storedName || "");
+  if (!safeName) return res.status(404).json({ error: "No file" });
+  const filePath = path.join(uploadDir, safeName);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: "File missing on disk" });
+  res.download(filePath, part.fileName || safeName);
 });
 
 module.exports = router;
