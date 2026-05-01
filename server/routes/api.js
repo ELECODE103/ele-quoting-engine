@@ -111,7 +111,7 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
           dfm: parsed.dfm,
           dfmAll: parsed.dfmAll,
           meshPreview: {
-            positions: parsed.geometry.meshData?.positions?.slice(0, 30000) || [],
+            positions: parsed.geometry.meshData?.positions || [],
             triangleCount: parsed.geometry.meshData?.triangleCount || 0,
           },
         });
