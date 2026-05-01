@@ -124,6 +124,7 @@ router.post("/checkout-session", authenticate, async (req, res) => {
       },
       success_url: `${baseUrl}/orders/${order.id}?paid=true`,
       cancel_url: `${baseUrl}/checkout/${quoteId}?cancelled=true`,
+            allow_promotion_codes: true,
     });
 
     // Store stripe session ID on the order for reference
