@@ -157,8 +157,8 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
 
     // Mesh for preview (downsampled if huge)
     meshData: {
-      positions: downsampleVertices(vertices, 10000),
-      triangleCount: Math.min(triangleCount, 10000),
+      positions: downsampleVertices(vertices, 50000),
+      triangleCount: Math.min(triangleCount, 50000),
     },
   };
 }
@@ -200,12 +200,25 @@ function estimateFeatures(vertices, normals, triangleCount, bbox) {
   };
 }
 
-function downsampleVertices(vertices, maxVerts) {
-  if (vertices.length <= maxVerts) return vertices.flat();
-  const step = Math.ceil(vertices.length / maxVerts);
+/**
+ * Downsample a triangle mesh by selecting every Nth TRIANGLE (not vertex).
+ * Preserves triangle structure so the mesh renders as a solid surface.
+ * @param {number[][]} vertices - Array of [x,y,z] vertex positions, 3 per triangle
+ * @param {number} maxTriangles - Max triangles in the output
+ * @returns {number[]} Flat array of vertex positions
+ */
+function downsampleVertices(vertices, maxTriangles) {
+  const totalTriangles = Math.floor(vertices.length / 3);
+  if (totalTriangles <= maxTriangles) return vertices.flat();
+
+  // Take every Nth triangle to evenly sample the mesh
+  const step = totalTriangles / maxTriangles;
   const result = [];
-  for (let i = 0; i < vertices.length; i += step) {
-    result.push(...vertices[i]);
+  for (let t = 0; t < maxTriangles; t++) {
+    const triIdx = Math.floor(t * step) * 3; // index into vertices array (3 verts per tri)
+    if (triIdx + 2 < vertices.length) {
+      result.push(...vertices[triIdx], ...vertices[triIdx + 1], ...vertices[triIdx + 2]);
+    }
   }
   return result;
 }
