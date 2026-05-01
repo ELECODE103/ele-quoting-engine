@@ -1,6 +1,39 @@
-import { useRef, useEffect } from 'react'; // v2 - force rebuild
+import { useRef, useEffect } from 'react'; // NORDMFG_BUILD_V3
 import * as THREE from 'three';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+/**
+ * Merge vertices that share the same position within a tolerance.
+ * Inlined from Three.js BufferGeometryUtils to avoid import resolution issues.
+ */
+function mergeVertices(geometry, tolerance = 1e-4) {
+  tolerance = Math.max(tolerance, Number.EPSILON);
+  const hashToIndex = {};
+  const posAttr = geometry.getAttribute('position');
+  const vertexCount = posAttr.count;
+  let nextIndex = 0;
+  const newIndices = [];
+  const newPositions = [];
+
+  for (let i = 0; i < vertexCount; i++) {
+    const x = Math.round(posAttr.getX(i) / tolerance) * tolerance;
+    const y = Math.round(posAttr.getY(i) / tolerance) * tolerance;
+    const z = Math.round(posAttr.getZ(i) / tolerance) * tolerance;
+    const hash = x + ',' + y + ',' + z;
+    if (hash in hashToIndex) {
+      newIndices.push(hashToIndex[hash]);
+    } else {
+      newPositions.push(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+      hashToIndex[hash] = nextIndex;
+      newIndices.push(nextIndex);
+      nextIndex++;
+    }
+  }
+
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute('position', new THREE.BufferAttribute(new Float32Array(newPositions), 3));
+  merged.setIndex(newIndices);
+  return merged;
+}
 
 /**
  * Renders mesh data (flat array of vertex positions) in a 3D viewport.
@@ -17,14 +50,11 @@ export default function ThreeViewer({ positions, color = '#4F8CFF', style }) {
     const width = container.clientWidth;
     const height = container.clientHeight;
 
-    // Scene
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#080C14');
 
-    // Camera
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
 
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -33,61 +63,42 @@ export default function ThreeViewer({ positions, color = '#4F8CFF', style }) {
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
-    // Grid helper
     const grid = new THREE.GridHelper(200, 20, 0x1E3A5F, 0x111827);
     scene.add(grid);
 
-    // Lights — tuned for MeshStandardMaterial (PBR)
-    const ambient = new THREE.AmbientLight(0x8090b0, 0.5);
-    scene.add(ambient);
-
-    // Hemisphere light for natural sky/ground fill
-    const hemiLight = new THREE.HemisphereLight(0xb0c4de, 0x1a1a2e, 0.6);
-    scene.add(hemiLight);
-
-    // Key light (main)
+    scene.add(new THREE.AmbientLight(0x8090b0, 0.5));
+    scene.add(new THREE.HemisphereLight(0xb0c4de, 0x1a1a2e, 0.6));
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
     dirLight.position.set(5, 10, 7);
     scene.add(dirLight);
-
-    // Fill light (subtle blue accent)
     const dirLight2 = new THREE.DirectionalLight(0x4F8CFF, 0.4);
     dirLight2.position.set(-5, -3, -5);
     scene.add(dirLight2);
-
-    // Rim light (back edge definition)
     const dirLight3 = new THREE.DirectionalLight(0xffffff, 0.3);
     dirLight3.position.set(-3, 5, -8);
     scene.add(dirLight3);
 
-    // Build mesh from positions
     if (positions && positions.length >= 9) {
       let geom = new THREE.BufferGeometry();
       const posArray = new Float32Array(positions);
       geom.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
 
-      // Merge duplicate vertices so computeVertexNormals can average
-      // across shared faces — this is what makes smooth shading work.
-      // STL files store each triangle independently with duplicated verts;
-      // without merging, every face gets flat normals.
+      // Merge duplicate vertices for smooth shading on STL meshes
       geom = mergeVertices(geom, 1e-4);
       geom.computeVertexNormals();
 
-      // Center horizontally and sit on the grid plane (Y=0)
       geom.computeBoundingBox();
       const box = geom.boundingBox;
       const center = new THREE.Vector3();
       box.getCenter(center);
       const size = new THREE.Vector3();
       box.getSize(size);
-      // Center X/Z, but shift so bottom of part is at Y=0 (sits on grid)
       geom.translate(-center.x, -box.min.y, -center.z);
 
       const maxDim = Math.max(size.x, size.y, size.z);
       const scale = maxDim > 0 ? 80 / maxDim : 1;
       geom.scale(scale, scale, scale);
 
-      // Main mesh — solid, high-quality shading
       const mat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(color),
         metalness: 0.15,
@@ -95,41 +106,27 @@ export default function ThreeViewer({ positions, color = '#4F8CFF', style }) {
         side: THREE.DoubleSide,
         flatShading: false,
       });
-      const mesh = new THREE.Mesh(geom, mat);
-      scene.add(mesh);
+      scene.add(new THREE.Mesh(geom, mat));
 
-      // Only show sharp feature edges on low-poly meshes.
-      // High-poly meshes (>5000 triangles) look noisy with edge overlays.
-      const triCount = geom.index
-        ? geom.index.count / 3
-        : posArray.length / 9;
+      const triCount = geom.index ? geom.index.count / 3 : posArray.length / 9;
       if (triCount < 5000) {
         const edges = new THREE.EdgesGeometry(geom, 30);
         const edgeMat = new THREE.LineBasicMaterial({
-          color: new THREE.Color(color),
-          opacity: 0.25,
-          transparent: true,
+          color: new THREE.Color(color), opacity: 0.25, transparent: true,
         });
-        const edgeLines = new THREE.LineSegments(edges, edgeMat);
-        scene.add(edgeLines);
+        scene.add(new THREE.LineSegments(edges, edgeMat));
       }
     } else {
-      // Placeholder cube when no mesh data
       const geom = new THREE.BoxGeometry(40, 20, 40);
       const mat = new THREE.MeshPhongMaterial({
-        color: new THREE.Color(color),
-        transparent: true,
-        opacity: 0.3,
-        wireframe: true,
+        color: new THREE.Color(color), transparent: true, opacity: 0.3, wireframe: true,
       });
       scene.add(new THREE.Mesh(geom, mat));
     }
 
-    // Position camera
     camera.position.set(80, 60, 80);
     camera.lookAt(0, 0, 0);
 
-    // Simple orbit controls (mouse drag)
     let isDragging = false;
     let prevX = 0, prevY = 0;
     let theta = Math.PI / 4, phi = Math.PI / 4;
@@ -147,10 +144,8 @@ export default function ThreeViewer({ positions, color = '#4F8CFF', style }) {
     const onUp = () => { isDragging = false; };
     const onMove = (e) => {
       if (!isDragging) return;
-      const dx = e.clientX - prevX;
-      const dy = e.clientY - prevY;
-      theta += dx * 0.008;
-      phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi - dy * 0.008));
+      theta += (e.clientX - prevX) * 0.008;
+      phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi - (e.clientY - prevY) * 0.008));
       prevX = e.clientX;
       prevY = e.clientY;
       updateCamera();
@@ -165,7 +160,6 @@ export default function ThreeViewer({ positions, color = '#4F8CFF', style }) {
     window.addEventListener('mousemove', onMove);
     renderer.domElement.addEventListener('wheel', onWheel);
 
-    // Render loop
     let animId;
     function animate() {
       animId = requestAnimationFrame(animate);
@@ -173,7 +167,6 @@ export default function ThreeViewer({ positions, color = '#4F8CFF', style }) {
     }
     animate();
 
-    // Resize
     const onResize = () => {
       const w = container.clientWidth;
       const h = container.clientHeight;
