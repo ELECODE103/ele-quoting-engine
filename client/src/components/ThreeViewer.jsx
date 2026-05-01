@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react';
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /**
  * Renders mesh data (flat array of vertex positions) in a 3D viewport.
@@ -27,6 +28,8 @@ export default function ThreeViewer({ positions, color = '#4F8CFF', style }) {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
@@ -59,11 +62,15 @@ export default function ThreeViewer({ positions, color = '#4F8CFF', style }) {
 
     // Build mesh from positions
     if (positions && positions.length >= 9) {
-      const geom = new THREE.BufferGeometry();
+      let geom = new THREE.BufferGeometry();
       const posArray = new Float32Array(positions);
       geom.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
 
-      // Compute smooth vertex normals
+      // Merge duplicate vertices so computeVertexNormals can average
+      // across shared faces — this is what makes smooth shading work.
+      // STL files store each triangle independently with duplicated verts;
+      // without merging, every face gets flat normals.
+      geom = mergeVertices(geom, 1e-4);
       geom.computeVertexNormals();
 
       // Center horizontally and sit on the grid plane (Y=0)
@@ -91,11 +98,21 @@ export default function ThreeViewer({ positions, color = '#4F8CFF', style }) {
       const mesh = new THREE.Mesh(geom, mat);
       scene.add(mesh);
 
-      // Only show sharp feature edges (not every triangle edge)
-      const edges = new THREE.EdgesGeometry(geom, 24);
-      const edgeMat = new THREE.LineBasicMaterial({ color: new THREE.Color(color), opacity: 0.3, transparent: true });
-      const edgeLines = new THREE.LineSegments(edges, edgeMat);
-      scene.add(edgeLines);
+      // Only show sharp feature edges on low-poly meshes.
+      // High-poly meshes (>5000 triangles) look noisy with edge overlays.
+      const triCount = geom.index
+        ? geom.index.count / 3
+        : posArray.length / 9;
+      if (triCount < 5000) {
+        const edges = new THREE.EdgesGeometry(geom, 30);
+        const edgeMat = new THREE.LineBasicMaterial({
+          color: new THREE.Color(color),
+          opacity: 0.25,
+          transparent: true,
+        });
+        const edgeLines = new THREE.LineSegments(edges, edgeMat);
+        scene.add(edgeLines);
+      }
     } else {
       // Placeholder cube when no mesh data
       const geom = new THREE.BoxGeometry(40, 20, 40);
