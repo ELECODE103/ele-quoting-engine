@@ -69,6 +69,22 @@ function authenticate(req, res, next) {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 }
+// --- Middleware: optional authentication ---
+// Sets req.user if a valid Bearer token is present; never rejects. Used for
+// endpoints that are public but should bind/scope to a user when signed in
+// (e.g. quoting: anonymous is allowed, but a logged-in user's quote is theirs).
+function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      req.user = jwt.verify(authHeader.split(" ")[1], EFFECTIVE_JWT_SECRET);
+    } catch (_) {
+      /* ignore invalid/expired token for optional auth */
+    }
+  }
+  next();
+}
+
 // --- Middleware: require admin role ---
 function requireAdmin(req, res, next) {
   if (req.user.role !== "admin") {
@@ -229,4 +245,5 @@ router.put("/profile", authenticate, (req, res) => {
 
 module.exports = router;
 module.exports.authenticate = authenticate;
+module.exports.optionalAuth = optionalAuth;
 module.exports.requireAdmin = requireAdmin;

@@ -7,9 +7,10 @@ const { parseFile } = require("../parsers/fileParser");
 const { PricingEngine } = require("../services/pricingEngine");
 const { materialsDB, finishesDB, leadTimesDB, pricingDB, quotesDB, partsDB } = require("../models");
 const { resolveProcess, activeProcesses } = require("../processes/registry");
-const { authenticate, requireAdmin } = require("./auth");
+const { authenticate, optionalAuth, requireAdmin } = require("./auth");
 const { sanitizeString, isValidSlug, nonNegativeNumber, positiveInt } = require("../middleware/validate");
 const { validateFileContent } = require("../middleware/fileValidator");
+const fileCrypto = require("../services/fileCrypto");
 
 const router = express.Router();
 
@@ -80,11 +81,16 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
       try {
         const parsed = await parseFile(file.path);
 
+        // Encrypt the stored file at rest now that parsing is done (no-op unless
+        // NORD_FILE_ENC_KEY is configured). Returns the path actually on disk.
+        const storedPath = fileCrypto.encryptFileInPlace(file.path);
+        const storedName = path.basename(storedPath);
+
         // Store part in DB
         const part = partsDB.insert({
           fileName: file.originalname,
-          storedName: file.filename,
-          filePath: file.path,
+          storedName: storedName,
+          filePath: storedPath,
           fileSize: file.size,
           geometry: parsed.geometry,
           dfm: parsed.dfm,
@@ -142,7 +148,7 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
  *   leadTimeSlug: "standard" | "expedited" | "rush" | "same-day"
  * }
  */
-router.post("/quote", (req, res) => {
+router.post("/quote", optionalAuth, (req, res) => {
   try {
     const { parts: partConfigs, leadTimeSlug = "standard" } = req.body;
 
@@ -197,6 +203,9 @@ router.post("/quote", (req, res) => {
       ...quote,
       leadTimeSlug,
       status: "draft",
+      // Bind the quote to the user when signed in; anonymous quotes (public
+      // quoting / guest-before-login) stay unbound and remain readable by id.
+      userId: req.user?.userId || null,
     });
 
     res.json({ quoteId: savedQuote.id, ...quote });
@@ -209,9 +218,15 @@ router.post("/quote", (req, res) => {
 /**
  * GET /api/quote/:id
  */
-router.get("/quote/:id", (req, res) => {
+router.get("/quote/:id", optionalAuth, (req, res) => {
   const quote = quotesDB.getById(req.params.id);
   if (!quote) return res.status(404).json({ error: "Quote not found" });
+  // If the quote is bound to a user, only that user (or an admin) may read it.
+  // Anonymous quotes (no userId) remain publicly readable by id (UUID) so the
+  // public quote and guest-before-login flows keep working.
+  if (quote.userId && (!req.user || (req.user.userId !== quote.userId && req.user.role !== "admin"))) {
+    return res.status(404).json({ error: "Quote not found" });
+  }
   res.json(quote);
 });
 
@@ -469,6 +484,19 @@ router.get("/parts/:partId/download", authenticate, requireAdmin, (req, res) => 
   if (!safeName) return res.status(404).json({ error: "No file" });
   const filePath = path.join(uploadDir, safeName);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: "File missing on disk" });
+  // Encrypted-at-rest files are decrypted in memory for the download.
+  if (fileCrypto.isEncryptedPath(safeName)) {
+    try {
+      const buf = fileCrypto.decryptToBuffer(filePath);
+      const downloadName = part.fileName || safeName.replace(/\.enc$/, "");
+      res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"`);
+      res.setHeader("Content-Type", "application/octet-stream");
+      return res.send(buf);
+    } catch (err) {
+      console.error("Decrypt error:", err.message);
+      return res.status(500).json({ error: "Failed to read file" });
+    }
+  }
   res.download(filePath, part.fileName || safeName);
 });
 

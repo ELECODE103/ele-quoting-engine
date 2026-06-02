@@ -172,6 +172,11 @@ async function start() {
   await dbReady;
   seedDatabase();
 
+  // Periodically purge old uploaded customer files (proprietary CAD shouldn't
+  // linger). Window via UPLOAD_RETENTION_HOURS (default 7 days).
+  const { startRetentionSweep } = require("./services/fileRetention");
+  startRetentionSweep(path.join(__dirname, "..", "data", "uploads"));
+
   app.listen(PORT, () => {
     console.log(`\n  âââââââââââââââââââââââââââââââââââââââââââ`);
     console.log(`  â  Instant Quote API running on port ${PORT}  â`);
