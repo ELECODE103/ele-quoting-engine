@@ -72,6 +72,7 @@ const SCHEMA = `
     infill REAL,
     geometry_json TEXT,
     dfm_json TEXT,
+    config_json TEXT,
     created_at TEXT
   );
 
@@ -206,6 +207,9 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       'ALTER TABLE lead_times ADD COLUMN days TEXT',
       'ALTER TABLE orders ADD COLUMN carrier TEXT',
       'ALTER TABLE orders ADD COLUMN shipped_at TEXT',
+      // Normalized per-item process config (thickness, sub-process, layer height,
+      // infill, grade, …) as one JSON blob, so new processes don't need new columns.
+      'ALTER TABLE order_items ADD COLUMN config_json TEXT',
     ];
     for (const sql of migrations) {
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }
