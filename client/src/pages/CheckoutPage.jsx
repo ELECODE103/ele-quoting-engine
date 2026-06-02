@@ -82,8 +82,9 @@ export default function CheckoutPage() {
 
             <form onSubmit={handleSubmit}>
               <div style={{ marginBottom: 16 }}>
-                <label className="field-label">Full Name</label>
+                <label className="field-label" htmlFor="co-name">Full Name</label>
                 <input
+                  id="co-name"
                   type="text"
                   className="input"
                   value={name}
@@ -94,8 +95,9 @@ export default function CheckoutPage() {
               </div>
 
               <div style={{ marginBottom: 16 }}>
-                <label className="field-label">Street Address</label>
+                <label className="field-label" htmlFor="co-street">Street Address</label>
                 <input
+                  id="co-street"
                   type="text"
                   className="input"
                   value={street}
@@ -107,8 +109,9 @@ export default function CheckoutPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 16 }}>
                 <div>
-                  <label className="field-label">City</label>
+                  <label className="field-label" htmlFor="co-city">City</label>
                   <input
+                    id="co-city"
                     type="text"
                     className="input"
                     value={city}
@@ -118,8 +121,9 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div>
-                  <label className="field-label">State</label>
+                  <label className="field-label" htmlFor="co-state">State</label>
                   <input
+                    id="co-state"
                     type="text"
                     className="input"
                     value={state}
@@ -132,8 +136,9 @@ export default function CheckoutPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
                 <div>
-                  <label className="field-label">ZIP Code</label>
+                  <label className="field-label" htmlFor="co-zip">ZIP Code</label>
                   <input
+                    id="co-zip"
                     type="text"
                     className="input"
                     value={zip}
@@ -143,8 +148,9 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div>
-                  <label className="field-label">Country</label>
+                  <label className="field-label" htmlFor="co-country">Country</label>
                   <select
+                    id="co-country"
                     className="input"
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
