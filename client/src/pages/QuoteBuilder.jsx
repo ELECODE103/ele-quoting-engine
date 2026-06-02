@@ -159,7 +159,7 @@ export default function QuoteBuilder() {
   const activeLineItem = quote?.lineItems?.find((li) => li.partId === activePart);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: parts.length > 0 ? '300px 1fr 340px' : '1fr', minHeight: 'calc(100vh - 53px)' }}>
+    <div className={parts.length > 0 ? 'qb-grid' : ''} style={{ display: 'grid', gridTemplateColumns: parts.length > 0 ? undefined : '1fr', minHeight: 'calc(100vh - 53px)' }}>
 
       {/* ═══ LEFT SIDEBAR: Parts List ═══ */}
       {parts.length > 0 && (

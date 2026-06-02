@@ -74,7 +74,7 @@ export default function CheckoutPage() {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
+        <div className="checkout-grid">
           {/* Left: Shipping Form */}
           <div>
             <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Checkout</h1>
