@@ -21,6 +21,7 @@ export default function QuoteBuilder() {
   // Quote from server
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState(null);
 
   // UI
   const [uploading, setUploading] = useState(false);
@@ -60,8 +61,10 @@ export default function QuoteBuilder() {
       }));
       const q = await api.getQuote(configs, selectedLeadTime);
       setQuote(q);
+      setQuoteError(null);
     } catch (err) {
       console.error('Quote error:', err);
+      setQuoteError(err?.message || 'We couldn’t calculate a price for this configuration. Please adjust and try again.');
     }
     setQuoteLoading(false);
   }, [parts, selectedLeadTime, selectedProcess]);
@@ -374,6 +377,43 @@ export default function QuoteBuilder() {
                 </div>
               </div>
             )}
+
+            {/* Volume pricing (quantity breaks) — click a tier to apply it */}
+            {activeLineItem?.quantityBreaks?.length > 1 && (
+              <div className="card fade-up" style={{ padding: 20, marginTop: 16 }}>
+                <span className="font-display" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: 4 }}>
+                  Volume Pricing
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--text-dim)', display: 'block', marginBottom: 12 }}>
+                  Order more, save per unit — click a quantity to apply it.
+                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {activeLineItem.quantityBreaks.map((b) => {
+                    const isActive = b.qty === active.quantity;
+                    return (
+                      <button
+                        key={b.qty}
+                        onClick={() => updatePart(active.partId, { quantity: b.qty })}
+                        aria-label={`Set quantity to ${b.qty}, ${formatCurrency(b.perUnit)} each`}
+                        style={{
+                          display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 16, alignItems: 'center',
+                          padding: '7px 10px', borderRadius: 6, cursor: 'pointer', textAlign: 'left',
+                          border: `1px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                          background: isActive ? 'var(--accent-bg)' : 'transparent',
+                          fontSize: 11,
+                        }}
+                      >
+                        <span style={{ fontWeight: isActive ? 700 : 500, color: isActive ? 'var(--accent)' : 'var(--text-secondary)' }}>
+                          {b.qty} pc{b.qty > 1 ? 's' : ''}
+                        </span>
+                        <span style={{ color: 'var(--text-dim)' }}>{formatCurrency(b.perUnit)}/ea</span>
+                        <span style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{formatCurrency(b.lineTotal)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -423,6 +463,7 @@ export default function QuoteBuilder() {
           selectedLeadTime={selectedLeadTime}
           onLeadTimeChange={setSelectedLeadTime}
           partsConfig={parts}
+          quoteError={quoteError}
         />
       )}
     </div>

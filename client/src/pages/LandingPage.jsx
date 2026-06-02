@@ -191,6 +191,19 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ─── IP / security assurance ─── */}
+      <section style={{ padding: '24px 40px', borderBottom: '1px solid var(--border-subtle)', background: '#fff' }}>
+        <div style={{
+          maxWidth: 1280, margin: '0 auto',
+          display: 'flex', justifyContent: 'center', gap: 40,
+          flexWrap: 'wrap', fontSize: 13, color: 'var(--text-muted)',
+        }}>
+          <span>🔒 You retain 100% IP ownership · NDA on request</span>
+          <span>🛡️ Secure Stripe checkout — your card never touches our servers</span>
+          <span>📁 Your design files are kept private and never shared</span>
+        </div>
+      </section>
+
       {/* ─── Technologies ─── */}
       <section style={{
         padding: '80px 40px', maxWidth: 1280, margin: '0 auto',

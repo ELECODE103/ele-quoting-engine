@@ -71,7 +71,10 @@ router.post("/", async (req, res) => {
     // âââ Payment Amount Verification âââââââââââââââââââââââââââââ
     // Verify the amount paid matches what we expect
     const paidAmountCents = session.amount_total;
-    const expectedAmountCents = Math.round((order.orderTotal || 0) * 100);
+    // The order persists its expected price in `total` (set at checkout-session
+    // creation); `orderTotal` is a quote-level field NOT stored on the order row,
+    // so we must read `total` here or this reconciliation guard never runs.
+    const expectedAmountCents = Math.round((order.total || order.orderTotal || 0) * 100);
 
     if (paidAmountCents && expectedAmountCents > 0) {
       // Allow a small tolerance (1 cent) for rounding differences

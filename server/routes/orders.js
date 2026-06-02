@@ -75,17 +75,19 @@ router.post("/checkout-session", authenticate, async (req, res) => {
     // Create order items from quote line items
     const lineItems = quote.lineItems || [];
     for (const item of lineItems) {
+      // Map from the pricing-engine line-item shape: per-unit price lives at
+      // perUnit.final and material/finish/process live under meta.
       orderItemsDB.insert({
         orderId: order.id,
         partId: item.partId,
         fileName: item.fileName,
-        process: item.meta?.process || "fdm",
-        materialSlug: item.materialSlug || "",
-        materialName: item.materialName || "",
-        finishSlug: item.finishSlug || "",
-        finishName: item.finishName || "",
+        process: item.meta?.process || "",
+        materialSlug: item.meta?.materialSlug || "",
+        materialName: item.meta?.materialName || "",
+        finishSlug: item.meta?.finishSlug || "",
+        finishName: item.meta?.finishName || "",
         quantity: item.quantity || 1,
-        unitPrice: item.unitPrice || 0,
+        unitPrice: item.perUnit?.final || 0,
         lineTotal: item.lineTotal || 0,
       });
     }
