@@ -14,6 +14,7 @@
  */
 
 const { DEFAULT_PRICING_RULES } = require("../config/defaults");
+const { resolveProcess } = require("../processes/registry");
 
 /**
  * Coerce a value to a finite number within [min, max]; return `fallback`
@@ -33,22 +34,18 @@ class PricingEngine {
   }
 
   /**
-   * Router for calculatePartPrice — dispatches to the appropriate process.
+   * Router for calculatePartPrice — dispatches via the process registry.
+   * Adding a process = a registry entry pointing at a calculate* method here;
+   * no edit to this dispatch is needed.
    *
    * @param {Object} params
-   * @param {string} [params.process] — manufacturing process: 'sheetmetal', 'cnc', '3d-printing'
+   * @param {string} [params.process] — process slug ('sheetmetal', 'cnc', '3d-printing', …)
    * @returns {Object} detailed price breakdown
    */
   calculatePartPrice(params) {
-    const process = params.process || 'sheetmetal';
-    switch (process) {
-      case 'cnc':
-        return this.calculateCNCPrice(params);
-      case '3d-printing':
-        return this.calculatePrintPrice(params);
-      default:
-        return this.calculateSheetMetalPrice(params);
-    }
+    const def = resolveProcess(params.process || 'sheetmetal');
+    const method = this[def.priceMethod] ? def.priceMethod : 'calculateSheetMetalPrice';
+    return this[method](params);
   }
 
   /**
