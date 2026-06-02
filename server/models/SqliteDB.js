@@ -14,7 +14,7 @@ const JSON_COLUMNS = {
   quotes: { lineItems: "line_items_json" },
   parts: { geometry: "geometry_json", dfm: "dfm_json" },
   orders: {},
-  order_items: { geometry: "geometry_json", dfm: "dfm_json" },
+  order_items: { geometry: "geometry_json", dfm: "dfm_json", config: "config_json" },
   users: {},
   processes: { subProcesses: "sub_processes_json" },
 };

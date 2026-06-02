@@ -89,6 +89,10 @@ router.post("/checkout-session", authenticate, async (req, res) => {
         quantity: item.quantity || 1,
         unitPrice: item.perUnit?.final || 0,
         lineTotal: item.lineTotal || 0,
+        // Normalized per-item process config (process-specific fields live in meta:
+        // grade/thicknessMm for sheet metal, subProcess/layerHeightMm for printing,
+        // machinability for CNC, etc.). Stored as one JSON blob — no per-process columns.
+        config: item.meta || {},
       });
     }
 
