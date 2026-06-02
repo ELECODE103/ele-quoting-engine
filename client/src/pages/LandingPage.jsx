@@ -48,10 +48,9 @@ export default function LandingPage() {
       </nav>
 
       {/* ─── Hero ─── */}
-      <section style={{
+      <section className="hero-grid" style={{
         padding: '80px 40px 60px',
         maxWidth: 1280, margin: '0 auto',
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 60, alignItems: 'center',
       }}>
         <div>
           <div style={{
@@ -220,7 +219,7 @@ export default function LandingPage() {
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        <div className="grid-2" style={{ gap: 24 }}>
           {[
             {
               title: 'FDM Printing',
