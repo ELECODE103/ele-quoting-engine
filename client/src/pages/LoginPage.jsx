@@ -1,10 +1,14 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../utils/authContext';
 import { api, setAuthToken } from '../utils/api';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Where to go after login — set by a guarded page (e.g. guest → checkout) so
+  // the in-progress quote/checkout survives the login detour.
+  const returnTo = location.state?.from || '/quote';
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,7 +26,7 @@ export default function LoginPage() {
         setAuthToken(result.token);
         const decoded = JSON.parse(atob(result.token.split('.')[1]));
         login(result.token, decoded);
-        navigate('/quote');
+        navigate(returnTo);
       }
     } catch (err) {
       setError(err.message || 'Login failed');

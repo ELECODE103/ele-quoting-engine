@@ -228,6 +228,10 @@ export default function CheckoutPage() {
               }}>
                 ⓘ You'll be redirected to Stripe to complete payment securely. Your card info never touches our servers.
               </div>
+
+              <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                🔒 You retain full IP ownership of your designs. Files are stored securely and never shared. NDA available on request.
+              </div>
             </div>
           </div>
         </div>
