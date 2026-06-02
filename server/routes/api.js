@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require("uuid");
 const { parseFile } = require("../parsers/fileParser");
 const { PricingEngine } = require("../services/pricingEngine");
 const { materialsDB, finishesDB, leadTimesDB, pricingDB, quotesDB, partsDB } = require("../models");
-const { MANUFACTURING_PROCESSES } = require("../config/defaults");
+const { resolveProcess, activeProcesses } = require("../processes/registry");
 const { authenticate, requireAdmin } = require("./auth");
 const { sanitizeString, isValidSlug, nonNegativeNumber, positiveInt } = require("../middleware/validate");
 const { validateFileContent } = require("../middleware/fileValidator");
@@ -167,7 +167,7 @@ router.post("/quote", (req, res) => {
         return res.status(400).json({ error: `Material not found: ${config.materialSlug}` });
       }
 
-      const defaultFinishSlug = config.process === 'cnc' ? 'cnc-as-machined' : config.process === '3d-printing' ? '3dp-as-printed' : 'raw';
+      const defaultFinishSlug = resolveProcess(config.process).defaultFinishSlug || 'raw';
       const finish = finishesDB.getAll().find((f) => f.slug === (config.finishSlug || defaultFinishSlug)) || null;
 
       pricingParts.push({
@@ -220,7 +220,7 @@ router.get("/quote/:id", (req, res) => {
 // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 router.get("/processes", (req, res) => {
-  res.json(MANUFACTURING_PROCESSES.filter(p => p.active));
+  res.json(activeProcesses());
 });
 router.get("/materials", (req, res) => {
   let mats = materialsDB.getAll().filter((m) => m.active);

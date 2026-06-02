@@ -9,6 +9,7 @@
  */
 const fs = require("fs");
 const path = require("path");
+const { resolveProcess, activeProcesses } = require("../processes/registry");
 
 // âââ STL PARSER (Binary + ASCII) ââââââââââââââââââââââââââââââ
 function parseSTL(buffer) {
@@ -1068,18 +1069,16 @@ function runPrintingDFM(geometry, options = {}) {
 }
 
 // DFM Router â dispatches to process-specific DFM function
+const DFM_FUNCTIONS = { runSheetMetalDFM, runCNCDFM, runPrintingDFM };
+
 function runDFMAnalysis(geometry, options = {}) {
-  const process = options.process || "sheetmetal";
-  switch (process) {
-    case "sheetmetal":
-      return runSheetMetalDFM(geometry, options.thicknessMm || geometry.estimatedThickness);
-    case "cnc":
-      return runCNCDFM(geometry, options);
-    case "3d-printing":
-      return runPrintingDFM(geometry, options);
-    default:
-      return runSheetMetalDFM(geometry, options.thicknessMm || geometry.estimatedThickness);
+  const def = resolveProcess(options.process || "sheetmetal");
+  const fn = DFM_FUNCTIONS[def.dfmFn] || runSheetMetalDFM;
+  // Sheet metal's DFM takes a thickness argument; the others take an options object.
+  if (fn === runSheetMetalDFM) {
+    return fn(geometry, options.thicknessMm || geometry.estimatedThickness);
   }
+  return fn(geometry, options);
 }
 
 // âââ MAIN PARSE FUNCTION ââââââââââââââââââââââââââââââââââââââ
@@ -1111,12 +1110,12 @@ async function parseFile(filePath, processOptions = {}) {
   // Run DFM analysis for requested process (or default to sheetmetal)
   const dfm = runDFMAnalysis(geometry, processOptions);
 
-  // Also run DFM for all three processes and return them
-  const dfmAll = {
-    sheetmetal: runDFMAnalysis(geometry, { process: "sheetmetal", thicknessMm: geometry.estimatedThickness }),
-    cnc: runDFMAnalysis(geometry, { process: "cnc" }),
-    "3d-printing": runDFMAnalysis(geometry, { process: "3d-printing", subProcess: "fdm" }),
-  };
+  // Also run DFM for every active process so the client can show all tabs.
+  // Driven by the registry — a new process appears here automatically.
+  const dfmAll = {};
+  for (const p of activeProcesses()) {
+    dfmAll[p.slug] = runDFMAnalysis(geometry, { process: p.slug, subProcess: p.previewSubProcess });
+  }
 
   return {
     geometry,
