@@ -15,6 +15,18 @@
 
 const { DEFAULT_PRICING_RULES } = require("../config/defaults");
 
+/**
+ * Coerce a value to a finite number within [min, max]; return `fallback`
+ * (unclamped) when the input is missing, non-numeric, or non-finite.
+ */
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+
+const PRINT_SUBPROCESSES = ["fdm", "sla", "sls"];
+
 class PricingEngine {
   constructor(rules = null) {
     this.rules = rules || DEFAULT_PRICING_RULES;
@@ -323,21 +335,37 @@ class PricingEngine {
     totalPartsInOrder = 1,
   }) {
     const r = this.rules;
-    const materialDensity = material.density || 1.2; // g/cm³
-    const layerHeightMm = layerHeight || material.defaultLayerHeight || 0.2;
-    const subProcess = material.subProcess || 'fdm';
+    const materialDensity = clampNumber(material.density, 0.1, 25, 1.2); // g/cm³
+
+    // Layer height: honor a valid override, else material default, else 0.2mm.
+    // Clamped to a printable band so it can never be 0 (divide-by-zero in time calc).
+    const layerHeightMm = clampNumber(
+      layerHeight > 0 ? layerHeight : material.defaultLayerHeight,
+      0.02, 1.0, 0.2
+    );
+
+    // Normalize sub-process so an unknown/typo value can never fall through the
+    // branch below and leave material/time undefined → NaN quote.
+    let subProcess = String(material.subProcess || 'fdm').toLowerCase();
+    if (!PRINT_SUBPROCESSES.includes(subProcess)) subProcess = 'fdm';
 
     // Bounding box from geometry (handle nested boundingBox structure from parser)
     const bb = geometry.boundingBox || {};
     const bbox = {
-      width: bb.width || geometry.flatWidth || geometry.width || 100, // mm
-      height: bb.height || geometry.flatHeight || geometry.height || 100,
-      depth: bb.depth || geometry.estimatedThickness || geometry.depth || 50,
+      width: clampNumber(bb.width || geometry.flatWidth || geometry.width, 0.01, 1e6, 100), // mm
+      height: clampNumber(bb.height || geometry.flatHeight || geometry.height, 0.01, 1e6, 100),
+      depth: clampNumber(bb.depth || geometry.estimatedThickness || geometry.depth, 0.01, 1e6, 50),
     };
 
-    const partVolumeMm3 = geometry.volume || (bbox.width * bbox.height * bbox.depth * 0.4); // estimate
+    // Volume must be a positive finite number. A non-manifold mesh can yield a
+    // negative signed volume (truthy → would flow straight through), so guard it.
+    let partVolumeMm3 = Number(geometry.volume);
+    if (!Number.isFinite(partVolumeMm3) || partVolumeMm3 <= 0) {
+      partVolumeMm3 = bbox.width * bbox.height * bbox.depth * 0.4; // fallback estimate
+    }
     const partVolumeCm3 = partVolumeMm3 / 1000;
-    const bboxVolumeCm3 = (bbox.width * bbox.height * bbox.depth) / 1000;
+    // Cross-sectional area proxy (mm² → cm²) for layer-based scan/exposure time.
+    const layerAreaCm2 = (bbox.width * bbox.height) / 100;
 
     let materialVolumeCm3;
     let supportVolumeCm3 = 0;
@@ -345,9 +373,11 @@ class PricingEngine {
     let machineRatePerHour;
 
     // ─── PROCESS-SPECIFIC LOGIC ────────────────
+    // subProcess is normalized to one of fdm/sla/sls above, so the chain is total.
     if (subProcess === 'fdm') {
-      // FDM: infill + shells
-      const fdmInfillPercent = infill !== undefined ? infill : (r.fdmInfillPercent || 0.2);
+      // FDM: infill + shells. A missing/0/NaN infill falls back to the default
+      // (the old `infill || 0` path silently priced every part at 0% infill).
+      const fdmInfillPercent = clampNumber(infill, 0.05, 1.0, (r.fdmInfillPercent || 0.2));
       const effectiveVolume = partVolumeCm3 * (fdmInfillPercent + 0.3); // 0.3 = shell/perimeter estimate
       supportVolumeCm3 = effectiveVolume * (r.fdmSupportMaterialRatio || 0.15);
       materialVolumeCm3 = effectiveVolume;
@@ -361,18 +391,22 @@ class PricingEngine {
       materialVolumeCm3 = partVolumeCm3;
       supportVolumeCm3 = partVolumeCm3 * (r.slaSupportMaterialRatio || 0.1);
 
+      // Time = layers × (fixed peel/exposure + area-dependent scan). The area term
+      // means a wide cross-section costs more than a thin pin of equal height.
       const numberOfLayers = bbox.depth / layerHeightMm;
       const slaLayerTime = r.slaLayerTimeSec || 8;
-      printTimeHours = (numberOfLayers * slaLayerTime) / 3600;
+      const slaScanPerCm2 = r.slaScanTimeSecPerCm2 || 1.5;
+      printTimeHours = (numberOfLayers * (slaLayerTime + slaScanPerCm2 * layerAreaCm2)) / 3600;
       machineRatePerHour = r.slaMachineRatePerHour || 20.0;
-    } else if (subProcess === 'sls') {
+    } else { // 'sls'
       // SLS: fully sintered, powder-supported, packing efficiency
-      const packingEff = r.slsPackingEfficiency || 0.08;
+      const packingEff = clampNumber(r.slsPackingEfficiency, 0.01, 1.0, 0.08);
       materialVolumeCm3 = partVolumeCm3 / packingEff; // accounts for unfused powder cost
 
       const numberOfLayers = bbox.depth / layerHeightMm;
       const slsLayerTime = r.slsLayerTimeSec || 12;
-      printTimeHours = (numberOfLayers * slsLayerTime) / 3600;
+      const slsScanPerCm2 = r.slsScanTimeSecPerCm2 || 2.0;
+      printTimeHours = (numberOfLayers * (slsLayerTime + slsScanPerCm2 * layerAreaCm2)) / 3600;
       machineRatePerHour = r.slsMachineRatePerHour || 35.0;
     }
 
@@ -407,10 +441,20 @@ class PricingEngine {
     const perUnitAfterNesting = perUnitAfterDiscount * (1 - nestingDiscount * materialRatio);
 
     // ─── 8. APPLY MARGIN ───────────────────────
-    const perUnitWithMargin = perUnitAfterNesting / (1 - r.marginPercent);
+    // Clamp margin to [0, 0.95) so a misconfigured rule can't divide-by-zero or
+    // produce a negative price.
+    const margin = clampNumber(r.marginPercent, 0, 0.95, 0.30);
+    const perUnitWithMargin = perUnitAfterNesting / (1 - margin);
 
     // ─── 9. ENFORCE MINIMUM ────────────────────
-    const perUnitFinal = Math.max(perUnitWithMargin, r.minimumPartPrice);
+    // Per-sub-process floor reflects handling/post-processing labor (FDM support
+    // removal, SLA wash+cure, SLS depowder+blast); falls back to the global min.
+    const processMinPrice = {
+      fdm: r.fdmMinimumPartPrice,
+      sla: r.slaMinimumPartPrice,
+      sls: r.slsMinimumPartPrice,
+    }[subProcess] || r.minimumPartPrice || 5.0;
+    const perUnitFinal = Math.max(perUnitWithMargin, processMinPrice);
 
     // ─── TOTAL ─────────────────────────────────
     const lineTotal = perUnitFinal * quantity;
@@ -453,6 +497,23 @@ class PricingEngine {
   }
 
   /**
+   * Per-unit price at a set of quantities, for a "quantity breaks" table.
+   * Reuses calculatePartPrice so it always tracks the live pricing model.
+   *
+   * @returns {Array<{qty:number, perUnit:number, lineTotal:number}>}
+   */
+  quantityPriceBreaks(part, breakpoints = [1, 5, 10, 25, 50, 100]) {
+    return breakpoints.map((qty) => {
+      const price = this.calculatePartPrice({ ...part, quantity: qty });
+      return {
+        qty,
+        perUnit: price.perUnit.final,
+        lineTotal: price.lineTotal,
+      };
+    });
+  }
+
+  /**
    * Calculate a full order quote (multiple parts).
    */
   calculateOrderQuote({ parts, leadTimeMultiplier = 1.0 }) {
@@ -468,6 +529,7 @@ class PricingEngine {
         partId: part.partId,
         fileName: part.fileName,
         ...price,
+        quantityBreaks: this.quantityPriceBreaks({ ...part, totalPartsInOrder }),
       };
     });
 
@@ -485,6 +547,20 @@ class PricingEngine {
       subtotal + leadTimeSurcharge + shippingEstimate,
       r.minimumOrderTotal
     );
+
+    // ─── SANITY GUARD ──────────────────────────
+    // Never let a NaN/Infinity/negative price be persisted or reach checkout.
+    const badLine = lineItems.find(
+      (li) => !Number.isFinite(li.lineTotal) || li.lineTotal < 0
+    );
+    if (badLine) {
+      throw new Error(
+        `Pricing produced an invalid line total for part ${badLine.partId || badLine.fileName || "?"}`
+      );
+    }
+    if (!Number.isFinite(orderTotal) || orderTotal < 0) {
+      throw new Error("Pricing produced an invalid order total");
+    }
 
     return {
       lineItems,

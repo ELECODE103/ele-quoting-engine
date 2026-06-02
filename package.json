@@ -8,6 +8,7 @@
     "client": "cd client && npx vite --port 3001",
     "build": "cd client && npm install && npx vite build",
     "start": "NODE_ENV=production node server/index.js",
+    "test": "node server/services/pricingEngine.test.js",
     "postinstall": "cd client && npm install"
   },
   "dependencies": {
