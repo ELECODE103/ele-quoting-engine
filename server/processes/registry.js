@@ -2,53 +2,30 @@
  * Manufacturing process registry.
  *
  * A "process" (sheet metal, CNC, 3D printing, …) is a first-class entity here:
- * metadata + the wiring that tells the rest of the app how to price and DFM-check
- * it. The pricing engine, file parser, and routes look processes up from this
- * registry instead of hard-coding `switch (process)` branches — so adding a new
- * process is a registry entry, not edits scattered across the codebase.
+ * metadata + the self-contained pricing/DFM behavior that tells the rest of the
+ * app how to price and DFM-check it. The pricing engine, file parser, and routes
+ * look processes up from this registry instead of hard-coding `switch (process)`
+ * branches — so adding a new process is a folder under `server/processes/`, not
+ * edits scattered across the codebase.
  *
  * This module is intentionally dependency-light: it requires only the pure
- * metadata/config from `defaults.js`. It must NOT require the pricing engine or
- * file parser (they require this), which keeps the dependency graph acyclic.
- * Handlers are referenced by NAME (`priceMethod`, `dfmFn`) and resolved by the
- * owning module, so behavior stays where it lives today while dispatch becomes
- * data-driven.
+ * metadata/config from `defaults.js` and the leaf process folders (each of which
+ * requires only ./pricing, ./dfm, ./shared). It must NOT require the pricing
+ * engine or file parser (they require this), which keeps the graph acyclic.
  *
  * ── Adding a new process ──────────────────────────────────────────────
  *   1. Add a metadata entry to MANUFACTURING_PROCESSES in config/defaults.js
  *      (slug, name, description, icon, subProcesses, active) — this also seeds
  *      the `processes` DB table.
- *   2. Register its behavior here (or from a dedicated module that calls
- *      `defineProcess`): a price method on PricingEngine, a DFM function in
- *      fileParser, a default finish slug, and an optional preview sub-process.
+ *   2. Create a folder `server/processes/<slug>/` with an index.js exporting
+ *      { slug, defaultFinishSlug, previewSubProcess, pricing, dfm }.
  *   3. Seed materials/finishes rows with `process: "<slug>"` (admin CRUD or seed).
  * No edits to the pricing/parser/route dispatch are required.
  */
 
+const fs = require("fs");
+const path = require("path");
 const { MANUFACTURING_PROCESSES } = require("../config/defaults");
-
-// Behavior wiring per built-in process slug. `priceMethod` is a PricingEngine
-// method name; `dfmFn` is a function name exported from parsers/fileParser.
-const BUILTIN_BEHAVIOR = {
-  sheetmetal: {
-    priceMethod: "calculateSheetMetalPrice",
-    dfmFn: "runSheetMetalDFM",
-    defaultFinishSlug: "raw",
-    previewSubProcess: undefined,
-  },
-  cnc: {
-    priceMethod: "calculateCNCPrice",
-    dfmFn: "runCNCDFM",
-    defaultFinishSlug: "cnc-as-machined",
-    previewSubProcess: "milling",
-  },
-  "3d-printing": {
-    priceMethod: "calculatePrintPrice",
-    dfmFn: "runPrintingDFM",
-    defaultFinishSlug: "3dp-as-printed",
-    previewSubProcess: "fdm",
-  },
-};
 
 // Fallback wiring for an unknown/new process that hasn't declared behavior yet —
 // treat it like sheet metal so it degrades safely rather than throwing.
@@ -88,9 +65,21 @@ function activeProcesses() {
   return listProcesses().filter((p) => p.active !== false);
 }
 
-// ── Seed built-ins from the metadata source of truth ──────────────────
+// ── Auto-load process behavior from each subdirectory with an index.js ──
+// Maps slug → behavior definition object exported by the folder.
+const behaviorBySlug = {};
+for (const entry of fs.readdirSync(__dirname, { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue;
+  const indexPath = path.join(__dirname, entry.name, "index.js");
+  if (!fs.existsSync(indexPath)) continue;
+  const def = require(indexPath);
+  if (def && def.slug) behaviorBySlug[def.slug] = def;
+}
+
+// ── Seed built-ins from the metadata source of truth, merging behavior ──
 for (const meta of MANUFACTURING_PROCESSES) {
-  defineProcess({ ...meta, ...(BUILTIN_BEHAVIOR[meta.slug] || FALLBACK_BEHAVIOR) });
+  const behavior = behaviorBySlug[meta.slug] || FALLBACK_BEHAVIOR;
+  defineProcess({ ...meta, ...behavior });
 }
 
 module.exports = {
