@@ -570,6 +570,7 @@ const DEFAULT_PRICING_RULES = {
   slsLayerTimeSec: 12,             // fixed per-layer recoat/sweep time
   slsScanTimeSecPerCm2: 2.0,       // laser scan time per cm² of layer area
   slsPackingEfficiency: 0.08,      // fraction of build volume used
+  slsPowderReuseRatio: 0.5,        // fraction of un-fused powder recycled into next build (PA12 ~50%)
   slaScanTimeSecPerCm2: 1.5,       // exposure/scan time per cm² of layer area
   // Per-sub-process minimum part price — covers post-processing labor that the
   // volume/time model doesn't (FDM support removal, SLA wash+cure, SLS depowder).

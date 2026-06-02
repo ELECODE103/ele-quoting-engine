@@ -396,9 +396,15 @@ class PricingEngine {
       printTimeHours = (numberOfLayers * (slaLayerTime + slaScanPerCm2 * layerAreaCm2)) / 3600;
       machineRatePerHour = r.slaMachineRatePerHour || 20.0;
     } else { // 'sls'
-      // SLS: fully sintered, powder-supported, packing efficiency
+      // SLS: fully sintered, powder-supported. Powder cost = the fused part volume
+      // PLUS the un-fused powder in the build that can't be reclaimed. With typical
+      // powder reuse (~50% for PA12) most loose powder is recycled into the next
+      // build, so we don't charge the full 1/packing per part.
+      //   consumed = fused + unfusedShare * (1 - reuse)
       const packingEff = clampNumber(r.slsPackingEfficiency, 0.01, 1.0, 0.08);
-      materialVolumeCm3 = partVolumeCm3 / packingEff; // accounts for unfused powder cost
+      const reuse = clampNumber(r.slsPowderReuseRatio, 0, 0.95, 0.5);
+      const unfusedShare = (1 / packingEff) - 1; // loose-powder volume per unit part volume
+      materialVolumeCm3 = partVolumeCm3 * (1 + unfusedShare * (1 - reuse));
 
       const numberOfLayers = bbox.depth / layerHeightMm;
       const slsLayerTime = r.slsLayerTimeSec || 12;

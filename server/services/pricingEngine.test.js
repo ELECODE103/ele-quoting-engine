@@ -123,4 +123,18 @@ test("order quote for normal multi-part FDM order is finite, includes breaks", (
   assert.ok(Array.isArray(q.lineItems[0].quantityBreaks) && q.lineItems[0].quantityBreaks.length === 6);
 });
 
+test("SLS powder reuse lowers material cost vs. no-reuse, and reuse=0 ~ old 1/packing model", () => {
+  const { DEFAULT_PRICING_RULES } = require("../config/defaults");
+  const noReuse = new PricingEngine({ ...DEFAULT_PRICING_RULES, slsPowderReuseRatio: 0 });
+  const halfReuse = new PricingEngine({ ...DEFAULT_PRICING_RULES, slsPowderReuseRatio: 0.5 });
+  const m0 = noReuse.calculatePartPrice(base(slsMat)).perUnit.material;
+  const m50 = halfReuse.calculatePartPrice(base(slsMat)).perUnit.material;
+  assert.ok(m50 < m0, `reuse should reduce material cost (${m50} !< ${m0})`);
+  // reuse=0 reproduces the old full 1/packing powder charge:
+  const packing = DEFAULT_PRICING_RULES.slsPackingEfficiency;
+  const partCm3 = 8000 / 1000;
+  const expectedNoReuse = (partCm3 / packing) * slsMat.pricePerCm3;
+  assert.ok(Math.abs(m0 - expectedNoReuse) < 1e-6, `reuse=0 material ${m0} != 1/packing ${expectedNoReuse}`);
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? " (with failures above)" : ""));
