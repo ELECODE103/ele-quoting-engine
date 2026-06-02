@@ -94,6 +94,11 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
   // Surface area and volume (using signed volume method)
   let totalSurfaceArea = 0;
   let totalVolume = 0;
+  // Area of down-facing surfaces steeper than 45° (real overhang metric, used by
+  // the 3D-printing DFM instead of a guess). Uses the geometric normal from the
+  // cross product so it's robust even when the file's stored normals are bad.
+  let overhangArea = 0;
+  const OVERHANG_NZ = -Math.SQRT1_2; // cos(135°) — normal tilts >45° downward
 
   for (let i = 0; i < triangleCount; i++) {
     const v0 = vertices[i * 3];
@@ -106,8 +111,12 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
     const cx = ay * bz - az * by;
     const cy = az * bx - ax * bz;
     const cz = ax * by - ay * bx;
-    const area = 0.5 * Math.sqrt(cx * cx + cy * cy + cz * cz);
+    const crossMag = Math.sqrt(cx * cx + cy * cy + cz * cz);
+    const area = 0.5 * crossMag;
     totalSurfaceArea += area;
+
+    // Down-facing fraction: unit normal's z component (cz / |cross|).
+    if (crossMag > 0 && cz / crossMag < OVERHANG_NZ) overhangArea += area;
 
     // Signed volume contribution (divergence theorem)
     totalVolume += (
@@ -117,6 +126,7 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
     ) / 6.0;
   }
   totalVolume = Math.abs(totalVolume);
+  const overhangFraction = totalSurfaceArea > 0 ? overhangArea / totalSurfaceArea : 0;
 
   // Estimate features from normal analysis
   const features = estimateFeatures(vertices, normals, triangleCount, boundingBox);
@@ -137,6 +147,7 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
     boundingBox,
     surfaceArea: totalSurfaceArea,
     volume: totalVolume,
+    overhangFraction, // 0–1, area-weighted down-facing surface >45° (for print DFM)
     triangleCount,
     vertexCount: vertices.length,
 
@@ -614,6 +625,36 @@ async function parseIGES(buffer) {
 // âââ DFM (Design for Manufacturability) Analysis ââââââââââââââ
 
 // Sheet Metal DFM (original function, renamed)
+/**
+ * Two-tier DFM summary.
+ *
+ * Severity tiers:
+ *   - "pass"  — meets the guideline.
+ *   - "info"  — advisory/capability note. NOT a problem; excluded from the score.
+ *   - "warn"  — makeable, but affects cost/quality/lead time. Never blocks.
+ *   - "fail"  — genuinely un-manufacturable as-is. BLOCKS (manufacturable=false).
+ *
+ * Score is computed over scored checks only (info excluded), with warnings counted
+ * at half weight, so a clean part with advisory notes still scores ~100%.
+ */
+function summarizeChecks(checks) {
+  const passCount = checks.filter((c) => c.severity === "pass").length;
+  const infoCount = checks.filter((c) => c.severity === "info").length;
+  const warnCount = checks.filter((c) => c.severity === "warn").length;
+  const failCount = checks.filter((c) => c.severity === "fail").length;
+  const scored = passCount + warnCount + failCount;
+  const score = scored === 0 ? 100 : Math.round((100 * (passCount + 0.5 * warnCount)) / scored);
+  return {
+    passCount,
+    infoCount,
+    warnCount,
+    failCount,
+    totalChecks: checks.length,
+    manufacturable: failCount === 0,
+    score,
+  };
+}
+
 function runSheetMetalDFM(geometry, materialThicknessMm) {
   const checks = [];
   const thickness = materialThicknessMm || geometry.estimatedThickness;
@@ -624,7 +665,8 @@ function runSheetMetalDFM(geometry, materialThicknessMm) {
     id: "min-feature-size",
     label: "Minimum Part Dimension",
     pass: minDim >= 3.0, // 3mm minimum
-    severity: minDim >= 3.0 ? "pass" : "fail",
+    // Warn (not block): minDim is an overall bounding-box dimension, not a feature.
+    severity: minDim >= 3.0 ? "pass" : "warn",
     detail: minDim >= 3.0
       ? `Smallest dimension is ${minDim.toFixed(1)}mm â above 3mm minimum`
       : `Smallest dimension is ${minDim.toFixed(1)}mm â below 3mm minimum. Part may be too fragile.`,
@@ -673,7 +715,7 @@ function runSheetMetalDFM(geometry, materialThicknessMm) {
       id: "bend-relief",
       label: "Bend Relief Clearance",
       pass: null,
-      severity: "warn",
+      severity: "info",
       detail: `Verify bend relief width â¥ ${thickness.toFixed(1)}mm and depth â¥ ${(thickness + 0.5).toFixed(1)}mm at all bend intersections`,
     });
   }
@@ -684,7 +726,7 @@ function runSheetMetalDFM(geometry, materialThicknessMm) {
       id: "min-hole-diameter",
       label: "Minimum Hole Diameter",
       pass: true,
-      severity: thickness <= 3.0 ? "pass" : "warn",
+      severity: thickness <= 3.0 ? "pass" : "info",
       detail: thickness <= 3.0
         ? `Recommended min hole Ã: ${thickness.toFixed(1)}mm (= material thickness)`
         : `Thick material (${thickness.toFixed(1)}mm) â verify holes Ã â¥ ${thickness.toFixed(1)}mm for clean cuts`,
@@ -712,21 +754,9 @@ function runSheetMetalDFM(geometry, materialThicknessMm) {
     });
   }
 
-  // Overall score
-  const passCount = checks.filter((c) => c.severity === "pass").length;
-  const warnCount = checks.filter((c) => c.severity === "warn").length;
-  const failCount = checks.filter((c) => c.severity === "fail").length;
-
   return {
     checks,
-    summary: {
-      passCount,
-      warnCount,
-      failCount,
-      totalChecks: checks.length,
-      manufacturable: failCount === 0,
-      score: Math.round((passCount / checks.length) * 100),
-    },
+    summary: summarizeChecks(checks),
   };
 }
 
@@ -774,7 +804,7 @@ function runCNCDFM(geometry, options = {}) {
     id: "cnc-corner-radius",
     label: "Internal Corner Radius",
     pass: true,
-    severity: "warn",
+    severity: "info",
     detail: `Verify all internal corners have minimum radius â¥ ${minCornerRadius}mm to allow tool access`,
   });
 
@@ -786,7 +816,8 @@ function runCNCDFM(geometry, options = {}) {
     id: "cnc-pocket-ratio",
     label: "Pocket Depth-to-Width Ratio",
     pass: depthToWidthRatio <= maxRatio,
-    severity: depthToWidthRatio <= maxRatio ? "pass" : "warn",
+    // Advisory: uses overall bbox proportions, not measured pockets.
+    severity: depthToWidthRatio <= maxRatio ? "pass" : "info",
     detail: depthToWidthRatio <= maxRatio
       ? `Depth-to-width ratio ${depthToWidthRatio.toFixed(2)}:1 is acceptable (< ${maxRatio}:1)`
       : `High depth-to-width ratio ${depthToWidthRatio.toFixed(2)}:1. Recommend â¤ ${maxRatio}:1 to avoid tool deflection and chatter`,
@@ -803,7 +834,8 @@ function runCNCDFM(geometry, options = {}) {
     id: "cnc-undercut",
     label: "Undercut Detection",
     pass: !hasComplexGeometry,
-    severity: estimatedUndercutRisk === "high" ? "warn" : "pass",
+    // Advisory: derived from coarse feature estimates, so it informs, not blocks/warns.
+    severity: estimatedUndercutRisk === "high" ? "info" : "pass",
     detail: estimatedUndercutRisk === "high"
       ? `Complex geometry detected (${geometry.estimatedBends} bends, ${geometry.estimatedSlots} slots). Verify no undercuts block tool access`
       : `Geometry appears to have low undercut risk`,
@@ -827,7 +859,8 @@ function runCNCDFM(geometry, options = {}) {
     id: "cnc-removal-efficiency",
     label: "Material Removal Efficiency",
     pass: volumeRatio >= 0.3,
-    severity: volumeRatio >= 0.3 ? "pass" : volumeRatio >= 0.2 ? "warn" : "fail",
+    // Never blocks: volumeRatio depends on a watertight volume we can't guarantee.
+    severity: volumeRatio >= 0.3 ? "pass" : "warn",
     detail: volumeRatio >= 0.3
       ? `Part volume ${(volumeRatio * 100).toFixed(1)}% of bounding box â efficient machining`
       : `Part volume ${(volumeRatio * 100).toFixed(1)}% of bounding box. Heavy stock removal may be expensive`,
@@ -838,7 +871,7 @@ function runCNCDFM(geometry, options = {}) {
     id: "cnc-tool-access",
     label: "Tool Access",
     pass: true,
-    severity: "warn",
+    severity: "info",
     detail: `Verify clearance for cutting tools in all cavities. Minimum feature width should allow standard endmill access`,
   });
 
@@ -847,7 +880,7 @@ function runCNCDFM(geometry, options = {}) {
     id: "cnc-tolerance",
     label: "Tolerance Capability",
     pass: true,
-    severity: "pass",
+    severity: "info",
     detail: `Standard CNC tolerance: Â±0.05mm. Precision work available: Â±0.025mm (higher cost)`,
   });
 
@@ -866,21 +899,9 @@ function runCNCDFM(geometry, options = {}) {
     });
   }
 
-  // Overall score
-  const passCount = checks.filter((c) => c.severity === "pass").length;
-  const warnCount = checks.filter((c) => c.severity === "warn").length;
-  const failCount = checks.filter((c) => c.severity === "fail").length;
-
   return {
     checks,
-    summary: {
-      passCount,
-      warnCount,
-      failCount,
-      totalChecks: checks.length,
-      manufacturable: failCount === 0,
-      score: Math.round((passCount / checks.length) * 100),
-    },
+    summary: summarizeChecks(checks),
   };
 }
 
@@ -904,15 +925,17 @@ function runPrintingDFM(geometry, options = {}) {
   };
   const thresh = processThresholds[subProcess] || processThresholds.fdm;
 
-  // 1. Minimum wall thickness
+  // 1. Minimum wall thickness — warn (not block): estimatedThickness is a
+  //    bounding-box proxy, not a true measured wall, so it must not gate ordering.
+  const wallOk = geometry.estimatedThickness >= thresh.minWall;
   checks.push({
     id: "print-min-wall",
     label: "Minimum Wall Thickness",
-    pass: geometry.estimatedThickness >= thresh.minWall,
-    severity: geometry.estimatedThickness >= thresh.minWall ? "pass" : "fail",
-    detail: geometry.estimatedThickness >= thresh.minWall
+    pass: wallOk,
+    severity: wallOk ? "pass" : "warn",
+    detail: wallOk
       ? `Estimated wall ${geometry.estimatedThickness.toFixed(2)}mm meets ${subProcess.toUpperCase()} minimum (${thresh.minWall}mm)`
-      : `Wall thickness ${geometry.estimatedThickness.toFixed(2)}mm below ${subProcess.toUpperCase()} minimum (${thresh.minWall}mm). Increase wall or use different process`,
+      : `Estimated thinnest section ${geometry.estimatedThickness.toFixed(2)}mm is near/below the ${subProcess.toUpperCase()} guideline (${thresh.minWall}mm). Thin walls may print but can be fragile — verify before ordering.`,
   });
 
   // 2. Build volume check
@@ -927,42 +950,52 @@ function runPrintingDFM(geometry, options = {}) {
       : `Part exceeds ${subProcess.toUpperCase()} build volume. X: ${width.toFixed(0)}/${thresh.maxX}, Y: ${height.toFixed(0)}/${thresh.maxY}, Z: ${depth.toFixed(0)}/${thresh.maxZ}mm`,
   });
 
-  // 3. Overhang detection (analyze mesh normals for downward-facing surfaces)
-  // Heuristic: count downward-facing normals; each ~100 downward triangles = ~5% overhangs
-  const estimatedOverhangPercent = geometry.estimatedBends > 0 ? 15 : 5;
-  const overhangSeverity = subProcess === "fdm" ? estimatedOverhangPercent > 25 ? "fail" : "warn" : "pass";
+  // 3. Overhang detection — real, area-weighted fraction of down-facing surface
+  //    >45° (computed from geometry normals). Overhangs are always makeable with
+  //    support, so this warns (cost/cleanup) for FDM/SLA and is informational for
+  //    SLS (self-supporting in powder). Never blocks.
+  const hasOverhangMetric = Number.isFinite(geometry.overhangFraction);
+  const overhangPercent = hasOverhangMetric ? geometry.overhangFraction * 100 : null;
+  const needsSupports = subProcess === "fdm" || subProcess === "sla";
+  let overhangCheck;
+  if (!hasOverhangMetric) {
+    overhangCheck = {
+      severity: "info",
+      detail: needsSupports
+        ? `${subProcess.toUpperCase()} may need supports for steep overhangs — couldn't measure overhang area for this file.`
+        : `SLS is self-supporting; overhangs are not a concern.`,
+    };
+  } else if (!needsSupports) {
+    overhangCheck = {
+      severity: "info",
+      detail: `${overhangPercent.toFixed(0)}% of the surface is down-facing, but SLS is self-supporting — no support material needed.`,
+    };
+  } else {
+    const heavy = overhangPercent > 40;
+    overhangCheck = {
+      severity: heavy ? "warn" : "pass",
+      detail: heavy
+        ? `${overhangPercent.toFixed(0)}% of the surface overhangs >45°. ${subProcess.toUpperCase()} will need significant support material — adds cost and cleanup. Consider reorienting.`
+        : `${overhangPercent.toFixed(0)}% of the surface overhangs >45° — modest support needs for ${subProcess.toUpperCase()}.`,
+    };
+  }
   checks.push({
     id: "print-overhang",
-    label: "Overhang Surfaces (>45Â°)",
-    pass: estimatedOverhangPercent <= (subProcess === "fdm" ? 25 : 50),
-    severity: overhangSeverity,
-    detail: `Estimated ${estimatedOverhangPercent}% of surface overhangs. ${
-      subProcess === "fdm"
-        ? "FDM needs support material for overhangs"
-        : subProcess === "sla"
-        ? "SLA needs support material for overhangs"
-        : "SLS does not require support material"
-    }`,
+    label: "Overhang Surfaces (>45°)",
+    pass: overhangCheck.severity === "pass",
+    severity: overhangCheck.severity,
+    detail: overhangCheck.detail,
   });
 
-  // 4. Support material estimate
-  const supportPercent = estimatedOverhangPercent * 0.7; // Support is ~70% of overhang area
-  checks.push({
-    id: "print-support-estimate",
-    label: "Support Material Volume",
-    pass: supportPercent <= 30,
-    severity: supportPercent <= 30 ? "pass" : "warn",
-    detail: `Estimated ${supportPercent.toFixed(1)}% support material needed. Higher % = more cleanup time and cost`,
-  });
-
-  // 5. Small feature detection
-  const minDim = Math.min(width, height, depth);
+  // 5. Small feature fidelity — advisory only (bounding-box thickness proxy,
+  //    so it informs rather than warns/blocks).
   const featureSize = geometry.estimatedThickness;
+  const featuresCrisp = featureSize >= 1.0;
   checks.push({
     id: "print-small-features",
     label: "Small Feature Fidelity",
-    pass: featureSize >= 1.0,
-    severity: featureSize >= 1.0 ? "pass" : featureSize >= 0.5 ? "warn" : "fail",
+    pass: featuresCrisp,
+    severity: featuresCrisp ? "pass" : "info",
     detail: featureSize >= 1.0
       ? `Features â¥ ${featureSize.toFixed(2)}mm will print crisply`
       : featureSize >= 0.5
@@ -970,38 +1003,37 @@ function runPrintingDFM(geometry, options = {}) {
       : `Features too small (${featureSize.toFixed(2)}mm) for reliable printing`,
   });
 
-  // 6. Bridge length (horizontal overhangs)
-  const bridgeWidth = Math.min(width, height);
-  checks.push({
-    id: "print-bridge-length",
-    label: "Maximum Bridge Span",
-    pass: bridgeWidth <= 20,
-    severity: bridgeWidth <= 20 ? "pass" : "warn",
-    detail: `Maximum horizontal overhang ~${bridgeWidth.toFixed(0)}mm. ${
-      subProcess === "fdm"
-        ? bridgeWidth > 20 ? "FDM bridges >20mm may sag without supports" : "Acceptable bridge length"
-        : "Bridge length typically not limiting"
-    }`,
-  });
+  // 6. Bridging — informational. We can't reliably measure unsupported horizontal
+  //    spans from the mesh summary, so this is FDM-only guidance, not a measurement.
+  if (subProcess === "fdm") {
+    checks.push({
+      id: "print-bridge-length",
+      label: "Bridging",
+      pass: true,
+      severity: "info",
+      detail: `If your design has unsupported horizontal spans wider than ~20mm, FDM may sag without supports. SLA/SLS are unaffected.`,
+    });
+  }
 
-  // 7. Part volume efficiency (hollow vs solid)
+  // 7. Part volume efficiency (hollow vs solid) — advisory (affects cost, not makeability)
+  const efficient = volumeRatio >= 0.3;
   checks.push({
     id: "print-volume-efficiency",
     label: "Volume Efficiency",
-    pass: volumeRatio >= 0.3,
-    severity: volumeRatio >= 0.3 ? "pass" : "warn",
-    detail: volumeRatio >= 0.3
-      ? `Part is ${(volumeRatio * 100).toFixed(0)}% solid (efficient)`
-      : `Part is only ${(volumeRatio * 100).toFixed(0)}% solid. Consider infill settings to save material and printing time`,
+    pass: efficient,
+    severity: efficient ? "pass" : "info",
+    detail: efficient
+      ? `Part is ${(volumeRatio * 100).toFixed(0)}% of its bounding box — efficient to print.`
+      : `Part is ${(volumeRatio * 100).toFixed(0)}% of its bounding box. Lower infill or hollowing can cut material and time.`,
   });
 
-  // 8. Dimensional accuracy
+  // 8. Dimensional accuracy — capability note (informational)
   checks.push({
     id: "print-tolerance",
     label: "Dimensional Accuracy",
     pass: true,
-    severity: "pass",
-    detail: `${subProcess.toUpperCase()} typical tolerance: ${thresh.tolerance}. Finer tolerances available with post-processing`,
+    severity: "info",
+    detail: `${subProcess.toUpperCase()} typical tolerance: ${thresh.tolerance}. Finer tolerances available with post-processing.`,
   });
 
   // 9. Warping risk (FDM-specific)
@@ -1023,29 +1055,15 @@ function runPrintingDFM(geometry, options = {}) {
     checks.push({
       id: "print-sla-islands",
       label: "Isolated Regions (SLA)",
-      pass: geometry.estimatedBends <= 1,
-      severity: geometry.estimatedBends > 1 ? "warn" : "pass",
-      detail: geometry.estimatedBends > 1
-        ? `Complex geometry detected. Verify no isolated islands in cross-sections that would float`
-        : `Geometry appears well-connected. Low island risk`,
+      pass: true,
+      severity: "info",
+      detail: `For SLA, verify no isolated islands float in early layers. If your model is a single connected solid, this isn't a concern.`,
     });
   }
 
-  // Overall score
-  const passCount = checks.filter((c) => c.severity === "pass").length;
-  const warnCount = checks.filter((c) => c.severity === "warn").length;
-  const failCount = checks.filter((c) => c.severity === "fail").length;
-
   return {
     checks,
-    summary: {
-      passCount,
-      warnCount,
-      failCount,
-      totalChecks: checks.length,
-      manufacturable: failCount === 0,
-      score: Math.round((passCount / checks.length) * 100),
-    },
+    summary: summarizeChecks(checks),
   };
 }
 
