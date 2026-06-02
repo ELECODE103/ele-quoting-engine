@@ -567,8 +567,15 @@ const DEFAULT_PRICING_RULES = {
   slaLayerTimeSec: 8,              // seconds per layer (exposure + peel)
   slaSupportMaterialRatio: 0.10,
   slsMachineRatePerHour: 35.00,    // SLS is most expensive
-  slsLayerTimeSec: 12,
+  slsLayerTimeSec: 12,             // fixed per-layer recoat/sweep time
+  slsScanTimeSecPerCm2: 2.0,       // laser scan time per cm² of layer area
   slsPackingEfficiency: 0.08,      // fraction of build volume used
+  slaScanTimeSecPerCm2: 1.5,       // exposure/scan time per cm² of layer area
+  // Per-sub-process minimum part price — covers post-processing labor that the
+  // volume/time model doesn't (FDM support removal, SLA wash+cure, SLS depowder).
+  fdmMinimumPartPrice: 8.00,
+  slaMinimumPartPrice: 12.00,
+  slsMinimumPartPrice: 15.00,
 
   // ─── SHARED ──────────────────────────────────────
   minimumPartPrice: 5.00,

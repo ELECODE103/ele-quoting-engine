@@ -181,8 +181,10 @@ router.post("/quote", (req, res) => {
         quantity: config.quantity || 1,
         process: config.process || 'sheetmetal',
         subProcess: config.subProcess || '',
-        layerHeight: config.layerHeight || 0,
-        infill: config.infill || 0,
+        // Pass through only when actually provided — `|| 0` made an unset infill
+        // look like an intentional 0% (the engine then under-costed FDM material).
+        layerHeight: config.layerHeight != null ? Number(config.layerHeight) : undefined,
+        infill: config.infill != null ? Number(config.infill) : undefined,
       });
     }
 
