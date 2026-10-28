@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /checkout/
+Disallow: /orders/
+Sitemap: https://straightedgemfg.com/sitemap.xml

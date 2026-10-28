@@ -141,6 +141,25 @@ export const api = {
     return request('/orders', { method: 'POST', body: JSON.stringify({ quoteId, ...shippingFields }) });
   },
 
+  // RFQ (firm quotes)
+  async submitRfq(fields, drawingFile) {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) form.append(k, v);
+    if (drawingFile) form.append('drawing', drawingFile);
+    const headers = {};
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+    const res = await fetch(`${BASE}/rfq`, { method: 'POST', body: form, headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Could not submit request');
+    }
+    return res.json();
+  },
+  async getRfq(id) { return request(`/rfq/${id}`); },
+  async getAdminRfqs() { return request('/rfq/admin/list'); },
+  async updateRfq(id, data) { return request(`/rfq/admin/${id}`, { method: 'PUT', body: JSON.stringify(data) }); },
+  rfqDrawingUrl(id) { return `${BASE}/rfq/admin/${id}/drawing`; },
+
   // Stripe Checkout
   async createCheckoutSession(quoteId, shippingFields) {
     return request('/orders/checkout-session', {

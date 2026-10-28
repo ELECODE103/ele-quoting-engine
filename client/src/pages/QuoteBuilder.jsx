@@ -5,6 +5,18 @@ import ThreeViewer from '../components/ThreeViewer';
 import DFMPanel from '../components/DFMPanel';
 import PartConfigurator from '../components/PartConfigurator';
 import OrderSummary from '../components/OrderSummary';
+import ProcessPicker from '../components/ProcessPicker';
+import brand, { PROCESS_LABELS } from '../brand';
+
+// Closest stock thickness to the model's thinnest dimension (routing materials carry a thickness table).
+function pickThickness(mat, geometry) {
+  const list = mat?.thicknesses || [];
+  if (list.length === 0) return 0;
+  const bb = geometry?.boundingBox || {};
+  const t = Math.min(bb.width || Infinity, bb.height || Infinity, bb.depth || Infinity);
+  if (!Number.isFinite(t)) return list[Math.min(2, list.length - 1)].mm;
+  return list.reduce((best, x) => (Math.abs(x.mm - t) < Math.abs(best.mm - t) ? x : best), list[0]).mm;
+}
 
 export default function QuoteBuilder() {
   // Config data from server
@@ -17,7 +29,7 @@ export default function QuoteBuilder() {
   const [parts, setParts] = useState([]);          // { partId, fileName, geometry, dfm, meshPreview, materialSlug, grade, thicknessMm, finishSlug, quantity, process, subProcess, layerHeight, infill }
   const [activePart, setActivePart] = useState(null);
   const [selectedLeadTime, setSelectedLeadTime] = useState('standard');
-  const [selectedProcess, setSelectedProcess] = useState('3d-printing');
+  const [selectedProcess, setSelectedProcess] = useState('cnc');
   // Quote from server
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -32,7 +44,7 @@ export default function QuoteBuilder() {
 
   // Load config on mount
   useEffect(() => {
-    Promise.all([api.getProcesses(), api.getMaterials('3d-printing'), api.getFinishes('3d-printing'), api.getLeadTimes()])
+    Promise.all([api.getProcesses(), api.getMaterials('cnc'), api.getFinishes('cnc'), api.getLeadTimes()])
       .then(([procs, mats, fins, lts]) => {
         setProcesses(procs);
         setMaterials(mats);
@@ -92,13 +104,13 @@ export default function QuoteBuilder() {
         geometry: p.geometry,
         dfm: p.dfm,
         meshPreview: p.meshPreview,
-        materialSlug: defaultMat?.slug || 'pla',
+        materialSlug: defaultMat?.slug || 'cnc-delrin',
         grade: defaultMat?.grades?.[0]?.name || '',
-        thicknessMm: 0,
+        thicknessMm: pickThickness(defaultMat, p.geometry),
         finishSlug: finishes[0]?.slug || 'raw',
         quantity: 1,
         process: selectedProcess,
-        subProcess: defaultMat?.subProcess || '',
+        subProcess: selectedProcess === 'cnc' ? 'milling' : (defaultMat?.subProcess || ''),
         layerHeight: defaultMat?.defaultLayerHeight || 0,
         infill: 0.2,
         dfmAll: p.dfmAll,
@@ -131,6 +143,7 @@ export default function QuoteBuilder() {
   };
 
   async function handleProcessChange(processSlug) {
+    if (processSlug === selectedProcess) return;
     setSelectedProcess(processSlug);
     // Re-fetch materials and finishes for this process
     const [mats, fins] = await Promise.all([
@@ -144,10 +157,10 @@ export default function QuoteBuilder() {
       setParts((prev) => prev.map((p) => ({
         ...p,
         process: processSlug,
-        subProcess: mats[0].subProcess || '',
+        subProcess: processSlug === 'cnc' ? 'milling' : (mats[0].subProcess || ''),
         materialSlug: mats[0].slug,
         grade: mats[0].grades?.[0]?.name || '',
-        thicknessMm: mats[0].thicknesses?.[2]?.mm || mats[0].thicknesses?.[0]?.mm || 0,
+        thicknessMm: pickThickness(mats[0], p.geometry),
         finishSlug: fins[0]?.slug || 'raw',
         layerHeight: mats[0].defaultLayerHeight || 0,
         infill: 0.2,
@@ -157,6 +170,9 @@ export default function QuoteBuilder() {
 
   const active = parts.find((p) => p.partId === activePart);
   const activeLineItem = quote?.lineItems?.find((li) => li.partId === activePart);
+  const activeDfm = quote?.dfmByPartId?.[activePart] || active?.dfmAll?.[selectedProcess] || active?.dfm;
+  const needsRfq = Boolean(quote?.gate?.requiresRfq);
+  const cutLabel = selectedProcess === 'routing' ? 'Router cutting' : 'Laser cutting';
 
   return (
     <div className={parts.length > 0 ? 'qb-grid' : ''} style={{ display: 'grid', gridTemplateColumns: parts.length > 0 ? undefined : '1fr', minHeight: 'calc(100vh - 53px)' }}>
@@ -228,7 +244,13 @@ export default function QuoteBuilder() {
           onChange={(e) => handleFiles(e.target.files)}
         />
 
-        {/* Empty state: dropzone */}
+        {/* Empty state: process picker + dropzone */}
+        {parts.length === 0 && !uploading && (
+          <div style={{ maxWidth: 640, width: '100%', marginBottom: 16 }}>
+            <div className="field-label" style={{ marginBottom: 10 }}>How should we make it?</div>
+            <ProcessPicker processes={processes} value={selectedProcess} onChange={handleProcessChange} />
+          </div>
+        )}
         {parts.length === 0 && !uploading && (
           <div
             className="dropzone"
@@ -243,9 +265,9 @@ export default function QuoteBuilder() {
             <div className="font-display" style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
               Upload Your Parts
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.7, maxWidth: 440 }}>
-              Drag & drop your CAD files to get an instant quote.<br />
-              Custom parts manufactured and delivered to your door.
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.7, maxWidth: 460 }}>
+              Drag in STEP, STL or IGES files for a price right now.<br />
+              Up to {brand.rfqQuantityThreshold} pieces checks out online; more than that, a person quotes it within {brand.quoteTurnaroundHours} hours.
             </div>
             <div style={{ marginTop: 24, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
               {['STEP', 'STL', 'IGES', '3MF'].map((f) => (
@@ -280,14 +302,10 @@ export default function QuoteBuilder() {
         {/* Active part view */}
         {parts.length > 0 && !uploading && active && (
           <div className="fade-up" style={{ width: '100%', maxWidth: 720 }}>
-            {/* Technology label */}
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              padding: '6px 14px', borderRadius: 8, marginBottom: 16,
-              background: 'var(--accent-bg)', border: '1px solid var(--accent)',
-            }}>
-              <span style={{ fontSize: 14 }}>▲</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>3D Printing</span>
+            {/* Process switch */}
+            <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <ProcessPicker compact processes={processes} value={selectedProcess} onChange={handleProcessChange} />
+              <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Switching re-prices every part in this quote.</span>
             </div>
 
             {/* View toggle */}
@@ -303,6 +321,7 @@ export default function QuoteBuilder() {
               {activeLineItem && (
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
                   {quoteLoading && <div className="spinner" />}
+                  <span className="price-label">{needsRfq ? 'Budgetary' : 'Instant price'}</span>
                   <span className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>
                     {formatCurrency(activeLineItem.lineTotal)}
                   </span>
@@ -338,7 +357,7 @@ export default function QuoteBuilder() {
               </div>
             ) : (
               <div style={{ marginBottom: 20 }}>
-                <DFMPanel dfm={active.dfm} dfmAll={active.dfmAll} process={selectedProcess} />
+                <DFMPanel dfm={activeDfm} dfmAll={active.dfmAll} process={selectedProcess} />
               </div>
             )}
 
@@ -360,7 +379,7 @@ export default function QuoteBuilder() {
                 </span>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '6px 16px', fontSize: 11 }}>
                   <PriceRow label="Material" value={activeLineItem.perUnit.material} />
-                  {activeLineItem.perUnit.cutting > 0 && <PriceRow label="Laser cutting" value={activeLineItem.perUnit.cutting} />}
+                  {activeLineItem.perUnit.cutting > 0 && <PriceRow label={cutLabel} value={activeLineItem.perUnit.cutting} />}
                   {activeLineItem.perUnit.bending > 0 && <PriceRow label="Bending" value={activeLineItem.perUnit.bending} />}
                   {activeLineItem.perUnit.holes > 0 && <PriceRow label="Holes & features" value={activeLineItem.perUnit.holes} />}
                   {activeLineItem.perUnit.machining > 0 && <PriceRow label="Machining" value={activeLineItem.perUnit.machining} />}
@@ -438,9 +457,9 @@ export default function QuoteBuilder() {
               </div>
               <div className="grid-3">
               {[
-                { step: '1', title: 'Upload Your Design', desc: 'Drop in your CAD file — we accept STEP, STL, IGES, and 3MF. Get an instant quote in seconds.' },
-                { step: '2', title: 'Configure & Order', desc: 'Choose your material, finish, and quantity. Review your quote and place your order securely online.' },
-                { step: '3', title: 'We Deliver', desc: 'Our team manufactures your parts to spec and ships them straight to your door.' },
+                { step: '1', title: 'Upload', desc: 'STEP, STL, IGES or 3MF. The geometry is read on our server; the file is encrypted at rest and purged on a schedule.' },
+                { step: '2', title: 'Price and DFM', desc: 'Material, finish, quantity. The price updates live, with a manufacturability check written for our machines.' },
+                { step: '3', title: 'Order or RFQ', desc: `To ${brand.rfqQuantityThreshold} pieces, check out by card. Over that, or if the checker flags something, a firm quote from us within ${brand.quoteTurnaroundHours} hours.` },
               ].map((f, i) => (
                 <div key={i} className="card fade-up" style={{ padding: 24, textAlign: 'center', animationDelay: `${200 + i * 120}ms` }}>
                   <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, margin: '0 auto 12px' }}>{f.step}</div>

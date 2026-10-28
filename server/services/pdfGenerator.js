@@ -3,6 +3,7 @@
  * Uses PDFKit to generate professional job travelers and packing lists
  */
 const PDFDocument = require("pdfkit");
+const brand = require("../../shared/brand.json");
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -183,7 +184,7 @@ function addFooter(doc, orderId, pageNum) {
   doc.fontSize(8).font("Helvetica").fillColor("#666666");
 
   // Left: Order ID as barcode-style
-  doc.text(`Order: ${orderId}`, margin, footerY + 5);
+  doc.text(`${brand.name} · Order: ${orderId}`, margin, footerY + 5);
 
   // Right: Page number
   doc.text(`Page ${pageNum}`, doc.page.width - margin - 50, footerY + 5, {
@@ -582,9 +583,9 @@ function generatePackingList(order, items) {
     .fontSize(8)
     .font("Helvetica")
     .fillColor("#666666");
-  doc.text("[Company Return Address]", margin + 10, y);
-  doc.text("[Street Address]", margin + 10, y + 12);
-  doc.text("[City, State ZIP]", margin + 10, y + 24);
+  doc.text(brand.legalName, margin + 10, y);
+  doc.text(`${brand.city}, ${brand.state}`, margin + 10, y + 12);
+  doc.text(`${brand.phone} · ${brand.email}`, margin + 10, y + 24);
   doc.text(`Order Reference: ${order.id.substring(0, 8)}`, margin + 10, y + 38);
 
   // Footer

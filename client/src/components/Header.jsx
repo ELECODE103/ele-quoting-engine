@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../utils/authContext';
+import Wordmark from './Wordmark';
 
 export default function Header() {
   const navigate = useNavigate();
@@ -29,30 +30,15 @@ export default function Header() {
       background: '#fff',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: 8,
-          background: 'var(--accent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
-        </div>
-        <span style={{
-          fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700,
-          letterSpacing: '-0.5px', color: 'var(--text-primary)', cursor: 'pointer',
-        }}
-              onClick={() => navigate('/')} role="button" tabIndex={0}>
-          Nord MFG
-        </span>
-
+        <Wordmark size={17} />
       </div>
 
-      <nav style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      <nav style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button style={btnStyle('/materials')} onClick={() => navigate('/materials')}>
+          Materials
+        </button>
         <button style={btnStyle('/quote')} onClick={() => navigate('/quote')}>
-          Quote Builder
+          Instant Quote
         </button>
         {isAuthenticated && (
           <button style={btnStyle('/dashboard')} onClick={() => navigate('/dashboard')}>

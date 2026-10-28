@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { formatCurrency } from '../utils/format';
 import OrderDetailDrawer from '../components/OrderDetailDrawer';
+import RfqQueue from '../components/RfqQueue';
 
 export default function AdminPanel() {
-  const [tab, setTab] = useState('materials');
+  const [tab, setTab] = useState('orders');
   const [materials, setMaterials] = useState([]);
   const [finishes, setFinishes] = useState([]);
   const [leadTimes, setLeadTimes] = useState([]);
@@ -94,6 +95,7 @@ export default function AdminPanel() {
 
   const tabs = [
     { key: 'orders', label: 'Orders' },
+    { key: 'rfqs', label: 'RFQs' },
     { key: 'parts', label: 'Parts' },
     { key: 'materials', label: 'Materials' },
     { key: 'finishes', label: 'Finishes' },
@@ -453,12 +455,19 @@ export default function AdminPanel() {
             Pricing Engine Configuration
           </div>
           <div className="grid-2" style={{ gap: 20 }}>
-            <PricingField label="Laser cut rate (per mm)" field="laserCutRatePerMm" value={pricing} onChange={setPricing} />
-            <PricingField label="Thickness exponent" field="laserThicknessExponent" value={pricing} onChange={setPricing} />
-            <PricingField label="Bend base cost ($)" field="bendBaseCost" value={pricing} onChange={setPricing} />
-            <PricingField label="Bend thickness multiplier" field="bendThicknessMultiplier" value={pricing} onChange={setPricing} />
-            <PricingField label="Hole base cost ($)" field="holeBaseCost" value={pricing} onChange={setPricing} />
-            <PricingField label="Tap cost ($)" field="tapCost" value={pricing} onChange={setPricing} />
+            <PricingField label="CNC machine rate ($/hr)" field="cncMachineRatePerHour" value={pricing} onChange={setPricing} step="1" />
+            <PricingField label="CNC setup per job ($)" field="cncSetupCost" value={pricing} onChange={setPricing} step="1" />
+            <PricingField label="CNC roughing rate (cm³/hr @ 6061)" field="cncRoughingRate" value={pricing} onChange={setPricing} step="10" />
+            <PricingField label="CNC finishing rate (cm³/hr)" field="cncFinishingRate" value={pricing} onChange={setPricing} step="10" />
+            <PricingField label="CNC minimum machine time (hr)" field="cncMinimumMachineTime" value={pricing} onChange={setPricing} step="0.05" />
+            <PricingField label="Turning multiplier" field="cncTurningMultiplier" value={pricing} onChange={setPricing} step="0.05" />
+            <PricingField label="Router rate ($/hr)" field="routerMachineRatePerHour" value={pricing} onChange={setPricing} step="1" />
+            <PricingField label="Router setup per job ($)" field="routerSetupCost" value={pricing} onChange={setPricing} step="1" />
+            <PricingField label="Router handling per part (min)" field="routerHandlingMinutesPerPart" value={pricing} onChange={setPricing} step="0.1" />
+            <PricingField label="Router nest yield (0–1)" field="routerNestYield" value={pricing} onChange={setPricing} step="0.01" />
+            <PricingField label="Router minimum part price ($)" field="routerMinimumPartPrice" value={pricing} onChange={setPricing} step="0.5" />
+            <PricingField label="FDM machine rate ($/hr)" field="fdmMachineRatePerHour" value={pricing} onChange={setPricing} step="0.5" />
+            <PricingField label="SLA machine rate ($/hr)" field="slaMachineRatePerHour" value={pricing} onChange={setPricing} step="0.5" />
             <PricingField label="Minimum part price ($)" field="minimumPartPrice" value={pricing} onChange={setPricing} />
             <PricingField label="Minimum order total ($)" field="minimumOrderTotal" value={pricing} onChange={setPricing} />
             <PricingField label="Nesting efficiency bonus" field="nestingEfficiencyBonus" value={pricing} onChange={setPricing} step="0.01" />
@@ -498,6 +507,9 @@ export default function AdminPanel() {
           onUpdated={loadData}
         />
       )}
+
+      {/* ─── RFQ TAB ─── */}
+      {tab === 'rfqs' && <RfqQueue />}
 
       {/* ─── QUOTES TAB ─── */}
       {tab === 'quotes' && (

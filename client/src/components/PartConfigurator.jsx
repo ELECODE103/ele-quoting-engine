@@ -1,14 +1,27 @@
 // Short, friendly use-case guidance per material. Keyed by lowercase keywords
 // matched against the material name/category, so it works without a DB field.
 const MATERIAL_GUIDANCE = [
-  { match: ['pla'], text: 'Stiff and easy to print — great for prototypes, fixtures, and display models. Not for high heat or outdoor use.' },
+  { match: ['pla', 'pla+'], text: 'Stiff and easy to print — great for prototypes, fixtures, and display models. Not for high heat or outdoor use.' },
   { match: ['petg'], text: 'Tougher than PLA with better heat and chemical resistance — good for functional parts and enclosures.' },
   { match: ['abs'], text: 'Impact-resistant and heat-tolerant — good for enclosures and automotive-style parts. Best with smoothing/finishing.' },
   { match: ['tpu', 'flexible'], text: 'Rubber-like and flexible — for gaskets, grips, and bumpers. Prints slower.' },
-  { match: ['nylon', 'pa12', 'pa 12'], text: 'Strong, durable, and slightly flexible — excellent for living hinges, clips, and end-use functional parts.' },
+  { match: ['pa12', 'pa 12'], text: 'Strong, durable, and slightly flexible — excellent for living hinges, clips, and end-use functional parts.' },
   { match: ['resin', 'sla'], text: 'Highest detail and smoothest surface — ideal for miniatures, dental/jewelry patterns, and fine features. More brittle.' },
   { match: ['tough resin', 'abs-like'], text: 'Engineering resin balancing detail with impact resistance — for functional prototypes.' },
-  { match: ['aluminum'], text: 'Lightweight, corrosion-resistant, easy to machine — the default for most CNC and sheet parts.' },
+  { match: ['delrin', 'acetal', 'pom'], text: 'The default machined plastic: stiff, stable, low-friction. Bushings, gears, wear parts, housings. Natural grade is FDA-compliant.' },
+  { match: ['uhmw'], text: 'Best abrasion resistance and very slippery — conveyor guides, wear strips, chute liners. Looser tolerances than acetal.' },
+  { match: ['hdpe'], text: 'Cheap, tough, chemical-resistant — trays, totes, boards, outdoor parts. Not for tight tolerances.' },
+  { match: ['nylon'], text: 'Strong and tough with good wear life — gears, rollers, sprockets. Absorbs moisture and grows; we machine it dry.' },
+  { match: ['peek'], text: 'Service to ~480 °F with excellent chemical and wear resistance. The stock is most of the price.' },
+  { match: ['ultem', 'pei'], text: 'Stiff, strong to ~340 °F, flame-rated insulator. Keep inside corners radiused.' },
+  { match: ['ptfe', 'teflon'], text: 'Nothing sticks to it, almost nothing attacks it. Soft and creeps — tolerances are wide.' },
+  { match: ['polycarbonate'], text: 'Near-unbreakable and clear — guards, windows, covers. Polishes well.' },
+  { match: ['acrylic'], text: 'Optically clear, flame-polishes glass-clear. Brittle — radius corners, don\'t over-tighten fasteners.' },
+  { match: ['pvc'], text: 'Chemical-resistant, solvent-weldable, cheap — tanks, manifolds, fixtures.' },
+  { match: ['polypropylene'], text: 'Chemical resistance near PTFE at a fraction of the price. Flexible; hard to hold tight.' },
+  { match: ['g10', 'g 10', 'fr 4'], text: 'Very stiff, stable insulator. Abrasive on tooling, so it prices above plastics.' },
+  { match: ['phenolic'], text: 'Stiff, stable, cheap insulator with good wear life. Abrasive; edges need care on through-holes.' },
+  { match: ['aluminum'], text: 'Lightweight, corrosion-resistant, easy to machine — for parts that mate with metal.' },
   { match: ['stainless'], text: 'Strong and corrosion-resistant — for food, marine, and medical-adjacent parts. Harder to machine (higher cost).' },
   { match: ['steel', 'mild'], text: 'Strong and economical — for brackets and structural parts. Will rust without a finish.' },
   { match: ['copper'], text: 'Excellent electrical and thermal conductivity — for bus bars and heat sinks.' },
@@ -17,8 +30,10 @@ const MATERIAL_GUIDANCE = [
 
 function getGuidance(mat) {
   if (!mat) return null;
-  const hay = `${mat.name || ''} ${mat.category || ''} ${mat.subProcess || ''}`.toLowerCase();
-  const hit = MATERIAL_GUIDANCE.find((g) => g.match.some((k) => hay.includes(k)));
+  // Match whole words in the slug + name only ("pla" must not hit "plastic" or "plate").
+  const hay = `${mat.slug || ''} ${mat.name || ''}`.toLowerCase().replace(/[-/_()]/g, ' ');
+  const words = new Set(hay.split(/\s+/));
+  const hit = MATERIAL_GUIDANCE.find((g) => g.match.some((k) => words.has(k) || (k.includes(' ') && hay.includes(k))));
   return hit ? hit.text : null;
 }
 
@@ -35,14 +50,31 @@ function priceTier(mat) {
 export default function PartConfigurator({ part, materials, finishes, onChange, onRemove, selectedProcess }) {
   const currentMat = materials.find((m) => m.slug === part.materialSlug) || materials[0];
 
+  const isPrinting = selectedProcess === '3d-printing';
+  const isCnc = selectedProcess === 'cnc';
+  const isRouting = selectedProcess === 'routing';
+
+  // Closest stock thickness to the model's thinnest dimension (routing).
+  function closestThickness(mat) {
+    const list = mat?.thicknesses || [];
+    if (list.length === 0) return 0;
+    const bb = part.geometry?.boundingBox || {};
+    const t = Math.min(bb.width || Infinity, bb.height || Infinity, bb.depth || Infinity);
+    if (!Number.isFinite(t)) return list[Math.min(2, list.length - 1)].mm;
+    return list.reduce((best, x) => (Math.abs(x.mm - t) < Math.abs(best.mm - t) ? x : best), list[0]).mm;
+  }
+
   function handleMaterialChange(slug) {
     const mat = materials.find((m) => m.slug === slug);
     if (!mat) return;
-    onChange({
+    const updates = {
       materialSlug: slug,
-      subProcess: mat.subProcess || 'fdm',
+      grade: mat.grades?.[0]?.name || '',
+      subProcess: isCnc ? (part.subProcess || 'milling') : (mat.subProcess || (isPrinting ? 'fdm' : '')),
       layerHeight: mat.defaultLayerHeight || 0.2,
-    });
+    };
+    if (mat.thicknesses?.length) updates.thicknessMm = closestThickness(mat);
+    onChange(updates);
   }
 
   const guidance = getGuidance(currentMat);
@@ -67,6 +99,37 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
             ))}
           </select>
         </label>
+
+        {/* Grade (plastics come natural/black, nylon extruded/cast, etc.) */}
+        {currentMat?.grades?.length > 1 && (
+          <label>
+            <span className="field-label">Grade / color</span>
+            <select className="input" value={part.grade || currentMat.grades[0].name} onChange={(e) => onChange({ grade: e.target.value })}>
+              {currentMat.grades.map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
+            </select>
+          </label>
+        )}
+
+        {/* Milling vs turning (CNC only) */}
+        {isCnc && (
+          <label>
+            <span className="field-label">Operation</span>
+            <select className="input" value={part.subProcess || 'milling'} onChange={(e) => onChange({ subProcess: e.target.value })}>
+              <option value="milling">Milling — blocks, plates, brackets, housings</option>
+              <option value="turning">Turning — bushings, rollers, spacers, shafts</option>
+            </select>
+          </label>
+        )}
+
+        {/* Stock thickness (routing) */}
+        {currentMat?.thicknesses?.length > 0 && (
+          <label>
+            <span className="field-label">Stock thickness</span>
+            <select className="input" value={part.thicknessMm || closestThickness(currentMat)} onChange={(e) => onChange({ thicknessMm: parseFloat(e.target.value) })}>
+              {currentMat.thicknesses.map((t) => <option key={t.mm} value={t.mm}>{t.label} ({t.mm} mm)</option>)}
+            </select>
+          </label>
+        )}
 
         {/* Layer Height (resolution) */}
         {currentMat?.layerHeights && (

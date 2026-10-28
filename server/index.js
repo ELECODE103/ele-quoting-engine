@@ -86,23 +86,23 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
-app.use(cors({
+// Same-origin requests (module scripts send an Origin header) are always fine,
+// whatever FRONTEND_URL says — otherwise a domain change takes the whole site
+// down until the env var catches up. Unknown cross-origin callers simply get
+// no CORS headers (the browser blocks them) instead of a 403 for everyone.
+app.use((req, res, next) => cors({
   origin: process.env.NODE_ENV === "production"
     ? (origin, callback) => {
-        // Allow requests with no origin (mobile apps, curl, etc.)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error("CORS: Origin not allowed"));
-        }
+        if (!origin) return callback(null, true);            // curl, server-to-server
+        try { if (new URL(origin).host === req.get("host")) return callback(null, true); } catch { /* fall through */ }
+        callback(null, allowedOrigins.includes(origin));
       }
     : true,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   maxAge: 86400, // Cache preflight for 24 hours
-}));
+})(req, res, next));
 
 // ─── Stripe Webhook (raw body — must be before express.json) ────
 const stripeWebhook = require("./routes/stripeWebhook");
