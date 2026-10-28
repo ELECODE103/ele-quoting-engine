@@ -1,0 +1,1863 @@
+{
+ "units": "mm",
+ "quantities": [
+  1,
+  10,
+  25,
+  100,
+  250
+ ],
+ "shopRatePerHour": 95.0,
+ "margin": 0.3,
+ "parts": [
+  {
+   "id": "plate_hole_pattern",
+   "bbox": [
+    150.0,
+    100.0,
+    6.35
+   ],
+   "volume": 93951.87865089241,
+   "truth": {
+    "holes": 6,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 624.2792076329065,
+    "removed_mm3": 1298.1213491075844
+   },
+   "family": "flat-sheet",
+   "hand_sized": true,
+   "description": "Flat plate 150 \u00d7 100 \u00d7 1/4\" with six \u00d86.6 mm (M6 clearance) through holes. The bread-and-butter router part.",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-hdpe",
+     "subProcess": "sheet",
+     "thicknessMm": 6.35,
+     "finishSlug": null,
+     "label": "routing:rt-hdpe@6.35"
+    },
+    {
+     "process": "routing",
+     "materialSlug": "rt-delrin",
+     "subProcess": "sheet",
+     "thicknessMm": 6.35,
+     "finishSlug": null,
+     "label": "routing:rt-delrin@6.35"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-hdpe",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-hdpe"
+    }
+   ],
+   "expected": {
+    "routing": {
+     "1": {
+      "low": 26.89,
+      "mid": 38.41,
+      "high": 49.93
+     },
+     "10": {
+      "low": 5.51,
+      "mid": 7.87,
+      "high": 10.24
+     },
+     "25": {
+      "low": 4.09,
+      "mid": 5.84,
+      "high": 7.59
+     },
+     "100": {
+      "low": 3.37,
+      "mid": 4.82,
+      "high": 6.27
+     },
+     "250": {
+      "low": 3.23,
+      "mid": 4.62,
+      "high": 6.0
+     }
+    },
+    "cnc": {
+     "1": {
+      "low": 60.65,
+      "mid": 86.65,
+      "high": 112.64
+     },
+     "10": {
+      "low": 17.9,
+      "mid": 25.58,
+      "high": 33.25
+     },
+     "25": {
+      "low": 15.05,
+      "mid": 21.51,
+      "high": 27.96
+     },
+     "100": {
+      "low": 13.63,
+      "mid": 19.47,
+      "high": 25.31
+     },
+     "250": {
+      "low": 13.34,
+      "mid": 19.06,
+      "high": 24.78
+     }
+    }
+   },
+   "reasoning": "Router: 500 mm profile + 6 holes at ~2,700 mm/min (1/4\" O-flute, 0.006\"/tooth \u00d7 18k RPM) \u2248 1 min cycle, 15 min nest/setup. Mill: vise, 3/8\" 2-flute at 5,140 RPM, profile + spot/drill 6 holes \u2248 6 min, 30 min setup.",
+   "file": "plate_hole_pattern.stl",
+   "mesh_volume_mm3": 93951.87865089245,
+   "mesh_area_mm2": 33555.31585063982,
+   "triangles": 1028,
+   "closed": true
+  },
+  {
+   "id": "pocketed_tray",
+   "bbox": [
+    200.0,
+    150.0,
+    19.05
+   ],
+   "volume": 312821.67527638795,
+   "truth": {
+    "holes": 0,
+    "slots": 0,
+    "pockets": 1,
+    "countersinks": 0,
+    "cut_perimeter_mm": 1269.6385818865513,
+    "removed_mm3": 258678.32472361205
+   },
+   "family": "pocket-plate",
+   "hand_sized": false,
+   "description": "Pocketed tray 200 \u00d7 150 \u00d7 3/4\", one 170 \u00d7 120 pocket 1/2\" deep with R6 corners (the \"disc stack tray\" shape the shop runs in HDPE).",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-hdpe",
+     "subProcess": "sheet",
+     "thicknessMm": 19.1,
+     "finishSlug": null,
+     "label": "routing:rt-hdpe@19.1"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-hdpe",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-hdpe"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    }
+   ],
+   "expected": {
+    "routing": {
+     "1": {
+      "low": 51.28,
+      "mid": 73.25,
+      "high": 95.23
+     },
+     "10": {
+      "low": 22.78,
+      "mid": 32.54,
+      "high": 42.3
+     },
+     "25": {
+      "low": 20.88,
+      "mid": 29.82,
+      "high": 38.77
+     },
+     "100": {
+      "low": 19.93,
+      "mid": 28.47,
+      "high": 37.01
+     },
+     "250": {
+      "low": 19.74,
+      "mid": 28.19,
+      "high": 36.65
+     }
+    },
+    "cnc": {
+     "1": {
+      "low": 75.51,
+      "mid": 107.88,
+      "high": 140.24
+     },
+     "10": {
+      "low": 32.76,
+      "mid": 46.8,
+      "high": 60.85
+     },
+     "25": {
+      "low": 29.91,
+      "mid": 42.73,
+      "high": 55.55
+     },
+     "100": {
+      "low": 28.49,
+      "mid": 40.7,
+      "high": 52.91
+     },
+     "250": {
+      "low": 28.2,
+      "mid": 40.29,
+      "high": 52.38
+     }
+    }
+   },
+   "reasoning": "Pocket removes 259 cm\u00b3. Router 3/8\" O-flute, 6 mm DOC, 50 % stepover at 3,600 mm/min \u2248 7 min roughing + 1.5 min profile = ~9 min. Tormach adaptive in HDPE \u2248 14 cm\u00b3/min \u2192 ~13 min + profile \u2248 14 min.",
+   "file": "pocketed_tray.stl",
+   "mesh_volume_mm3": 312821.67527638766,
+   "mesh_area_mm2": 80569.4099899592,
+   "triangles": 160,
+   "closed": true
+  },
+  {
+   "id": "conveyor_guide_rail",
+   "bbox": [
+    600.0,
+    25.0,
+    12.7
+   ],
+   "volume": 187072.32234963443,
+   "truth": {
+    "holes": 6,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 6,
+    "cut_perimeter_mm": 1374.2073202256192,
+    "removed_mm3": 3427.6776503655765
+   },
+   "family": "flat-sheet",
+   "hand_sized": false,
+   "description": "UHMW conveyor guide rail 600 \u00d7 25 \u00d7 1/2\" with six countersunk \u00d86.6 mm holes (flat-head M6). Longer than the Tormach X travel (457 mm).",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-uhmw",
+     "subProcess": "sheet",
+     "thicknessMm": 12.7,
+     "finishSlug": null,
+     "label": "routing:rt-uhmw@12.7"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-uhmw",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-uhmw"
+    }
+   ],
+   "expected": {
+    "routing": {
+     "1": {
+      "low": 30.38,
+      "mid": 43.4,
+      "high": 56.42
+     },
+     "10": {
+      "low": 9.01,
+      "mid": 12.87,
+      "high": 16.73
+     },
+     "25": {
+      "low": 7.58,
+      "mid": 10.83,
+      "high": 14.08
+     },
+     "100": {
+      "low": 6.87,
+      "mid": 9.81,
+      "high": 12.76
+     },
+     "250": {
+      "low": 6.73,
+      "mid": 9.61,
+      "high": 12.49
+     }
+    },
+    "cnc": {
+     "1": {
+      "low": 92.01,
+      "mid": 131.44,
+      "high": 170.87
+     },
+     "10": {
+      "low": 27.88,
+      "mid": 39.83,
+      "high": 51.78
+     },
+     "25": {
+      "low": 23.61,
+      "mid": 33.72,
+      "high": 43.84
+     },
+     "100": {
+      "low": 21.47,
+      "mid": 30.67,
+      "high": 39.87
+     },
+     "250": {
+      "low": 21.04,
+      "mid": 30.06,
+      "high": 39.08
+     }
+    }
+   },
+   "reasoning": "Router: 1,250 mm profile, 2 passes at 6 mm, 2,700 mm/min \u2248 1 min + 6 csk holes (drill + csk tool change) \u2248 2.5 min. Mill: 600 mm exceeds X travel \u2014 would need two indexed setups (45 min setup, ~10 min cycle). Should be an RFQ or a router job.",
+   "file": "conveyor_guide_rail.stl",
+   "mesh_volume_mm3": 187072.32234963457,
+   "mesh_area_mm2": 46892.35151724081,
+   "triangles": 1228,
+   "closed": true
+  },
+  {
+   "id": "wear_strip",
+   "bbox": [
+    300.0,
+    40.0,
+    9.525
+   ],
+   "volume": 108039.16248608168,
+   "truth": {
+    "holes": 0,
+    "slots": 4,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 911.8741872151863,
+    "removed_mm3": 6260.837513918322
+   },
+   "family": "flat-sheet",
+   "hand_sized": false,
+   "description": "UHMW wear strip 300 \u00d7 40 \u00d7 3/8\" with four 25 \u00d7 7 mm adjustment slots.",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-uhmw",
+     "subProcess": "sheet",
+     "thicknessMm": 9.5,
+     "finishSlug": null,
+     "label": "routing:rt-uhmw@9.5"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-uhmw",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-uhmw"
+    }
+   ],
+   "expected": {
+    "routing": {
+     "1": {
+      "low": 27.57,
+      "mid": 39.39,
+      "high": 51.2
+     },
+     "10": {
+      "low": 6.2,
+      "mid": 8.85,
+      "high": 11.51
+     },
+     "25": {
+      "low": 4.77,
+      "mid": 6.82,
+      "high": 8.86
+     },
+     "100": {
+      "low": 4.06,
+      "mid": 5.8,
+      "high": 7.54
+     },
+     "250": {
+      "low": 3.92,
+      "mid": 5.59,
+      "high": 7.27
+     }
+    },
+    "cnc": {
+     "1": {
+      "low": 61.22,
+      "mid": 87.46,
+      "high": 113.7
+     },
+     "10": {
+      "low": 18.47,
+      "mid": 26.39,
+      "high": 34.3
+     },
+     "25": {
+      "low": 15.62,
+      "mid": 22.32,
+      "high": 29.01
+     },
+     "100": {
+      "low": 14.2,
+      "mid": 20.28,
+      "high": 26.36
+     },
+     "250": {
+      "low": 13.91,
+      "mid": 19.87,
+      "high": 25.83
+     }
+    }
+   },
+   "reasoning": "Router: 680 mm profile + 4 slots (\u2248 240 mm) in 2 passes at 2,700 mm/min \u2248 0.7 min + handling. Mill: single vise setup, 1/4\" endmill, ~7 min.",
+   "file": "wear_strip.stl",
+   "mesh_volume_mm3": 108039.16248608194,
+   "mesh_area_mm2": 31370.990081745796,
+   "triangles": 724,
+   "closed": true
+  },
+  {
+   "id": "star_wheel",
+   "bbox": [
+    150,
+    150,
+    12.7
+   ],
+   "volume": 202634.54420239443,
+   "truth": {
+    "holes": 1,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 623.6995357876858,
+    "notches": 8
+   },
+   "family": "flat-sheet",
+   "hand_sized": true,
+   "description": "Star wheel / notched disc \u00d8150 \u00d7 1/2\" Delrin, 8 semicircular notches R10, \u00d825 bore. A packaging-line timing part.",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-delrin",
+     "subProcess": "sheet",
+     "thicknessMm": 12.7,
+     "finishSlug": null,
+     "label": "routing:rt-delrin@12.7"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    }
+   ],
+   "expected": {
+    "routing": {
+     "1": {
+      "low": 34.36,
+      "mid": 49.09,
+      "high": 63.82
+     },
+     "10": {
+      "low": 12.99,
+      "mid": 18.56,
+      "high": 24.12
+     },
+     "25": {
+      "low": 11.56,
+      "mid": 16.52,
+      "high": 21.48
+     },
+     "100": {
+      "low": 10.85,
+      "mid": 15.5,
+      "high": 20.15
+     },
+     "250": {
+      "low": 10.71,
+      "mid": 15.3,
+      "high": 19.89
+     }
+    },
+    "cnc": {
+     "1": {
+      "low": 69.55,
+      "mid": 99.35,
+      "high": 129.16
+     },
+     "10": {
+      "low": 26.8,
+      "mid": 38.28,
+      "high": 49.76
+     },
+     "25": {
+      "low": 23.95,
+      "mid": 34.21,
+      "high": 44.47
+     },
+     "100": {
+      "low": 22.52,
+      "mid": 32.17,
+      "high": 41.82
+     },
+     "250": {
+      "low": 22.24,
+      "mid": 31.77,
+      "high": 41.29
+     }
+    }
+   },
+   "reasoning": "Router: ~600 mm profile incl. notches, 3 passes in acetal (medium) at ~2,700 mm/min \u2248 1 min + bore. Mill: fixture plate, 3/8\" endmill, profile + bore \u2248 9 min.",
+   "file": "star_wheel.stl",
+   "mesh_volume_mm3": 202634.54420239443,
+   "mesh_area_mm2": 39831.935947400365,
+   "triangles": 5952,
+   "closed": true
+  },
+  {
+   "id": "bracket_block",
+   "bbox": [
+    100.0,
+    60.0,
+    25.0
+   ],
+   "volume": 136268.73549177407,
+   "truth": {
+    "holes": 4,
+    "slots": 0,
+    "pockets": 1,
+    "countersinks": 0,
+    "cut_perimeter_mm": 522.0964547163783,
+    "removed_mm3": 13731.264508225935
+   },
+   "family": "machined-block",
+   "hand_sized": true,
+   "description": "Machined bracket 100 \u00d7 60 \u00d7 25 mm: 50 \u00d7 24 \u00d7 10 pocket (R5) and four \u00d85 (M6 tap-drill) through holes, tapped by hand.",
+   "configs": [
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-peek",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-peek"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-aluminum-6061",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-aluminum-6061"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": "cnc-deburr",
+     "label": "cnc:cnc-delrin+deburr"
+    }
+   ],
+   "expected": {
+    "cnc": {
+     "1": {
+      "low": 97.47,
+      "mid": 139.24,
+      "high": 181.01
+     },
+     "10": {
+      "low": 40.47,
+      "mid": 57.81,
+      "high": 75.16
+     },
+     "25": {
+      "low": 36.67,
+      "mid": 52.38,
+      "high": 68.1
+     },
+     "100": {
+      "low": 34.77,
+      "mid": 49.67,
+      "high": 64.57
+     },
+     "250": {
+      "low": 34.39,
+      "mid": 49.13,
+      "high": 63.87
+     }
+    },
+    "cnc-peek": {
+     "1": {
+      "low": 136.06,
+      "mid": 194.37,
+      "high": 252.68
+     },
+     "10": {
+      "low": 79.06,
+      "mid": 112.94,
+      "high": 146.82
+     },
+     "25": {
+      "low": 75.26,
+      "mid": 107.51,
+      "high": 139.76
+     },
+     "100": {
+      "low": 73.36,
+      "mid": 104.8,
+      "high": 136.24
+     },
+     "250": {
+      "low": 72.98,
+      "mid": 104.25,
+      "high": 135.53
+     }
+    },
+    "cnc-aluminum": {
+     "1": {
+      "low": 112.45,
+      "mid": 160.64,
+      "high": 208.83
+     },
+     "10": {
+      "low": 55.45,
+      "mid": 79.21,
+      "high": 102.97
+     },
+     "25": {
+      "low": 51.65,
+      "mid": 73.78,
+      "high": 95.91
+     },
+     "100": {
+      "low": 49.75,
+      "mid": 71.07,
+      "high": 92.39
+     },
+     "250": {
+      "low": 49.37,
+      "mid": 70.52,
+      "high": 91.68
+     }
+    }
+   },
+   "reasoning": "One vise setup. Face, pocket 12 cm\u00b3 adaptive (3/8\" 2-flute Delrin \u2248 14 cm\u00b3/min \u2192 ~2 min), finish walls/floor, spot + drill 4 holes, chamfer, profile: ~14 min Delrin, ~22 min 6061 (1.5 hp, chip-load limited). Tap 4 \u00d7 M6 by hand \u2248 4 min. PEEK stock \u2248 $45 for this blank.",
+   "file": "bracket_block.stl",
+   "mesh_volume_mm3": 136268.73549177422,
+   "mesh_area_mm2": 22805.856836714658,
+   "triangles": 752,
+   "closed": true
+  },
+  {
+   "id": "saddle_clamp",
+   "bbox": [
+    80,
+    50,
+    40
+   ],
+   "volume": 135354.20563258807,
+   "truth": {
+    "holes": 2,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "channel": "R16 half-round",
+    "cut_perimeter_mm": 363.67255756846316
+   },
+   "family": "machined-block",
+   "hand_sized": true,
+   "description": "Saddle clamp / U-block 80 \u00d7 50 \u00d7 40 mm with an R16 half-round channel along its length and two \u00d88.5 through bolt holes.",
+   "configs": [
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-uhmw",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-uhmw"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-nylon",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-nylon"
+    }
+   ],
+   "expected": {
+    "cnc": {
+     "1": {
+      "low": 78.27,
+      "mid": 111.81,
+      "high": 145.35
+     },
+     "10": {
+      "low": 28.39,
+      "mid": 40.56,
+      "high": 52.73
+     },
+     "25": {
+      "low": 25.07,
+      "mid": 35.81,
+      "high": 46.55
+     },
+     "100": {
+      "low": 23.4,
+      "mid": 33.44,
+      "high": 43.47
+     },
+     "250": {
+      "low": 23.07,
+      "mid": 32.96,
+      "high": 42.85
+     }
+    }
+   },
+   "reasoning": "One vise setup: channel with a ball/bull-nose or stepped adaptive (20 cm\u00b3), two drilled holes, profile. ~12 min cycle.",
+   "file": "saddle_clamp.stl",
+   "mesh_volume_mm3": 135405.13362084332,
+   "mesh_area_mm2": 20417.34811379829,
+   "triangles": 480,
+   "closed": true
+  },
+  {
+   "id": "bushing",
+   "bbox": [
+    40,
+    40,
+    30
+   ],
+   "volume": 22831.01435450066,
+   "truth": {
+    "holes": 1,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 0
+   },
+   "family": "turned",
+   "hand_sized": true,
+   "description": "Flanged-less bushing \u00d840 \u00d7 30 mm, \u00d825 bore, 1 mm \u00d7 45\u00b0 chamfers both ends. Manual lathe work.",
+   "configs": [
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "turning",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-ptfe",
+     "subProcess": "turning",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-ptfe"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-brass-360",
+     "subProcess": "turning",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-brass-360"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin(milling-for-comparison)"
+    }
+   ],
+   "expected": {
+    "cnc": {
+     "1": {
+      "low": 38.94,
+      "mid": 55.62,
+      "high": 72.31
+     },
+     "10": {
+      "low": 17.56,
+      "mid": 25.09,
+      "high": 32.61
+     },
+     "25": {
+      "low": 16.14,
+      "mid": 23.05,
+      "high": 29.97
+     },
+     "100": {
+      "low": 15.42,
+      "mid": 22.03,
+      "high": 28.64
+     },
+     "250": {
+      "low": 15.28,
+      "mid": 21.83,
+      "high": 28.38
+     }
+    }
+   },
+   "reasoning": "Manual lathe: chuck \u00d840 rod, face, drill \u00d824, bore to \u00d825, chamfer, part off, flip to chamfer: ~8 min per piece; 15 min setup (tooling, stops).",
+   "file": "bushing.stl",
+   "mesh_volume_mm3": 22831.01435450066,
+   "mesh_area_mm2": 7503.522264210518,
+   "triangles": 704,
+   "closed": true
+  },
+  {
+   "id": "roller",
+   "bbox": [
+    50,
+    50,
+    200
+   ],
+   "volume": 329261.2526604174,
+   "truth": {
+    "holes": 1,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 0
+   },
+   "family": "turned",
+   "hand_sized": false,
+   "description": "Conveyor roller \u00d850 \u00d7 200 mm, \u00d820 through bore, chamfered ends. Long turned part \u2014 the bore needs a long drill / boring bar.",
+   "configs": [
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-uhmw",
+     "subProcess": "turning",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-uhmw"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-nylon",
+     "subProcess": "turning",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-nylon"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "turning",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    }
+   ],
+   "expected": {
+    "cnc": {
+     "1": {
+      "low": 66.42,
+      "mid": 94.89,
+      "high": 123.36
+     },
+     "10": {
+      "low": 37.92,
+      "mid": 54.17,
+      "high": 70.43
+     },
+     "25": {
+      "low": 36.02,
+      "mid": 51.46,
+      "high": 66.9
+     },
+     "100": {
+      "low": 35.07,
+      "mid": 50.1,
+      "high": 65.13
+     },
+     "250": {
+      "low": 34.88,
+      "mid": 49.83,
+      "high": 64.78
+     }
+    }
+   },
+   "reasoning": "Manual lathe: OD turn 200 mm (two passes), drill \u00d820 \u00d7 200 deep from both ends (peck), chamfer, face: ~18 min.",
+   "file": "roller.stl",
+   "mesh_volume_mm3": 329261.2526604174,
+   "mesh_area_mm2": 47068.423051492224,
+   "triangles": 704,
+   "closed": true
+  },
+  {
+   "id": "spacer",
+   "bbox": [
+    12,
+    12,
+    6
+   ],
+   "volume": 478.8261939443933,
+   "truth": {
+    "holes": 1,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 0
+   },
+   "family": "turned",
+   "hand_sized": true,
+   "description": "Spacer \u00d812 \u00d7 6 mm with \u00d86.5 bore. Tiny turned part \u2014 minimum-price territory, usually made as a batch from one rod.",
+   "configs": [
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "turning",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-aluminum-6061",
+     "subProcess": "turning",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-aluminum-6061"
+    }
+   ],
+   "expected": {
+    "cnc": {
+     "1": {
+      "low": 18.7,
+      "mid": 26.72,
+      "high": 34.74
+     },
+     "10": {
+      "low": 4.45,
+      "mid": 6.36,
+      "high": 8.27
+     },
+     "25": {
+      "low": 3.5,
+      "mid": 5.01,
+      "high": 6.51
+     },
+     "100": {
+      "low": 3.03,
+      "mid": 4.33,
+      "high": 5.63
+     },
+     "250": {
+      "low": 2.93,
+      "mid": 4.19,
+      "high": 5.45
+     }
+    }
+   },
+   "reasoning": "Rod in collet: face, drill, part off \u2248 1.5 min each on a manual lathe with a stop; 10 min setup.",
+   "file": "spacer.stl",
+   "mesh_volume_mm3": 478.8261939443933,
+   "mesh_area_mm2": 507.9673370654639,
+   "triangles": 320,
+   "closed": true
+  },
+  {
+   "id": "thin_wall_housing",
+   "bbox": [
+    120.0,
+    80.0,
+    40.0
+   ],
+   "volume": 65395.10446986393,
+   "truth": {
+    "holes": 0,
+    "slots": 0,
+    "pockets": 1,
+    "countersinks": 0,
+    "cut_perimeter_mm": 773.0923879243674,
+    "removed_mm3": 318604.89553013607
+   },
+   "family": "enclosure",
+   "hand_sized": true,
+   "description": "Open-top enclosure 120 \u00d7 80 \u00d7 40 mm, 2.5 mm walls, 3 mm floor. Natural 3D-print part; machining it from solid wastes 90 % of the block.",
+   "configs": [
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    },
+    {
+     "process": "3d-printing",
+     "materialSlug": "fdm-abs",
+     "subProcess": "fdm",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "3d-printing:fdm-abs"
+    },
+    {
+     "process": "3d-printing",
+     "materialSlug": "sla-standard",
+     "subProcess": "sla",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "3d-printing:sla-standard"
+    },
+    {
+     "process": "3d-printing",
+     "materialSlug": "fdm-pla",
+     "subProcess": "fdm",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "3d-printing:fdm-pla"
+    }
+   ],
+   "expected": {
+    "cnc": {
+     "1": {
+      "low": 118.39,
+      "mid": 169.13,
+      "high": 219.87
+     },
+     "10": {
+      "low": 61.39,
+      "mid": 87.7,
+      "high": 114.01
+     },
+     "25": {
+      "low": 57.59,
+      "mid": 82.27,
+      "high": 106.95
+     },
+     "100": {
+      "low": 55.69,
+      "mid": 79.56,
+      "high": 103.42
+     },
+     "250": {
+      "low": 55.31,
+      "mid": 79.01,
+      "high": 102.72
+     }
+    },
+    "3d-printing": {
+     "1": {
+      "low": 37.96,
+      "mid": 54.23,
+      "high": 70.5
+     },
+     "10": {
+      "low": 30.84,
+      "mid": 44.05,
+      "high": 57.27
+     },
+     "25": {
+      "low": 30.36,
+      "mid": 43.37,
+      "high": 56.39
+     },
+     "100": {
+      "low": 30.12,
+      "mid": 43.03,
+      "high": 55.95
+     },
+     "250": {
+      "low": 30.08,
+      "mid": 42.97,
+      "high": 55.86
+     }
+    }
+   },
+   "reasoning": "Mill: 345 cm\u00b3 pocket, Delrin \u2248 14 cm\u00b3/min \u2192 25 min + wall finish \u2248 28 min; thin walls need light passes. FDM: ~60 g ABS, ~6 h print at $2/h machine cost (tooling field) + 10 min handling.",
+   "file": "thin_wall_housing.stl",
+   "mesh_volume_mm3": 65395.10446986331,
+   "mesh_area_mm2": 49004.418353201596,
+   "triangles": 160,
+   "closed": true
+  },
+  {
+   "id": "small_clip",
+   "bbox": [
+    20.0,
+    10.0,
+    3.0
+   ],
+   "volume": 579.0356573466959,
+   "truth": {
+    "holes": 1,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 69.39788583984371,
+    "removed_mm3": 20.96434265330413
+   },
+   "family": "flat-sheet",
+   "hand_sized": true,
+   "description": "Small retainer clip 20 \u00d7 10 \u00d7 3 mm with a \u00d83 hole. Tiny part: minimum price and small-part retention (tabs) matter more than cycle time.",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-delrin",
+     "subProcess": "sheet",
+     "thicknessMm": 3.2,
+     "finishSlug": null,
+     "label": "routing:rt-delrin@3.2"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    },
+    {
+     "process": "3d-printing",
+     "materialSlug": "fdm-pla",
+     "subProcess": "fdm",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "3d-printing:fdm-pla"
+    }
+   ],
+   "expected": {
+    "routing": {
+     "1": {
+      "low": 24.89,
+      "mid": 35.55,
+      "high": 46.22
+     },
+     "10": {
+      "low": 3.51,
+      "mid": 5.02,
+      "high": 6.52
+     },
+     "25": {
+      "low": 2.09,
+      "mid": 2.98,
+      "high": 3.87
+     },
+     "100": {
+      "low": 1.37,
+      "mid": 1.96,
+      "high": 2.55
+     },
+     "250": {
+      "low": 1.23,
+      "mid": 1.76,
+      "high": 2.29
+     }
+    },
+    "cnc": {
+     "1": {
+      "low": 44.36,
+      "mid": 63.37,
+      "high": 82.39
+     },
+     "10": {
+      "low": 8.74,
+      "mid": 12.48,
+      "high": 16.22
+     },
+     "25": {
+      "low": 6.36,
+      "mid": 9.09,
+      "high": 11.81
+     },
+     "100": {
+      "low": 5.17,
+      "mid": 7.39,
+      "high": 9.61
+     },
+     "250": {
+      "low": 4.94,
+      "mid": 7.05,
+      "high": 9.17
+     }
+    },
+    "3d-printing": {
+     "1": {
+      "low": 11.43,
+      "mid": 16.33,
+      "high": 21.23
+     },
+     "10": {
+      "low": 4.31,
+      "mid": 6.15,
+      "high": 8.0
+     },
+     "25": {
+      "low": 3.83,
+      "mid": 5.48,
+      "high": 7.12
+     },
+     "100": {
+      "low": 3.6,
+      "mid": 5.14,
+      "high": 6.68
+     },
+     "250": {
+      "low": 3.55,
+      "mid": 5.07,
+      "high": 6.59
+     }
+    }
+   },
+   "reasoning": "Router: 60 mm profile + hole \u2248 20 s plus de-tab. Mill: too small to hold well; fixture on tape/sacrificial plate, ~2 min.",
+   "file": "small_clip.stl",
+   "mesh_volume_mm3": 579.0356573466958,
+   "mesh_area_mm2": 594.2174290839951,
+   "triangles": 124,
+   "closed": true
+  },
+  {
+   "id": "gear_disc",
+   "bbox": [
+    80,
+    80,
+    10
+   ],
+   "volume": 43388.097630193166,
+   "truth": {
+    "holes": 1,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 424.00624964363,
+    "teeth": 24
+   },
+   "family": "flat-sheet",
+   "hand_sized": true,
+   "description": "Gear-like disc \u00d880 \u00d7 10 mm, 24 trapezoidal teeth, \u00d812 bore. Lots of short edges \u2014 a profile-length stress test.",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-delrin",
+     "subProcess": "sheet",
+     "thicknessMm": 9.5,
+     "finishSlug": null,
+     "label": "routing:rt-delrin@9.5"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    },
+    {
+     "process": "3d-printing",
+     "materialSlug": "fdm-nylon",
+     "subProcess": "fdm",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "3d-printing:fdm-nylon"
+    }
+   ],
+   "expected": {
+    "routing": {
+     "1": {
+      "low": 29.99,
+      "mid": 42.84,
+      "high": 55.7
+     },
+     "10": {
+      "low": 8.62,
+      "mid": 12.31,
+      "high": 16.0
+     },
+     "25": {
+      "low": 7.19,
+      "mid": 10.27,
+      "high": 13.35
+     },
+     "100": {
+      "low": 6.48,
+      "mid": 9.25,
+      "high": 12.03
+     },
+     "250": {
+      "low": 6.34,
+      "mid": 9.05,
+      "high": 11.77
+     }
+    },
+    "cnc": {
+     "1": {
+      "low": 66.31,
+      "mid": 94.73,
+      "high": 123.14
+     },
+     "10": {
+      "low": 23.56,
+      "mid": 33.65,
+      "high": 43.75
+     },
+     "25": {
+      "low": 20.71,
+      "mid": 29.58,
+      "high": 38.46
+     },
+     "100": {
+      "low": 19.28,
+      "mid": 27.55,
+      "high": 35.81
+     },
+     "250": {
+      "low": 19.0,
+      "mid": 27.14,
+      "high": 35.28
+     }
+    },
+    "3d-printing": {
+     "1": {
+      "low": 20.3,
+      "mid": 29.0,
+      "high": 37.7
+     },
+     "10": {
+      "low": 13.18,
+      "mid": 18.82,
+      "high": 24.47
+     },
+     "25": {
+      "low": 12.7,
+      "mid": 18.14,
+      "high": 23.59
+     },
+     "100": {
+      "low": 12.46,
+      "mid": 17.8,
+      "high": 23.15
+     },
+     "250": {
+      "low": 12.42,
+      "mid": 17.74,
+      "high": 23.06
+     }
+    }
+   },
+   "reasoning": "Router: ~430 mm of toothed profile needs a 1/8\" tool for the root radius \u2192 slower feed (~1,500 mm/min), 2 passes \u2248 1 min + bore. Mill: 1/8\" endmill on a fixture plate, ~10 min.",
+   "file": "gear_disc.stl",
+   "mesh_volume_mm3": 43388.097630193166,
+   "mesh_area_mm2": 12917.682022474934,
+   "triangles": 4000,
+   "closed": true
+  },
+  {
+   "id": "oversize_panel",
+   "bbox": [
+    2600.0,
+    300.0,
+    12.7
+   ],
+   "volume": 9902035.76465664,
+   "truth": {
+    "holes": 4,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 5925.461939621837,
+    "removed_mm3": 3964.235343360016
+   },
+   "family": "flat-sheet",
+   "hand_sized": false,
+   "expect_gate": true,
+   "description": "Oversize HDPE panel 2600 \u00d7 300 \u00d7 1/2\" with four \u00d810 holes. Longer than the 96\" (2438 mm) router bed \u2014 must trip the bed-size FAIL and RFQ gate.",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-hdpe",
+     "subProcess": "sheet",
+     "thicknessMm": 12.7,
+     "finishSlug": null,
+     "label": "routing:rt-hdpe@12.7"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-hdpe",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-hdpe"
+    }
+   ],
+   "expected": {
+    "routing": {
+     "1": {
+      "low": 139.34,
+      "mid": 199.06,
+      "high": 258.78
+     },
+     "10": {
+      "low": 96.59,
+      "mid": 137.99,
+      "high": 179.38
+     },
+     "25": {
+      "low": 93.74,
+      "mid": 133.92,
+      "high": 174.09
+     },
+     "100": {
+      "low": 92.32,
+      "mid": 131.88,
+      "high": 171.44
+     },
+     "250": {
+      "low": 92.03,
+      "mid": 131.47,
+      "high": 170.92
+     }
+    }
+   },
+   "reasoning": "Not makeable in one piece on either machine; any instant price is a budgetary number and the quote must go to RFQ.",
+   "file": "oversize_panel.stl",
+   "mesh_volume_mm3": 9902035.764656633,
+   "mesh_area_mm2": 1634629.0776027457,
+   "triangles": 564,
+   "closed": true
+  },
+  {
+   "id": "cube_20mm",
+   "bbox": [
+    20.0,
+    20.0,
+    20.0
+   ],
+   "volume": 8000.0,
+   "truth": {
+    "holes": 0,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 80.0,
+    "removed_mm3": 0.0
+   },
+   "family": "machined-block",
+   "hand_sized": true,
+   "description": "20 mm cube. Pure minimum-price / setup-amortisation case; a bandsaw-and-face job.",
+   "configs": [
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-aluminum-6061",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-aluminum-6061"
+    },
+    {
+     "process": "routing",
+     "materialSlug": "rt-delrin",
+     "subProcess": "sheet",
+     "thicknessMm": 19.1,
+     "finishSlug": null,
+     "label": "routing:rt-delrin@19.1"
+    },
+    {
+     "process": "3d-printing",
+     "materialSlug": "fdm-pla",
+     "subProcess": "fdm",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "3d-printing:fdm-pla"
+    }
+   ],
+   "expected": {
+    "cnc": {
+     "1": {
+      "low": 29.54,
+      "mid": 42.2,
+      "high": 54.86
+     },
+     "10": {
+      "low": 8.17,
+      "mid": 11.66,
+      "high": 15.16
+     },
+     "25": {
+      "low": 6.74,
+      "mid": 9.63,
+      "high": 12.52
+     },
+     "100": {
+      "low": 6.03,
+      "mid": 8.61,
+      "high": 11.19
+     },
+     "250": {
+      "low": 5.89,
+      "mid": 8.41,
+      "high": 10.93
+     }
+    },
+    "routing": {
+     "1": {
+      "low": 25.42,
+      "mid": 36.32,
+      "high": 47.21
+     },
+     "10": {
+      "low": 4.05,
+      "mid": 5.78,
+      "high": 7.52
+     },
+     "25": {
+      "low": 2.62,
+      "mid": 3.75,
+      "high": 4.87
+     },
+     "100": {
+      "low": 1.91,
+      "mid": 2.73,
+      "high": 3.55
+     },
+     "250": {
+      "low": 1.77,
+      "mid": 2.53,
+      "high": 3.28
+     }
+    },
+    "3d-printing": {
+     "1": {
+      "low": 11.88,
+      "mid": 16.98,
+      "high": 22.07
+     },
+     "10": {
+      "low": 4.76,
+      "mid": 6.8,
+      "high": 8.84
+     },
+     "25": {
+      "low": 4.28,
+      "mid": 6.12,
+      "high": 7.95
+     },
+     "100": {
+      "low": 4.05,
+      "mid": 5.78,
+      "high": 7.51
+     },
+     "250": {
+      "low": 4.0,
+      "mid": 5.71,
+      "high": 7.43
+     }
+    }
+   },
+   "reasoning": "Saw a blank, face six sides in the vise: ~3 min. On the router from 3/4\" plate it is a 20 mm square with tabs \u2014 but the model is 20 mm thick, not 19.1.",
+   "file": "cube_20mm.stl",
+   "mesh_volume_mm3": 8000.0,
+   "mesh_area_mm2": 2400.0,
+   "triangles": 16,
+   "closed": true
+  },
+  {
+   "id": "drill_fixture_plate",
+   "bbox": [
+    250.0,
+    150.0,
+    12.7
+   ],
+   "volume": 463564.4469012227,
+   "truth": {
+    "holes": 20,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 1301.8477584873508,
+    "removed_mm3": 12685.553098777315
+   },
+   "family": "flat-sheet",
+   "hand_sized": false,
+   "description": "Fixture plate 250 \u00d7 150 \u00d7 1/2\" with a 5 \u00d7 4 grid of \u00d88 holes (20 holes). Tests whether per-hole time scales with hole count.",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-hdpe",
+     "subProcess": "sheet",
+     "thicknessMm": 12.7,
+     "finishSlug": null,
+     "label": "routing:rt-hdpe@12.7"
+    },
+    {
+     "process": "routing",
+     "materialSlug": "rt-acrylic",
+     "subProcess": "sheet",
+     "thicknessMm": 12.7,
+     "finishSlug": null,
+     "label": "routing:rt-acrylic@12.7"
+    },
+    {
+     "process": "routing",
+     "materialSlug": "rt-aluminum-6061",
+     "subProcess": "sheet",
+     "thicknessMm": 12.7,
+     "finishSlug": null,
+     "label": "routing:rt-aluminum-6061@12.7"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-aluminum-6061",
+     "subProcess": "milling",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-aluminum-6061"
+    }
+   ],
+   "expected": {
+    "routing": {
+     "1": {
+      "low": 33.89,
+      "mid": 48.41,
+      "high": 62.94
+     },
+     "10": {
+      "low": 12.51,
+      "mid": 17.88,
+      "high": 23.24
+     },
+     "25": {
+      "low": 11.09,
+      "mid": 15.84,
+      "high": 20.6
+     },
+     "100": {
+      "low": 10.38,
+      "mid": 14.82,
+      "high": 19.27
+     },
+     "250": {
+      "low": 10.23,
+      "mid": 14.62,
+      "high": 19.01
+     }
+    },
+    "cnc": {
+     "1": {
+      "low": 78.44,
+      "mid": 112.05,
+      "high": 145.67
+     },
+     "10": {
+      "low": 35.69,
+      "mid": 50.98,
+      "high": 66.28
+     },
+     "25": {
+      "low": 32.84,
+      "mid": 46.91,
+      "high": 60.98
+     },
+     "100": {
+      "low": 31.41,
+      "mid": 44.87,
+      "high": 58.34
+     },
+     "250": {
+      "low": 31.13,
+      "mid": 44.47,
+      "high": 57.81
+     }
+    },
+    "cnc-aluminum": {
+     "1": {
+      "low": 93.41,
+      "mid": 133.44,
+      "high": 173.48
+     },
+     "10": {
+      "low": 50.66,
+      "mid": 72.37,
+      "high": 94.08
+     },
+     "25": {
+      "low": 47.81,
+      "mid": 68.3,
+      "high": 88.79
+     },
+     "100": {
+      "low": 46.39,
+      "mid": 66.27,
+      "high": 86.14
+     },
+     "250": {
+      "low": 46.1,
+      "mid": 65.86,
+      "high": 85.62
+     }
+    }
+   },
+   "reasoning": "Router: 800 mm profile (2 passes) + 20 interpolated \u00d88 holes (each ~25 mm cut + plunge) \u2248 3.5 min. Mill: spot + drill 20 holes (~20 s each) + profile \u2248 12 min Delrin / 20 min 6061.",
+   "file": "drill_fixture_plate.stl",
+   "mesh_volume_mm3": 463564.4469012234,
+   "mesh_area_mm2": 89535.7416353442,
+   "triangles": 2756,
+   "closed": true
+  },
+  {
+   "id": "seal_ring_peek",
+   "bbox": [
+    60,
+    60,
+    8
+   ],
+   "volume": 9849.216399824436,
+   "truth": {
+    "holes": 1,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 0
+   },
+   "family": "turned",
+   "hand_sized": true,
+   "description": "Seal / backup ring \u00d860 \u00d7 8 mm, \u00d845 bore. Thin ring from \u00d860 PEEK rod: material cost dominates, and a bbox-padded stock model over-counts it.",
+   "configs": [
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-peek",
+     "subProcess": "turning",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-peek"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-delrin",
+     "subProcess": "turning",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-delrin"
+    },
+    {
+     "process": "cnc",
+     "materialSlug": "cnc-ptfe",
+     "subProcess": "turning",
+     "thicknessMm": null,
+     "finishSlug": null,
+     "label": "cnc:cnc-ptfe"
+    }
+   ],
+   "expected": {
+    "cnc": {
+     "1": {
+      "low": 41.05,
+      "mid": 58.64,
+      "high": 76.24
+     },
+     "10": {
+      "low": 19.67,
+      "mid": 28.11,
+      "high": 36.54
+     },
+     "25": {
+      "low": 18.25,
+      "mid": 26.07,
+      "high": 33.89
+     },
+     "100": {
+      "low": 17.54,
+      "mid": 25.05,
+      "high": 32.57
+     },
+     "250": {
+      "low": 17.39,
+      "mid": 24.85,
+      "high": 32.3
+     }
+    },
+    "cnc-delrin": {
+     "1": {
+      "low": 35.4,
+      "mid": 50.58,
+      "high": 65.75
+     },
+     "10": {
+      "low": 14.03,
+      "mid": 20.04,
+      "high": 26.05
+     },
+     "25": {
+      "low": 12.6,
+      "mid": 18.01,
+      "high": 23.41
+     },
+     "100": {
+      "low": 11.89,
+      "mid": 16.99,
+      "high": 22.08
+     },
+     "250": {
+      "low": 11.75,
+      "mid": 16.78,
+      "high": 21.82
+     }
+    }
+   },
+   "reasoning": "Lathe: face, drill, bore \u00d845, part off at 8 mm + chamfer: ~6 min. PEEK \u00d860 rod slice \u2248 10 mm long \u2248 29 g \u2248 $3.70 at $130/kg \u2014 the ring itself is only 7 cm\u00b3.",
+   "file": "seal_ring_peek.stl",
+   "mesh_volume_mm3": 9849.216399824436,
+   "mesh_area_mm2": 5000.567621544407,
+   "triangles": 704,
+   "closed": true
+  }
+ ]
+}
