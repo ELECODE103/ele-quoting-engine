@@ -1,0 +1,71 @@
+{
+  "_comment": "Real, published public price points for parts comparable to the reference library. `part` must match a manifest id; `config` (optional) matches a config label — leave it out to show the point on every configuration of that part. Only add numbers you can cite; the harness prints exactly what is here and never invents a figure. Retrieved 2026-10-28.",
+  "entries": [
+    {
+      "part": "plate_hole_pattern",
+      "config": "routing:rt-hdpe@6.35",
+      "text": "SendCutSend published routing example: ABS .125\" (3.2 mm), 3.5 × 3.5 in profile, CNC routed — $7.42 @ qty 1, $2.99 @ qty 100 (smaller/thinner than this plate; no setup fee, 'general estimates')",
+      "url": "https://sendcutsend.com/services/cnc-routing/"
+    },
+    {
+      "part": "small_clip",
+      "config": "routing:rt-delrin@3.2",
+      "text": "SendCutSend published routing example: ABS .125\", 3.5 × 3.5 in — $7.42 @ qty 1, $2.99 @ qty 100 (their smallest instant-quote part is 1 × 2 in; no minimum quantity)",
+      "url": "https://sendcutsend.com/services/cnc-routing/"
+    },
+    {
+      "part": "bracket_block",
+      "config": "cnc:cnc-aluminum-6061",
+      "text": "Unionfab vendor comparison (instant quotes pulled 2025-12-05) for a 41 × 52 × 35 mm 6061-T6 block, qty 500, as-machined: Xometry USA $14.24–$37.51/unit (lead 8–20 d), Fictiv USA $23.08–$28.17/unit, Protolabs Network (overseas) $8.50–$9.61/unit",
+      "url": "https://www.unionfab.com/blog/2024/12/cost-of-cnc"
+    },
+    {
+      "part": "bracket_block",
+      "config": "cnc:cnc-delrin",
+      "text": "PREMSA Industries published reference range (NOT a quote): 'Delrin plate, 2.5D contours, pockets, mounting holes, 10–25 mm thick' — $35–$90 @ qty 1",
+      "url": "https://premsaindustries.com/en/resources/blog/cnc-part-examples-real-pricing"
+    },
+    {
+      "part": "spacer",
+      "config": "cnc:cnc-aluminum-6061",
+      "text": "PREMSA Industries published reference range (NOT a quote): '6061 spacer, cylindrical body with through hole' — $15–$35 @ qty 1",
+      "url": "https://premsaindustries.com/en/resources/blog/cnc-part-examples-real-pricing"
+    },
+    {
+      "part": "bushing",
+      "config": "cnc:cnc-brass-360",
+      "text": "PREMSA Industries published reference range (NOT a quote; 1018 steel, not brass): 'bushing, OD 15–50 mm, length 20–60 mm' — $25–$70 @ qty 1",
+      "url": "https://premsaindustries.com/en/resources/blog/cnc-part-examples-real-pricing"
+    },
+    {
+      "part": "thin_wall_housing",
+      "config": "cnc:cnc-delrin",
+      "text": "PREMSA Industries published reference range (NOT a quote; 6061, not Delrin): 'housing with deep cavities, thin walls, bosses' — $300–$1,000+ @ qty 1",
+      "url": "https://premsaindustries.com/en/resources/blog/cnc-part-examples-real-pricing"
+    },
+    {
+      "part": "thin_wall_housing",
+      "config": "3d-printing:fdm-abs",
+      "text": "JLC3DP published material rate (2025-08-13): MJF PA12 nylon $0.275/g → this 65.4 cm³ part ≈ 66 g ≈ $18.2 before post-processing (MJF, not FDM; overseas)",
+      "url": "https://jlc3dp.com/blog/drastic-material-price-cuts-and-adjusted-post-processing-service-fees"
+    },
+    {
+      "part": "gear_disc",
+      "config": "3d-printing:fdm-nylon",
+      "text": "JLC3DP published material rate (2025-08-13): MJF PA12 nylon $0.275/g → this 43.4 cm³ disc ≈ 44 g ≈ $12.1 before post-processing (MJF, not FDM; overseas)",
+      "url": "https://jlc3dp.com/blog/drastic-material-price-cuts-and-adjusted-post-processing-service-fees"
+    },
+    {
+      "part": "small_clip",
+      "config": "3d-printing:fdm-pla",
+      "text": "Manufacturing.net (2018, 3D Hubs network, unspecified test bracket): FDM PLA one-off prototype 'less than $8'; same bracket CNC in Delrin/ABS/Nylon one-off ≈ $100",
+      "url": "https://www.manufacturing.net/industry40/article/13245730/cnc-machining-is-more-accessible-than-you-may-think"
+    }
+  ],
+  "notes": [
+    "The authoritative benchmark for this shop is Xometry's own instant quote: as an active Xometry partner the owner can upload the 17 STL files in tools/vet-quotes/parts/ to xometry.com and paste the qty 1 / 10 / 25 numbers into the Owner's price column. Xometry, Protolabs and Fictiv publish no example prices on their material/service pages (checked 2026-10-28: xometry.com FDM and UHMW pages, protolabs.com Delrin page, sendcutsend.com HDPE page) — their numbers only come out of the quote tool.",
+    "SendCutSend's routing example is the only published plastic-routing price point found. Their model has no per-job setup charge, which is why their qty-1 price ($7.42) is an order of magnitude under this engine's qty-1 routing prices (routerSetupCost = $60 is amortised over the quantity).",
+    "PREMSA ranges are editorial reference ranges compiled by that shop's engineers and explicitly 'not a rate card'; they are included because they are published, dated and specific about the part type. Treat them as a sanity band, not a quote.",
+    "A hubs.com knowledge-base page on CNC cost could not be fetched from this environment (blocked), so no Protolabs Network example is included beyond the Unionfab comparison."
+  ]
+}

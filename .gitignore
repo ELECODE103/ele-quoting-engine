@@ -53,3 +53,7 @@ TASK_COMPLETION_REPORT.md
 .commit-msg
 validate-sqlite-layer.js
 test-pdf-module.js
+
+# Python bytecode (vetting harness)
+__pycache__/
+*.pyc
