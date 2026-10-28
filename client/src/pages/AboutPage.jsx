@@ -63,7 +63,7 @@ export default function AboutPage() {
               <h3 className="display" style={{ marginBottom: 12 }}>Paperwork</h3>
               <ul className="checklist">
                 <li>{brand.legalName}, an Illinois LLC wholly owned by {brand.parentName}</li>
-                <li>W-9, certificate of insurance and NDA on request, same day</li>
+                <li>W-9, certificate of insurance and NDA on request, within a business day</li>
                 <li>Net terms for approved accounts; card checkout for everything else</li>
                 <li>Registered on SAM.gov for federal work</li>
               </ul>

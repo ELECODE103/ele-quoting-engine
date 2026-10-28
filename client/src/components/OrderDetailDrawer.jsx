@@ -199,8 +199,8 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                       {it.fileName || 'part'}
                     </div>
                     <div style={{ color: '#888', fontSize: 11 }}>
-                      {it.process} Â· {it.materialName || it.materialSlug}
-                      {it.finishName ? ` Â· ${it.finishName}` : ''} Â· qty {it.quantity}
+                      {it.process} · {it.materialName || it.materialSlug}
+                      {it.finishName ? ` · ${it.finishName}` : ''} · qty {it.quantity}
                     </div>
                     {it.geometry && (
                       <div style={{ color: '#999', fontSize: 10, fontFamily: 'monospace' }}>

@@ -26,10 +26,13 @@ export default function ProcessPicker({ processes, value, onChange, compact = fa
   const list = (processes || []).filter((p) => p.active !== false);
   if (compact) {
     return (
-      <div style={{ display: 'inline-flex', gap: 4, padding: 4, borderRadius: 10, background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)' }}>
+      <div className="proc-seg" role="radiogroup" aria-label="Process">
         {list.map((p) => (
           <button
             key={p.slug}
+            type="button"
+            role="radio"
+            aria-checked={value === p.slug}
             onClick={() => onChange(p.slug)}
             className="btn"
             style={{
@@ -40,7 +43,7 @@ export default function ProcessPicker({ processes, value, onChange, compact = fa
               border: value === p.slug ? '1px solid var(--border-primary)' : '1px solid transparent',
             }}
           >
-            <span style={{ display: 'inline-flex', width: 16 }}>{ICONS[p.slug]}</span>
+            <span style={{ display: 'inline-flex', width: 16 }} aria-hidden="true">{ICONS[p.slug]}</span>
             {PROCESS_LABELS[p.slug] || p.name}
           </button>
         ))}
@@ -57,7 +60,7 @@ export default function ProcessPicker({ processes, value, onChange, compact = fa
           className={`process-option${value === p.slug ? ' active' : ''}`}
           onClick={() => onChange(p.slug)}
         >
-          <span style={{ display: 'inline-flex', color: 'var(--accent)', marginBottom: 8 }}>{ICONS[p.slug]}</span>
+          <span style={{ display: 'inline-flex', color: 'var(--accent)', marginBottom: 8 }} aria-hidden="true">{ICONS[p.slug]}</span>
           <b>{PROCESS_LABELS[p.slug] || p.name}</b>
           <span>{PROCESS_BLURBS[p.slug] || p.description}</span>
         </button>

@@ -33,11 +33,12 @@ export default function MaterialsPage() {
   const [cnc, setCnc] = useState([]);
   const [routing, setRouting] = useState([]);
   const [printing, setPrinting] = useState([]);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     Promise.all([api.getMaterials('cnc'), api.getMaterials('routing'), api.getMaterials('3d-printing')])
       .then(([a, b, c]) => { setCnc(a); setRouting(b); setPrinting(c); })
-      .catch(() => {});
+      .catch(() => setLoadError(true));
   }, []);
 
   const routingBySlug = Object.fromEntries(routing.map((m) => [m.name.replace(/ (sheet|plate).*$/i, '').toLowerCase(), m]));
@@ -79,19 +80,20 @@ export default function MaterialsPage() {
                   return (
                     <tr key={m.slug}>
                       <td style={{ whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        <span className="swatch" style={{ background: m.color || '#eee' }} />{m.name}
+                        <span className="swatch" aria-hidden="true" style={{ background: m.color || '#eee' }} />{m.name}
                       </td>
-                      <td style={{ minWidth: 150 }}>{(m.grades || []).map((g) => g.name).join(' · ')}</td>
-                      <td style={{ minWidth: 200 }}>{n.use || '—'}</td>
-                      <td style={{ minWidth: 200 }}>{n.why || '—'}</td>
-                      <td style={{ minWidth: 200 }}>{n.watch || '—'}</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
+                      <td data-label="Grades" style={{ minWidth: 150 }}>{(m.grades || []).map((g) => g.name).join(' · ')}</td>
+                      <td data-label="Good for" style={{ minWidth: 200 }}>{n.use || '—'}</td>
+                      <td data-label="Why it works" style={{ minWidth: 200 }}>{n.why || '—'}</td>
+                      <td data-label="Watch out for" style={{ minWidth: 200 }}>{n.watch || '—'}</td>
+                      <td data-label="Sheet for routing" style={{ whiteSpace: 'nowrap' }}>
                         {rt ? `${rt.thicknesses?.[0]?.label || ''}–${rt.thicknesses?.[rt.thicknesses.length - 1]?.label || ''}` : 'Rod / block'}
                       </td>
                     </tr>
                   );
                 })}
-                {cnc.length === 0 && <tr><td colSpan={6} style={{ color: 'var(--text-dim)' }}>Loading…</td></tr>}
+                {cnc.length === 0 && !loadError && <tr><td colSpan={6} style={{ color: 'var(--text-dim)' }}>Loading the material list…</td></tr>}
+                {cnc.length === 0 && loadError && <tr><td colSpan={6} style={{ color: 'var(--error-text)' }}>The material list didn't load. Reload the page, or call {brand.phone}.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -100,7 +102,7 @@ export default function MaterialsPage() {
           <div className="chips">
             {printing.map((m) => (
               <span key={m.slug} className="chip" style={{ fontSize: 13, padding: '6px 12px' }}>
-                <span className="swatch" style={{ background: m.color || '#eee', width: 10, height: 10 }} />{m.name}
+                <span className="swatch" aria-hidden="true" style={{ background: m.color || '#eee', width: 10, height: 10 }} />{m.name}
               </span>
             ))}
           </div>
@@ -110,8 +112,8 @@ export default function MaterialsPage() {
               <h3 className="display" style={{ marginBottom: 6 }}>Need a material that isn't listed?</h3>
               <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>Vespel, Torlon, PPS, PVDF, Kynar, filled grades, customer-supplied stock — ask. If a distributor stocks it, we can run it.</p>
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn btn-primary" onClick={() => navigate('/quote')}>Upload a part</button>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={() => navigate('/quote')}>Get an instant quote</button>
               <a className="btn btn-ghost" href={`mailto:${brand.email}`}>Email the shop</a>
             </div>
           </div>
