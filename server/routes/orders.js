@@ -216,19 +216,23 @@ router.post("/", authenticate, (req, res) => {
 
     // Create order items from quote line items
     const lineItems = quote.lineItems || [];
+    // Same mapping as the Stripe checkout path: the pricing-engine line item
+    // keeps per-unit price at perUnit.final and process/material under meta.
+    // `config` (= meta) carries the engine's time estimate for calibration.
     for (const item of lineItems) {
       orderItemsDB.insert({
         orderId: order.id,
         partId: item.partId,
         fileName: item.fileName,
         process: item.meta?.process || "sheetmetal",
-        materialSlug: item.materialSlug || "",
-        materialName: item.materialName || "",
-        finishSlug: item.finishSlug || "",
-        finishName: item.finishName || "",
+        materialSlug: item.meta?.materialSlug || item.materialSlug || "",
+        materialName: item.meta?.materialName || item.materialName || "",
+        finishSlug: item.meta?.finishSlug || item.finishSlug || "",
+        finishName: item.meta?.finishName || item.finishName || "",
         quantity: item.quantity || 1,
-        unitPrice: item.unitPrice || 0,
+        unitPrice: item.perUnit?.final ?? item.unitPrice ?? 0,
         lineTotal: item.lineTotal || 0,
+        config: item.meta || {},
       });
     }
 

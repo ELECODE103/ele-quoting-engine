@@ -59,4 +59,29 @@ test("missing DFM is tolerated (no throw)", () => {
   assert.strictEqual(r.requiresRfq, false);
 });
 
+test("Gate rules override the constants: quantity threshold, big ticket, hollow ratio", () => {
+  const rules = { rfqQuantityThreshold: 20, bigTicketLineTotal: 300, lowVolumeRatio: 0.5 };
+  const r = gate.evaluate([line({ quantity: 25, lineTotal: 400, meta: { process: "cnc", geometrySummary: { volumeRatio: 0.4 } } })], { p1: okDfm }, rules);
+  const codes = r.reasons.map((x) => x.code);
+  assert.ok(codes.includes("quantity") && codes.includes("big-ticket") && codes.includes("complex-geometry"), codes.join(","));
+  assert.strictEqual(r.threshold, 20);
+  const ok = gate.evaluate([line({ quantity: 25, lineTotal: 400 })], { p1: okDfm }, {});
+  assert.strictEqual(ok.requiresRfq, false, "defaults still apply when rules are empty");
+});
+
+test("a machined block priced from legacy geometry goes to review; a flat part does not; the rule can turn it off", () => {
+  const block = (shape, source, volumeRatio = 0.9) => line({ meta: { process: "cnc", confidence: { source }, geometrySummary: { volumeRatio, shape } } });
+  assert.ok(!gate.evaluate([block("prismatic", "legacy", 1.0)], { p1: okDfm }).reasons.some((x) => x.code === "legacy-features"), "a plain block has nothing hidden");
+  assert.ok(gate.evaluate([block("prismatic", "legacy")], { p1: okDfm }).reasons.some((x) => x.code === "legacy-features"));
+  assert.ok(!gate.evaluate([block("flat", "legacy")], { p1: okDfm }).reasons.some((x) => x.code === "legacy-features"));
+  assert.ok(!gate.evaluate([block("prismatic", "features")], { p1: okDfm }).reasons.some((x) => x.code === "legacy-features"));
+  assert.ok(!gate.evaluate([block("prismatic", "legacy")], { p1: okDfm }, { gateReviewOnLegacyFeatures: 0 }).reasons.some((x) => x.code === "legacy-features"));
+});
+
+test("walls under the review threshold flag thin-wall", () => {
+  const thin = line({ meta: { process: "cnc", geometrySummary: { volumeRatio: 0.3, shape: "prismatic", minWallMm: 0.8 }, confidence: { source: "features" } } });
+  assert.ok(gate.evaluate([thin], { p1: okDfm }).reasons.some((x) => x.code === "thin-wall"));
+  assert.ok(!gate.evaluate([thin], { p1: okDfm }, { gateReviewThinWallMm: 0.5 }).reasons.some((x) => x.code === "thin-wall"));
+});
+
 console.log(`\n${passed} checks passed`);

@@ -172,9 +172,12 @@ async function main() {
           discount: li.perUnit.discount, subtotal: li.perUnit.subtotal,
           machineTimeHours: meta.machineTimeHours ?? "", cycleMinutes: meta.cycleMinutes ?? "", passes: meta.passes ?? "",
           cutLengthMm: meta.cutLengthMm ?? "", printTimeHours: meta.printTimeHours ?? "",
-          stockMm: meta.geometrySummary ? `${meta.geometrySummary.stockMm.w}x${meta.geometrySummary.stockMm.h}x${meta.geometrySummary.stockMm.d}` : "",
+          stockMm: meta.geometrySummary?.stockMm ? `${meta.geometrySummary.stockMm.w}x${meta.geometrySummary.stockMm.h}x${meta.geometrySummary.stockMm.d}` : "",
           removalCm3: meta.geometrySummary?.removalCm3 ?? "", volumeRatio: meta.geometrySummary?.volumeRatio ?? "",
           partsPerSheet: meta.partsPerSheet ?? "",
+          setups: meta.setups ?? "", setupMinutes: meta.setupMinutes ?? "",
+          confidence: meta.confidence?.source ?? "", shape: meta.geometrySummary?.shape ?? "",
+          costBuildup: Array.isArray(meta.costBuildup) ? meta.costBuildup.map((c) => `${c.step} ${c.minutes}m $${Number(c.dollars).toFixed(2)}`).join(" | ") : "",
           dfmScore: dfm.summary.score, dfmFails: (dfm.checks || []).filter((c) => c.severity === "fail").map((c) => c.label).join("; "),
           dfmWarns: (dfm.checks || []).filter((c) => c.severity === "warn").map((c) => c.label).join("; "),
           requiresRfq: q.gate.requiresRfq, gateCodes: q.gate.reasons.map((r) => r.code).join("; "),
@@ -257,7 +260,11 @@ async function main() {
         }
       }
     }
-    // 3. turning vs milling
+    // 3. turning vs milling. The two models share material and finish but not
+    // setup: a round part is one chucking on the lathe and two setups on the
+    // mill, so at qty 1–10 the milled price can legitimately be ~3× the
+    // turned one. The band is 0.3–3× under 25 pcs and 0.5–2× from 25 up,
+    // where setup has been amortised and the cycle models must agree.
     const turning = pr.configs.filter((c) => c.cfg.subProcess === "turning");
     const millingSame = pr.configs.filter((c) => c.cfg.subProcess === "milling");
     for (const t of turning) {
@@ -267,7 +274,8 @@ async function main() {
         const qm = m.quotes.find((x) => x.qty === qt.qty);
         if (!qm) continue;
         const ratio = qt.unitPrice / qm.unitPrice;
-        if (ratio < 0.5 || ratio > 2) add("turning-vs-milling", "fail", pr.id, `${t.cfg.label} vs ${m.cfg.label}`, qt.qty, `turning ${money(qt.unitPrice)} vs milling ${money(qm.unitPrice)} (×${ratio.toFixed(2)})`);
+        const [lo, hi] = qt.qty < 25 ? [0.3, 3] : [0.5, 2];
+        if (ratio < lo || ratio > hi) add("turning-vs-milling", "fail", pr.id, `${t.cfg.label} vs ${m.cfg.label}`, qt.qty, `turning ${money(qt.unitPrice)} vs milling ${money(qm.unitPrice)} (×${ratio.toFixed(2)})`);
       }
     }
     // 4. PEEK > Delrin

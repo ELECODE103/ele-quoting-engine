@@ -83,7 +83,34 @@ Parser accuracy is not a launch blocker as long as the pricing rules do not lean
 
 ## 4. Which knob to turn for which miss
 
-All names are keys of `DEFAULT_PRICING_RULES` in `server/config/defaults.js` and are editable from the admin pricing page (nested feed table included). Run `whatif.js` with the proposed value before saving it.
+All names are keys of the rate card in `server/config/ruleSchema.js` (grouped Shop / Materials / CNC Machining / Turning / Routing / Printing / Discounts / Gate; every key has a label, a help line, a unit and a range, and the admin pricing page renders from that list). The models themselves, their equations and the justification for each default are in `docs/pricing-models.md`. Run `whatif.js` with the proposed value before saving it; nested tables use dots (`--set routerFeedMmPerMin.soft=3000`). Every quote's `meta.costBuildup` lists the steps (`{ step, minutes, dollars, basis }`) so you can see which term is off before picking a knob.
+
+| symptom | knob(s) | direction / note |
+|---|---|---|
+| every CNC price is off by the same factor | `cncMachineRatePerHour`, `marginPercent` | rates first, models second |
+| qty-1 CNC prices high/low, batches fine | `cncSetupMinutesFirst`, `cncSetupMinutesAdditional`, `cncInspectionMinutesPerLot` | per-lot minutes; the 4th-axis charge is `cnc4thAxisSetupMinutes` |
+| small CNC parts (spacer, clip, cube) off per piece | `cncHandlingMinutesPerSetup`, `cncSawMinutesPerPart`, `cncInspectionMinutesPerPart`, `cncToolChangeMinutes`, `cncMinMinutesPerCm2` | these replaced the flat 15-minute floor; there is no flat floor left |
+| pocketed / hollowed parts (tray, housing) off | `cncRoughingMrrCm3PerMin.<class>`, `cncFacingMrrCm3PerMin` | cm³/min at machinability 1.0, scaled by each material's machinability; compare "rough features" in the build-up with spindle time |
+| feature-rich parts off, removal fine | `cncFinishCm2PerMin.prismatic` (walls/floors) or `.freeform` (3D scallop) | cm²/min of machined surface |
+| holes mis-priced | `cncDrillApproachMinutes`, `cncDrillMmPerMin.<band>`, `cncPeckDepthRatio`, `cncPeckPenaltyPerDia`, `cncTapMinutesPerHole`, `cncCounterboreMinutes`, `cncHelicalBoreMinDiaMm` | need a feature list; without one a block gets `cncLegacyFeatureAllowance` and flat parts one approach per hole-sized contour |
+| tight corners / deep pockets under-priced | `cncPocketCornerRefRadiusMm`, `cncPocketCornerPenaltyExponent`, `cncPocketDeepRatio`, `cncPocketDeepPenalty` | feature list only |
+| thin / tall walls under-priced | `cncThinWallMm`, `cncThinWallPenalty`, `cncTallWallAspect`, `cncTallWallPenalty` | feature list only |
+| plate parts carry too much facing / stock | `stockPaddingMm`, `plateThicknessMatchMm`, `standardPlateThicknessesMm` | flat parts and blocks at a standard plate thickness are bought as plate with no Z padding |
+| PEEK/Ultem blanks priced wrong | material `pricePerKg`, `wasteFactor` (Materials page), `stockPaddingMm`, `standardBarDiametersMm` | turned parts use the next standard bar |
+| tooling line wrong | `cncToolingPerMachineHour`, `latheToolingPerMachineHour`, `routerToolWearPerMeter` | per machine hour ÷ machinability, no per-piece floor |
+| turned parts over/under | `latheSetupMinutes`, `latheFeedMmPerMin.<class>`, `latheDocMm.<class>`, `latheDrillMmPerMin.<band>`, `latheToolChangeMinutes`, `latheChamferMinutes`, `lathePartOffMmPerMin`, `latheNoFlipMaxLengthMm`, `latheRatePerHour` | the OD/bore/drill/part-off steps are each in the build-up |
+| routed parts too dear at qty 1 | `routerSetupMinutes` | 20 min of nest + CAM + first article |
+| routed cycle time wrong | `routerFeedMmPerMin.<class>`, `routerMaxDocMm.<cutter>`, `routerThickToolFeedFactor`, `routerSmallToolFeedFactor` | chip load × flutes × 18k RPM (skill); 1/4" and 3/8" plastics are one pass |
+| routed pockets wrong | `routerPocketCm3PerMin.<class>` | cm³/min cleared |
+| holes / inner contours on the router | `routerHoleSeconds` | per plunge; counts come from the feature list, else inner edge length ÷ 40 mm |
+| per-sheet work (load, tool changes) | `routerSheetHandlingMinutes`, `routerToolChangeSeconds`, `routerToolsPerJob`, `routerSheetWMm/HMm` | shared by the parts on a sheet, not charged per part |
+| routed part floor | `routerMinimumPartPrice`, `routerTabMinutesPerPart`, `routerHandlingMinutesPerPart` | |
+| FDM too dear / cheap | `fdmMachineRatePerHour`, `fdmDepositionMm3PerSec`, `fdmInfillDepositionMm3PerSec`, `fdmShellThicknessMm`, `fdmPostProcessMinutesBase`, `fdmPostProcessMinutesPer100Cm2` | thin-wall parts are shell-dominated; compare the slicer's time with `meta.printTimeHours` |
+| SLA / SLS off | `slaLayerTimeSec`, `slaScanTimeSecPerCm2`, `slaPostProcessMinutes`, `sls*` | scan time is charged on the mean cross-section (volume ÷ height), not the footprint |
+| volume breaks too generous / too stingy | `volumeDiscounts`, `nestingEfficiencyBonus` | |
+| gate too eager / too lax | `rfqQuantityThreshold`, `bigTicketLineTotal`, `lowVolumeRatio`, `gateReviewOnLegacyFeatures`, `gateReviewThinWallMm` | now rules, not code constants |
+| anything cheaper than it should be at the bottom end | `minimumPartPrice`, `fdm/sla/slsMinimumPartPrice`, `minimumOrderTotal` | floors |
+All names are keys of `DEFAULT_PRICING_RULES` in `server/config/defaults.js`, described (label, plain-language help, unit, allowed range, default) in `server/config/ruleSchema.js`, and editable from the admin **Pricing** tab (nested feed table and discount tiers included). The console prices six of the reference parts below live as you type — the same numbers `whatif.js` gives — and every save needs a one-line note that goes into the pricing history (`History` button; any earlier rule set can be restored). Run `whatif.js` for the full 17-part library before saving a big change.
 
 | symptom | knob(s) | direction / note |
 |---|---|---|
@@ -101,9 +128,11 @@ All names are keys of `DEFAULT_PRICING_RULES` in `server/config/defaults.js` and
 | SLA absurd | `slaScanTimeSecPerCm2`, `slaLayerTimeSec` | scan time is charged on the bounding-box footprint for every layer; 1.5 s/cm² makes a 120 × 80 × 40 box 34 h |
 | FDM thin-wall parts under-priced | `fdmInfillPercent`, `fdmPrintSpeedMmPerSec`, `fdmMachineRatePerHour` | printed volume = part × (infill + 0.3 shell); thin-walled parts are ~100 % perimeter, so raise infill or slow the speed |
 | anything cheaper than it should be at the bottom end | `minimumPartPrice`, `fdmMinimumPartPrice`, `slaMinimumPartPrice`, `minimumOrderTotal` | floors |
-| gate too eager / too lax | `shared/brand.json` → `rfqQuantityThreshold`; `server/services/quoteGate.js` → `BIG_TICKET_LINE_TOTAL`, `LOW_VOLUME_RATIO` | code constants, not pricing rules |
+| gate too eager / too lax | `rfqQuantityThreshold`, `bigTicketLineTotal`, `lowVolumeRatio` (admin pricing console → Gate) | the defaults come from `shared/brand.json` and `server/services/quoteGate.js`; the saved rule wins |
 
-## 5. Findings from the 2026-10-28 run (defaults as shipped)
+## 5. Findings from the 2026-10-28 run (defaults as shipped, commit d62bd57)
+
+> Historical: these findings drove the feature-based models in `docs/pricing-models.md`. The knob names below are the old flat rule keys; the after-run with the new models is in `docs/pricing-models.md` §4 and `tools/vet-quotes/results.md` (median engine ÷ estimate ×0.97, 5 of 156 quotes outside 0.5–2×, all explained there).
 
 265 quotes, 0 hard-rule fails, 88 warnings. The rules the engine must never break all hold: prices fall monotonically with quantity, routing beats CNC on every flat part, PEEK > Delrin, every floor is respected, qty 250 is always an RFQ, the oversize panel is gated on both processes (bed-size FAIL on routing, mill-envelope on CNC) and the 600 mm guide rail is gated on CNC for exceeding X travel. What is wrong is the *level* and *shape* of the prices:
 
@@ -124,7 +153,7 @@ A conservative launch rule set from this run: `cncMinimumMachineTime 0.15`, `cnc
 
 ## 6. Model gaps that knobs cannot fix (code changes, with evidence)
 
-These are recommendations, not changes made in this branch.
+Status: every item below is implemented by the feature-based models (`docs/pricing-models.md` §2) except the parser items, which belong to the geometry module (`server/geometry/SCHEMA.md`); until it ships `features`, the adapter derives hole-free equivalents from surface area and volume.
 
 - **CNC: add a feature/surface term.** Surface area is parsed exactly on every part. `finishMinutes = surfaceArea_cm² ÷ finishRate_cm²PerMin` (≈ 8–10 cm²/min for a 3/8" endmill at 1 mm step-over, 40 ipm) replaces the stock-volume finishing term and separates the bracket (228 cm²) from the cube (24 cm²). Keep a per-part handling constant (load/unload, deburr) instead of a 15-min machine floor.
 - **CNC: pad stock per axis.** Plate stock is bought at thickness; pad X/Y by 3 mm and Z by 0 when the part's thinnest dimension matches a stock plate size (±0.6 mm). Removes 110 cm³ of fake removal on the 1/4" plate.
@@ -140,7 +169,7 @@ These are recommendations, not changes made in this branch.
 Run this for the first ten paid jobs of each process, then monthly.
 
 1. **Capture the engine's assumptions at order time.** For every ordered line save: `meta.machineTimeHours` / `meta.cycleMinutes` / `meta.printTimeHours`, `meta.geometrySummary` (stock, removal, volume ratio), the per-unit breakdown and the rules version. The admin order view already shows these; add them to the traveler header so the machinist sees the number the customer paid for.
-2. **Record actuals on the traveler.** Setup minutes (program + fixture + first article), cycle minutes per piece (spindle time from the control, or stopwatch), hand time per piece (de-tab, deburr, tap, inspect), material actually bought (stock size and price), tooling consumed, scrap count.
+2. **Record actuals on the traveler, then in the admin Calibration tab.** Setup minutes (program + fixture + first article), cycle minutes per piece (spindle time from the control, or stopwatch), hand time per piece (de-tab, deburr, tap, inspect), material actually bought (stock size and price), tooling consumed, scrap count. The Calibration tab lists every finished order line with the engine's minutes per piece next to an *Actual min/pc* box; type the cycle minutes there (and a note). It computes the per-process `actual ÷ engine` median and, after three measured jobs, suggests one conservative knob change (halfway toward the measured ratio, pointing at the minimum-time floor when that is what priced the parts) with a button that carries it into the Pricing console as an unsaved draft.
 3. **Compute the three ratios per job:** `engineTime ÷ actualTime`, `engineMaterial ÷ actualMaterial`, `enginePrice ÷ (actualCost ÷ (1 − margin))`. Put them in a sheet with the part's family (flat-sheet / pocket-plate / machined-block / turned / enclosure / tiny) and the parser's volume ratio and surface area.
 4. **After 10 jobs per process, adjust one knob family at a time**, largest median error first, using §4 to pick the knob and `whatif.js` to see what it does to the reference library before saving it. Rules of thumb:
    - time ratio off but material fine → rates (`cncRoughingRate`, `routerFeedMmPerMin`, `fdmPrintSpeedMmPerSec`) or floors (`cncMinimumMachineTime`);
