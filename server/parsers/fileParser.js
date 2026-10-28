@@ -1,5 +1,5 @@
 /**
- * 3D File Parser â extracts real geometry from STEP and STL files.
+ * 3D File Parser — extracts real geometry from STEP and STL files.
  *
  * Uses occt-import-js (OpenCascade compiled to WASM) for STEP/IGES parsing,
  * and a custom binary STL parser for STL files.
@@ -11,7 +11,7 @@ const fs = require("fs");
 const path = require("path");
 const { resolveProcess, activeProcesses } = require("../processes/registry");
 
-// âââ STL PARSER (Binary + ASCII) ââââââââââââââââââââââââââââââ
+// ─── STL PARSER (Binary + ASCII) ──────────────────────────────
 function parseSTL(buffer) {
   // Detect ASCII vs binary
   const header = buffer.slice(0, 80).toString("ascii");
@@ -68,7 +68,7 @@ function parseSTLAscii(text) {
   return analyzeTriangleMesh(vertices, normals, triangleCount);
 }
 
-// âââ GEOMETRY ANALYSIS ââââââââââââââââââââââââââââââââââââââââ
+// ─── GEOMETRY ANALYSIS ────────────────────────────────────────
 function analyzeTriangleMesh(vertices, normals, triangleCount) {
   if (triangleCount === 0) {
     throw new Error("No triangles found in mesh");
@@ -139,7 +139,7 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
   const flatHeight = dims[1];
 
   // Cut perimeter estimate: approximate from surface area and thickness
-  // For sheet metal: perimeter â (surfaceArea - 2 * flatArea) / thickness
+  // For sheet metal: perimeter ≈ (surfaceArea - 2 * flatArea) / thickness
   const flatArea = flatWidth * flatHeight;
   const edgeSurfaceArea = Math.max(totalSurfaceArea - 2 * flatArea * 0.7, flatArea * 0.1);
   const estimatedPerimeter = estimatedThickness > 0.01 ? edgeSurfaceArea / estimatedThickness : flatWidth * 2 + flatHeight * 2;
@@ -164,7 +164,7 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
     estimatedBends: features.bends,
     estimatedSlots: features.slots,
 
-    // Units (STL files don't specify units â assume mm)
+    // Units (STL files don't specify units — assume mm)
     units: "mm",
 
     // Mesh for preview (downsampled if huge)
@@ -235,7 +235,7 @@ function downsampleVertices(vertices, maxTriangles) {
   return result;
 }
 
-// âââ Shared: extract meshes from occt-import-js result âââââââ
+// ─── Shared: extract meshes from occt-import-js result ───────
 function extractOcctMeshes(result) {
   const allVertices = [];
   const allNormals = [];
@@ -282,7 +282,7 @@ function extractOcctMeshes(result) {
   return { allVertices, allNormals, totalTriangles };
 }
 
-// âââ STEP PARSER (via occt-import-js) â hardened ââââââââââââ
+// ─── STEP PARSER (via occt-import-js) — hardened ────────────
 const STEP_TIMEOUT_MS = 30000; // 30-second max parse time
 
 async function parseSTEP(buffer) {
@@ -301,7 +301,7 @@ async function parseSTEP(buffer) {
     result = await Promise.race([
       Promise.resolve(occt.ReadStepFile(fileBuffer, null)),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("STEP parsing timed out after 30 seconds. The file may be too complex â try simplifying or exporting as STL.")), STEP_TIMEOUT_MS)
+        setTimeout(() => reject(new Error("STEP parsing timed out after 30 seconds. The file may be too complex — try simplifying or exporting as STL.")), STEP_TIMEOUT_MS)
       ),
     ]);
   } catch (parseErr) {
@@ -582,7 +582,7 @@ async function parse3MF(buffer) {
   return analysis;
 }
 
-// âââ IGES PARSER (via occt-import-js) âââââââââââââââââââââââââ
+// ─── IGES PARSER (via occt-import-js) ─────────────────────────
 async function parseIGES(buffer) {
   let occt;
   try {
@@ -623,7 +623,7 @@ async function parseIGES(buffer) {
   return analysis;
 }
 
-// âââ DFM (Design for Manufacturability) Analysis ââââââââââââââ
+// ─── DFM (Design for Manufacturability) Analysis ──────────────
 // Process-specific DFM logic now lives in self-contained process folders
 // (server/processes/<slug>/dfm.js). This module dispatches via the registry.
 
@@ -651,7 +651,7 @@ function runDFMAnalysis(geometry, options = {}) {
   return fn(geometry, options);
 }
 
-// âââ MAIN PARSE FUNCTION ââââââââââââââââââââââââââââââââââââââ
+// ─── MAIN PARSE FUNCTION ──────────────────────────────────────
 async function parseFile(filePath, processOptions = {}) {
   const ext = path.extname(filePath).toLowerCase();
   const buffer = fs.readFileSync(filePath);

@@ -8,7 +8,7 @@ const rateLimit = require("express-rate-limit");
 const { ready: dbReady } = require("./models/database");
 const { seedDatabase } = require("./config/seed");
 
-// âââ Environment Variable Validation ââââââââââââââââââââââââââââ
+// ─── Environment Variable Validation ────────────────────────────
 const REQUIRED_ENV_PROD = ["JWT_SECRET", "STRIPE_SECRET_KEY"];
 if (process.env.NODE_ENV === "production") {
   const missing = REQUIRED_ENV_PROD.filter((key) => !process.env[key]);
@@ -21,12 +21,12 @@ if (process.env.NODE_ENV === "production") {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// âââ Trust proxy (required behind Railway/load balancer) âââââââââ
+// ─── Trust proxy (required behind Railway/load balancer) ─────────
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
-// âââ Security Middleware ââââââââââââââââââââââââââââââââââââââââ
+// ─── Security Middleware ────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -61,7 +61,7 @@ app.use(helmet({
   },
 }));
 
-// Rate limiting â generous for normal use, blocks abuse
+// Rate limiting — generous for normal use, blocks abuse
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,   // 15 minutes
   max: 200,                     // per IP
@@ -79,7 +79,7 @@ const uploadLimiter = rateLimit({
 });
 app.use("/api/upload", uploadLimiter);
 
-// CORS â allow dev and production origins
+// CORS — allow dev and production origins
 const allowedOrigins = [
   "http://localhost:3001",
   "http://localhost:3000",
@@ -104,14 +104,14 @@ app.use(cors({
   maxAge: 86400, // Cache preflight for 24 hours
 }));
 
-// âââ Stripe Webhook (raw body â must be before express.json) ââââ
+// ─── Stripe Webhook (raw body — must be before express.json) ────
 const stripeWebhook = require("./routes/stripeWebhook");
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhook);
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// âââ Health Check (no version exposure) ââââââââââââââââââââââââââ
+// ─── Health Check (no version exposure) ──────────────────────────
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
@@ -119,7 +119,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// âââ API Routes âââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── API Routes ─────────────────────────────────────────────────
 const apiRoutes = require("./routes/api");
 app.use("/api", apiRoutes);
 
@@ -143,12 +143,12 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-// âââ Error Handler ââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Error Handler ──────────────────────────────────────────────
 app.use((err, req, res, next) => {
   const status = err.status || 500;
 
   // Log with request context (no stack traces in production responses)
-  console.error(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} â ${status}`);
+  console.error(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} → ${status}`);
   if (status === 500) console.error(err.stack);
 
   if (err.code === "LIMIT_FILE_SIZE") {
@@ -166,7 +166,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// âââ Start Server (wait for SQLite to be ready) âââââââââââââââââ
+// ─── Start Server (wait for SQLite to be ready) ─────────────────
 async function start() {
   console.log("Initializing database...");
   await dbReady;
@@ -178,11 +178,11 @@ async function start() {
   startRetentionSweep(path.join(__dirname, "..", "data", "uploads"));
 
   app.listen(PORT, () => {
-    console.log(`\n  âââââââââââââââââââââââââââââââââââââââââââ`);
-    console.log(`  â  Instant Quote API running on port ${PORT}  â`);
-    console.log(`  â  Environment: ${(process.env.NODE_ENV || "development").padEnd(24)}â`);
-    console.log(`  â  http://localhost:${PORT}/api               â`);
-    console.log(`  âââââââââââââââââââââââââââââââââââââââââââ\n`);
+    console.log(`\n  ┌─────────────────────────────────────────┐`);
+    console.log(`  │  Instant Quote API running on port ${PORT}  │`);
+    console.log(`  │  Environment: ${(process.env.NODE_ENV || "development").padEnd(24)}│`);
+    console.log(`  │  http://localhost:${PORT}/api               │`);
+    console.log(`  └─────────────────────────────────────────┘\n`);
   });
 }
 

@@ -44,7 +44,7 @@ function run(geometry, options = {}) {
     pass: fitsVolume,
     severity: fitsVolume ? "pass" : "fail",
     detail: fitsVolume
-      ? `Part (${width.toFixed(0)}Ã${height.toFixed(0)}Ã${depth.toFixed(0)}mm) fits ${subProcess.toUpperCase()} build platform (${thresh.maxX}Ã${thresh.maxY}Ã${thresh.maxZ}mm)`
+      ? `Part (${width.toFixed(0)}×${height.toFixed(0)}×${depth.toFixed(0)}mm) fits ${subProcess.toUpperCase()} build platform (${thresh.maxX}×${thresh.maxY}×${thresh.maxZ}mm)`
       : `Part exceeds ${subProcess.toUpperCase()} build volume. X: ${width.toFixed(0)}/${thresh.maxX}, Y: ${height.toFixed(0)}/${thresh.maxY}, Z: ${depth.toFixed(0)}/${thresh.maxZ}mm`,
   });
 
@@ -95,7 +95,7 @@ function run(geometry, options = {}) {
     pass: featuresCrisp,
     severity: featuresCrisp ? "pass" : "info",
     detail: featureSize >= 1.0
-      ? `Features â¥ ${featureSize.toFixed(2)}mm will print crisply`
+      ? `Features ≥ ${featureSize.toFixed(2)}mm will print crisply`
       : featureSize >= 0.5
       ? `Fine features (${featureSize.toFixed(2)}mm). Consider thicker walls for strength`
       : `Features too small (${featureSize.toFixed(2)}mm) for reliable printing`,

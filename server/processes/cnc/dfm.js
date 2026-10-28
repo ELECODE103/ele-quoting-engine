@@ -37,7 +37,7 @@ function run(geometry, options = {}) {
     pass: fitsEnvelope,
     severity: fitsEnvelope ? "pass" : "warn",
     detail: fitsEnvelope
-      ? `Part dimensions (${width.toFixed(0)}Ã${height.toFixed(0)}Ã${depth.toFixed(0)}mm) fit standard 3-axis CNC (${cncMaxX}Ã${cncMaxY}Ã${cncMaxZ}mm)`
+      ? `Part dimensions (${width.toFixed(0)}×${height.toFixed(0)}×${depth.toFixed(0)}mm) fit standard 3-axis CNC (${cncMaxX}×${cncMaxY}×${cncMaxZ}mm)`
       : `Part exceeds typical CNC envelope. X: ${width.toFixed(0)}mm (max ${cncMaxX}), Y: ${height.toFixed(0)}mm (max ${cncMaxY}), Z: ${depth.toFixed(0)}mm (max ${cncMaxZ}mm)`,
   });
 
@@ -48,7 +48,7 @@ function run(geometry, options = {}) {
     label: "Internal Corner Radius",
     pass: true,
     severity: "info",
-    detail: `Verify all internal corners have minimum radius â¥ ${minCornerRadius}mm to allow tool access`,
+    detail: `Verify all internal corners have minimum radius ≥ ${minCornerRadius}mm to allow tool access`,
   });
 
   // 4. Deep pocket ratio (depth-to-width)
@@ -63,13 +63,13 @@ function run(geometry, options = {}) {
     severity: depthToWidthRatio <= maxRatio ? "pass" : "info",
     detail: depthToWidthRatio <= maxRatio
       ? `Depth-to-width ratio ${depthToWidthRatio.toFixed(2)}:1 is acceptable (< ${maxRatio}:1)`
-      : `High depth-to-width ratio ${depthToWidthRatio.toFixed(2)}:1. Recommend â¤ ${maxRatio}:1 to avoid tool deflection and chatter`,
+      : `High depth-to-width ratio ${depthToWidthRatio.toFixed(2)}:1. Recommend ≤ ${maxRatio}:1 to avoid tool deflection and chatter`,
   });
 
   // 5. Undercut detection (from normal analysis)
   // Count downward-facing triangles as potential undercut indicators
   let downwardTriangles = 0;
-  // This is estimated from geometry â exact count would need normal array access
+  // This is estimated from geometry — exact count would need normal array access
   // Using heuristic: high aspect ratio + significant volume suggest complex geometry
   const hasComplexGeometry = geometry.estimatedBends > 2 || geometry.estimatedSlots > 1;
   const estimatedUndercutRisk = hasComplexGeometry ? "high" : "low";
@@ -105,7 +105,7 @@ function run(geometry, options = {}) {
     // Never blocks: volumeRatio depends on a watertight volume we can't guarantee.
     severity: volumeRatio >= 0.3 ? "pass" : "warn",
     detail: volumeRatio >= 0.3
-      ? `Part volume ${(volumeRatio * 100).toFixed(1)}% of bounding box â efficient machining`
+      ? `Part volume ${(volumeRatio * 100).toFixed(1)}% of bounding box — efficient machining`
       : `Part volume ${(volumeRatio * 100).toFixed(1)}% of bounding box. Heavy stock removal may be expensive`,
   });
 

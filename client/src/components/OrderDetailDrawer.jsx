@@ -3,7 +3,7 @@ import { api } from '../utils/api';
 import { formatCurrency } from '../utils/format';
 
 /**
- * Fulfillment drawer â single unified view for an order.
+ * Fulfillment drawer — single unified view for an order.
  * Shows shipping info, line items with CAD downloads, status timeline,
  * tracking entry, notes, and traveler PDF link.
  */
@@ -117,10 +117,10 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
           <div className="font-display" style={{ fontSize: 20, fontWeight: 700 }}>
             Order Detail
           </div>
-          <button className="btn btn-ghost" onClick={onClose} style={{ fontSize: 12 }}>Close â</button>
+          <button className="btn btn-ghost" onClick={onClose} style={{ fontSize: 12 }}>Close ✕</button>
         </div>
 
-        {loading && <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>Loadingâ¦</div>}
+        {loading && <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>Loading…</div>}
         {err && <div style={{ padding: 16, color: '#E94E4E' }}>Error: {err}</div>}
 
         {order && !loading && (
@@ -168,7 +168,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                         letterSpacing: 0.3,
                       }}
                     >
-                      {done && 'â '}{s.label}
+                      {done && '✓ '}{s.label}
                     </button>
                   );
                 })}
@@ -178,7 +178,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
             {/* Shipping address */}
             <Section title="Ship To">
               <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                <div style={{ fontWeight: 600 }}>{order.shippingName || 'â'}</div>
+                <div style={{ fontWeight: 600 }}>{order.shippingName || '—'}</div>
                 <div>{order.shippingAddress || ''}</div>
                 <div>
                   {[order.shippingCity, order.shippingState, order.shippingZip].filter(Boolean).join(', ')}
@@ -204,7 +204,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                     </div>
                     {it.geometry && (
                       <div style={{ color: '#999', fontSize: 10, fontFamily: 'monospace' }}>
-                        {it.geometry.boundingBox ? `${Math.round(it.geometry.boundingBox.x || 0)}Ã${Math.round(it.geometry.boundingBox.y || 0)}Ã${Math.round(it.geometry.boundingBox.z || 0)} mm` : ''}
+                        {it.geometry.boundingBox ? `${Math.round(it.geometry.boundingBox.x || 0)}×${Math.round(it.geometry.boundingBox.y || 0)}×${Math.round(it.geometry.boundingBox.z || 0)} mm` : ''}
                       </div>
                     )}
                   </div>
@@ -219,7 +219,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                           borderRadius: 3, cursor: 'pointer',
                         }}
                       >
-                        â¬ CAD
+                        ⬇ CAD
                       </button>
                     )}
                   </div>
@@ -236,7 +236,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                     onChange={(e) => setCarrier(e.target.value)}
                     style={{ width: '100%', padding: '6px 8px', fontSize: 12 }}
                   >
-                    <option value="">â</option>
+                    <option value="">—</option>
                     {CARRIERS.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </Field>
@@ -280,7 +280,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                 disabled={saving}
                 style={{ fontSize: 12 }}
               >
-                {saving ? 'Savingâ¦' : 'Save Changes'}
+                {saving ? 'Saving…' : 'Save Changes'}
               </button>
               <a
                 href={`/orders/${order.id}/traveler`}
