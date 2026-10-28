@@ -59,7 +59,7 @@ test("rejects an out-of-range value with the rule's label", () => {
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.errors[0].key, "marginPercent");
   assert.ok(/Margin/.test(r.errors[0].message));
-  assert.strictEqual(schema.validateRules({ cncSetupCost: -1 }).ok, false);
+  assert.strictEqual(schema.validateRules({ cncSetupMinutesFirst: -1 }).ok, false);
 });
 
 test("rejects unknown keys (mass-assignment guard)", () => {
@@ -70,7 +70,7 @@ test("rejects unknown keys (mass-assignment guard)", () => {
 });
 
 test("rejects non-numeric and integer-typed rules", () => {
-  assert.strictEqual(schema.validateRules({ cncRoughingRate: "fast" }).ok, false);
+  assert.strictEqual(schema.validateRules({ cncFacingMrrCm3PerMin: "fast" }).ok, false);
   assert.strictEqual(schema.validateRules({ rfqQuantityThreshold: 10.5 }).ok, false);
   assert.strictEqual(schema.validateRules({ rfqQuantityThreshold: 50 }).ok, true);
 });
@@ -117,7 +117,8 @@ test("prices the 6 reference parts at qty 1/10/100 for every line, with baseline
         assert.ok(at && Number.isFinite(at.unit) && at.unit > 0, `${part.id} ${line.process} q${q} unit`);
         assert.ok(Number.isFinite(at.baseUnit), "baseline unit present");
         assert.ok(Number.isFinite(at.minutes), "engine minutes present");
-        if (line.process === "cnc") assert.ok(at.unit > at.baseUnit, "dearer mill rate → higher price");
+        if (line.process === "cnc" && line.subProcess === "milling") assert.ok(at.unit > at.baseUnit, "dearer mill rate → higher price");
+        else if (line.process === "cnc") assert.strictEqual(at.unit, at.baseUnit, "turned parts run on the lathe rate, untouched");
         else assert.strictEqual(at.unit, at.baseUnit, "other processes untouched");
       }
       assert.ok(line.at[10].unit <= line.at[1].unit && line.at[100].unit <= line.at[10].unit, "price falls with qty");
@@ -173,9 +174,9 @@ test("stored blob keeps non-rule keys (seedVersion) across saves", () => {
   const pricingDB = memDB();
   pricingDB.insert({ rules: { ...DEFAULT_PRICING_RULES, seedVersion: 2 } });
   const admin = createPricingAdmin({ pricingDB, auditDB: memDB() });
-  admin.save({ cncSetupCost: 50 }, { note: "setup" });
+  admin.save({ cncSetupMinutesFirst: 50 }, { note: "setup" });
   assert.strictEqual(pricingDB.getAll()[0].rules.seedVersion, 2);
-  assert.strictEqual(pricingDB.getAll()[0].rules.cncSetupCost, 50);
+  assert.strictEqual(pricingDB.getAll()[0].rules.cncSetupMinutesFirst, 50);
 });
 
 test("restore puts a previous snapshot back and logs it; reset returns to defaults", () => {
@@ -234,20 +235,22 @@ test("suggests a conservative, explained rate change once enough jobs are measur
   assert.strictEqual(cnc.measured, 3);
   assert.strictEqual(cnc.medianRatio, 1.4);
   assert.strictEqual(cnc.suggestion.kind, "adjust");
-  assert.strictEqual(cnc.suggestion.key, "cncRoughingRate");
-  // halfway toward 1.4 → divide by 1.2 → 900 / 1.2 = 750
-  assert.strictEqual(cnc.suggestion.suggested, 750);
+  assert.strictEqual(cnc.suggestion.key, "cncRoughingMrrCm3PerMin");
+  // halfway toward 1.4 → every material class's removal rate ÷ 1.2 (plastic 13 → 11)
+  const defaults = rules.cncRoughingMrrCm3PerMin;
+  for (const [cls, v] of Object.entries(cnc.suggestion.suggested)) assert.strictEqual(v, Math.round(defaults[cls] / 1.2), `${cls} rate`);
   assert.ok(/1\.40×/.test(cnc.suggestion.text) && /halfway/.test(cnc.suggestion.text));
   const routing = s.find((x) => x.process === "routing");
   assert.strictEqual(routing.suggestion.kind, "wait");
 });
 
 test("floor-dominated CNC jobs point at the minimum machine time instead of the removal rate", () => {
-  const rules = schema.schemaDefaults(); // cncMinimumMachineTime 0.25 h = 15 min
-  const rows = [1.6, 1.5, 1.7].map((ratio) => ({ process: "cnc", subProcess: "milling", engineMinutes: 15, actualMinutes: 15 * ratio, ratio }));
+  const rules = schema.schemaDefaults(); // cncMinMinutesPerCm2 0.01 min/cm²
+  const rows = [1.6, 1.5, 1.7].map((ratio) => ({ process: "cnc", subProcess: "milling", engineMinutes: 15, actualMinutes: 15 * ratio, ratio, timeFloorApplied: true }));
   const s = calibration.summarize(rows, rules);
-  assert.strictEqual(s[0].suggestion.key, "cncMinimumMachineTime");
-  assert.ok(s[0].suggestion.suggested > 0.25 && s[0].suggestion.suggested < 0.25 * 1.6);
+  assert.strictEqual(s[0].suggestion.key, "cncMinMinutesPerCm2");
+  const floor = rules.cncMinMinutesPerCm2;
+  assert.ok(s[0].suggestion.suggested > floor && s[0].suggestion.suggested < floor * 1.6);
 });
 
 console.log(`\n${passed} checks passed`);

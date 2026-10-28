@@ -4,8 +4,9 @@
  * conservative, explained rule suggestion.
  *
  * Inputs: order items whose `config` (the pricing meta saved at order time)
- * carries the engine's time (machineTimeHours / cycleMinutes / printTimeHours)
- * and whose `actualMinutes` the owner has filled in.
+ * carries the engine's time (machineTimeHours / cycleMinutes / printTimeHours),
+ * whether the CNC surface-area minimum set it (timeFloorApplied), and whose
+ * `actualMinutes` the owner has filled in.
  *
  * The knob a process is calibrated with comes from the rule schema: the
  * descriptor with `calibration: { process, role: 'rate', relation }`. If the
@@ -86,6 +87,7 @@ function buildRows(orders, items) {
       quantity: Number(it.quantity) || 1,
       unitPrice: it.unitPrice,
       engineMinutes: est != null ? round(est) : null,
+      timeFloorApplied: config.timeFloorApplied === true,
       actualMinutes: Number.isFinite(actual) ? actual : null,
       actualNotes: it.actualNotes || "",
       actualRecordedAt: it.actualRecordedAt || null,
@@ -146,11 +148,11 @@ function summarize(rows, rules) {
     } else if (!rateDriver || !rateDriver.desc) {
       summary.suggestion = { kind: "manual", text: `${label} is running ${med.toFixed(2)}× the model, but no rule is mapped to its time. Adjust by hand.` };
     } else {
-      // On the floor? For CNC the minimum machine time can be what the engine charged.
+      // On the floor? The CNC model flags a part whose machine time was raised
+      // to the surface-area minimum (meta.timeFloorApplied).
       let onFloor = 0;
       if (floorDriver && rules[floorDriver.key] != null) {
-        const floorMin = Number(rules[floorDriver.key]) * 60;
-        onFloor = g.measured.filter((r) => Math.abs(r.engineMinutes - floorMin) < 0.05).length;
+        onFloor = g.measured.filter((r) => r.timeFloorApplied === true).length;
       }
       const floorDominated = floorDriver && onFloor > g.measured.length / 2;
       const driver = floorDominated ? floorDriver : rateDriver;

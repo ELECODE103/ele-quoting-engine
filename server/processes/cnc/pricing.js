@@ -289,6 +289,7 @@ function priceMilling({ f, derived, confidence, notes }, params, r) {
       machinability: mach,
       materialClass: cls,
       machineTimeHours: machineMinutes / 60,
+      timeFloorApplied: floorApplied,
       setupMinutes,
       setups,
       fourthAxis,

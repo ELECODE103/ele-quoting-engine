@@ -419,8 +419,69 @@ function fmtBound(desc, n) {
   return desc.unit ? `${n} ${desc.unit}` : String(n);
 }
 
+// Rules that only make sense as whole numbers (counts, piece thresholds).
+const INTEGER_KEYS = new Set(["rfqQuantityThreshold", "routerToolsPerJob"]);
+
+function validateScalar(desc, raw) {
+  const n = Number(raw);
+  if (raw === "" || raw === null || raw === undefined || typeof raw === "boolean" || !Number.isFinite(n)) return { ok: false, error: `${desc.label} must be a number` };
+  if (INTEGER_KEYS.has(desc.key) && !Number.isInteger(n)) return { ok: false, error: `${desc.label} must be a whole number` };
+  if (desc.min !== undefined && n < desc.min) return { ok: false, error: `${desc.label} must be at least ${fmtBound(desc, desc.min)}` };
+  if (desc.max !== undefined && n > desc.max) return { ok: false, error: `${desc.label} must be at most ${fmtBound(desc, desc.max)}` };
+  return { ok: true, value: n };
+}
+
+// Strict table check for admin input: unknown rows, missing columns and
+// out-of-range cells are errors (mergeRules() clamps instead).
+function validateTable(desc, raw) {
+  const spec = desc.tableSpec || {};
+  const inRange = (n, min, max) => (min === undefined || n >= min) && (max === undefined || n <= max);
+  if (spec.kind === "map") {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: `${desc.label} must be a table of rows` };
+    for (const k of Object.keys(raw)) if (!spec.keys.includes(k)) return { ok: false, error: `${desc.label}: unknown row "${k}"` };
+    const value = {};
+    for (const k of spec.keys) {
+      const n = Number(raw[k] !== undefined ? raw[k] : desc.default[k]);
+      if (!Number.isFinite(n)) return { ok: false, error: `${desc.label} › ${ROW_LABELS[k] || k} must be a number` };
+      if (!inRange(n, spec.min, spec.max)) return { ok: false, error: `${desc.label} › ${ROW_LABELS[k] || k} must be between ${spec.min} and ${spec.max}` };
+      value[k] = n;
+    }
+    return { ok: true, value };
+  }
+  if (!Array.isArray(raw)) return { ok: false, error: `${desc.label} must be a list of rows` };
+  if (desc.minRows && raw.length < desc.minRows) return { ok: false, error: `${desc.label} needs at least ${desc.minRows} row(s)` };
+  if (desc.maxRows && raw.length > desc.maxRows) return { ok: false, error: `${desc.label} can have at most ${desc.maxRows} rows` };
+  const cols = spec.columns || [];
+  const value = [];
+  for (const row of raw) {
+    if (cols.length === 1 && cols[0].key === "value") {
+      const n = Number(row && typeof row === "object" ? row.value : row);
+      if (!Number.isFinite(n)) return { ok: false, error: `${desc.label} entries must be numbers` };
+      if (!inRange(n, cols[0].min, cols[0].max)) return { ok: false, error: `${desc.label} entries must be between ${cols[0].min} and ${cols[0].max}` };
+      value.push(n);
+      continue;
+    }
+    if (!row || typeof row !== "object" || Array.isArray(row)) return { ok: false, error: `${desc.label} rows must have ${cols.map((c) => c.label || c.key).join(" and ")}` };
+    const clean = {};
+    for (const c of cols) {
+      const n = Number(row[c.key]);
+      if (row[c.key] === undefined || row[c.key] === "" || !Number.isFinite(n)) return { ok: false, error: `${desc.label} › ${c.label || c.key} must be a number` };
+      if (!inRange(n, c.min, c.max)) return { ok: false, error: `${desc.label} › ${c.label || c.key} must be between ${c.min} and ${c.max}` };
+      clean[c.key] = n;
+    }
+    value.push(clean);
+  }
+  const sortBy = spec.sortBy || (desc.key === "volumeDiscounts" ? "minQty" : null);
+  if (sortBy) {
+    for (let i = 1; i < value.length; i++) {
+      if (!(value[i][sortBy] > value[i - 1][sortBy])) return { ok: false, error: `${desc.label} rows must be in ascending ${sortBy} order with no duplicates` };
+    }
+  }
+  return { ok: true, value };
+}
+
 /**
- * Admin-save validation: unknown keys and out-of-range scalars are ERRORS
+ * Admin-save validation: unknown keys and out-of-range values are ERRORS
  * (the console shows them inline), not silently clamped like mergeRules().
  * Returns { ok, errors: [{ key, message }], values }.
  */
@@ -431,7 +492,6 @@ function validateRules(candidate, { partial = true } = {}) {
     return { ok: false, errors: [{ key: "", message: "Rules must be an object" }], values };
   }
   for (const key of Object.keys(candidate)) {
-    if (key === "seedVersion") continue;
     if (!RULE_BY_KEY[key]) errors.push({ key, message: `Unknown rule "${key}"` });
   }
   for (const desc of RULE_SCHEMA) {
@@ -439,18 +499,9 @@ function validateRules(candidate, { partial = true } = {}) {
       if (!partial) errors.push({ key: desc.key, message: `${desc.label} is missing` });
       continue;
     }
-    const raw = candidate[desc.key];
-    if (desc.type !== "table") {
-      const n = Number(raw);
-      if (raw === "" || raw === null || raw === undefined || !Number.isFinite(n)) { errors.push({ key: desc.key, message: `${desc.label} must be a number` }); continue; }
-      if (desc.min !== undefined && n < desc.min) { errors.push({ key: desc.key, message: `${desc.label} must be at least ${fmtBound(desc, desc.min)}` }); continue; }
-      if (desc.max !== undefined && n > desc.max) { errors.push({ key: desc.key, message: `${desc.label} must be at most ${fmtBound(desc, desc.max)}` }); continue; }
-      values[desc.key] = n;
-    } else {
-      const r = sanitizeValue(RULE_BY_KEY[desc.key], raw);
-      if (!r.ok) errors.push({ key: desc.key, message: r.error });
-      else values[desc.key] = r.value;
-    }
+    const r = desc.type === "table" ? validateTable(desc, candidate[desc.key]) : validateScalar(desc, candidate[desc.key]);
+    if (!r.ok) errors.push({ key: desc.key, message: r.error });
+    else values[desc.key] = r.value;
   }
   return { ok: errors.length === 0, errors, values };
 }
