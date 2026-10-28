@@ -1,0 +1,14 @@
+{
+  "name": "straightedge-brand-tools",
+  "private": true,
+  "description": "Regenerates client/public/brand/*.svg and review-sheet.html. Geometry is authored in build.js; lettering is Barlow (OFL) outlined to paths with opentype.js.",
+  "scripts": {
+    "build": "node build.js ../../client/public/brand && node sheet.js ../../client/public/brand"
+  },
+  "dependencies": {
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@fontsource/barlow-semi-condensed": "^5.3.0",
+    "opentype.js": "^2.0.0"
+  }
+}
