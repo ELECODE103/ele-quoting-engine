@@ -9,6 +9,9 @@ const FONTS = {
   'barlow-600': '@fontsource/barlow/files/barlow-latin-600-normal.woff',
   'barlowsc-700': '@fontsource/barlow-semi-condensed/files/barlow-semi-condensed-latin-700-normal.woff',
   'barlowc-700': '@fontsource/barlow-condensed/files/barlow-condensed-latin-700-normal.woff',
+  'archivo-700': '@fontsource/archivo/files/archivo-latin-700-normal.woff',
+  'archivo-600': '@fontsource/archivo/files/archivo-latin-600-normal.woff',
+  'oswald-600': '@fontsource/oswald/files/oswald-latin-600-normal.woff',
 };
 
 const cache = {};
