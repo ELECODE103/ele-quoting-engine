@@ -131,6 +131,10 @@ app.use("/api/auth", authRoutes);
 const orderRoutes = require("./routes/orders");
 app.use("/api/orders", orderRoutes);
 
+// RFQ routes (firm-quote requests for production quantities / flagged parts)
+const rfqRoutes = require("./routes/rfq");
+app.use("/api/rfq", rfqRoutes);
+
 // PDF routes (job travelers, packing lists)
 const pdfRoutes = require("./routes/pdf");
 app.use("/api/pdf", pdfRoutes);
@@ -171,6 +175,7 @@ async function start() {
   console.log("Initializing database...");
   await dbReady;
   seedDatabase();
+  apiRoutes.loadPricingRules();
 
   // Periodically purge old uploaded customer files (proprietary CAD shouldn't
   // linger). Window via UPLOAD_RETENTION_HOURS (default 7 days).
@@ -179,7 +184,7 @@ async function start() {
 
   app.listen(PORT, () => {
     console.log(`\n  ┌─────────────────────────────────────────┐`);
-    console.log(`  │  Instant Quote API running on port ${PORT}  │`);
+    console.log(`  │  Straightedge quote API on port ${PORT}     │`);
     console.log(`  │  Environment: ${(process.env.NODE_ENV || "development").padEnd(24)}│`);
     console.log(`  │  http://localhost:${PORT}/api               │`);
     console.log(`  └─────────────────────────────────────────┘\n`);

@@ -11,12 +11,13 @@ const JSON_COLUMNS = {
   finishes: {},
   lead_times: {},
   pricing_rules: { rules: "rules_json" },
-  quotes: { lineItems: "line_items_json" },
+  quotes: { lineItems: "line_items_json", gate: "gate_json" },
   parts: { geometry: "geometry_json", dfm: "dfm_json" },
   orders: {},
   order_items: { geometry: "geometry_json", dfm: "dfm_json", config: "config_json" },
   users: {},
   processes: { subProcesses: "sub_processes_json" },
+  rfqs: { reasons: "reasons_json", parts: "parts_json" },
 };
 
 // Map camelCase JS names → snake_case SQL column names
@@ -67,6 +68,15 @@ const FIELD_TO_COLUMN = {
   defaultLayerHeight: "default_layer_height",
   pricePerPart: "price_per_part",
   pricePerSqIn: "price_per_sq_in",
+  feedClass: "feed_class",
+  contactName: "contact_name",
+  finishNotes: "finish_notes",
+  dueDate: "due_date",
+  drawingFileName: "drawing_file_name",
+  drawingPath: "drawing_path",
+  budgetTotal: "budget_total",
+  quotedAt: "quoted_at",
+  quotedTotal: "quoted_total",
 };
 
 // Reverse mapping for deserialization

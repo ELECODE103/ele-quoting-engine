@@ -5,6 +5,9 @@ const fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 const { parseFile } = require("../parsers/fileParser");
 const { PricingEngine } = require("../services/pricingEngine");
+const { DEFAULT_PRICING_RULES } = require("../config/defaults");
+const quoteGate = require("../services/quoteGate");
+const { runDFMAnalysis, defaultProcessSlug } = require("../parsers/fileParser");
 const { materialsDB, finishesDB, leadTimesDB, pricingDB, quotesDB, partsDB } = require("../models");
 const { resolveProcess, activeProcesses } = require("../processes/registry");
 const { authenticate, optionalAuth, requireAdmin } = require("./auth");
@@ -43,10 +46,22 @@ const upload = multer({
 
 const pricingEngine = new PricingEngine();
 
+/**
+ * Load the stored pricing rules (admin-tuned) into the engine. Called once at
+ * startup after the DB is seeded, and after every admin save.
+ */
+function loadPricingRules() {
+  const stored = pricingDB.getAll()[0];
+  const rules = stored?.rules && typeof stored.rules === "object" ? stored.rules : {};
+  pricingEngine.rules = { ...DEFAULT_PRICING_RULES, ...rules };
+  return pricingEngine.rules;
+}
+
 // ─── Admin field whitelists (prevent mass assignment) ────────
-const MATERIAL_FIELDS = ["name", "slug", "process", "subProcess", "category", "density", "costPerKg", "costPerSheet", "grades", "thicknesses", "active", "description", "color"];
+const MATERIAL_FIELDS = ["name", "slug", "process", "subProcess", "category", "density", "costPerKg", "pricePerKg", "pricePerCm3", "machinability", "feedClass", "costPerSheet", "grades", "thicknesses", "layerHeights", "defaultLayerHeight", "active", "description", "color"];
 const FINISH_FIELDS = ["name", "slug", "process", "costPerSqMm", "costFlat", "minCost", "active", "description", "category"];
-const PRICING_FIELDS = ["sheetCutRate", "bendRate", "setupFee", "markupPercent", "minimumOrder", "cncRate", "printRate", "finishMultiplier"];
+// Any key that exists in the default rule set may be tuned from the admin panel.
+const PRICING_FIELDS = Object.keys(DEFAULT_PRICING_RULES);
 const LEAD_TIME_FIELDS = ["name", "slug", "days", "multiplier", "active", "description"];
 
 /** Pick only allowed fields from an object */
@@ -163,6 +178,7 @@ router.post("/quote", optionalAuth, (req, res) => {
 
     // Build pricing input
     const pricingParts = [];
+    const dfmByPartId = {};
     for (const config of partConfigs) {
       const part = partsDB.getById(config.partId);
       if (!part) {
@@ -176,21 +192,31 @@ router.post("/quote", optionalAuth, (req, res) => {
       const defaultFinishSlug = resolveProcess(config.process).defaultFinishSlug || 'raw';
       const finish = finishesDB.getAll().find((f) => f.slug === (config.finishSlug || defaultFinishSlug)) || null;
 
+      const process = config.process || material.process || defaultProcessSlug();
+      const thicknessMm = config.thicknessMm || material.thicknesses?.[2]?.mm || material.thicknesses?.[0]?.mm || 0;
       pricingParts.push({
         partId: config.partId,
         fileName: part.fileName,
         geometry: part.geometry,
         material,
         grade: config.grade || material.grades?.[0]?.name || '',
-        thicknessMm: config.thicknessMm || material.thicknesses?.[2]?.mm || material.thicknesses?.[0]?.mm || 0,
+        thicknessMm,
         finish,
         quantity: config.quantity || 1,
-        process: config.process || 'sheetmetal',
+        process,
         subProcess: config.subProcess || '',
         // Pass through only when actually provided — `|| 0` made an unset infill
         // look like an intentional 0% (the engine then under-costed FDM material).
         layerHeight: config.layerHeight != null ? Number(config.layerHeight) : undefined,
         infill: config.infill != null ? Number(config.infill) : undefined,
+      });
+
+      // DFM for the chosen process/material/thickness — drives the checkout-vs-RFQ gate.
+      dfmByPartId[config.partId] = runDFMAnalysis(part.geometry, {
+        process,
+        subProcess: config.subProcess || resolveProcess(process).previewSubProcess,
+        thicknessMm,
+        materialType: /plastic|composite/i.test(material.category || "") ? "plastic" : "metal",
       });
     }
 
@@ -198,9 +224,14 @@ router.post("/quote", optionalAuth, (req, res) => {
       parts: pricingParts,
       leadTimeMultiplier: leadTime.multiplier,
     });
+
+    // Instant checkout or RFQ? Stored with the quote so checkout can enforce it.
+    const gate = quoteGate.evaluate(quote.lineItems, dfmByPartId);
+
     // Store quote
     const savedQuote = quotesDB.insert({
       ...quote,
+      gate,
       leadTimeSlug,
       status: "draft",
       // Bind the quote to the user when signed in; anonymous quotes (public
@@ -208,7 +239,14 @@ router.post("/quote", optionalAuth, (req, res) => {
       userId: req.user?.userId || null,
     });
 
-    res.json({ quoteId: savedQuote.id, ...quote });
+    res.json({
+      quoteId: savedQuote.id,
+      ...quote,
+      gate,
+      dfmByPartId: Object.fromEntries(
+        Object.entries(dfmByPartId).map(([id, d]) => [id, { summary: d.summary, checks: d.checks }])
+      ),
+    });
   } catch (err) {
     console.error("Quote error:", err);
     res.status(500).json({ error: "Quote calculation failed. Please try again." });
@@ -313,21 +351,26 @@ router.post("/admin/finishes", authenticate, requireAdmin, (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 
 router.get("/admin/pricing", authenticate, requireAdmin, (req, res) => {
-  const rules = pricingDB.getAll();
-  res.json(rules[0] || {});
+  res.json(loadPricingRules());
 });
 
 router.put("/admin/pricing", authenticate, requireAdmin, (req, res) => {
   const safe = whitelist(req.body, PRICING_FIELDS);
+  // Numeric sanity: scalar rules must be finite numbers ≥ 0.
+  for (const [k, v] of Object.entries(safe)) {
+    if (typeof DEFAULT_PRICING_RULES[k] === "number" && !(Number.isFinite(Number(v)) && Number(v) >= 0)) {
+      return res.status(400).json({ error: `Invalid value for ${k}` });
+    }
+    if (typeof DEFAULT_PRICING_RULES[k] === "number") safe[k] = Number(v);
+  }
   const rules = pricingDB.getAll();
   if (rules.length > 0) {
-    const updated = pricingDB.update(rules[0].id, safe);
-    // Update engine with whitelisted fields only
-    Object.assign(pricingEngine.rules, safe);
-    res.json(updated);
+    const current = (rules[0].rules && typeof rules[0].rules === "object") ? rules[0].rules : {};
+    pricingDB.update(rules[0].id, { rules: { ...current, ...safe } });
+    res.json(loadPricingRules());
   } else {
-    const created = pricingDB.insert(safe);
-    res.json(created);
+    pricingDB.insert({ rules: { ...DEFAULT_PRICING_RULES, ...safe } });
+    res.json(loadPricingRules());
   }
 });
 
@@ -501,3 +544,4 @@ router.get("/parts/:partId/download", authenticate, requireAdmin, (req, res) => 
 });
 
 module.exports = router;
+module.exports.loadPricingRules = loadPricingRules;

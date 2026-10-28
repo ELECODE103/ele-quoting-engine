@@ -342,7 +342,7 @@ async function parseSTEP(buffer) {
   return analysis;
 }
 
-// âââ // ——— 3MF PARSER —————————————————————————————————————————————
+// ─── 3MF PARSER ───────────────────────────────────────────────
 async function parse3MF(buffer) {
   const AdmZip = require("adm-zip");
   const { XMLParser } = require("fast-xml-parser");
@@ -640,9 +640,16 @@ const DFM_FN_BY_NAME = {
   runPrintingDFM,
 };
 
+// Default process for DFM when the caller doesn't name one: the first ACTIVE
+// process (sheet metal is registered but inactive for Straightedge).
+function defaultProcessSlug() {
+  const first = activeProcesses()[0];
+  return first ? first.slug : "sheetmetal";
+}
+
 // DFM Router — dispatches to the process-specific DFM function via the registry.
 function runDFMAnalysis(geometry, options = {}) {
-  const def = resolveProcess(options.process || "sheetmetal");
+  const def = resolveProcess(options.process || defaultProcessSlug());
   const fn = (def.dfm && def.dfm.run) || DFM_FN_BY_NAME[def.dfmFn] || runSheetMetalDFM;
   // Sheet metal DFM takes a thickness argument; the others take an options object.
   if (def.slug === "sheetmetal" || fn === runSheetMetalDFM) {
@@ -677,8 +684,8 @@ async function parseFile(filePath, processOptions = {}) {
       throw new Error(`Unsupported file format: ${ext}. Supported: .step, .stp, .stl, .iges, .igs`);
   }
 
-  // Run DFM analysis for requested process (or default to sheetmetal)
-  const dfm = runDFMAnalysis(geometry, processOptions);
+  // Run DFM analysis for the requested process (default: first active process)
+  const dfm = runDFMAnalysis(geometry, { process: defaultProcessSlug(), ...processOptions });
 
   // Also run DFM for every active process so the client can show all tabs.
   // Driven by the registry — a new process appears here automatically.
@@ -699,4 +706,4 @@ async function parseFile(filePath, processOptions = {}) {
   };
 }
 
-module.exports = { parseFile, parseSTL, parseSTEP, parseIGES, parse3MF, runDFMAnalysis, runSheetMetalDFM, runCNCDFM, runPrintingDFM };
+module.exports = { parseFile, parseSTL, parseSTEP, parseIGES, parse3MF, runDFMAnalysis, defaultProcessSlug, runSheetMetalDFM, runCNCDFM, runPrintingDFM };

@@ -4,6 +4,7 @@
  */
 const express = require("express");
 const { ordersDB, orderItemsDB, quotesDB, partsDB } = require("../models");
+const brand = require("../../shared/brand.json");
 const { authenticate, requireAdmin } = require("./auth");
 const { sanitizeString, nonNegativeNumber } = require("../middleware/validate");
 
@@ -53,6 +54,15 @@ router.post("/checkout-session", authenticate, async (req, res) => {
       return res.status(400).json({ error: "Invalid order total" });
     }
 
+    // Quotes the gate routed to RFQ can't be bought online — a person prices them first.
+    if (quote.gate?.requiresRfq && req.user.role !== "admin") {
+      return res.status(409).json({
+        error: "This quote needs a firm quote from us before it can be ordered",
+        code: "rfq-required",
+        reasons: quote.gate.reasons || [],
+      });
+    }
+
     // Create the order with pending_payment status
     const order = ordersDB.insert({
       userId: req.user.userId,
@@ -100,7 +110,7 @@ router.post("/checkout-session", authenticate, async (req, res) => {
     quotesDB.update(quoteId, { status: "ordered" });
 
     // Build Stripe line items description
-    const partNames = lineItems.map(i => i.fileName || "3D printed part").join(", ");
+    const partNames = lineItems.map(i => i.fileName || "custom part").join(", ");
     const description = partNames.length > 200 ? partNames.substring(0, 197) + "..." : partNames;
 
     // Determine base URL for redirects
@@ -115,8 +125,8 @@ router.post("/checkout-session", authenticate, async (req, res) => {
           price_data: {
             currency: "usd",
             product_data: {
-              name: `Nord MFG Order — ${lineItems.length} part${lineItems.length !== 1 ? "s" : ""}`,
-              description: description || "Custom 3D printed parts",
+              name: `${brand.name} Order — ${lineItems.length} part${lineItems.length !== 1 ? "s" : ""}`,
+              description: description || "Custom machined and printed parts",
             },
             unit_amount: Math.round(orderTotal * 100), // Stripe uses cents
           },
@@ -173,6 +183,14 @@ router.post("/", authenticate, (req, res) => {
     // Security: verify quote belongs to requesting user
     if (quote.userId && quote.userId !== req.user.userId && req.user.role !== "admin") {
       return res.status(403).json({ error: "Access denied" });
+    }
+
+    if (quote.gate?.requiresRfq && req.user.role !== "admin") {
+      return res.status(409).json({
+        error: "This quote needs a firm quote from us before it can be ordered",
+        code: "rfq-required",
+        reasons: quote.gate.reasons || [],
+      });
     }
 
     // Sanitize all user-provided shipping fields

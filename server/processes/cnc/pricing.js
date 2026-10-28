@@ -144,6 +144,12 @@ function calculate(params, rules) {
       finishSlug: finish?.slug || 'raw',
       subProcess,
       discountTier: discountTier?.minQty || 1,
+      // Engine assumptions, surfaced in the admin order view and used by the quote gate.
+      geometrySummary: {
+        stockMm: { w: Number(stockWidthMm.toFixed(1)), h: Number(stockHeightMm.toFixed(1)), d: Number(stockDepthMm.toFixed(1)) },
+        removalCm3: Number(removalVolumeCm3.toFixed(1)),
+        volumeRatio: stockVolumeCm3 > 0 ? Number((partVolumeCm3 / stockVolumeCm3).toFixed(3)) : null,
+      },
     },
   };
 }

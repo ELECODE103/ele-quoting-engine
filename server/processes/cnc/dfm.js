@@ -1,6 +1,8 @@
 /**
- * CNC DFM. Moved verbatim from fileParser.runCNCDFM.
+ * CNC DFM — milling and turning on the Tormach 1100, CNC Bridgeport and lathes.
  * Signature: run(geometry, options).
+ *   options.subProcess   "milling" | "turning"
+ *   options.materialType "plastic" | "metal" (plastics get a thicker minimum wall)
  */
 const { summarizeChecks } = require("../shared");
 
@@ -28,17 +30,27 @@ function run(geometry, options = {}) {
       : `Estimated wall thickness ${estimatedMinWall.toFixed(2)}mm below recommended minimum (${minWallThickness}mm)`,
   });
 
-  // 2. Maximum part size (typical 3-axis CNC envelope)
-  const cncMaxX = 500, cncMaxY = 300, cncMaxZ = 200;
-  const fitsEnvelope = width <= cncMaxX && height <= cncMaxY && depth <= cncMaxZ;
+  // 2. Machine envelope — Tormach 1100 / CNC Bridgeport travel (X 457 × Y 241 × Z 300 mm);
+  //    turning: Ø 250 × 600 mm between centers. Any orientation is allowed.
+  const sorted = [width, height, depth].sort((a, b) => b - a); // long → short
+  let fitsEnvelope, envelopeText;
+  if (subProcess === "turning") {
+    const latheMaxDia = 250, latheMaxLen = 600;
+    fitsEnvelope = sorted[0] <= latheMaxLen && sorted[1] <= latheMaxDia;
+    envelopeText = `lathe capacity (Ø${latheMaxDia} × ${latheMaxLen} mm)`;
+  } else {
+    const millX = 457, millY = 241, millZ = 300;
+    fitsEnvelope = sorted[0] <= millX && sorted[1] <= millY && sorted[2] <= millZ;
+    envelopeText = `mill travel (${millX} × ${millY} × ${millZ} mm)`;
+  }
   checks.push({
     id: "cnc-max-size",
-    label: "CNC Machine Envelope",
+    label: "Machine Envelope",
     pass: fitsEnvelope,
     severity: fitsEnvelope ? "pass" : "warn",
     detail: fitsEnvelope
-      ? `Part dimensions (${width.toFixed(0)}×${height.toFixed(0)}×${depth.toFixed(0)}mm) fit standard 3-axis CNC (${cncMaxX}×${cncMaxY}×${cncMaxZ}mm)`
-      : `Part exceeds typical CNC envelope. X: ${width.toFixed(0)}mm (max ${cncMaxX}), Y: ${height.toFixed(0)}mm (max ${cncMaxY}), Z: ${depth.toFixed(0)}mm (max ${cncMaxZ}mm)`,
+      ? `Part (${width.toFixed(0)} × ${height.toFixed(0)} × ${depth.toFixed(0)} mm) fits ${envelopeText}`
+      : `Part (${width.toFixed(0)} × ${height.toFixed(0)} × ${depth.toFixed(0)} mm) exceeds ${envelopeText}. Flat parts this size route well — otherwise send it as an RFQ`,
   });
 
   // 3. Internal corner radius (tool access)

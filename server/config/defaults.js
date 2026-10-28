@@ -1,12 +1,20 @@
 /**
  * Default materials, pricing rules, and configuration.
- * This seeds the database on first run.
+ * This seeds the database on first run (see SEED_VERSION below — bump it to
+ * re-seed materials/finishes/processes on an existing database).
  *
- * Supports three manufacturing processes:
- *   - sheetmetal: laser cutting, bending, hole punching
- *   - cnc: CNC milling and turning
- *   - 3d-printing: FDM, SLA, SLS additive manufacturing
+ * Straightedge runs four processes; sheet metal is kept in the codebase but
+ * inactive (it is an Erik Lutz Enterprise service, not a Straightedge one):
+ *   - cnc:         CNC milling and turning — engineering plastics first, 6061/brass second
+ *   - routing:     CNC routing of sheet/plate plastics on the 59" × 96" router
+ *   - 3d-printing: FDM and SLA additive manufacturing
+ *   - sheetmetal:  inactive
  */
+
+// Bump when the default material/finish/process sets change in a way that an
+// existing production database should pick up. Quotes, orders and users are
+// never touched by a re-seed.
+const SEED_VERSION = 2;
 
 // ═══════════════════════════════════════════════════════════════
 // SHEET METAL MATERIALS
@@ -169,6 +177,183 @@ const SHEETMETAL_MATERIALS = [
 // CNC MACHINING MATERIALS
 // ═══════════════════════════════════════════════════════════════
 const CNC_MATERIALS = [
+  // ─── Engineering plastics (the core of the shop) ──────────
+  // density is lb/in³; machinability is relative to 6061 = 1.0 (higher = faster);
+  // pricePerKg is landed stock cost (rod/plate), not a sell price.
+  {
+    slug: "cnc-delrin",
+    name: "Delrin / Acetal (POM)",
+    category: "Plastic",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [
+      { name: "Acetal copolymer — natural", density: 0.051 },
+      { name: "Acetal copolymer — black", density: 0.051 },
+      { name: "Delrin 150 homopolymer — natural", density: 0.051 },
+      { name: "Delrin 150 homopolymer — black", density: 0.051 },
+    ],
+    machinability: 1.3,
+    pricePerKg: 11.00,
+    color: "#F5F5F4",
+    active: true,
+  },
+  {
+    slug: "cnc-uhmw",
+    name: "UHMW Polyethylene",
+    category: "Plastic",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [
+      { name: "UHMW — natural (FDA)", density: 0.034 },
+      { name: "UHMW — black", density: 0.034 },
+    ],
+    machinability: 1.05,
+    pricePerKg: 7.50,
+    color: "#FAFAFA",
+    active: true,
+  },
+  {
+    slug: "cnc-hdpe",
+    name: "HDPE",
+    category: "Plastic",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [
+      { name: "HDPE — natural (FDA)", density: 0.035 },
+      { name: "HDPE — black", density: 0.035 },
+    ],
+    machinability: 1.2,
+    pricePerKg: 6.00,
+    color: "#F4F4F5",
+    active: true,
+  },
+  {
+    slug: "cnc-nylon",
+    name: "Nylon",
+    category: "Plastic",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [
+      { name: "Nylon 6/6 extruded — natural", density: 0.041 },
+      { name: "Cast Nylon 6 — natural", density: 0.042 },
+      { name: "Nylon 6/6 — black", density: 0.041 },
+      { name: "Nylon MD / oil-filled (Nylatron-type)", density: 0.042 },
+    ],
+    machinability: 1.1,
+    pricePerKg: 13.00,
+    color: "#FAFAF9",
+    active: true,
+  },
+  {
+    slug: "cnc-peek",
+    name: "PEEK",
+    category: "Plastic",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [{ name: "PEEK — natural (unfilled)", density: 0.047 }],
+    machinability: 0.9,
+    pricePerKg: 130.00,
+    color: "#D6C9A8",
+    active: true,
+  },
+  {
+    slug: "cnc-ultem",
+    name: "Ultem (PEI)",
+    category: "Plastic",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [{ name: "Ultem 1000 — amber", density: 0.046 }],
+    machinability: 0.85,
+    pricePerKg: 65.00,
+    color: "#C8A24A",
+    active: true,
+  },
+  {
+    slug: "cnc-ptfe",
+    name: "PTFE (Teflon)",
+    category: "Plastic",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [{ name: "PTFE virgin — white", density: 0.078 }],
+    machinability: 1.0,
+    pricePerKg: 28.00,
+    color: "#FFFFFF",
+    active: true,
+  },
+  {
+    slug: "cnc-polycarbonate",
+    name: "Polycarbonate",
+    category: "Plastic",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [{ name: "Polycarbonate — clear", density: 0.043 }, { name: "Polycarbonate — black", density: 0.043 }],
+    machinability: 0.9,
+    pricePerKg: 10.00,
+    color: "#E0F2FE",
+    active: true,
+  },
+  {
+    slug: "cnc-acrylic",
+    name: "Acrylic (cast)",
+    category: "Plastic",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [{ name: "Cast acrylic — clear", density: 0.043 }],
+    machinability: 0.95,
+    pricePerKg: 8.00,
+    color: "#F0F9FF",
+    active: true,
+  },
+  {
+    slug: "cnc-pvc",
+    name: "PVC Type 1",
+    category: "Plastic",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [{ name: "PVC Type 1 — gray", density: 0.050 }],
+    machinability: 1.1,
+    pricePerKg: 6.00,
+    color: "#9CA3AF",
+    active: true,
+  },
+  {
+    slug: "cnc-polypropylene",
+    name: "Polypropylene",
+    category: "Plastic",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [{ name: "Polypropylene homopolymer — natural", density: 0.033 }],
+    machinability: 1.0,
+    pricePerKg: 6.00,
+    color: "#F5F5F5",
+    active: true,
+  },
+  {
+    slug: "cnc-g10",
+    name: "G-10 / FR-4 Glass Epoxy",
+    category: "Composite",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [{ name: "G-10 — natural green", density: 0.065 }, { name: "FR-4 — yellow", density: 0.065 }],
+    machinability: 0.6,     // abrasive — eats tooling
+    pricePerKg: 22.00,
+    color: "#5B8A4A",
+    active: true,
+  },
+  {
+    slug: "cnc-phenolic",
+    name: "Canvas Phenolic (CE)",
+    category: "Composite",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [{ name: "Canvas phenolic CE — brown", density: 0.049 }, { name: "Linen phenolic LE", density: 0.049 }],
+    machinability: 0.7,
+    pricePerKg: 19.00,
+    color: "#8B5E3C",
+    active: true,
+  },
+
+  // ─── Metals we run on the Tormach / Bridgeport / lathes ───
   {
     slug: "cnc-aluminum-6061",
     name: "Aluminum 6061-T6",
@@ -176,69 +361,9 @@ const CNC_MATERIALS = [
     process: "cnc",
     subProcess: "milling",
     grades: [{ name: "6061-T6", density: 0.098 }],
-    machinability: 1.0,    // baseline (easy to machine)
-    pricePerKg: 6.00,
-    color: "#E5E7EB",
-    active: true,
-  },
-  {
-    slug: "cnc-aluminum-7075",
-    name: "Aluminum 7075-T6",
-    category: "Aluminum",
-    process: "cnc",
-    subProcess: "milling",
-    grades: [{ name: "7075-T6", density: 0.102 }],
-    machinability: 0.9,
-    pricePerKg: 9.00,
-    color: "#D1D5DB",
-    active: true,
-  },
-  {
-    slug: "cnc-stainless-304",
-    name: "Stainless Steel 304",
-    category: "Stainless",
-    process: "cnc",
-    subProcess: "milling",
-    grades: [{ name: "304", density: 0.289 }],
-    machinability: 0.45,   // difficult — slow feeds, hard on tooling
-    pricePerKg: 5.50,
-    color: "#9CA3AF",
-    active: true,
-  },
-  {
-    slug: "cnc-stainless-316",
-    name: "Stainless Steel 316",
-    category: "Stainless",
-    process: "cnc",
-    subProcess: "milling",
-    grades: [{ name: "316", density: 0.289 }],
-    machinability: 0.40,
+    machinability: 1.0,    // baseline
     pricePerKg: 7.00,
-    color: "#A1A1AA",
-    active: true,
-  },
-  {
-    slug: "cnc-mild-steel-1018",
-    name: "Steel 1018",
-    category: "Steel",
-    process: "cnc",
-    subProcess: "milling",
-    grades: [{ name: "1018 Cold Rolled", density: 0.284 }],
-    machinability: 0.70,
-    pricePerKg: 2.50,
-    color: "#6B7280",
-    active: true,
-  },
-  {
-    slug: "cnc-steel-4140",
-    name: "Steel 4140",
-    category: "Steel",
-    process: "cnc",
-    subProcess: "milling",
-    grades: [{ name: "4140 Pre-hardened", density: 0.284 }],
-    machinability: 0.55,
-    pricePerKg: 4.00,
-    color: "#52525B",
+    color: "#E5E7EB",
     active: true,
   },
   {
@@ -248,45 +373,209 @@ const CNC_MATERIALS = [
     process: "cnc",
     subProcess: "milling",
     grades: [{ name: "C360", density: 0.308 }],
-    machinability: 1.2,    // very easy, better than aluminum
-    pricePerKg: 10.00,
+    machinability: 1.2,
+    pricePerKg: 12.00,
     color: "#CA8A04",
     active: true,
   },
+
+  // ─── Kept for admin re-activation; hidden from the public quote flow ───
   {
-    slug: "cnc-titanium-gr5",
-    name: "Titanium Grade 5 (Ti-6Al-4V)",
-    category: "Titanium",
+    slug: "cnc-aluminum-7075",
+    name: "Aluminum 7075-T6",
+    category: "Aluminum",
     process: "cnc",
     subProcess: "milling",
-    grades: [{ name: "Grade 5", density: 0.160 }],
-    machinability: 0.25,   // very difficult
-    pricePerKg: 35.00,
-    color: "#78716C",
+    grades: [{ name: "7075-T6", density: 0.102 }],
+    machinability: 0.9,
+    pricePerKg: 10.00,
+    color: "#D1D5DB",
+    active: false,
+  },
+  {
+    slug: "cnc-stainless-304",
+    name: "Stainless Steel 304",
+    category: "Stainless",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [{ name: "304", density: 0.289 }],
+    machinability: 0.45,
+    pricePerKg: 6.00,
+    color: "#9CA3AF",
+    active: false,
+  },
+  {
+    slug: "cnc-mild-steel-1018",
+    name: "Steel 1018",
+    category: "Steel",
+    process: "cnc",
+    subProcess: "milling",
+    grades: [{ name: "1018 Cold Rolled", density: 0.284 }],
+    machinability: 0.70,
+    pricePerKg: 3.00,
+    color: "#6B7280",
+    active: false,
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════
+// CNC ROUTING MATERIALS — sheet and plate stock for the 59" × 96" router.
+// `thicknesses` drives the thickness picker (same shape as sheet metal);
+// `maxPassDepthMm` and `feedClass` drive the routing cycle-time model.
+// ═══════════════════════════════════════════════════════════════
+const PLASTIC_SHEET_THICKNESSES = [
+  { mm: 1.6, inch: 0.0625, label: '1/16"' },
+  { mm: 3.2, inch: 0.125, label: '1/8"' },
+  { mm: 4.8, inch: 0.1875, label: '3/16"' },
+  { mm: 6.35, inch: 0.25, label: '1/4"' },
+  { mm: 9.5, inch: 0.375, label: '3/8"' },
+  { mm: 12.7, inch: 0.5, label: '1/2"' },
+  { mm: 19.1, inch: 0.75, label: '3/4"' },
+  { mm: 25.4, inch: 1.0, label: '1"' },
+];
+
+const ROUTING_MATERIALS = [
+  {
+    slug: "rt-hdpe",
+    name: "HDPE Sheet",
+    category: "Plastic",
+    process: "routing",
+    subProcess: "sheet",
+    grades: [{ name: "HDPE — natural (FDA)", density: 0.035 }, { name: "HDPE — black", density: 0.035 }, { name: "HDPE marine board (King StarBoard-type)", density: 0.035 }],
+    thicknesses: PLASTIC_SHEET_THICKNESSES,
+    feedClass: "soft",
+    pricePerKg: 5.50,
+    color: "#F4F4F5",
     active: true,
   },
   {
-    slug: "cnc-delrin",
-    name: "Delrin (Acetal/POM)",
+    slug: "rt-uhmw",
+    name: "UHMW Sheet",
     category: "Plastic",
-    process: "cnc",
-    subProcess: "milling",
-    grades: [{ name: "Delrin 150", density: 0.051 }],
-    machinability: 1.3,
-    pricePerKg: 8.00,
+    process: "routing",
+    subProcess: "sheet",
+    grades: [{ name: "UHMW — natural (FDA)", density: 0.034 }, { name: "UHMW — black", density: 0.034 }],
+    thicknesses: PLASTIC_SHEET_THICKNESSES,
+    feedClass: "soft",
+    pricePerKg: 7.00,
+    color: "#FAFAFA",
+    active: true,
+  },
+  {
+    slug: "rt-delrin",
+    name: "Acetal / Delrin Plate",
+    category: "Plastic",
+    process: "routing",
+    subProcess: "sheet",
+    grades: [{ name: "Acetal — natural", density: 0.051 }, { name: "Acetal — black", density: 0.051 }],
+    thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 19.1),
+    feedClass: "medium",
+    pricePerKg: 11.00,
     color: "#F5F5F4",
     active: true,
   },
   {
-    slug: "cnc-nylon-6",
-    name: "Nylon 6/6",
+    slug: "rt-nylon",
+    name: "Nylon Plate",
     category: "Plastic",
-    process: "cnc",
-    subProcess: "milling",
-    grades: [{ name: "Nylon 6/6", density: 0.041 }],
-    machinability: 1.1,
-    pricePerKg: 12.00,
+    process: "routing",
+    subProcess: "sheet",
+    grades: [{ name: "Nylon 6/6 — natural", density: 0.041 }, { name: "Cast Nylon 6", density: 0.042 }],
+    thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 25.4),
+    feedClass: "medium",
+    pricePerKg: 13.00,
     color: "#FAFAF9",
+    active: true,
+  },
+  {
+    slug: "rt-polycarbonate",
+    name: "Polycarbonate Sheet",
+    category: "Plastic",
+    process: "routing",
+    subProcess: "sheet",
+    grades: [{ name: "Polycarbonate — clear", density: 0.043 }, { name: "Polycarbonate — bronze/tinted", density: 0.043 }],
+    thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 12.7),
+    feedClass: "medium",
+    pricePerKg: 10.00,
+    color: "#E0F2FE",
+    active: true,
+  },
+  {
+    slug: "rt-acrylic",
+    name: "Acrylic Sheet (cast)",
+    category: "Plastic",
+    process: "routing",
+    subProcess: "sheet",
+    grades: [{ name: "Cast acrylic — clear", density: 0.043 }, { name: "Cast acrylic — color", density: 0.043 }],
+    thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 25.4),
+    feedClass: "brittle",
+    pricePerKg: 8.00,
+    color: "#F0F9FF",
+    active: true,
+  },
+  {
+    slug: "rt-pvc",
+    name: "PVC Sheet",
+    category: "Plastic",
+    process: "routing",
+    subProcess: "sheet",
+    grades: [{ name: "PVC Type 1 — gray", density: 0.050 }, { name: "Expanded PVC (Sintra-type) — white", density: 0.025 }],
+    thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 25.4),
+    feedClass: "soft",
+    pricePerKg: 6.00,
+    color: "#9CA3AF",
+    active: true,
+  },
+  {
+    slug: "rt-polypropylene",
+    name: "Polypropylene Sheet",
+    category: "Plastic",
+    process: "routing",
+    subProcess: "sheet",
+    grades: [{ name: "Polypropylene — natural", density: 0.033 }],
+    thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 25.4),
+    feedClass: "soft",
+    pricePerKg: 6.00,
+    color: "#F5F5F5",
+    active: true,
+  },
+  {
+    slug: "rt-g10",
+    name: "G-10 / FR-4 Sheet",
+    category: "Composite",
+    process: "routing",
+    subProcess: "sheet",
+    grades: [{ name: "G-10 — green", density: 0.065 }, { name: "FR-4 — yellow", density: 0.065 }],
+    thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 12.7),
+    feedClass: "abrasive",
+    pricePerKg: 22.00,
+    color: "#5B8A4A",
+    active: true,
+  },
+  {
+    slug: "rt-phenolic",
+    name: "Phenolic Sheet (CE / LE)",
+    category: "Composite",
+    process: "routing",
+    subProcess: "sheet",
+    grades: [{ name: "Canvas phenolic CE", density: 0.049 }, { name: "Linen phenolic LE", density: 0.049 }],
+    thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 25.4),
+    feedClass: "abrasive",
+    pricePerKg: 19.00,
+    color: "#8B5E3C",
+    active: true,
+  },
+  {
+    slug: "rt-aluminum-6061",
+    name: "Aluminum 6061 Plate",
+    category: "Aluminum",
+    process: "routing",
+    subProcess: "sheet",
+    grades: [{ name: "6061-T6", density: 0.098 }],
+    thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 12.7),
+    feedClass: "aluminum",
+    pricePerKg: 7.00,
+    color: "#E5E7EB",
     active: true,
   },
 ];
@@ -486,6 +775,7 @@ const PRINTING_MATERIALS = [
 const DEFAULT_MATERIALS = [
   ...SHEETMETAL_MATERIALS,
   ...CNC_MATERIALS,
+  ...ROUTING_MATERIALS,
   ...PRINTING_MATERIALS,
 ];
 
@@ -506,17 +796,25 @@ const DEFAULT_FINISHES = [
 
   // CNC machining finishes
   { slug: "cnc-as-machined", name: "As Machined", process: "cnc", pricePerPart: 0, pricePerSqIn: 0, active: true },
-  { slug: "cnc-bead-blast", name: "Bead Blasted", process: "cnc", pricePerPart: 5.00, pricePerSqIn: 0.015, active: true },
-  { slug: "cnc-anodize-clear", name: "Anodize — Clear", process: "cnc", pricePerPart: 8.00, pricePerSqIn: 0.032, active: true },
-  { slug: "cnc-anodize-black", name: "Anodize — Black", process: "cnc", pricePerPart: 9.00, pricePerSqIn: 0.035, active: true },
-  { slug: "cnc-anodize-color", name: "Anodize — Color (specify)", process: "cnc", pricePerPart: 12.00, pricePerSqIn: 0.040, active: true },
-  { slug: "cnc-powder-coat", name: "Powder Coat", process: "cnc", pricePerPart: 10.00, pricePerSqIn: 0.038, active: true },
-  { slug: "cnc-nickel-plate", name: "Nickel Plating", process: "cnc", pricePerPart: 10.00, pricePerSqIn: 0.035, active: true },
-  { slug: "cnc-chrome-plate", name: "Chrome Plating", process: "cnc", pricePerPart: 15.00, pricePerSqIn: 0.045, active: true },
-  { slug: "cnc-passivation", name: "Passivation (Stainless)", process: "cnc", pricePerPart: 4.00, pricePerSqIn: 0.010, active: true },
-  { slug: "cnc-black-oxide", name: "Black Oxide", process: "cnc", pricePerPart: 4.00, pricePerSqIn: 0.012, active: true },
+  { slug: "cnc-deburr", name: "Deburred, Edges Broken", process: "cnc", pricePerPart: 2.50, pricePerSqIn: 0.004, active: true },
+  { slug: "cnc-polish-clear", name: "Polished Edges (clear acrylic / polycarbonate)", process: "cnc", pricePerPart: 6.00, pricePerSqIn: 0.020, active: true },
+  { slug: "cnc-bead-blast", name: "Bead Blasted (metals)", process: "cnc", pricePerPart: 5.00, pricePerSqIn: 0.015, active: true },
+  { slug: "cnc-anodize-clear", name: "Anodize — Clear (aluminum)", process: "cnc", pricePerPart: 8.00, pricePerSqIn: 0.032, active: true },
+  { slug: "cnc-anodize-black", name: "Anodize — Black (aluminum)", process: "cnc", pricePerPart: 9.00, pricePerSqIn: 0.035, active: true },
+  { slug: "cnc-powder-coat", name: "Powder Coat (metals)", process: "cnc", pricePerPart: 10.00, pricePerSqIn: 0.038, active: true },
+  { slug: "cnc-anodize-color", name: "Anodize — Color (specify)", process: "cnc", pricePerPart: 12.00, pricePerSqIn: 0.040, active: false },
+  { slug: "cnc-nickel-plate", name: "Nickel Plating", process: "cnc", pricePerPart: 10.00, pricePerSqIn: 0.035, active: false },
+  { slug: "cnc-chrome-plate", name: "Chrome Plating", process: "cnc", pricePerPart: 15.00, pricePerSqIn: 0.045, active: false },
+  { slug: "cnc-passivation", name: "Passivation (Stainless)", process: "cnc", pricePerPart: 4.00, pricePerSqIn: 0.010, active: false },
+  { slug: "cnc-black-oxide", name: "Black Oxide", process: "cnc", pricePerPart: 4.00, pricePerSqIn: 0.012, active: false },
 
-  // 3D printing finishes
+  // ─── CNC ROUTING ───
+  { slug: "rt-as-cut", name: "As Cut (router edge)", process: "routing", pricePerPart: 0, pricePerSqIn: 0, active: true },
+  { slug: "rt-deburr", name: "Deburred, Edges Broken", process: "routing", pricePerPart: 1.50, pricePerSqIn: 0.003, active: true },
+  { slug: "rt-chamfer", name: "Chamfered / Rounded Edges (both sides)", process: "routing", pricePerPart: 3.00, pricePerSqIn: 0.004, active: true },
+  { slug: "rt-polish-clear", name: "Polished Edges (clear acrylic / polycarbonate)", process: "routing", pricePerPart: 5.00, pricePerSqIn: 0.015, active: true },
+  { slug: "rt-masking-kept", name: "Protective Masking Left On", process: "routing", pricePerPart: 0, pricePerSqIn: 0, active: true },
+
   { slug: "3dp-as-printed", name: "As Printed", process: "3d-printing", pricePerPart: 0, pricePerSqIn: 0, active: true },
   { slug: "3dp-support-removal", name: "Support Removal + Cleanup", process: "3d-printing", pricePerPart: 3.00, pricePerSqIn: 0.005, active: true },
   { slug: "3dp-sanding", name: "Sanding (smooth finish)", process: "3d-printing", pricePerPart: 6.00, pricePerSqIn: 0.018, active: true },
@@ -546,16 +844,37 @@ const DEFAULT_PRICING_RULES = {
   countersinkCost: 0.80,
 
   // ─── CNC MACHINING ──────────────────────────────
-  cncSetupCost: 35.00,             // one-time per part setup
-  cncMachineRatePerHour: 85.00,    // $/hr machine time
+  cncSetupCost: 45.00,             // one-time per part setup (program, fixture, first article)
+  cncMachineRatePerHour: 95.00,    // $/hr machine time
   cncStockPaddingMm: 3.0,          // extra material around part
-  cncRoughingRate: 25.0,           // cm³/hr material removal (roughing)
-  cncFinishingRate: 8.0,           // cm³/hr material removal (finishing)
+  // Removal rates are cm³/HOUR at machinability 1.0 (6061 on the Tormach 1100 —
+  // a light machine; ~15 cm³/min roughing). Plastics scale up via machinability.
+  cncRoughingRate: 900.0,          // cm³/hr material removal (roughing)
+  cncFinishingRate: 400.0,         // cm³/hr equivalent for finish passes
   cncFinishingPassRatio: 0.15,     // 15% of stock volume needs finish pass
   cncToolingCostBase: 5.00,        // per-part tooling wear estimate
   cncToolingMachinabilityScale: 2.0,  // scales inversely with machinability
   cncMinimumMachineTime: 0.25,     // minimum 15 min per part (hrs)
-  cncTurningMultiplier: 0.85,      // turning is slightly faster than milling
+  cncTurningMultiplier: 1.2,       // turning runs on manual lathes here — slower per part than the mill
+
+  // ─── CNC ROUTING (Techno 59" × 96", 12-tool ATC) ─────────
+  routerSetupCost: 60.00,            // per job: nest, fixture, first article
+  routerMachineRatePerHour: 95.00,   // $/hr spindle time
+  routerMaxPassDepthMm: 6.0,         // per-pass depth for plastics (adaptive, 1/4" tool)
+  routerFeedMmPerMin: {              // cut feed by material class
+    soft: 5000,                      // HDPE / UHMW / PVC / PP (~200 ipm)
+    medium: 3800,                    // acetal / nylon / polycarbonate (~150 ipm)
+    brittle: 3000,                   // cast acrylic (~120 ipm)
+    abrasive: 1500,                  // G-10 / phenolic (~60 ipm)
+    aluminum: 1500,                  // 6061 plate (~60 ipm)
+  },
+  routerHoleSeconds: 4,              // plunge/drill time per hole
+  routerToolChangeSeconds: 12,       // ATC change; assume two tools per job
+  routerHandlingMinutesPerPart: 0.5, // unload, de-tab, inspect
+  routerKerfMarginMm: 6.0,           // tool dia + onion-skin allowance per side for stock blank
+  routerNestYield: 0.85,             // fraction of a sheet that becomes parts
+  routerToolWearPerMeter: 0.35,      // $ per meter of cut (abrasive class ×3)
+  routerMinimumPartPrice: 6.00,
 
   // ─── 3D PRINTING ────────────────────────────────
   printSetupCost: 5.00,            // per-build setup
@@ -603,28 +922,30 @@ const DEFAULT_PRICING_RULES = {
 // ═══════════════════════════════════════════════════════════════
 const MANUFACTURING_PROCESSES = [
   {
-    slug: "sheetmetal",
-    name: "Sheet Metal",
-    description: "Laser cutting, bending, and hole punching for flat sheet metal parts",
-    icon: "sheetmetal",
-    subProcesses: [],
+    slug: "cnc",
+    name: "CNC Machining",
+    description: "Milling and turning of engineering plastics, 6061 and brass — Delrin, UHMW, nylon, PEEK and more",
+    icon: "cnc",
+    subProcesses: [
+      { slug: "milling", name: "CNC Milling", description: "3-axis and 4th-axis milling of plastic and aluminum parts" },
+      { slug: "turning", name: "CNC Turning", description: "Lathe work — bushings, rollers, spacers, shafts" },
+    ],
     active: true,
   },
   {
-    slug: "cnc",
-    name: "CNC Machining",
-    description: "Precision milling and turning from solid stock material",
-    icon: "cnc",
+    slug: "routing",
+    name: "CNC Routing",
+    description: "Flat and plate plastic parts nested and cut on a 59\" × 96\" CNC router — production runs from sheet",
+    icon: "routing",
     subProcesses: [
-      { slug: "milling", name: "CNC Milling", description: "3-axis or 5-axis milling" },
-      { slug: "turning", name: "CNC Turning", description: "Lathe operations for cylindrical parts" },
+      { slug: "sheet", name: "Sheet & Plate", description: "Profiles, pockets, holes and chamfers in sheet or plate stock" },
     ],
     active: true,
   },
   {
     slug: "3d-printing",
     name: "3D Printing",
-    description: "Additive manufacturing — FDM, SLA, and SLS processes",
+    description: "Additive manufacturing — FDM and SLA for prototypes, fixtures and low-volume parts",
     icon: "3d-printing",
     subProcesses: [
       { slug: "fdm", name: "FDM", description: "Fused Deposition Modeling — best for prototypes & functional parts" },
@@ -633,12 +954,22 @@ const MANUFACTURING_PROCESSES = [
     ],
     active: true,
   },
+  {
+    slug: "sheetmetal",
+    name: "Sheet Metal",
+    description: "Laser cutting, bending, and hole punching for flat sheet metal parts",
+    icon: "sheetmetal",
+    subProcesses: [],
+    active: false,
+  },
 ];
 
 module.exports = {
+  SEED_VERSION,
   DEFAULT_MATERIALS,
   SHEETMETAL_MATERIALS,
   CNC_MATERIALS,
+  ROUTING_MATERIALS,
   PRINTING_MATERIALS,
   DEFAULT_FINISHES,
   DEFAULT_LEAD_TIMES,
