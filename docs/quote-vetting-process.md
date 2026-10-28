@@ -83,7 +83,7 @@ Parser accuracy is not a launch blocker as long as the pricing rules do not lean
 
 ## 4. Which knob to turn for which miss
 
-All names are keys of `DEFAULT_PRICING_RULES` in `server/config/defaults.js` and are editable from the admin pricing page (nested feed table included). Run `whatif.js` with the proposed value before saving it.
+All names are keys of `DEFAULT_PRICING_RULES` in `server/config/defaults.js`, described (label, plain-language help, unit, allowed range, default) in `server/config/ruleSchema.js`, and editable from the admin **Pricing** tab (nested feed table and discount tiers included). The console prices six of the reference parts below live as you type — the same numbers `whatif.js` gives — and every save needs a one-line note that goes into the pricing history (`History` button; any earlier rule set can be restored). Run `whatif.js` for the full 17-part library before saving a big change.
 
 | symptom | knob(s) | direction / note |
 |---|---|---|
@@ -101,7 +101,7 @@ All names are keys of `DEFAULT_PRICING_RULES` in `server/config/defaults.js` and
 | SLA absurd | `slaScanTimeSecPerCm2`, `slaLayerTimeSec` | scan time is charged on the bounding-box footprint for every layer; 1.5 s/cm² makes a 120 × 80 × 40 box 34 h |
 | FDM thin-wall parts under-priced | `fdmInfillPercent`, `fdmPrintSpeedMmPerSec`, `fdmMachineRatePerHour` | printed volume = part × (infill + 0.3 shell); thin-walled parts are ~100 % perimeter, so raise infill or slow the speed |
 | anything cheaper than it should be at the bottom end | `minimumPartPrice`, `fdmMinimumPartPrice`, `slaMinimumPartPrice`, `minimumOrderTotal` | floors |
-| gate too eager / too lax | `shared/brand.json` → `rfqQuantityThreshold`; `server/services/quoteGate.js` → `BIG_TICKET_LINE_TOTAL`, `LOW_VOLUME_RATIO` | code constants, not pricing rules |
+| gate too eager / too lax | `rfqQuantityThreshold`, `bigTicketLineTotal`, `lowVolumeRatio` (admin pricing console → Gate) | the defaults come from `shared/brand.json` and `server/services/quoteGate.js`; the saved rule wins |
 
 ## 5. Findings from the 2026-10-28 run (defaults as shipped)
 
@@ -140,7 +140,7 @@ These are recommendations, not changes made in this branch.
 Run this for the first ten paid jobs of each process, then monthly.
 
 1. **Capture the engine's assumptions at order time.** For every ordered line save: `meta.machineTimeHours` / `meta.cycleMinutes` / `meta.printTimeHours`, `meta.geometrySummary` (stock, removal, volume ratio), the per-unit breakdown and the rules version. The admin order view already shows these; add them to the traveler header so the machinist sees the number the customer paid for.
-2. **Record actuals on the traveler.** Setup minutes (program + fixture + first article), cycle minutes per piece (spindle time from the control, or stopwatch), hand time per piece (de-tab, deburr, tap, inspect), material actually bought (stock size and price), tooling consumed, scrap count.
+2. **Record actuals on the traveler, then in the admin Calibration tab.** Setup minutes (program + fixture + first article), cycle minutes per piece (spindle time from the control, or stopwatch), hand time per piece (de-tab, deburr, tap, inspect), material actually bought (stock size and price), tooling consumed, scrap count. The Calibration tab lists every finished order line with the engine's minutes per piece next to an *Actual min/pc* box; type the cycle minutes there (and a note). It computes the per-process `actual ÷ engine` median and, after three measured jobs, suggests one conservative knob change (halfway toward the measured ratio, pointing at the minimum-time floor when that is what priced the parts) with a button that carries it into the Pricing console as an unsaved draft.
 3. **Compute the three ratios per job:** `engineTime ÷ actualTime`, `engineMaterial ÷ actualMaterial`, `enginePrice ÷ (actualCost ÷ (1 − margin))`. Put them in a sheet with the part's family (flat-sheet / pocket-plate / machined-block / turned / enclosure / tiny) and the parser's volume ratio and surface area.
 4. **After 10 jobs per process, adjust one knob family at a time**, largest median error first, using §4 to pick the knob and `whatif.js` to see what it does to the reference library before saving it. Rules of thumb:
    - time ratio off but material fine → rates (`cncRoughingRate`, `routerFeedMmPerMin`, `fdmPrintSpeedMmPerSec`) or floors (`cncMinimumMachineTime`);

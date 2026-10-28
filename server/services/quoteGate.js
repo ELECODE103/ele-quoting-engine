@@ -18,13 +18,24 @@ const RFQ_QTY_THRESHOLD = Number(brand.rfqQuantityThreshold) || 100;
 const BIG_TICKET_LINE_TOTAL = 5000;  // $ — above this, a human confirms before money moves
 const LOW_VOLUME_RATIO = 0.12;        // part volume / bbox volume — below this it's usually a multi-setup job
 
+function num(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 /**
  * @param {Array} lineItems — pricing-engine line items (with meta + quantity)
  * @param {Object} dfmByPartId — { [partId]: { summary, checks } } for each line's chosen process
+ * @param {Object} [rules] — pricing rules; the gate thresholds (rfqQuantityThreshold,
+ *   bigTicketLineTotal, lowVolumeRatio) are read from here when present so the
+ *   admin pricing console can tune them. Missing keys fall back to the constants.
  * @returns {{ requiresRfq: boolean, reasons: Array<{partId, code, message}> }}
  */
-function evaluate(lineItems = [], dfmByPartId = {}) {
+function evaluate(lineItems = [], dfmByPartId = {}, rules = {}) {
   const reasons = [];
+  const RFQ_QTY_THRESHOLD = Math.max(1, Math.round(num(rules && rules.rfqQuantityThreshold, module.exports.RFQ_QTY_THRESHOLD)));
+  const BIG_TICKET_LINE_TOTAL = num(rules && rules.bigTicketLineTotal, module.exports.BIG_TICKET_LINE_TOTAL);
+  const LOW_VOLUME_RATIO = num(rules && rules.lowVolumeRatio, module.exports.LOW_VOLUME_RATIO);
 
   for (const li of lineItems) {
     const partId = li.partId;

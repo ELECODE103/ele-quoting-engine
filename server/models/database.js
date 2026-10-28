@@ -167,6 +167,17 @@ const SCHEMA = `
     created_at TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS pricing_audit (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    user_email TEXT,
+    action TEXT DEFAULT 'save',
+    note TEXT,
+    diff_json TEXT,
+    rules_json TEXT,
+    created_at TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS rfqs (
     id TEXT PRIMARY KEY,
     quote_id TEXT,
@@ -241,6 +252,14 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       'ALTER TABLE quotes ADD COLUMN gate_json TEXT',
       // Routing: cut-feed class per sheet material (soft / medium / brittle / abrasive / aluminum)
       'ALTER TABLE materials ADD COLUMN feed_class TEXT',
+      // Admin materials editor: free-text note shown with the material.
+      'ALTER TABLE materials ADD COLUMN description TEXT',
+      // Calibration: what the job actually took, entered by the owner per order line
+      // (machine minutes per piece, excluding setup) so the engine's time model can
+      // be compared with the shop floor.
+      'ALTER TABLE order_items ADD COLUMN actual_minutes REAL',
+      'ALTER TABLE order_items ADD COLUMN actual_notes TEXT',
+      'ALTER TABLE order_items ADD COLUMN actual_recorded_at TEXT',
     ];
     for (const sql of migrations) {
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }

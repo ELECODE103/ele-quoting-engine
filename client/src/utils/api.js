@@ -90,9 +90,32 @@ export const api = {
     return request('/admin/finishes', { method: 'POST', body: JSON.stringify(data) });
   },
 
+  async duplicateMaterial(id) {
+    return request(`/admin/materials/${id}/duplicate`, { method: 'POST' });
+  },
+
+  // Pricing console
+  async getPricingSchema() { return request('/admin/pricing/schema'); },
   async getPricingRules() { return request('/admin/pricing'); },
-  async updatePricingRules(data) {
-    return request('/admin/pricing', { method: 'PUT', body: JSON.stringify(data) });
+  /** Save changed rules with a one-line note (required; it goes in the history). */
+  async updatePricingRules(rules, note) {
+    return request('/admin/pricing', { method: 'PUT', body: JSON.stringify({ rules, note }) });
+  },
+  async previewPricing(rules) {
+    return request('/admin/pricing/preview', { method: 'POST', body: JSON.stringify({ rules }) });
+  },
+  async getPricingHistory(limit = 50) { return request(`/admin/pricing/history?limit=${limit}`); },
+  async restorePricing(id) {
+    return request(`/admin/pricing/restore/${id}`, { method: 'POST', body: JSON.stringify({}) });
+  },
+  async resetPricing() {
+    return request('/admin/pricing/reset', { method: 'POST', body: JSON.stringify({}) });
+  },
+
+  // Calibration
+  async getCalibration() { return request('/admin/calibration'); },
+  async updateOrderItemActuals(itemId, data) {
+    return request(`/admin/order-items/${itemId}/actuals`, { method: 'PUT', body: JSON.stringify(data) });
   },
 
   async getAdminLeadTimes() { return request('/admin/lead-times'); },
