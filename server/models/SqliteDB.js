@@ -18,6 +18,7 @@ const JSON_COLUMNS = {
   users: {},
   processes: { subProcesses: "sub_processes_json" },
   rfqs: { reasons: "reasons_json", parts: "parts_json" },
+  pricing_audit: { diff: "diff_json", rules: "rules_json" },
 };
 
 // Map camelCase JS names → snake_case SQL column names
@@ -77,6 +78,10 @@ const FIELD_TO_COLUMN = {
   budgetTotal: "budget_total",
   quotedAt: "quoted_at",
   quotedTotal: "quoted_total",
+  userEmail: "user_email",
+  actualMinutes: "actual_minutes",
+  actualNotes: "actual_notes",
+  actualRecordedAt: "actual_recorded_at",
 };
 
 // Reverse mapping for deserialization

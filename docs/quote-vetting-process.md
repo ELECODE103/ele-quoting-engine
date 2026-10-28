@@ -110,6 +110,25 @@ All names are keys of the rate card in `server/config/ruleSchema.js` (grouped Sh
 | volume breaks too generous / too stingy | `volumeDiscounts`, `nestingEfficiencyBonus` | |
 | gate too eager / too lax | `rfqQuantityThreshold`, `bigTicketLineTotal`, `lowVolumeRatio`, `gateReviewOnLegacyFeatures`, `gateReviewThinWallMm` | now rules, not code constants |
 | anything cheaper than it should be at the bottom end | `minimumPartPrice`, `fdm/sla/slsMinimumPartPrice`, `minimumOrderTotal` | floors |
+All names are keys of `DEFAULT_PRICING_RULES` in `server/config/defaults.js`, described (label, plain-language help, unit, allowed range, default) in `server/config/ruleSchema.js`, and editable from the admin **Pricing** tab (nested feed table and discount tiers included). The console prices six of the reference parts below live as you type — the same numbers `whatif.js` gives — and every save needs a one-line note that goes into the pricing history (`History` button; any earlier rule set can be restored). Run `whatif.js` for the full 17-part library before saving a big change.
+
+| symptom | knob(s) | direction / note |
+|---|---|---|
+| every simple CNC part costs the same (~$110 @1, ~$47 @10) | `cncMinimumMachineTime` | the 0.25 h floor is what you are seeing; lower it (0.10–0.15) and let the roughing/finishing terms carry |
+| tiny CNC parts (spacer, clip, cube) absurd per piece | `cncToolingCostBase`, `cncMinimumMachineTime` | tooling is $5 × 2 ÷ machinability per piece regardless of size; drop the base to 1.5–2 |
+| plate parts on CNC carry too much "removal" | `cncStockPaddingMm` | padding is added on all six faces, so a 1/4" plate is costed from 1/2" stock; 1.5 mm halves the fake removal |
+| turned parts over-priced | `cncTurningMultiplier` | 1.2 means "slower than the mill"; a batch of bushings on a manual lathe with stops is faster per piece — 0.6–0.8 |
+| big removal parts (tray, roller) over/under | `cncRoughingRate` (cm³/h at machinability 1.0), `cncFinishingRate`, `cncFinishingPassRatio` | 900 cm³/h ≈ 15 cm³/min matches the Tormach in 6061 (chip-load limited at 5,140 RPM); plastics scale by `machinability`. Finishing is 15 % of *stock* volume at 400 cm³/h — it grows with stock size, not surface area |
+| PEEK/Ultem blanks priced wrong | material `pricePerKg` (per material, admin materials page), `cncStockPaddingMm` | material = bbox + padding, so padding matters most on $130/kg stock |
+| routed parts too dear at qty 1 | `routerSetupCost` | $60 per job is ≥ $88 for any qty-1 router part; 40–45 = 25–30 min of nest + CAM + first article |
+| routed cycle time wrong | `routerFeedMmPerMin.{soft,medium,brittle,abrasive,aluminum}`, `routerMaxPassDepthMm` | feeds should come from chip load × flutes × RPM (skill: 1/4" O-flute HDPE 0.006" × 18k = 2,740 mm/min; acrylic 2-flute 0.002" × 2 × 18k = 1,830). `routerMaxPassDepthMm` = 6.0 makes 1/4" (6.35 mm) stock a two-pass cut; 6.5 fixes it |
+| holes mis-priced on the router | `routerHoleSeconds` | 4 s per detected hole, but the detected count is noise (finding 7); keep it small until the parser counts holes |
+| routed part floor | `routerMinimumPartPrice` | $6 is hit at qty 100 for most small parts; raise if de-tab/inspection costs more |
+| volume breaks too generous / too stingy | `volumeDiscounts` | applies to the whole per-unit base (material included), on top of setup amortisation |
+| SLA absurd | `slaScanTimeSecPerCm2`, `slaLayerTimeSec` | scan time is charged on the bounding-box footprint for every layer; 1.5 s/cm² makes a 120 × 80 × 40 box 34 h |
+| FDM thin-wall parts under-priced | `fdmInfillPercent`, `fdmPrintSpeedMmPerSec`, `fdmMachineRatePerHour` | printed volume = part × (infill + 0.3 shell); thin-walled parts are ~100 % perimeter, so raise infill or slow the speed |
+| anything cheaper than it should be at the bottom end | `minimumPartPrice`, `fdmMinimumPartPrice`, `slaMinimumPartPrice`, `minimumOrderTotal` | floors |
+| gate too eager / too lax | `rfqQuantityThreshold`, `bigTicketLineTotal`, `lowVolumeRatio` (admin pricing console → Gate) | the defaults come from `shared/brand.json` and `server/services/quoteGate.js`; the saved rule wins |
 
 ## 5. Findings from the 2026-10-28 run (defaults as shipped, commit d62bd57)
 
@@ -150,7 +169,7 @@ Status: every item below is implemented by the feature-based models (`docs/prici
 Run this for the first ten paid jobs of each process, then monthly.
 
 1. **Capture the engine's assumptions at order time.** For every ordered line save: `meta.machineTimeHours` / `meta.cycleMinutes` / `meta.printTimeHours`, `meta.geometrySummary` (stock, removal, volume ratio), the per-unit breakdown and the rules version. The admin order view already shows these; add them to the traveler header so the machinist sees the number the customer paid for.
-2. **Record actuals on the traveler.** Setup minutes (program + fixture + first article), cycle minutes per piece (spindle time from the control, or stopwatch), hand time per piece (de-tab, deburr, tap, inspect), material actually bought (stock size and price), tooling consumed, scrap count.
+2. **Record actuals on the traveler, then in the admin Calibration tab.** Setup minutes (program + fixture + first article), cycle minutes per piece (spindle time from the control, or stopwatch), hand time per piece (de-tab, deburr, tap, inspect), material actually bought (stock size and price), tooling consumed, scrap count. The Calibration tab lists every finished order line with the engine's minutes per piece next to an *Actual min/pc* box; type the cycle minutes there (and a note). It computes the per-process `actual ÷ engine` median and, after three measured jobs, suggests one conservative knob change (halfway toward the measured ratio, pointing at the minimum-time floor when that is what priced the parts) with a button that carries it into the Pricing console as an unsaved draft.
 3. **Compute the three ratios per job:** `engineTime ÷ actualTime`, `engineMaterial ÷ actualMaterial`, `enginePrice ÷ (actualCost ÷ (1 − margin))`. Put them in a sheet with the part's family (flat-sheet / pocket-plate / machined-block / turned / enclosure / tiny) and the parser's volume ratio and surface area.
 4. **After 10 jobs per process, adjust one knob family at a time**, largest median error first, using §4 to pick the knob and `whatif.js` to see what it does to the reference library before saving it. Rules of thumb:
    - time ratio off but material fine → rates (`cncRoughingRate`, `routerFeedMmPerMin`, `fdmPrintSpeedMmPerSec`) or floors (`cncMinimumMachineTime`);

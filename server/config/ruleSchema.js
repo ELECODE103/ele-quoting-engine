@@ -335,6 +335,126 @@ function describeSchema() {
   };
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// Admin-console view of the schema (services/pricingAdmin.js,
+// services/calibration.js and the Pricing console render from this).
+// Same rules, decorated with the UI hints the console expects:
+//   shape/rows/columns for tables, step, `simple` (shown in the Simple view),
+//   `calibration` (which knob the Calibration tab nudges per process).
+// ═══════════════════════════════════════════════════════════════
+const SIMPLE_KEYS = new Set([
+  "cncMachineRatePerHour", "latheRatePerHour", "routerMachineRatePerHour", "laborRatePerHour",
+  "marginPercent", "minimumPartPrice", "routerMinimumPartPrice", "minimumOrderTotal",
+  "cncSetupMinutesFirst", "routerSetupMinutes", "fdmMachineRatePerHour",
+  "rfqQuantityThreshold", "bigTicketLineTotal",
+]);
+
+// role: "rate" = time per unit of work (inverse: higher rate → less time);
+//       "floor" = a minimum that small parts sit on; "cost" = $/h.
+const CALIBRATION = {
+  cncRoughingMrrCm3PerMin: { process: "cnc", subProcess: "milling", relation: "inverse", role: "rate" },
+  cncMinMinutesPerCm2:     { process: "cnc", subProcess: "milling", relation: "direct",  role: "floor" },
+  cncMachineRatePerHour:   { process: "cnc", relation: "direct", role: "cost" },
+  latheFeedMmPerMin:       { process: "cnc", subProcess: "turning", relation: "inverse", role: "rate" },
+  latheRatePerHour:        { process: "cnc", subProcess: "turning", relation: "direct", role: "cost" },
+  routerFeedMmPerMin:      { process: "routing", relation: "inverse", role: "rate" },
+  routerMachineRatePerHour:{ process: "routing", relation: "direct", role: "cost" },
+  fdmDepositionMm3PerSec:  { process: "3d-printing", subProcess: "fdm", relation: "inverse", role: "rate" },
+  fdmMachineRatePerHour:   { process: "3d-printing", subProcess: "fdm", relation: "direct", role: "cost" },
+  slaLayerTimeSec:         { process: "3d-printing", subProcess: "sla", relation: "direct", role: "rate" },
+  slaMachineRatePerHour:   { process: "3d-printing", subProcess: "sla", relation: "direct", role: "cost" },
+  slsLayerTimeSec:         { process: "3d-printing", subProcess: "sls", relation: "direct", role: "rate" },
+  slsMachineRatePerHour:   { process: "3d-printing", subProcess: "sls", relation: "direct", role: "cost" },
+};
+
+const ROW_LABELS = {
+  standard: "Standard", expedited: "Expedited", rush: "Priority rush", "same-day": "Same day",
+  soft: "Soft plastics — HDPE, UHMW, PVC, PP", medium: "Acetal, nylon, polycarbonate", brittle: "Brittle — cast acrylic",
+  abrasive: "Abrasive — G-10, phenolic", aluminum: "Aluminum plate",
+  plastic: "Plastics", brass: "Brass", steel: "Steel", composite: "Composites",
+  upTo3: "≤ 3 mm", upTo10: "3–10 mm", upTo20: "10–20 mm", over20: "> 20 mm",
+  prismatic: "Prismatic", freeform: "Freeform",
+};
+
+function stepFor(r) {
+  if (r.type === "percent") return 0.01;
+  const span = (r.max ?? 100) - (r.min ?? 0);
+  if (span <= 2) return 0.05;
+  if (span <= 20) return 0.1;
+  if (span <= 200) return 0.5;
+  if (span <= 2000) return 1;
+  return 10;
+}
+
+function adaptDescriptor(r) {
+  const d = { ...deepClone(r), step: stepFor(r) };
+  if (SIMPLE_KEYS.has(r.key)) d.simple = true;
+  if (CALIBRATION[r.key]) d.calibration = { ...CALIBRATION[r.key] };
+  if (r.type === "table") {
+    const spec = r.tableSpec || {};
+    if (spec.kind === "map") {
+      d.shape = "map";
+      d.rows = spec.keys.map((k) => ({ key: k, label: ROW_LABELS[k] || k }));
+      d.min = spec.min; d.max = spec.max;
+    } else {
+      d.shape = "rows";
+      d.columns = (spec.columns || []).map((c) => ({ ...c, label: c.label || c.key }));
+      if (spec.sortBy) d.sortBy = spec.sortBy;
+      if (r.key === "volumeDiscounts") { d.sortBy = d.sortBy || "minQty"; d.minRows = 1; d.maxRows = 20; }
+    }
+  }
+  return d;
+}
+
+const RULE_SCHEMA = RULES.map(adaptDescriptor);
+const RULE_GROUPS = GROUPS.map((g) => ({ key: g.id, label: g.label, blurb: g.help }));
+
+function schemaDefaults() { return defaultRules(); }
+function schemaKeys() { return RULES.map((r) => r.key); }
+function getDescriptor(key) { return RULE_SCHEMA.find((d) => d.key === key) || null; }
+
+function fmtBound(desc, n) {
+  if (desc.type === "percent") return `${Math.round(n * 100)} %`;
+  return desc.unit ? `${n} ${desc.unit}` : String(n);
+}
+
+/**
+ * Admin-save validation: unknown keys and out-of-range scalars are ERRORS
+ * (the console shows them inline), not silently clamped like mergeRules().
+ * Returns { ok, errors: [{ key, message }], values }.
+ */
+function validateRules(candidate, { partial = true } = {}) {
+  const errors = [];
+  const values = {};
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return { ok: false, errors: [{ key: "", message: "Rules must be an object" }], values };
+  }
+  for (const key of Object.keys(candidate)) {
+    if (key === "seedVersion") continue;
+    if (!RULE_BY_KEY[key]) errors.push({ key, message: `Unknown rule "${key}"` });
+  }
+  for (const desc of RULE_SCHEMA) {
+    if (!(desc.key in candidate)) {
+      if (!partial) errors.push({ key: desc.key, message: `${desc.label} is missing` });
+      continue;
+    }
+    const raw = candidate[desc.key];
+    if (desc.type !== "table") {
+      const n = Number(raw);
+      if (raw === "" || raw === null || raw === undefined || !Number.isFinite(n)) { errors.push({ key: desc.key, message: `${desc.label} must be a number` }); continue; }
+      if (desc.min !== undefined && n < desc.min) { errors.push({ key: desc.key, message: `${desc.label} must be at least ${fmtBound(desc, desc.min)}` }); continue; }
+      if (desc.max !== undefined && n > desc.max) { errors.push({ key: desc.key, message: `${desc.label} must be at most ${fmtBound(desc, desc.max)}` }); continue; }
+      values[desc.key] = n;
+    } else {
+      const r = sanitizeValue(RULE_BY_KEY[desc.key], raw);
+      if (!r.ok) errors.push({ key: desc.key, message: r.error });
+      else values[desc.key] = r.value;
+    }
+  }
+  return { ok: errors.length === 0, errors, values };
+}
+
 module.exports = {
   GROUPS,
   RULES,
@@ -347,4 +467,11 @@ module.exports = {
   sanitizeRules,
   mergeRules,
   describeSchema,
+  // admin-console API
+  RULE_SCHEMA,
+  RULE_GROUPS,
+  schemaDefaults,
+  schemaKeys,
+  getDescriptor,
+  validateRules,
 };

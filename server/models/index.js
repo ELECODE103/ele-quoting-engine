@@ -23,6 +23,7 @@ const orderItemsDB = new DBClass("order_items");
 const usersDB = new DBClass("users");
 const processesDB = new DBClass("processes");
 const rfqsDB = new DBClass("rfqs");
+const pricingAuditDB = new DBClass("pricing_audit");
 
 module.exports = {
   // Export instances
@@ -37,6 +38,7 @@ module.exports = {
   usersDB,
   processesDB,
   rfqsDB,
+  pricingAuditDB,
 
   // Also export classes for advanced use
   SqliteDB,
