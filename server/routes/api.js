@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require("uuid");
 const { parseFile } = require("../parsers/fileParser");
 const { PricingEngine } = require("../services/pricingEngine");
 const { DEFAULT_PRICING_RULES } = require("../config/defaults");
+const ruleSchema = require("../config/ruleSchema");
 const quoteGate = require("../services/quoteGate");
 const { runDFMAnalysis, defaultProcessSlug } = require("../parsers/fileParser");
 const { materialsDB, finishesDB, leadTimesDB, pricingDB, quotesDB, partsDB } = require("../models");
@@ -52,15 +53,18 @@ const pricingEngine = new PricingEngine();
  */
 function loadPricingRules() {
   const stored = pricingDB.getAll()[0];
-  const rules = stored?.rules && typeof stored.rules === "object" ? stored.rules : {};
-  pricingEngine.rules = { ...DEFAULT_PRICING_RULES, ...rules };
+  // Schema defaults with the stored (admin-tuned) values laid over them, each
+  // one validated and clamped — a database from an older version always
+  // yields a complete, sane rule set.
+  pricingEngine.rules = ruleSchema.mergeRules(stored?.rules);
   return pricingEngine.rules;
 }
 
 // ─── Admin field whitelists (prevent mass assignment) ────────
-const MATERIAL_FIELDS = ["name", "slug", "process", "subProcess", "category", "density", "costPerKg", "pricePerKg", "pricePerCm3", "machinability", "feedClass", "costPerSheet", "grades", "thicknesses", "layerHeights", "defaultLayerHeight", "active", "description", "color"];
+const MATERIAL_FIELDS = ["name", "slug", "process", "subProcess", "category", "density", "costPerKg", "pricePerKg", "pricePerCm3", "machinability", "materialClass", "stockForms", "wasteFactor", "feedClass", "costPerSheet", "grades", "thicknesses", "layerHeights", "defaultLayerHeight", "active", "description", "color"];
 const FINISH_FIELDS = ["name", "slug", "process", "costPerSqMm", "costFlat", "minCost", "active", "description", "category"];
-// Any key that exists in the default rule set may be tuned from the admin panel.
+// Any key declared in the rule schema may be tuned from the admin panel
+// (validation and clamping come from the schema, see PUT /admin/pricing).
 const PRICING_FIELDS = Object.keys(DEFAULT_PRICING_RULES);
 const LEAD_TIME_FIELDS = ["name", "slug", "days", "multiplier", "active", "description"];
 
@@ -220,13 +224,18 @@ router.post("/quote", optionalAuth, (req, res) => {
       });
     }
 
+    // Rush multiplier: the rate card's table wins when it names this lead time,
+    // else the lead-time record's own multiplier.
+    const rushTable = pricingEngine.rules.rushMultipliers || {};
+    const leadTimeMultiplier = Number.isFinite(Number(rushTable[leadTimeSlug])) && Number(rushTable[leadTimeSlug]) >= 1
+      ? Number(rushTable[leadTimeSlug]) : leadTime.multiplier;
     const quote = pricingEngine.calculateOrderQuote({
       parts: pricingParts,
-      leadTimeMultiplier: leadTime.multiplier,
+      leadTimeMultiplier,
     });
 
     // Instant checkout or RFQ? Stored with the quote so checkout can enforce it.
-    const gate = quoteGate.evaluate(quote.lineItems, dfmByPartId);
+    const gate = quoteGate.evaluate(quote.lineItems, dfmByPartId, pricingEngine.rules);
 
     // Store quote
     const savedQuote = quotesDB.insert({
@@ -354,15 +363,20 @@ router.get("/admin/pricing", authenticate, requireAdmin, (req, res) => {
   res.json(loadPricingRules());
 });
 
+/**
+ * GET /api/admin/pricing/schema — the rate card's shape: groups, and for every
+ * rule its key, label, help, unit, type, range and default, plus the
+ * per-material fields. The admin page renders from this generically.
+ */
+router.get("/admin/pricing/schema", authenticate, requireAdmin, (req, res) => {
+  res.json(ruleSchema.describeSchema());
+});
+
 router.put("/admin/pricing", authenticate, requireAdmin, (req, res) => {
-  const safe = whitelist(req.body, PRICING_FIELDS);
-  // Numeric sanity: scalar rules must be finite numbers ≥ 0.
-  for (const [k, v] of Object.entries(safe)) {
-    if (typeof DEFAULT_PRICING_RULES[k] === "number" && !(Number.isFinite(Number(v)) && Number(v) >= 0)) {
-      return res.status(400).json({ error: `Invalid value for ${k}` });
-    }
-    if (typeof DEFAULT_PRICING_RULES[k] === "number") safe[k] = Number(v);
-  }
+  // Every value is validated and clamped against the rule schema; unknown
+  // keys are dropped, a bad value rejects the whole save so nothing half-applies.
+  const { rules: safe, errors } = ruleSchema.sanitizeRules(whitelist(req.body, PRICING_FIELDS));
+  if (errors.length) return res.status(400).json({ error: errors[0], errors });
   const rules = pricingDB.getAll();
   if (rules.length > 0) {
     const current = (rules[0].rules && typeof rules[0].rules === "object") ? rules[0].rules : {};
