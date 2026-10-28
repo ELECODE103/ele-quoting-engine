@@ -14,7 +14,7 @@
 // Bump when the default material/finish/process sets change in a way that an
 // existing production database should pick up. Quotes, orders and users are
 // never touched by a re-seed.
-const SEED_VERSION = 2;
+const SEED_VERSION = 3;
 
 // ═══════════════════════════════════════════════════════════════
 // SHEET METAL MATERIALS
@@ -180,6 +180,9 @@ const CNC_MATERIALS = [
   // ─── Engineering plastics (the core of the shop) ──────────
   // density is lb/in³; machinability is relative to 6061 = 1.0 (higher = faster);
   // pricePerKg is landed stock cost (rod/plate), not a sell price.
+  // materialClass picks the rate-card column (roughing MRR, lathe feed/DOC);
+  // stockForms says what the shop buys; wasteFactor is extra stock paid for
+  // (kerf, drops, bar ends). See ruleSchema.MATERIAL_FIELD_SCHEMA.
   {
     slug: "cnc-delrin",
     name: "Delrin / Acetal (POM)",
@@ -193,6 +196,9 @@ const CNC_MATERIALS = [
       { name: "Delrin 150 homopolymer — black", density: 0.051 },
     ],
     machinability: 1.3,
+    materialClass: "plastic",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 11.00,
     color: "#F5F5F4",
     active: true,
@@ -208,6 +214,9 @@ const CNC_MATERIALS = [
       { name: "UHMW — black", density: 0.034 },
     ],
     machinability: 1.05,
+    materialClass: "plastic",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 7.50,
     color: "#FAFAFA",
     active: true,
@@ -223,6 +232,9 @@ const CNC_MATERIALS = [
       { name: "HDPE — black", density: 0.035 },
     ],
     machinability: 1.2,
+    materialClass: "plastic",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 6.00,
     color: "#F4F4F5",
     active: true,
@@ -240,6 +252,9 @@ const CNC_MATERIALS = [
       { name: "Nylon MD / oil-filled (Nylatron-type)", density: 0.042 },
     ],
     machinability: 1.1,
+    materialClass: "plastic",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 13.00,
     color: "#FAFAF9",
     active: true,
@@ -252,6 +267,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "PEEK — natural (unfilled)", density: 0.047 }],
     machinability: 0.9,
+    materialClass: "plastic",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 130.00,
     color: "#D6C9A8",
     active: true,
@@ -264,6 +282,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "Ultem 1000 — amber", density: 0.046 }],
     machinability: 0.85,
+    materialClass: "plastic",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 65.00,
     color: "#C8A24A",
     active: true,
@@ -276,6 +297,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "PTFE virgin — white", density: 0.078 }],
     machinability: 1.0,
+    materialClass: "plastic",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 28.00,
     color: "#FFFFFF",
     active: true,
@@ -288,6 +312,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "Polycarbonate — clear", density: 0.043 }, { name: "Polycarbonate — black", density: 0.043 }],
     machinability: 0.9,
+    materialClass: "plastic",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 10.00,
     color: "#E0F2FE",
     active: true,
@@ -300,6 +327,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "Cast acrylic — clear", density: 0.043 }],
     machinability: 0.95,
+    materialClass: "plastic",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 8.00,
     color: "#F0F9FF",
     active: true,
@@ -312,6 +342,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "PVC Type 1 — gray", density: 0.050 }],
     machinability: 1.1,
+    materialClass: "plastic",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 6.00,
     color: "#9CA3AF",
     active: true,
@@ -324,6 +357,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "Polypropylene homopolymer — natural", density: 0.033 }],
     machinability: 1.0,
+    materialClass: "plastic",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 6.00,
     color: "#F5F5F5",
     active: true,
@@ -336,6 +372,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "G-10 — natural green", density: 0.065 }, { name: "FR-4 — yellow", density: 0.065 }],
     machinability: 0.6,     // abrasive — eats tooling
+    materialClass: "composite",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 22.00,
     color: "#5B8A4A",
     active: true,
@@ -348,6 +387,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "Canvas phenolic CE — brown", density: 0.049 }, { name: "Linen phenolic LE", density: 0.049 }],
     machinability: 0.7,
+    materialClass: "composite",
+    stockForms: ["plate", "rod"],
+    wasteFactor: 0.15,
     pricePerKg: 19.00,
     color: "#8B5E3C",
     active: true,
@@ -362,6 +404,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "6061-T6", density: 0.098 }],
     machinability: 1.0,    // baseline
+    materialClass: "aluminum",
+    stockForms: ["plate", "rod", "block"],
+    wasteFactor: 0.15,
     pricePerKg: 7.00,
     color: "#E5E7EB",
     active: true,
@@ -374,6 +419,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "C360", density: 0.308 }],
     machinability: 1.2,
+    materialClass: "brass",
+    stockForms: ["rod", "plate"],
+    wasteFactor: 0.15,
     pricePerKg: 12.00,
     color: "#CA8A04",
     active: true,
@@ -388,6 +436,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "7075-T6", density: 0.102 }],
     machinability: 0.9,
+    materialClass: "aluminum",
+    stockForms: ["plate", "rod", "block"],
+    wasteFactor: 0.15,
     pricePerKg: 10.00,
     color: "#D1D5DB",
     active: false,
@@ -400,6 +451,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "304", density: 0.289 }],
     machinability: 0.45,
+    materialClass: "steel",
+    stockForms: ["plate", "rod", "block"],
+    wasteFactor: 0.15,
     pricePerKg: 6.00,
     color: "#9CA3AF",
     active: false,
@@ -412,6 +466,9 @@ const CNC_MATERIALS = [
     subProcess: "milling",
     grades: [{ name: "1018 Cold Rolled", density: 0.284 }],
     machinability: 0.70,
+    materialClass: "steel",
+    stockForms: ["plate", "rod", "block"],
+    wasteFactor: 0.15,
     pricePerKg: 3.00,
     color: "#6B7280",
     active: false,
@@ -444,6 +501,9 @@ const ROUTING_MATERIALS = [
     grades: [{ name: "HDPE — natural (FDA)", density: 0.035 }, { name: "HDPE — black", density: 0.035 }, { name: "HDPE marine board (King StarBoard-type)", density: 0.035 }],
     thicknesses: PLASTIC_SHEET_THICKNESSES,
     feedClass: "soft",
+    materialClass: "plastic",
+    stockForms: ["sheet"],
+    wasteFactor: 0,
     pricePerKg: 5.50,
     color: "#F4F4F5",
     active: true,
@@ -457,6 +517,9 @@ const ROUTING_MATERIALS = [
     grades: [{ name: "UHMW — natural (FDA)", density: 0.034 }, { name: "UHMW — black", density: 0.034 }],
     thicknesses: PLASTIC_SHEET_THICKNESSES,
     feedClass: "soft",
+    materialClass: "plastic",
+    stockForms: ["sheet"],
+    wasteFactor: 0,
     pricePerKg: 7.00,
     color: "#FAFAFA",
     active: true,
@@ -470,6 +533,9 @@ const ROUTING_MATERIALS = [
     grades: [{ name: "Acetal — natural", density: 0.051 }, { name: "Acetal — black", density: 0.051 }],
     thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 19.1),
     feedClass: "medium",
+    materialClass: "plastic",
+    stockForms: ["sheet"],
+    wasteFactor: 0,
     pricePerKg: 11.00,
     color: "#F5F5F4",
     active: true,
@@ -483,6 +549,9 @@ const ROUTING_MATERIALS = [
     grades: [{ name: "Nylon 6/6 — natural", density: 0.041 }, { name: "Cast Nylon 6", density: 0.042 }],
     thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 25.4),
     feedClass: "medium",
+    materialClass: "plastic",
+    stockForms: ["sheet"],
+    wasteFactor: 0,
     pricePerKg: 13.00,
     color: "#FAFAF9",
     active: true,
@@ -496,6 +565,9 @@ const ROUTING_MATERIALS = [
     grades: [{ name: "Polycarbonate — clear", density: 0.043 }, { name: "Polycarbonate — bronze/tinted", density: 0.043 }],
     thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 12.7),
     feedClass: "medium",
+    materialClass: "plastic",
+    stockForms: ["sheet"],
+    wasteFactor: 0,
     pricePerKg: 10.00,
     color: "#E0F2FE",
     active: true,
@@ -509,6 +581,9 @@ const ROUTING_MATERIALS = [
     grades: [{ name: "Cast acrylic — clear", density: 0.043 }, { name: "Cast acrylic — color", density: 0.043 }],
     thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 25.4),
     feedClass: "brittle",
+    materialClass: "plastic",
+    stockForms: ["sheet"],
+    wasteFactor: 0,
     pricePerKg: 8.00,
     color: "#F0F9FF",
     active: true,
@@ -522,6 +597,9 @@ const ROUTING_MATERIALS = [
     grades: [{ name: "PVC Type 1 — gray", density: 0.050 }, { name: "Expanded PVC (Sintra-type) — white", density: 0.025 }],
     thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 25.4),
     feedClass: "soft",
+    materialClass: "plastic",
+    stockForms: ["sheet"],
+    wasteFactor: 0,
     pricePerKg: 6.00,
     color: "#9CA3AF",
     active: true,
@@ -535,6 +613,9 @@ const ROUTING_MATERIALS = [
     grades: [{ name: "Polypropylene — natural", density: 0.033 }],
     thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 25.4),
     feedClass: "soft",
+    materialClass: "plastic",
+    stockForms: ["sheet"],
+    wasteFactor: 0,
     pricePerKg: 6.00,
     color: "#F5F5F5",
     active: true,
@@ -548,6 +629,9 @@ const ROUTING_MATERIALS = [
     grades: [{ name: "G-10 — green", density: 0.065 }, { name: "FR-4 — yellow", density: 0.065 }],
     thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 12.7),
     feedClass: "abrasive",
+    materialClass: "composite",
+    stockForms: ["sheet"],
+    wasteFactor: 0,
     pricePerKg: 22.00,
     color: "#5B8A4A",
     active: true,
@@ -561,6 +645,9 @@ const ROUTING_MATERIALS = [
     grades: [{ name: "Canvas phenolic CE", density: 0.049 }, { name: "Linen phenolic LE", density: 0.049 }],
     thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 25.4),
     feedClass: "abrasive",
+    materialClass: "composite",
+    stockForms: ["sheet"],
+    wasteFactor: 0,
     pricePerKg: 19.00,
     color: "#8B5E3C",
     active: true,
@@ -574,6 +661,9 @@ const ROUTING_MATERIALS = [
     grades: [{ name: "6061-T6", density: 0.098 }],
     thicknesses: PLASTIC_SHEET_THICKNESSES.filter((t) => t.mm <= 12.7),
     feedClass: "aluminum",
+    materialClass: "aluminum",
+    stockForms: ["sheet"],
+    wasteFactor: 0,
     pricePerKg: 7.00,
     color: "#E5E7EB",
     active: true,
@@ -831,91 +921,11 @@ const DEFAULT_LEAD_TIMES = [
 ];
 
 // ═══════════════════════════════════════════════════════════════
-// PRICING RULES (per process)
+// PRICING RULES — the rate card. Declared once, with labels, help, units and
+// ranges, in ./ruleSchema.js; this is the default value of every rule.
 // ═══════════════════════════════════════════════════════════════
-const DEFAULT_PRICING_RULES = {
-  // ─── SHEET METAL ─────────────────────────────────
-  laserCutRatePerMm: 0.0035,
-  laserThicknessExponent: 1.6,
-  bendBaseCost: 2.50,
-  bendThicknessMultiplier: 3.0,
-  holeBaseCost: 0.35,
-  tapCost: 1.20,
-  countersinkCost: 0.80,
-
-  // ─── CNC MACHINING ──────────────────────────────
-  cncSetupCost: 45.00,             // one-time per part setup (program, fixture, first article)
-  cncMachineRatePerHour: 95.00,    // $/hr machine time
-  cncStockPaddingMm: 3.0,          // extra material around part
-  // Removal rates are cm³/HOUR at machinability 1.0 (6061 on the Tormach 1100 —
-  // a light machine; ~15 cm³/min roughing). Plastics scale up via machinability.
-  cncRoughingRate: 900.0,          // cm³/hr material removal (roughing)
-  cncFinishingRate: 400.0,         // cm³/hr equivalent for finish passes
-  cncFinishingPassRatio: 0.15,     // 15% of stock volume needs finish pass
-  cncToolingCostBase: 5.00,        // per-part tooling wear estimate
-  cncToolingMachinabilityScale: 2.0,  // scales inversely with machinability
-  cncMinimumMachineTime: 0.25,     // minimum 15 min per part (hrs)
-  cncTurningMultiplier: 1.2,       // turning runs on manual lathes here — slower per part than the mill
-
-  // ─── CNC ROUTING (Techno 59" × 96", 12-tool ATC) ─────────
-  routerSetupCost: 60.00,            // per job: nest, fixture, first article
-  routerMachineRatePerHour: 95.00,   // $/hr spindle time
-  routerMaxPassDepthMm: 6.0,         // per-pass depth for plastics (adaptive, 1/4" tool)
-  routerFeedMmPerMin: {              // cut feed by material class
-    soft: 5000,                      // HDPE / UHMW / PVC / PP (~200 ipm)
-    medium: 3800,                    // acetal / nylon / polycarbonate (~150 ipm)
-    brittle: 3000,                   // cast acrylic (~120 ipm)
-    abrasive: 1500,                  // G-10 / phenolic (~60 ipm)
-    aluminum: 1500,                  // 6061 plate (~60 ipm)
-  },
-  routerHoleSeconds: 4,              // plunge/drill time per hole
-  routerToolChangeSeconds: 12,       // ATC change; assume two tools per job
-  routerHandlingMinutesPerPart: 0.5, // unload, de-tab, inspect
-  routerKerfMarginMm: 6.0,           // tool dia + onion-skin allowance per side for stock blank
-  routerNestYield: 0.85,             // fraction of a sheet that becomes parts
-  routerToolWearPerMeter: 0.35,      // $ per meter of cut (abrasive class ×3)
-  routerMinimumPartPrice: 6.00,
-
-  // ─── 3D PRINTING ────────────────────────────────
-  printSetupCost: 5.00,            // per-build setup
-  fdmMachineRatePerHour: 8.00,     // FDM printer cost/hr
-  fdmPrintSpeedMmPerSec: 60,       // typical print speed
-  fdmInfillPercent: 0.20,          // 20% infill default
-  fdmSupportMaterialRatio: 0.15,   // 15% extra material for supports
-  slaMachineRatePerHour: 20.00,    // SLA machine cost/hr
-  slaLayerTimeSec: 8,              // seconds per layer (exposure + peel)
-  slaSupportMaterialRatio: 0.10,
-  slsMachineRatePerHour: 35.00,    // SLS is most expensive
-  slsLayerTimeSec: 12,             // fixed per-layer recoat/sweep time
-  slsScanTimeSecPerCm2: 2.0,       // laser scan time per cm² of layer area
-  slsPackingEfficiency: 0.08,      // fraction of build volume used
-  slsPowderReuseRatio: 0.5,        // fraction of un-fused powder recycled into next build (PA12 ~50%)
-  slaScanTimeSecPerCm2: 1.5,       // exposure/scan time per cm² of layer area
-  // Per-sub-process minimum part price — covers post-processing labor that the
-  // volume/time model doesn't (FDM support removal, SLA wash+cure, SLS depowder).
-  fdmMinimumPartPrice: 8.00,
-  slaMinimumPartPrice: 12.00,
-  slsMinimumPartPrice: 15.00,
-
-  // ─── SHARED ──────────────────────────────────────
-  minimumPartPrice: 5.00,
-  minimumOrderTotal: 25.00,
-  volumeDiscounts: [
-    { minQty: 1, discount: 0 },
-    { minQty: 5, discount: 0.05 },
-    { minQty: 10, discount: 0.10 },
-    { minQty: 25, discount: 0.15 },
-    { minQty: 50, discount: 0.22 },
-    { minQty: 100, discount: 0.28 },
-    { minQty: 250, discount: 0.33 },
-    { minQty: 500, discount: 0.38 },
-    { minQty: 1000, discount: 0.42 },
-  ],
-  nestingEfficiencyBonus: 0.12,
-  marginPercent: 0.30,
-  shippingBaseRate: 12.00,
-  shippingPerKg: 2.50,
-};
+const { defaultRules } = require("./ruleSchema");
+const DEFAULT_PRICING_RULES = defaultRules();
 
 // ═══════════════════════════════════════════════════════════════
 // MANUFACTURING PROCESSES
