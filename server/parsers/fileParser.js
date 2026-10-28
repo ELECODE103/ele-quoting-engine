@@ -10,6 +10,7 @@
 const fs = require("fs");
 const path = require("path");
 const { resolveProcess, activeProcesses } = require("../processes/registry");
+const { analyzeGeometry, legacyFromFeatures } = require("../geometry");
 
 // ─── STL PARSER (Binary + ASCII) ──────────────────────────────
 function parseSTL(buffer) {
@@ -44,7 +45,7 @@ function parseSTLBinary(buffer) {
     offset += 2; // attribute byte count
   }
 
-  return analyzeTriangleMesh(vertices, normals, triangleCount);
+  return analyzeTriangleMesh(vertices, normals, triangleCount, { source: "stl" });
 }
 
 function parseSTLAscii(text) {
@@ -65,11 +66,17 @@ function parseSTLAscii(text) {
     vertices.push([parseFloat(match[1]), parseFloat(match[2]), parseFloat(match[3])]);
   }
 
-  return analyzeTriangleMesh(vertices, normals, triangleCount);
+  return analyzeTriangleMesh(vertices, normals, triangleCount, { source: "stl" });
 }
 
 // ─── GEOMETRY ANALYSIS ────────────────────────────────────────
-function analyzeTriangleMesh(vertices, normals, triangleCount) {
+/**
+ * @param {number[][]} vertices 3 per triangle
+ * @param {number[][]} normals  per triangle (STL) or per corner (STEP/IGES/3MF, 3 per triangle)
+ * @param {number} triangleCount
+ * @param {object} meta { source, brepFaces, cornerNormals }
+ */
+function analyzeTriangleMesh(vertices, normals, triangleCount, meta = {}) {
   if (triangleCount === 0) {
     throw new Error("No triangles found in mesh");
   }
@@ -144,6 +151,25 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
   const edgeSurfaceArea = Math.max(totalSurfaceArea - 2 * flatArea * 0.7, flatArea * 0.1);
   const estimatedPerimeter = estimatedThickness > 0.01 ? edgeSurfaceArea / estimatedThickness : flatWidth * 2 + flatHeight * 2;
 
+  // Legacy estimates (kept under `legacy` so the admin view can compare).
+  const legacy = {
+    estimatedThickness,
+    estimatedPerimeter: Math.min(estimatedPerimeter, (flatWidth + flatHeight) * 4),
+    estimatedHoles: features.holes,
+    estimatedSlots: features.slots,
+    estimatedBends: features.bends,
+  };
+
+  // ── Geometry recognition (server/geometry, SCHEMA.md) ──
+  // Replaces the normal-bucket guesses above where it is confident:
+  //   estimatedHoles     ← holeCount (cylinder recognition)
+  //   estimatedSlots     ← slots.length (through stadium cutouts + channels)
+  //   estimatedPerimeter ← outline perimeter + cutouts + pocket perimeters (total cut path)
+  //   estimatedThickness ← walls.minThickness (ray-cast), not the smallest bbox side
+  const recognized = recognizeFeatures(vertices, normals, triangleCount, meta);
+  const better = legacyFromFeatures(recognized) || {};
+  const pick = (key, fallback) => (Number.isFinite(better[key]) ? better[key] : fallback);
+
   return {
     boundingBox,
     surfaceArea: totalSurfaceArea,
@@ -153,16 +179,20 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
     vertexCount: vertices.length,
 
     // Derived manufacturing properties
-    estimatedThickness,
+    estimatedThickness: pick("estimatedThickness", estimatedThickness),
     flatWidth,
     flatHeight,
     flatArea: flatWidth * flatHeight,
-    estimatedPerimeter: Math.min(estimatedPerimeter, (flatWidth + flatHeight) * 4),
+    estimatedPerimeter: pick("estimatedPerimeter", legacy.estimatedPerimeter),
 
     // Feature estimates
-    estimatedHoles: features.holes,
+    estimatedHoles: pick("estimatedHoles", features.holes),
     estimatedBends: features.bends,
-    estimatedSlots: features.slots,
+    estimatedSlots: pick("estimatedSlots", features.slots),
+    legacy,
+
+    // Recognised features (see server/geometry/SCHEMA.md). meshData stays outside.
+    features: recognized,
 
     // Units (STL files don't specify units — assume mm)
     units: "mm",
@@ -173,6 +203,37 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
       triangleCount: Math.min(triangleCount, 50000),
     },
   };
+}
+
+/**
+ * Run the geometry recogniser. Never throws: a failure yields a features
+ * object with nulls and a note so parsing (and quoting) still succeeds.
+ */
+function recognizeFeatures(vertices, normals, triangleCount, meta) {
+  const source = meta.source || "stl";
+  try {
+    const positions = new Float64Array(triangleCount * 9);
+    for (let i = 0; i < triangleCount * 3; i++) {
+      const vtx = vertices[i];
+      positions[i * 3] = vtx[0]; positions[i * 3 + 1] = vtx[1]; positions[i * 3 + 2] = vtx[2];
+    }
+    let vertexNormals = null;
+    if (meta.cornerNormals && normals.length === triangleCount * 3) {
+      vertexNormals = new Float64Array(triangleCount * 9);
+      for (let i = 0; i < triangleCount * 3; i++) {
+        const nn = normals[i];
+        vertexNormals[i * 3] = nn[0]; vertexNormals[i * 3 + 1] = nn[1]; vertexNormals[i * 3 + 2] = nn[2];
+      }
+    }
+    return analyzeGeometry({ positions, source, brepFaces: meta.brepFaces || null, vertexNormals });
+  } catch (err) {
+    return {
+      schemaVersion: 1, source, error: err.message,
+      holes: [], holeCount: null, pockets: [], slots: [], bosses: [],
+      confidence: { holes: 0, pockets: 0, walls: 0, shape: 0, overall: 0 },
+      notes: [`Geometry recognition failed: ${err.message}`],
+    };
+  }
 }
 
 function estimateFeatures(vertices, normals, triangleCount, bbox) {
@@ -239,11 +300,16 @@ function downsampleVertices(vertices, maxTriangles) {
 function extractOcctMeshes(result) {
   const allVertices = [];
   const allNormals = [];
+  const brepFaces = []; // global triangle ranges of the B-rep faces, for geometry recognition
   let totalTriangles = 0;
 
   for (const mesh of result.meshes) {
     const positions = mesh.attributes.position.array;
     const normalArr = mesh.attributes.normal ? mesh.attributes.normal.array : null;
+    const base = totalTriangles;
+    for (const f of mesh.brep_faces || []) {
+      if (Number.isInteger(f.first) && Number.isInteger(f.last)) brepFaces.push({ first: base + f.first, last: base + f.last });
+    }
 
     if (mesh.index) {
       const indices = mesh.index.array;
@@ -266,6 +332,9 @@ function extractOcctMeshes(result) {
     }
   }
 
+  // Per-corner (smooth) normals from the kernel are exact surface normals.
+  const cornerNormals = allNormals.length === allVertices.length;
+
   // Generate flat normals if none provided
   if (allNormals.length === 0) {
     for (let i = 0; i < totalTriangles; i++) {
@@ -279,7 +348,7 @@ function extractOcctMeshes(result) {
     }
   }
 
-  return { allVertices, allNormals, totalTriangles };
+  return { allVertices, allNormals, totalTriangles, brepFaces, cornerNormals };
 }
 
 // ─── STEP PARSER (via occt-import-js) — hardened ────────────
@@ -318,13 +387,13 @@ async function parseSTEP(buffer) {
   }
 
   // Extract meshes from all bodies (assembly support)
-  const { allVertices, allNormals, totalTriangles } = extractOcctMeshes(result);
+  const { allVertices, allNormals, totalTriangles, brepFaces, cornerNormals } = extractOcctMeshes(result);
 
   if (totalTriangles === 0) {
     throw new Error("STEP file parsed but produced no triangles. The geometry may be too small or degenerate.");
   }
 
-  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles);
+  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles, { source: "step", brepFaces, cornerNormals });
 
   analysis.units = "mm";
   analysis.bodyCount = result.meshes.length; // Assembly: number of bodies
@@ -566,7 +635,7 @@ async function parse3MF(buffer) {
     throw new Error("3MF file contains no mesh geometry. The file may contain only metadata or component references without embedded meshes.");
   }
 
-  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles);
+  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles, { source: "3mf" });
 
   analysis.units = "mm";
   analysis.sourceUnit = unitAttr;
@@ -608,13 +677,13 @@ async function parseIGES(buffer) {
     throw new Error("IGES file contains no geometry.");
   }
 
-  const { allVertices, allNormals, totalTriangles } = extractOcctMeshes(result);
+  const { allVertices, allNormals, totalTriangles, brepFaces, cornerNormals } = extractOcctMeshes(result);
 
   if (totalTriangles === 0) {
     throw new Error("IGES file parsed but produced no triangles.");
   }
 
-  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles);
+  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles, { source: "iges", brepFaces, cornerNormals });
   analysis.units = "mm";
   analysis.bodyCount = result.meshes.length;
   analysis.isAssembly = result.meshes.length > 1;

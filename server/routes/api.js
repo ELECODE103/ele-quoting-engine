@@ -128,6 +128,9 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
             estimatedBends: parsed.geometry.estimatedBends,
             estimatedSlots: parsed.geometry.estimatedSlots,
             units: parsed.geometry.units,
+            // Recognised features (server/geometry/SCHEMA.md): holes, pockets,
+            // slots, walls, access, stock, confidence. Mesh data stays in meshPreview.
+            features: parsed.geometry.features || null,
           },
           dfm: parsed.dfm,
           dfmAll: parsed.dfmAll,
