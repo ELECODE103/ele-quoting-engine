@@ -220,6 +220,9 @@ router.post("/quote", optionalAuth, (req, res) => {
         subProcess: config.subProcess || resolveProcess(process).previewSubProcess,
         thicknessMm,
         materialType: /plastic|composite/i.test(material.category || "") ? "plastic" : "metal",
+        // Material identity for material-aware thresholds (acrylic brittle, nylon moisture, PEEK cost …)
+        materialSlug: material.slug,
+        materialName: material.name,
       });
     }
 
