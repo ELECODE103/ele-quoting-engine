@@ -15,6 +15,7 @@ export default function RfqPage() {
   const { user } = useAuth();
   const [quote, setQuote] = useState(null);
   const [quoteMissing, setQuoteMissing] = useState(false);
+  const [materialNames, setMaterialNames] = useState({});
   const [form, setForm] = useState({
     contactName: user?.name || '', email: user?.email || '', company: user?.company || '', phone: '',
     quantities: '', tolerance: '', finishNotes: '', dueDate: '', notes: '',
@@ -30,6 +31,13 @@ export default function RfqPage() {
       setQuote(q);
       const qtys = (q.lineItems || []).map((li) => li.quantity);
       if (qtys.length) setForm((f) => ({ ...f, quantities: f.quantities || qtys.join(' / ') }));
+      // Show material names, not slugs ("Delrin / Acetal (POM)", not "cnc-delrin").
+      const procs = [...new Set((q.lineItems || []).map((li) => li.meta?.process).filter(Boolean))];
+      Promise.all(procs.map((pr) => api.getMaterials(pr).catch(() => []))).then((lists) => {
+        const map = {};
+        lists.flat().forEach((m) => { map[m.slug] = m.name; });
+        setMaterialNames(map);
+      });
     }).catch(() => setQuoteMissing(true));
   }, [quoteId]);
 
@@ -38,15 +46,15 @@ export default function RfqPage() {
   async function submit(e) {
     e.preventDefault();
     setError('');
-    if (!form.contactName.trim()) return setError('Your name, please.');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setError('A working email so the quote has somewhere to go.');
+    if (!form.contactName.trim()) return setError('Add your name so we know who to send it to.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setError('Add a working email so the quote has somewhere to go.');
     setBusy(true);
     try {
       const res = await api.submitRfq({ ...form, quoteId: quote?.quoteId || quote?.id || quoteId || '' }, drawing);
       setSent(res);
       window.scrollTo(0, 0);
     } catch (err) {
-      setError(err.message || 'Could not send. Call the shop and we will take it by phone.');
+      setError(err.message || `It didn't send. Call ${brand.phone} and we'll take it by phone.`);
     }
     setBusy(false);
   }
@@ -96,12 +104,12 @@ export default function RfqPage() {
                       <div>
                         <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{li.fileName}</div>
                         <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>
-                          {PROCESS_LABELS[li.meta?.process] || li.meta?.process} · {li.meta?.materialSlug} × {li.quantity}
+                          {li.quantity} × {materialNames[li.meta?.materialSlug] || li.meta?.materialSlug} · {PROCESS_LABELS[li.meta?.process] || li.meta?.process}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div className="price-label">budgetary</div>
-                        <div style={{ fontWeight: 600 }}>{formatCurrency(li.perUnit?.final || 0)}/ea</div>
+                        <div style={{ fontWeight: 600 }}>{formatCurrency(li.perUnit?.final || 0)} each</div>
                       </div>
                     </div>
                   ))}
@@ -114,7 +122,7 @@ export default function RfqPage() {
                 </div>
               )}
               {quoteMissing && (
-                <div className="gate-box" style={{ marginBottom: 20 }}>We couldn't find that online quote, but the form works on its own — describe the part or attach the drawing.</div>
+                <div className="gate-box" role="status" style={{ marginBottom: 20 }}>We couldn't find that online quote. The form works on its own: describe the part or attach the drawing.</div>
               )}
 
               <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
@@ -123,10 +131,11 @@ export default function RfqPage() {
               </p>
             </div>
 
-            <form className="card" style={{ padding: 24 }} onSubmit={submit}>
+            <form className="card" style={{ padding: 24 }} onSubmit={submit} noValidate aria-label="Firm quote request">
+              <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 14 }}>Name and email are required. Everything else helps the number.</p>
               <div className="rfq-grid">
-                <label><span className="field-label">Name</span><input className="input" value={form.contactName} onChange={set('contactName')} autoComplete="name" /></label>
-                <label><span className="field-label">Email</span><input className="input" type="email" value={form.email} onChange={set('email')} autoComplete="email" /></label>
+                <label><span className="field-label">Name <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span><input className="input" value={form.contactName} onChange={set('contactName')} autoComplete="name" required aria-required="true" /></label>
+                <label><span className="field-label">Email <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span><input className="input" type="email" value={form.email} onChange={set('email')} autoComplete="email" required aria-required="true" /></label>
                 <label><span className="field-label">Company</span><input className="input" value={form.company} onChange={set('company')} autoComplete="organization" /></label>
                 <label><span className="field-label">Phone</span><input className="input" value={form.phone} onChange={set('phone')} autoComplete="tel" /></label>
                 <label className="full"><span className="field-label">Quantities to quote</span><input className="input" placeholder="e.g. 250 / 500 / 1,000 — or an annual usage with monthly releases" value={form.quantities} onChange={set('quantities')} /></label>
@@ -139,7 +148,7 @@ export default function RfqPage() {
                 </label>
                 <label className="full"><span className="field-label">Anything else</span><textarea className="input" rows={4} placeholder="What the part does, what it mates with, what went wrong with the last supplier." value={form.notes} onChange={set('notes')} /></label>
               </div>
-              {error && <div style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>⚠ {error}</div>}
+              {error && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{error}</div>}
               <button className="btn btn-primary btn-lg" type="submit" disabled={busy} style={{ width: '100%', justifyContent: 'center', marginTop: 18 }}>
                 {busy ? 'Sending…' : 'Send for a firm quote'}
               </button>

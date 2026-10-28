@@ -17,9 +17,9 @@ function run(geometry, options = {}) {
 
   // Process-specific thresholds
   const processThresholds = {
-    fdm: { minWall: 0.8, maxX: 300, maxY: 300, maxZ: 400, tolerance: "Â±0.5mm", warping: true },
-    sla: { minWall: 0.5, maxX: 145, maxY: 145, maxZ: 175, tolerance: "Â±0.1mm", warping: false },
-    sls: { minWall: 0.7, maxX: 300, maxY: 300, maxZ: 300, tolerance: "Â±0.3mm", warping: false },
+    fdm: { minWall: 0.8, maxX: 300, maxY: 300, maxZ: 400, tolerance: "±0.5mm", warping: true },
+    sla: { minWall: 0.5, maxX: 145, maxY: 145, maxZ: 175, tolerance: "±0.1mm", warping: false },
+    sls: { minWall: 0.7, maxX: 300, maxY: 300, maxZ: 300, tolerance: "±0.3mm", warping: false },
   };
   const thresh = processThresholds[subProcess] || processThresholds.fdm;
 
@@ -143,7 +143,7 @@ function run(geometry, options = {}) {
       pass: !flatSurfaceRisk,
       severity: flatSurfaceRisk ? "warn" : "pass",
       detail: flatSurfaceRisk
-        ? `Large flat base (${(width * height).toFixed(0)}mmÂ²) may warp. Use brim or raft for adhesion`
+        ? `Large flat base (${(width * height).toFixed(0)}mm²) may warp. Use brim or raft for adhesion`
         : `Warping risk is low for this geometry`,
     });
   }

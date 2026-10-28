@@ -1,13 +1,15 @@
+import { formatBox } from '../utils/format';
+
 // Short, friendly use-case guidance per material. Keyed by lowercase keywords
 // matched against the material name/category, so it works without a DB field.
 const MATERIAL_GUIDANCE = [
-  { match: ['pla', 'pla+'], text: 'Stiff and easy to print — great for prototypes, fixtures, and display models. Not for high heat or outdoor use.' },
-  { match: ['petg'], text: 'Tougher than PLA with better heat and chemical resistance — good for functional parts and enclosures.' },
-  { match: ['abs'], text: 'Impact-resistant and heat-tolerant — good for enclosures and automotive-style parts. Best with smoothing/finishing.' },
-  { match: ['tpu', 'flexible'], text: 'Rubber-like and flexible — for gaskets, grips, and bumpers. Prints slower.' },
-  { match: ['pa12', 'pa 12'], text: 'Strong, durable, and slightly flexible — excellent for living hinges, clips, and end-use functional parts.' },
-  { match: ['resin', 'sla'], text: 'Highest detail and smoothest surface — ideal for miniatures, dental/jewelry patterns, and fine features. More brittle.' },
-  { match: ['tough resin', 'abs-like'], text: 'Engineering resin balancing detail with impact resistance — for functional prototypes.' },
+  { match: ['pla', 'pla+'], text: 'Stiff and easy to print. Prototypes, fixtures, display models. Softens around 140 °F, so not for hot or outdoor duty.' },
+  { match: ['petg'], text: 'Tougher than PLA, takes more heat and most chemicals. Working prototypes and enclosures.' },
+  { match: ['abs'], text: 'Takes impact and heat. Enclosures and housings. Smooths well if you want a finished look.' },
+  { match: ['tpu', 'flexible'], text: 'Rubber-like. Gaskets, grips, bumpers. Prints slowly, so it prices higher.' },
+  { match: ['pa12', 'pa 12'], text: 'Strong, tough, a little flexible. Living hinges, clips, end-use parts.' },
+  { match: ['resin', 'sla'], text: 'Finest detail and smoothest surface. Small housings, snap fits, cosmetic models. More brittle than FDM.' },
+  { match: ['tough resin', 'abs-like'], text: 'Resin with some give. Working prototypes that need detail and a little impact resistance.' },
   { match: ['delrin', 'acetal', 'pom'], text: 'The default machined plastic: stiff, stable, low-friction. Bushings, gears, wear parts, housings. Natural grade is FDA-compliant.' },
   { match: ['uhmw'], text: 'Best abrasion resistance and very slippery — conveyor guides, wear strips, chute liners. Looser tolerances than acetal.' },
   { match: ['hdpe'], text: 'Cheap, tough, chemical-resistant — trays, totes, boards, outdoor parts. Not for tight tolerances.' },
@@ -21,11 +23,11 @@ const MATERIAL_GUIDANCE = [
   { match: ['polypropylene'], text: 'Chemical resistance near PTFE at a fraction of the price. Flexible; hard to hold tight.' },
   { match: ['g10', 'g 10', 'fr 4'], text: 'Very stiff, stable insulator. Abrasive on tooling, so it prices above plastics.' },
   { match: ['phenolic'], text: 'Stiff, stable, cheap insulator with good wear life. Abrasive; edges need care on through-holes.' },
-  { match: ['aluminum'], text: 'Lightweight, corrosion-resistant, easy to machine — for parts that mate with metal.' },
-  { match: ['stainless'], text: 'Strong and corrosion-resistant — for food, marine, and medical-adjacent parts. Harder to machine (higher cost).' },
-  { match: ['steel', 'mild'], text: 'Strong and economical — for brackets and structural parts. Will rust without a finish.' },
-  { match: ['copper'], text: 'Excellent electrical and thermal conductivity — for bus bars and heat sinks.' },
-  { match: ['brass'], text: 'Easy to machine with a gold finish — for fittings, decorative, and electrical parts.' },
+  { match: ['aluminum'], text: 'Light, stiff, machines fast. Brackets, plates and fixtures that mate with metal.' },
+  { match: ['stainless'], text: 'Strong and corrosion-resistant. Food, marine and medical-adjacent parts. Slow to machine, so it prices higher.' },
+  { match: ['steel', 'mild'], text: 'Strong and cheap. Brackets and structural parts. Rusts without a finish.' },
+  { match: ['copper'], text: 'Conducts heat and electricity. Bus bars and heat sinks.' },
+  { match: ['brass'], text: 'Free-machining, corrosion-resistant, conductive. Fittings, bushings, contacts.' },
 ];
 
 function getGuidance(mat) {
@@ -37,14 +39,24 @@ function getGuidance(mat) {
   return hit ? hit.text : null;
 }
 
-// Relative price tier from per-volume (3DP) or per-kg (fab) cost.
+// Relative stock-cost tier. Printed materials are priced per cm³, machined
+// stock per kg; the cutoffs are set so the three tiers each hold a few
+// materials (otherwise every plastic reads "$$$" and the badge says nothing).
 function priceTier(mat) {
   if (!mat) return null;
-  const v = mat.pricePerCm3 != null ? mat.pricePerCm3 : (mat.pricePerKg != null ? mat.pricePerKg / 50 : null);
-  if (v == null) return null;
-  if (v < 0.06) return { label: '$', title: 'Economical' };
-  if (v < 0.15) return { label: '$$', title: 'Mid-range' };
-  return { label: '$$$', title: 'Premium' };
+  if (mat.pricePerCm3 != null) {
+    const v = mat.pricePerCm3;
+    if (v < 0.08) return { label: '$', title: 'Low-cost material' };
+    if (v < 0.16) return { label: '$$', title: 'Mid-cost material' };
+    return { label: '$$$', title: 'Premium material' };
+  }
+  if (mat.pricePerKg != null) {
+    const v = mat.pricePerKg;
+    if (v < 10) return { label: '$', title: 'Low-cost stock' };
+    if (v < 25) return { label: '$$', title: 'Mid-cost stock' };
+    return { label: '$$$', title: 'Premium stock' };
+  }
+  return null;
 }
 
 export default function PartConfigurator({ part, materials, finishes, onChange, onRemove, selectedProcess }) {
@@ -84,9 +96,9 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
     <div className="card" style={{ padding: 20 }}>
       <div className="flex-between" style={{ marginBottom: 16 }}>
         <span className="font-display" style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-          Part Configuration
+          Part setup
         </span>
-        <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{part.fileName}</span>
+        <span className="truncate" style={{ fontSize: 12, color: 'var(--text-dim)', maxWidth: '55%' }} title={part.fileName}>{part.fileName}</span>
       </div>
 
       <div className="grid-2">
@@ -134,10 +146,10 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
         {/* Layer Height (resolution) */}
         {currentMat?.layerHeights && (
           <label>
-            <span className="field-label">Layer Height</span>
+            <span className="field-label">Layer height</span>
             <select className="input" value={part.layerHeight || currentMat.defaultLayerHeight} onChange={(e) => onChange({ layerHeight: parseFloat(e.target.value) })}>
               {currentMat.layerHeights.map((lh) => (
-                <option key={lh} value={lh}>{lh}mm{lh <= 0.1 ? ' — fine' : lh >= 0.3 ? ' — fast/draft' : ''}</option>
+                <option key={lh} value={lh}>{lh} mm{lh <= 0.1 ? ' — fine detail, slower' : lh >= 0.3 ? ' — draft, fastest' : ' — standard'}</option>
               ))}
             </select>
           </label>
@@ -163,7 +175,7 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
           <select className="input" value={part.finishSlug} onChange={(e) => onChange({ finishSlug: e.target.value })}>
             {finishes.map((f) => (
               <option key={f.slug} value={f.slug}>
-                {f.name}{f.pricePerPart > 0 ? ` (+$${f.pricePerPart.toFixed(2)}/part)` : ''}
+                {f.name}{f.pricePerPart > 0 ? ` (+$${f.pricePerPart.toFixed(2)} each)` : ''}
               </option>
             ))}
           </select>
@@ -179,7 +191,7 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
             )}
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>{currentMat.name}</span>
             {tier && (
-              <span title={tier.title} style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700 }}>{tier.label}</span>
+              <span title={tier.title} aria-label={tier.title} style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700 }}>{tier.label}</span>
             )}
           </div>
           {guidance && (
@@ -190,18 +202,20 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
 
       {/* Geometry summary */}
       {part.geometry && (
-        <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', display: 'flex', flexWrap: 'wrap', gap: '12px 20px', fontSize: 12, color: 'var(--text-dim)' }}>
-          <span>Bounding: {(part.geometry.boundingBox?.width || part.geometry.flatWidth || 0).toFixed(1)} × {(part.geometry.boundingBox?.height || part.geometry.flatHeight || 0).toFixed(1)} × {(part.geometry.boundingBox?.depth || part.geometry.estimatedThickness || 0).toFixed(1)}mm</span>
-          <span>Volume: {((part.geometry.volume || 0) / 1000).toFixed(1)} cm³</span>
-          <span>Area: {((part.geometry.surfaceArea || part.geometry.flatArea || 0) / 100).toFixed(1)} cm²</span>
-          <span>Triangles: {(part.geometry.triangleCount || 0).toLocaleString()}</span>
+        <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', display: 'flex', flexWrap: 'wrap', gap: '6px 20px', fontSize: 12, color: 'var(--text-muted)' }}>
+          <span>Size: {formatBox(
+            part.geometry.boundingBox?.width || part.geometry.flatWidth || 0,
+            part.geometry.boundingBox?.height || part.geometry.flatHeight || 0,
+            part.geometry.boundingBox?.depth || part.geometry.estimatedThickness || 0,
+          )}</span>
+          <span>Volume: {((part.geometry.volume || 0) / 16387.064).toFixed(2)} in³ ({((part.geometry.volume || 0) / 1000).toFixed(1)} cm³)</span>
         </div>
       )}
 
       {/* Actions */}
       <div className="flex-between" style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border-subtle)' }}>
         <button className="btn btn-danger" style={{ fontSize: 12 }} onClick={onRemove}>
-          Remove Part
+          Remove part
         </button>
       </div>
     </div>

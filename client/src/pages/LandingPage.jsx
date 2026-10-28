@@ -25,7 +25,7 @@ export default function LandingPage() {
             <div>
               <div className="eyebrow" style={{ marginBottom: 18 }}>{brand.region}</div>
               <h1 className="display" style={{ marginBottom: 20 }}>
-                Machined plastic parts.<br />One to a few thousand.
+                Machined plastic parts.<br className="br-wide" /> One to a few thousand.
               </h1>
               <p className="lede" style={{ maxWidth: 520, marginBottom: 30 }}>
                 CNC milling, turning and routing in Delrin, UHMW, HDPE, nylon, PEEK and 6061.
@@ -33,8 +33,8 @@ export default function LandingPage() {
                 person who will run the job quotes it within {brand.quoteTurnaroundHours} hours.
               </p>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 28 }}>
-                <button className="btn btn-primary btn-lg" onClick={() => navigate('/quote')}>Upload a part</button>
-                <a className="btn btn-outline btn-lg" href="#work" style={{ textDecoration: 'none' }}>See what we run</a>
+                <button className="btn btn-primary btn-lg" onClick={() => navigate('/quote')}>Get an instant quote</button>
+                <a className="btn btn-outline btn-lg" href="#work">See what we run</a>
               </div>
               <div className="chips">
                 {['.step', '.stp', '.stl', '.iges', '.3mf'].map((f) => <span key={f} className="chip" style={{ fontFamily: 'var(--font-mono)' }}>{f}</span>)}
@@ -52,10 +52,10 @@ export default function LandingPage() {
       <section className="section-tight section-alt">
         <div className="pub-wrap">
           <div className="stat-row">
-            <div className="stat"><b>Instant</b><span>price &amp; checkout to {brand.rfqQuantityThreshold} pcs</span></div>
-            <div className="stat"><b>{brand.quoteTurnaroundHours} hr</b><span>firm quotes over {brand.rfqQuantityThreshold} pcs</span></div>
-            <div className="stat"><b>13</b><span>engineering plastics quoted online</span></div>
-            <div className="stat"><b>{brand.foundedYear}</b><span>machining in Lake County since</span></div>
+            <div className="stat"><b>Instant</b><span>price and checkout to {brand.rfqQuantityThreshold} pcs</span></div>
+            <div className="stat"><b>{brand.quoteTurnaroundHours} hr</b><span>firm quote over {brand.rfqQuantityThreshold} pcs</span></div>
+            <div className="stat"><b>13</b><span>engineering plastics priced online</span></div>
+            <div className="stat"><b>Since {brand.foundedYear}</b><span>machining in Lake County</span></div>
             <div className="stat"><b>FAI</b><span>first-article report with every production order</span></div>
           </div>
         </div>
@@ -84,7 +84,7 @@ export default function LandingPage() {
               alt="Two stacks of UHMW notched discs on the router bed"
               title="CNC Routing"
               sub="Sheet & plate"
-              text="Flat parts nested from 4' × 8' sheet on a 59&quot; × 96&quot; router with a tool changer. Profiles, pockets, holes, chamfers. Where production plastic parts are cheapest to make."
+              text={'Flat parts nested from 4\' × 8\' sheet on a 59" × 96" router with a tool changer. Profiles, pockets, holes, chamfers. The cheapest way to make a flat plastic part in quantity.'}
               chips={['HDPE', 'UHMW', 'Acetal', 'Polycarbonate', 'Acrylic', 'G-10', 'Phenolic']}
             />
             <ProcessCard
@@ -93,7 +93,7 @@ export default function LandingPage() {
               alt="Large FDM print on the build plate"
               title="3D Printing"
               sub="FDM & SLA"
-              text="Prototypes, fixtures, patterns and low-volume parts. Four FDM machines up to 12&quot; × 12&quot; × 24&quot;, SLA for fine detail. Print it this week, machine the production version next."
+              text={'Prototypes, fixtures, patterns and low-volume parts. Four FDM machines up to 12" × 12" × 24", SLA for fine detail. Print it this week, machine the production version next.'}
               chips={['PLA+', 'PETG', 'ABS', 'Nylon', 'TPU', 'SLA resin']}
             />
           </div>
@@ -130,9 +130,9 @@ export default function LandingPage() {
           </div>
           <div className="grid-4">
             {[
-              ['01', 'Upload', 'Drop in a STEP, STL or IGES. The geometry is read on our server; the file is encrypted at rest and purged on a schedule.'],
-              ['02', 'Price & DFM', 'Pick process, material, finish and quantity. The price updates as you go, with a manufacturability check written for our machines, not a generic one.'],
-              ['03', 'Order or RFQ', `Up to ${brand.rfqQuantityThreshold} pieces: check out with a card. More than that, an oversize part or anything the checker flags: a firm quote from us within ${brand.quoteTurnaroundHours} hours.`],
+              ['01', 'Upload', 'Drop in a STEP, STL, IGES or 3MF. The geometry is read on our server; the file is encrypted at rest and purged on a schedule.'],
+              ['02', 'Price and DFM', 'Pick process, material, finish and quantity. The price updates as you go, with a manufacturability check written for our machines, not a generic one.'],
+              ['03', 'Check out, or get a firm quote', `Up to ${brand.rfqQuantityThreshold} pieces: check out with a card. More than that, an oversize part or anything the checker flags: a firm quote from us within ${brand.quoteTurnaroundHours} hours.`],
               ['04', 'First article, then ship', 'Production orders get a first-article inspection report and a certificate of conformance in the box. Reorders use the same program and fixture.'],
             ].map(([n, t, d]) => (
               <div key={n} className="card" style={{ padding: 24 }}>
@@ -197,7 +197,7 @@ function ProcessCard({ to, img, alt, title, sub, text, chips }) {
         <h3 className="display" style={{ marginBottom: 2 }}>{title}</h3>
         <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>{sub}</div>
       </div>
-      <p style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.65 }} dangerouslySetInnerHTML={{ __html: text }} />
+      <p style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.65 }}>{text}</p>
       <div className="chips">{chips.map((c) => <span key={c} className="chip">{c}</span>)}</div>
     </Link>
   );

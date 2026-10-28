@@ -1,60 +1,25 @@
-import { useEffect, useState } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../utils/authContext';
+import { useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import SiteHeader from './SiteHeader';
 import Wordmark from './Wordmark';
 import brand from '../brand';
-
-const NAV = [
-  { to: '/machining', label: 'Machining' },
-  { to: '/routing', label: 'Routing' },
-  { to: '/3d-printing', label: '3D Printing' },
-  { to: '/materials', label: 'Materials' },
-  { to: '/quality', label: 'Quality' },
-  { to: '/about', label: 'About' },
-];
 
 /**
  * Shell for the public pages: nav + footer. Sets document.title per page.
  */
 export default function PublicLayout({ title, description, children }) {
-  const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, user } = useAuth();
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     document.title = title ? `${title} · ${brand.name}` : `${brand.name} — Machined Plastics, CNC Routing & 3D Printing · ${brand.region}`;
     const meta = document.querySelector('meta[name="description"]');
     if (meta && description) meta.setAttribute('content', description);
-    setOpen(false);
     window.scrollTo(0, 0);
   }, [title, description, location.pathname]);
 
   return (
     <div style={{ minHeight: '100vh', background: '#fff', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ borderBottom: '1px solid var(--border-subtle)', background: '#fff', position: 'sticky', top: 0, zIndex: 10 }}>
-        <div className="pub-wrap">
-          <nav className="pub-nav" aria-label="Main">
-            <Wordmark size={19} />
-            <div className={`pub-nav-links${open ? ' open' : ''}`}>
-              {NAV.map((n) => (
-                <NavLink key={n.to} to={n.to} className={({ isActive }) => (isActive ? 'active' : '')}>{n.label}</NavLink>
-              ))}
-              {isAuthenticated ? (
-                <NavLink to={user?.role === 'admin' ? '/admin' : '/dashboard'}>{user?.role === 'admin' ? 'Admin' : 'My orders'}</NavLink>
-              ) : (
-                <NavLink to="/login">Sign in</NavLink>
-              )}
-              <button className="btn btn-primary" style={{ marginLeft: 8 }} onClick={() => navigate('/quote')}>
-                Get an instant quote
-              </button>
-            </div>
-            <button className="btn btn-ghost pub-nav-toggle" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-              ☰
-            </button>
-          </nav>
-        </div>
-      </header>
+      <SiteHeader />
 
       <main style={{ flex: 1 }}>{children}</main>
 
@@ -82,6 +47,7 @@ export default function PublicLayout({ title, description, children }) {
               <Link to="/quality">Quality</Link>
               <Link to="/about">About</Link>
               <Link to="/quote">Instant quote</Link>
+              <Link to="/rfq">Request a firm quote</Link>
               <a href={brand.parentUrl} target="_blank" rel="noreferrer">Erik Lutz Enterprise — fabrication &amp; vehicle upfitting</a>
             </div>
           </div>

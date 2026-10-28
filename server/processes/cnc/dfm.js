@@ -136,7 +136,7 @@ function run(geometry, options = {}) {
     label: "Tolerance Capability",
     pass: true,
     severity: "info",
-    detail: `Standard CNC tolerance: Â±0.05mm. Precision work available: Â±0.025mm (higher cost)`,
+    detail: `Standard ±0.005" (±0.13 mm) on plastics, ±0.002" on metals. Call out the features that need tighter and we hold those`,
   });
 
   // 10. Process-specific checks

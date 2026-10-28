@@ -20,19 +20,19 @@ export default function DFMPanel({ dfm, dfmAll, process }) {
     <div className="card fade-up" style={{ padding: 20 }}>
       <div className="flex-between" style={{ marginBottom: 16 }}>
         <span className="font-display" style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-          Design for Manufacturability
+          Manufacturability check
         </span>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className={classNames('tag', summary.manufacturable ? 'tag-pass' : 'tag-fail')}>
             {summary.manufacturable ? 'MAKEABLE' : 'NEEDS A LOOK'}
           </span>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Score: {summary.score}%</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Score {summary.score}/100</span>
         </div>
       </div>
 
       {/* Process toggle tabs */}
       {dfmAll && (
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }} role="tablist" aria-label="See how this part fares on each process">
           {Object.keys(dfmAll).map((p) => (
             <button
               key={p}

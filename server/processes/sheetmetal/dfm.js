@@ -88,7 +88,7 @@ function run(geometry, materialThicknessMm) {
     label: "Nesting Compatibility",
     pass: true,
     severity: "pass",
-    detail: `Part can be nested. Estimated flat area: ${geometry.flatArea.toFixed(0)}mmÂ² (${(geometry.flatArea / 645.16).toFixed(1)} inÂ²)`,
+    detail: `Part can be nested. Estimated flat area: ${geometry.flatArea.toFixed(0)}mm² (${(geometry.flatArea / 645.16).toFixed(1)} in²)`,
   });
 
   // 7. Aspect ratio check
