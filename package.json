@@ -6,10 +6,10 @@
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "node server/index.js",
     "client": "cd client && npx vite --port 3001",
-    "build": "cd client && npm install && npx vite build",
+    "build": "cd client && npm ci --include=dev && npm run build",
     "start": "NODE_ENV=production node server/index.js",
     "test": "node server/services/pricingEngine.test.js && node server/parsers/dfm.test.js && node server/processes/registry.test.js && node server/services/fileCrypto.test.js",
-    "postinstall": "cd client && npm install"
+    "postinstall": "cd client && npm ci --include=dev"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
