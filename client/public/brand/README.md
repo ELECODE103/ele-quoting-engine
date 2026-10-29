@@ -5,6 +5,10 @@ Straightedge Manufacturing LLC · Wauconda, Illinois · an Erik Lutz Enterprise 
 Open `review-sheet.html` (or `review-sheet.png`) to see all three directions large, one-color,
 on dark, at 20 mm, as a favicon, on a packing-slip header and as a one-color embroidered patch.
 
+Later rounds live beside this file: `review-sheet-2.*` (directions D, E, F) and `review-sheet-3.*`
+(D and E refined into `d2-knife-*`, `d3-cut-*`, `e2-layers-*`, `e3-light-*`), with the reasoning
+and the current recommendation in `RATIONALE.md`.
+
 The name carries two meanings on purpose: the machinist's straightedge (the reference everything
 else is checked against) and a person who deals square. Every direction below is built so a sign
 painter could lay it out with a rule and a brush, an embroiderer can run it in one thread, and it

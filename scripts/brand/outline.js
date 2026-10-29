@@ -12,6 +12,7 @@ const FONTS = {
   'archivo-700': '@fontsource/archivo/files/archivo-latin-700-normal.woff',
   'archivo-600': '@fontsource/archivo/files/archivo-latin-600-normal.woff',
   'oswald-600': '@fontsource/oswald/files/oswald-latin-600-normal.woff',
+  'oswald-700': '@fontsource/oswald/files/oswald-latin-700-normal.woff',
 };
 
 const cache = {};
