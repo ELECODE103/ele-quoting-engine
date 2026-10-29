@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import PublicLayout from '../components/PublicLayout';
 import brand from '../brand';
+import { KerfMark } from '../components/Wordmark';
 
 export default function AboutPage() {
   const navigate = useNavigate();
@@ -19,6 +20,14 @@ export default function AboutPage() {
                 A straightedge is the tool a machinist trusts everything else against. It's also what you call a person who
                 doesn't cut corners. We named the shop after both on purpose.
               </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 18, margin: '4px 0 20px' }}>
+                <KerfMark size={96} title="The Straightedge mark: a square of stock parted by one true cut" />
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6, maxWidth: 360, margin: 0 }}>
+                  The mark is a square of stock parted by one straightedge. The upper half is machined — its face is the true
+                  edge. The lower half is printed — its face is the stair of the layers. The light between them is the kerf.
+                  Both halves still make a square.
+                </p>
+              </div>
               <p style={{ fontSize: 15, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 16 }}>
                 {brand.name} is the plastics machining division of {brand.parentName}, a fabrication and engineering shop in{' '}
                 {brand.city}, Illinois that has been building custom equipment, vehicle upfits and one-off machines since {brand.foundedYear}.

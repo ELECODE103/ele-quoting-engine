@@ -30,7 +30,7 @@ export default function SiteHeader() {
     <header style={{ borderBottom: '1px solid var(--border-subtle)', background: '#fff', position: 'sticky', top: 0, zIndex: 10 }}>
       <div className="pub-wrap">
         <nav className="pub-nav" aria-label="Main">
-          <Wordmark size={19} />
+          <Wordmark size={27} />
           <div id="site-nav-links" className={`pub-nav-links${open ? ' open' : ''}`}>
             {NAV.map((n) => (
               <NavLink key={n.to} to={n.to} className={({ isActive }) => (isActive ? 'active' : '')}>{n.label}</NavLink>
