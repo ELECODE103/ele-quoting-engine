@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 954 168" role="img" aria-labelledby="t">
+  <title id="t">Straightedge</title>
+  <path transform="translate(0 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M22 0L50 0L72 22L72 29L52 29L52 30.28L41.72 20L30.28 20L20 30.28L20 40L72 40L72 78L50 100L22 100L0 78L0 71L20 71L20 69.72L30.28 80L41.72 80L52 69.72L52 60L0 60L0 22Z"/>
+  <path transform="translate(86 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M0 0L72 0L72 20L46 20L46 100L26 100L26 20L0 20Z"/>
+  <path transform="translate(172 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M0 0L50 0L72 22L72 34L50 56L56 56L72 100L52 100L36 56L20 56L20 100L0 100ZM20 20L41.72 20L52 30.28L52 25.72L41.72 36L20 36Z"/>
+  <path transform="translate(258 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M22 0L50 0L72 22L72 100L52 100L52 70L20 70L20 100L0 100L0 22ZM30.28 20L41.72 20L52 30.28L52 50L20 50L20 30.28Z"/>
+  <path transform="translate(344 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M0 0L20 0L20 100L0 100Z"/>
+  <path transform="translate(378 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M22 0L50 0L72 22L72 32L52 32L52 30.28L41.72 20L30.28 20L20 30.28L20 69.72L30.28 80L41.72 80L52 69.72L52 66L38 66L38 48L72 48L72 78L50 100L22 100L0 78L0 22Z"/>
+  <path transform="translate(464 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M0 0L20 0L20 40L52 40L52 0L72 0L72 100L52 100L52 60L20 60L20 100L0 100Z"/>
+  <path transform="translate(550 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M0 0L72 0L72 20L46 20L46 100L26 100L26 20L0 20Z"/>
+  <path transform="translate(636 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M0 0L66 0L66 20L20 20L20 40L60 40L60 60L20 60L20 80L66 80L66 100L0 100Z"/>
+  <path transform="translate(716 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M0 0L50 0L72 22L72 78L50 100L0 100ZM20 20L41.72 20L52 30.28L52 69.72L41.72 80L20 80Z"/>
+  <path transform="translate(802 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M22 0L50 0L72 22L72 32L52 32L52 30.28L41.72 20L30.28 20L20 30.28L20 69.72L30.28 80L41.72 80L52 69.72L52 66L38 66L38 48L72 48L72 78L50 100L22 100L0 78L0 22Z"/>
+  <path transform="translate(888 0) scale(1)" fill="#101C33" fill-rule="evenodd" d="M0 0L66 0L66 20L20 20L20 40L60 40L60 60L20 60L20 80L66 80L66 100L0 100Z"/>
+  <path fill="#A8834E" d="M0 112L954 112L954 115.92L457.92 168L28 168L28 158.67L18.67 158.67L18.67 149.33L9.33 149.33L9.33 140L0 140Z"/>
+</svg>

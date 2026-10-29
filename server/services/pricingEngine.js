@@ -1,16 +1,15 @@
 /**
  * Pricing Engine — calculates instant quotes from geometry + configuration.
  *
- * Factors:
- *  1. Material cost (weight × price/kg)
- *  2. Laser cutting cost (perimeter × rate, scaled by thickness)
- *  3. Bend cost (count × rate)
- *  4. Hole/feature cost
- *  5. Finish cost (per-part + per-area)
- *  6. Volume discounts
- *  7. Nesting savings (multi-part orders)
- *  8. Margin
- *  9. Lead time multiplier
+ * Each process folder (server/processes/<slug>/pricing.js) builds a line item
+ * bottom-up from the part's features — stock, setups, roughing, finishing,
+ * holes, pockets, walls, handling, inspection — using the rate card declared
+ * in server/config/ruleSchema.js (see docs/pricing-models.md). This class
+ * dispatches to those models, builds quantity-break tables and rolls line
+ * items into an order (shipping, lead-time surcharge, order minimum).
+ *
+ * Rules are a plain object keyed by rule name; pass `ruleSchema.mergeRules(stored)`
+ * so a stored (admin-tuned) blob is always complete and clamped.
  */
 
 const { DEFAULT_PRICING_RULES } = require("../config/defaults");

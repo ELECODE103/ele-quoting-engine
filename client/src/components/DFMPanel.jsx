@@ -1,11 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { classNames } from '../utils/format';
+import { PROCESS_LABELS } from '../brand';
 
 const SEVERITY_LABEL = { pass: 'PASS', info: 'INFO', warn: 'WARN', fail: 'FAIL' };
 
+/**
+ * `dfm` is the analysis for the chosen process/material/thickness (from the
+ * quote). `dfmAll` holds the upload-time preview per process so the buyer can
+ * peek at how the same part fares elsewhere.
+ */
 export default function DFMPanel({ dfm, dfmAll, process }) {
-  const [viewProcess, setViewProcess] = useState(process || '3d-printing');
-  const activeDfm = dfmAll?.[viewProcess] || dfm;
+  const [viewProcess, setViewProcess] = useState(process || 'cnc');
+  useEffect(() => { setViewProcess(process || 'cnc'); }, [process]);
+  const activeDfm = viewProcess === process ? (dfm || dfmAll?.[viewProcess]) : (dfmAll?.[viewProcess] || dfm);
   if (!activeDfm) return null;
   const { checks, summary } = activeDfm;
 
@@ -13,19 +20,19 @@ export default function DFMPanel({ dfm, dfmAll, process }) {
     <div className="card fade-up" style={{ padding: 20 }}>
       <div className="flex-between" style={{ marginBottom: 16 }}>
         <span className="font-display" style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-          Design for Manufacturability
+          Manufacturability check
         </span>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className={classNames('tag', summary.manufacturable ? 'tag-pass' : 'tag-fail')}>
-            {summary.manufacturable ? 'MANUFACTURABLE' : 'NEEDS CHANGES'}
+            {summary.manufacturable ? 'MAKEABLE' : 'NEEDS A LOOK'}
           </span>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Score: {summary.score}%</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Score {summary.score}/100</span>
         </div>
       </div>
 
       {/* Process toggle tabs */}
       {dfmAll && (
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }} role="tablist" aria-label="See how this part fares on each process">
           {Object.keys(dfmAll).map((p) => (
             <button
               key={p}
@@ -33,7 +40,7 @@ export default function DFMPanel({ dfm, dfmAll, process }) {
               style={{ fontSize: 10, padding: '4px 10px' }}
               onClick={() => setViewProcess(p)}
             >
-              {p === '3d-printing' ? '3D Print' : p}
+              {PROCESS_LABELS[p] || p}{p === process ? ' (selected)' : ''}
             </button>
           ))}
         </div>

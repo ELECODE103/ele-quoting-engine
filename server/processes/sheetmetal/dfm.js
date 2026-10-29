@@ -17,8 +17,8 @@ function run(geometry, materialThicknessMm) {
     // Warn (not block): minDim is an overall bounding-box dimension, not a feature.
     severity: minDim >= 3.0 ? "pass" : "warn",
     detail: minDim >= 3.0
-      ? `Smallest dimension is ${minDim.toFixed(1)}mm â above 3mm minimum`
-      : `Smallest dimension is ${minDim.toFixed(1)}mm â below 3mm minimum. Part may be too fragile.`,
+      ? `Smallest dimension is ${minDim.toFixed(1)}mm — above 3mm minimum`
+      : `Smallest dimension is ${minDim.toFixed(1)}mm — below 3mm minimum. Part may be too fragile.`,
   });
 
   // 2. Maximum part size (typical laser bed: 3000x1500mm)
@@ -29,7 +29,7 @@ function run(geometry, materialThicknessMm) {
     pass: maxDim <= 3000,
     severity: maxDim <= 3000 ? "pass" : maxDim <= 4000 ? "warn" : "fail",
     detail: maxDim <= 3000
-      ? `Largest dimension ${maxDim.toFixed(0)}mm fits standard sheet (3000Ã1500mm)`
+      ? `Largest dimension ${maxDim.toFixed(0)}mm fits standard sheet (3000×1500mm)`
       : `Largest dimension ${maxDim.toFixed(0)}mm may exceed standard sheet size`,
   });
 
@@ -39,9 +39,9 @@ function run(geometry, materialThicknessMm) {
     checks.push({
       id: "hole-edge-distance",
       label: "Hole-to-Edge Distance",
-      pass: true, // Heuristic â can't measure exactly from mesh alone
+      pass: true, // Heuristic — can't measure exactly from mesh alone
       severity: "pass",
-      detail: `${geometry.estimatedHoles} hole(s) detected. Minimum recommended distance from edge: ${minHoleEdge.toFixed(1)}mm (2Ã thickness)`,
+      detail: `${geometry.estimatedHoles} hole(s) detected. Minimum recommended distance from edge: ${minHoleEdge.toFixed(1)}mm (2× thickness)`,
     });
   }
 
@@ -65,7 +65,7 @@ function run(geometry, materialThicknessMm) {
       label: "Bend Relief Clearance",
       pass: null,
       severity: "info",
-      detail: `Verify bend relief width â¥ ${thickness.toFixed(1)}mm and depth â¥ ${(thickness + 0.5).toFixed(1)}mm at all bend intersections`,
+      detail: `Verify bend relief width ≥ ${thickness.toFixed(1)}mm and depth ≥ ${(thickness + 0.5).toFixed(1)}mm at all bend intersections`,
     });
   }
 
@@ -77,8 +77,8 @@ function run(geometry, materialThicknessMm) {
       pass: true,
       severity: thickness <= 3.0 ? "pass" : "info",
       detail: thickness <= 3.0
-        ? `Recommended min hole Ã: ${thickness.toFixed(1)}mm (= material thickness)`
-        : `Thick material (${thickness.toFixed(1)}mm) â verify holes Ã â¥ ${thickness.toFixed(1)}mm for clean cuts`,
+        ? `Recommended min hole Ø: ${thickness.toFixed(1)}mm (= material thickness)`
+        : `Thick material (${thickness.toFixed(1)}mm) — verify holes Ø ≥ ${thickness.toFixed(1)}mm for clean cuts`,
     });
   }
 
@@ -88,7 +88,7 @@ function run(geometry, materialThicknessMm) {
     label: "Nesting Compatibility",
     pass: true,
     severity: "pass",
-    detail: `Part can be nested. Estimated flat area: ${geometry.flatArea.toFixed(0)}mmÂ² (${(geometry.flatArea / 645.16).toFixed(1)} inÂ²)`,
+    detail: `Part can be nested. Estimated flat area: ${geometry.flatArea.toFixed(0)}mm² (${(geometry.flatArea / 645.16).toFixed(1)} in²)`,
   });
 
   // 7. Aspect ratio check

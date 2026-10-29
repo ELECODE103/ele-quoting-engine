@@ -1,5 +1,5 @@
 /**
- * 3D File Parser â extracts real geometry from STEP and STL files.
+ * 3D File Parser — extracts real geometry from STEP and STL files.
  *
  * Uses occt-import-js (OpenCascade compiled to WASM) for STEP/IGES parsing,
  * and a custom binary STL parser for STL files.
@@ -10,8 +10,9 @@
 const fs = require("fs");
 const path = require("path");
 const { resolveProcess, activeProcesses } = require("../processes/registry");
+const { analyzeGeometry, legacyFromFeatures } = require("../geometry");
 
-// âââ STL PARSER (Binary + ASCII) ââââââââââââââââââââââââââââââ
+// ─── STL PARSER (Binary + ASCII) ──────────────────────────────
 function parseSTL(buffer) {
   // Detect ASCII vs binary
   const header = buffer.slice(0, 80).toString("ascii");
@@ -44,7 +45,7 @@ function parseSTLBinary(buffer) {
     offset += 2; // attribute byte count
   }
 
-  return analyzeTriangleMesh(vertices, normals, triangleCount);
+  return analyzeTriangleMesh(vertices, normals, triangleCount, { source: "stl" });
 }
 
 function parseSTLAscii(text) {
@@ -65,11 +66,17 @@ function parseSTLAscii(text) {
     vertices.push([parseFloat(match[1]), parseFloat(match[2]), parseFloat(match[3])]);
   }
 
-  return analyzeTriangleMesh(vertices, normals, triangleCount);
+  return analyzeTriangleMesh(vertices, normals, triangleCount, { source: "stl" });
 }
 
-// âââ GEOMETRY ANALYSIS ââââââââââââââââââââââââââââââââââââââââ
-function analyzeTriangleMesh(vertices, normals, triangleCount) {
+// ─── GEOMETRY ANALYSIS ────────────────────────────────────────
+/**
+ * @param {number[][]} vertices 3 per triangle
+ * @param {number[][]} normals  per triangle (STL) or per corner (STEP/IGES/3MF, 3 per triangle)
+ * @param {number} triangleCount
+ * @param {object} meta { source, brepFaces, cornerNormals }
+ */
+function analyzeTriangleMesh(vertices, normals, triangleCount, meta = {}) {
   if (triangleCount === 0) {
     throw new Error("No triangles found in mesh");
   }
@@ -139,10 +146,29 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
   const flatHeight = dims[1];
 
   // Cut perimeter estimate: approximate from surface area and thickness
-  // For sheet metal: perimeter â (surfaceArea - 2 * flatArea) / thickness
+  // For sheet metal: perimeter ≈ (surfaceArea - 2 * flatArea) / thickness
   const flatArea = flatWidth * flatHeight;
   const edgeSurfaceArea = Math.max(totalSurfaceArea - 2 * flatArea * 0.7, flatArea * 0.1);
   const estimatedPerimeter = estimatedThickness > 0.01 ? edgeSurfaceArea / estimatedThickness : flatWidth * 2 + flatHeight * 2;
+
+  // Legacy estimates (kept under `legacy` so the admin view can compare).
+  const legacy = {
+    estimatedThickness,
+    estimatedPerimeter: Math.min(estimatedPerimeter, (flatWidth + flatHeight) * 4),
+    estimatedHoles: features.holes,
+    estimatedSlots: features.slots,
+    estimatedBends: features.bends,
+  };
+
+  // ── Geometry recognition (server/geometry, SCHEMA.md) ──
+  // Replaces the normal-bucket guesses above where it is confident:
+  //   estimatedHoles     ← holeCount (cylinder recognition)
+  //   estimatedSlots     ← slots.length (through stadium cutouts + channels)
+  //   estimatedPerimeter ← outline perimeter + cutouts + pocket perimeters (total cut path)
+  //   estimatedThickness ← walls.minThickness (ray-cast), not the smallest bbox side
+  const recognized = recognizeFeatures(vertices, normals, triangleCount, meta);
+  const better = legacyFromFeatures(recognized) || {};
+  const pick = (key, fallback) => (Number.isFinite(better[key]) ? better[key] : fallback);
 
   return {
     boundingBox,
@@ -153,18 +179,22 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
     vertexCount: vertices.length,
 
     // Derived manufacturing properties
-    estimatedThickness,
+    estimatedThickness: pick("estimatedThickness", estimatedThickness),
     flatWidth,
     flatHeight,
     flatArea: flatWidth * flatHeight,
-    estimatedPerimeter: Math.min(estimatedPerimeter, (flatWidth + flatHeight) * 4),
+    estimatedPerimeter: pick("estimatedPerimeter", legacy.estimatedPerimeter),
 
     // Feature estimates
-    estimatedHoles: features.holes,
+    estimatedHoles: pick("estimatedHoles", features.holes),
     estimatedBends: features.bends,
-    estimatedSlots: features.slots,
+    estimatedSlots: pick("estimatedSlots", features.slots),
+    legacy,
 
-    // Units (STL files don't specify units â assume mm)
+    // Recognised features (see server/geometry/SCHEMA.md). meshData stays outside.
+    features: recognized,
+
+    // Units (STL files don't specify units — assume mm)
     units: "mm",
 
     // Mesh for preview (downsampled if huge)
@@ -173,6 +203,37 @@ function analyzeTriangleMesh(vertices, normals, triangleCount) {
       triangleCount: Math.min(triangleCount, 50000),
     },
   };
+}
+
+/**
+ * Run the geometry recogniser. Never throws: a failure yields a features
+ * object with nulls and a note so parsing (and quoting) still succeeds.
+ */
+function recognizeFeatures(vertices, normals, triangleCount, meta) {
+  const source = meta.source || "stl";
+  try {
+    const positions = new Float64Array(triangleCount * 9);
+    for (let i = 0; i < triangleCount * 3; i++) {
+      const vtx = vertices[i];
+      positions[i * 3] = vtx[0]; positions[i * 3 + 1] = vtx[1]; positions[i * 3 + 2] = vtx[2];
+    }
+    let vertexNormals = null;
+    if (meta.cornerNormals && normals.length === triangleCount * 3) {
+      vertexNormals = new Float64Array(triangleCount * 9);
+      for (let i = 0; i < triangleCount * 3; i++) {
+        const nn = normals[i];
+        vertexNormals[i * 3] = nn[0]; vertexNormals[i * 3 + 1] = nn[1]; vertexNormals[i * 3 + 2] = nn[2];
+      }
+    }
+    return analyzeGeometry({ positions, source, brepFaces: meta.brepFaces || null, vertexNormals });
+  } catch (err) {
+    return {
+      schemaVersion: 1, source, error: err.message,
+      holes: [], holeCount: null, pockets: [], slots: [], bosses: [],
+      confidence: { holes: 0, pockets: 0, walls: 0, shape: 0, overall: 0 },
+      notes: [`Geometry recognition failed: ${err.message}`],
+    };
+  }
 }
 
 function estimateFeatures(vertices, normals, triangleCount, bbox) {
@@ -235,15 +296,20 @@ function downsampleVertices(vertices, maxTriangles) {
   return result;
 }
 
-// âââ Shared: extract meshes from occt-import-js result âââââââ
+// ─── Shared: extract meshes from occt-import-js result ───────
 function extractOcctMeshes(result) {
   const allVertices = [];
   const allNormals = [];
+  const brepFaces = []; // global triangle ranges of the B-rep faces, for geometry recognition
   let totalTriangles = 0;
 
   for (const mesh of result.meshes) {
     const positions = mesh.attributes.position.array;
     const normalArr = mesh.attributes.normal ? mesh.attributes.normal.array : null;
+    const base = totalTriangles;
+    for (const f of mesh.brep_faces || []) {
+      if (Number.isInteger(f.first) && Number.isInteger(f.last)) brepFaces.push({ first: base + f.first, last: base + f.last });
+    }
 
     if (mesh.index) {
       const indices = mesh.index.array;
@@ -266,6 +332,9 @@ function extractOcctMeshes(result) {
     }
   }
 
+  // Per-corner (smooth) normals from the kernel are exact surface normals.
+  const cornerNormals = allNormals.length === allVertices.length;
+
   // Generate flat normals if none provided
   if (allNormals.length === 0) {
     for (let i = 0; i < totalTriangles; i++) {
@@ -279,10 +348,10 @@ function extractOcctMeshes(result) {
     }
   }
 
-  return { allVertices, allNormals, totalTriangles };
+  return { allVertices, allNormals, totalTriangles, brepFaces, cornerNormals };
 }
 
-// âââ STEP PARSER (via occt-import-js) â hardened ââââââââââââ
+// ─── STEP PARSER (via occt-import-js) — hardened ────────────
 const STEP_TIMEOUT_MS = 30000; // 30-second max parse time
 
 async function parseSTEP(buffer) {
@@ -301,7 +370,7 @@ async function parseSTEP(buffer) {
     result = await Promise.race([
       Promise.resolve(occt.ReadStepFile(fileBuffer, null)),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("STEP parsing timed out after 30 seconds. The file may be too complex â try simplifying or exporting as STL.")), STEP_TIMEOUT_MS)
+        setTimeout(() => reject(new Error("STEP parsing timed out after 30 seconds. The file may be too complex — try simplifying or exporting as STL.")), STEP_TIMEOUT_MS)
       ),
     ]);
   } catch (parseErr) {
@@ -318,13 +387,13 @@ async function parseSTEP(buffer) {
   }
 
   // Extract meshes from all bodies (assembly support)
-  const { allVertices, allNormals, totalTriangles } = extractOcctMeshes(result);
+  const { allVertices, allNormals, totalTriangles, brepFaces, cornerNormals } = extractOcctMeshes(result);
 
   if (totalTriangles === 0) {
     throw new Error("STEP file parsed but produced no triangles. The geometry may be too small or degenerate.");
   }
 
-  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles);
+  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles, { source: "step", brepFaces, cornerNormals });
 
   analysis.units = "mm";
   analysis.bodyCount = result.meshes.length; // Assembly: number of bodies
@@ -342,7 +411,7 @@ async function parseSTEP(buffer) {
   return analysis;
 }
 
-// âââ // ——— 3MF PARSER —————————————————————————————————————————————
+// ─── 3MF PARSER ───────────────────────────────────────────────
 async function parse3MF(buffer) {
   const AdmZip = require("adm-zip");
   const { XMLParser } = require("fast-xml-parser");
@@ -566,7 +635,7 @@ async function parse3MF(buffer) {
     throw new Error("3MF file contains no mesh geometry. The file may contain only metadata or component references without embedded meshes.");
   }
 
-  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles);
+  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles, { source: "3mf" });
 
   analysis.units = "mm";
   analysis.sourceUnit = unitAttr;
@@ -582,7 +651,7 @@ async function parse3MF(buffer) {
   return analysis;
 }
 
-// âââ IGES PARSER (via occt-import-js) âââââââââââââââââââââââââ
+// ─── IGES PARSER (via occt-import-js) ─────────────────────────
 async function parseIGES(buffer) {
   let occt;
   try {
@@ -608,13 +677,13 @@ async function parseIGES(buffer) {
     throw new Error("IGES file contains no geometry.");
   }
 
-  const { allVertices, allNormals, totalTriangles } = extractOcctMeshes(result);
+  const { allVertices, allNormals, totalTriangles, brepFaces, cornerNormals } = extractOcctMeshes(result);
 
   if (totalTriangles === 0) {
     throw new Error("IGES file parsed but produced no triangles.");
   }
 
-  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles);
+  const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles, { source: "iges", brepFaces, cornerNormals });
   analysis.units = "mm";
   analysis.bodyCount = result.meshes.length;
   analysis.isAssembly = result.meshes.length > 1;
@@ -623,7 +692,7 @@ async function parseIGES(buffer) {
   return analysis;
 }
 
-// âââ DFM (Design for Manufacturability) Analysis ââââââââââââââ
+// ─── DFM (Design for Manufacturability) Analysis ──────────────
 // Process-specific DFM logic now lives in self-contained process folders
 // (server/processes/<slug>/dfm.js). This module dispatches via the registry.
 
@@ -640,9 +709,16 @@ const DFM_FN_BY_NAME = {
   runPrintingDFM,
 };
 
+// Default process for DFM when the caller doesn't name one: the first ACTIVE
+// process (sheet metal is registered but inactive for Straightedge).
+function defaultProcessSlug() {
+  const first = activeProcesses()[0];
+  return first ? first.slug : "sheetmetal";
+}
+
 // DFM Router — dispatches to the process-specific DFM function via the registry.
 function runDFMAnalysis(geometry, options = {}) {
-  const def = resolveProcess(options.process || "sheetmetal");
+  const def = resolveProcess(options.process || defaultProcessSlug());
   const fn = (def.dfm && def.dfm.run) || DFM_FN_BY_NAME[def.dfmFn] || runSheetMetalDFM;
   // Sheet metal DFM takes a thickness argument; the others take an options object.
   if (def.slug === "sheetmetal" || fn === runSheetMetalDFM) {
@@ -651,7 +727,7 @@ function runDFMAnalysis(geometry, options = {}) {
   return fn(geometry, options);
 }
 
-// âââ MAIN PARSE FUNCTION ââââââââââââââââââââââââââââââââââââââ
+// ─── MAIN PARSE FUNCTION ──────────────────────────────────────
 async function parseFile(filePath, processOptions = {}) {
   const ext = path.extname(filePath).toLowerCase();
   const buffer = fs.readFileSync(filePath);
@@ -677,8 +753,8 @@ async function parseFile(filePath, processOptions = {}) {
       throw new Error(`Unsupported file format: ${ext}. Supported: .step, .stp, .stl, .iges, .igs`);
   }
 
-  // Run DFM analysis for requested process (or default to sheetmetal)
-  const dfm = runDFMAnalysis(geometry, processOptions);
+  // Run DFM analysis for the requested process (default: first active process)
+  const dfm = runDFMAnalysis(geometry, { process: defaultProcessSlug(), ...processOptions });
 
   // Also run DFM for every active process so the client can show all tabs.
   // Driven by the registry — a new process appears here automatically.
@@ -699,4 +775,4 @@ async function parseFile(filePath, processOptions = {}) {
   };
 }
 
-module.exports = { parseFile, parseSTL, parseSTEP, parseIGES, parse3MF, runDFMAnalysis, runSheetMetalDFM, runCNCDFM, runPrintingDFM };
+module.exports = { parseFile, parseSTL, parseSTEP, parseIGES, parse3MF, runDFMAnalysis, defaultProcessSlug, runSheetMetalDFM, runCNCDFM, runPrintingDFM };

@@ -10,6 +10,11 @@ import CheckoutPage from './pages/CheckoutPage';
 import OrderTrackingPage from './pages/OrderTrackingPage';
 import JobTravelerPage from './pages/JobTravelerPage';
 import LandingPage from './pages/LandingPage';
+import ServicePage from './pages/ServicePage';
+import MaterialsPage from './pages/MaterialsPage';
+import QualityPage from './pages/QualityPage';
+import AboutPage from './pages/AboutPage';
+import RfqPage from './pages/RfqPage';
 
 export default function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -28,6 +33,14 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/" element={<LandingPage />} />
+      <Route path="/machining" element={<ServicePage slug="machining" />} />
+      <Route path="/routing" element={<ServicePage slug="routing" />} />
+      <Route path="/3d-printing" element={<ServicePage slug="3d-printing" />} />
+      <Route path="/materials" element={<MaterialsPage />} />
+      <Route path="/quality" element={<QualityPage />} />
+      <Route path="/about" element={<AboutPage />} />
+      <Route path="/rfq" element={<RfqPage />} />
+      <Route path="/rfq/:quoteId" element={<RfqPage />} />
 
       {/* Protected routes */}
       <Route

@@ -29,7 +29,7 @@ router.post("/", async (req, res) => {
 
   let event;
 
-  // âââ Signature Verification ââââââââââââââââââââââââââââââââââ
+  // ─── Signature Verification ──────────────────────────────────
   if (webhookSecret) {
     const sig = req.headers["stripe-signature"];
     try {
@@ -52,7 +52,7 @@ router.post("/", async (req, res) => {
     }
   }
 
-  // âââ Handle checkout.session.completed ââââââââââââââââââââââââ
+  // ─── Handle checkout.session.completed ────────────────────────
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
     const orderId = session.metadata?.orderId;
@@ -68,7 +68,7 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // âââ Payment Amount Verification âââââââââââââââââââââââââââââ
+    // ─── Payment Amount Verification ─────────────────────────────
     // Verify the amount paid matches what we expect
     const paidAmountCents = session.amount_total;
     // The order persists its expected price in `total` (set at checkout-session
@@ -107,7 +107,7 @@ router.post("/", async (req, res) => {
       });
       console.log("Order " + orderId + " marked as paid via Stripe webhook");
     } else {
-      console.log("Webhook: Order " + orderId + " already in status " + order.status + " â skipping");
+      console.log("Webhook: Order " + orderId + " already in status " + order.status + " — skipping");
     }
   }
 

@@ -2,13 +2,17 @@ import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { formatCurrency } from '../utils/format';
 import OrderDetailDrawer from '../components/OrderDetailDrawer';
+import RfqQueue from '../components/RfqQueue';
+import PricingConsole from '../components/admin/PricingConsole';
+import MaterialsEditor from '../components/admin/MaterialsEditor';
+import CalibrationTab from '../components/admin/CalibrationTab';
+import '../styles/admin.css';
 
 export default function AdminPanel() {
-  const [tab, setTab] = useState('materials');
+  const [tab, setTab] = useState('orders');
   const [materials, setMaterials] = useState([]);
   const [finishes, setFinishes] = useState([]);
   const [leadTimes, setLeadTimes] = useState([]);
-  const [pricing, setPricing] = useState({});
   const [quotes, setQuotes] = useState([]);
   const [orders, setOrders] = useState([]);
   const [parts, setParts] = useState([]);
@@ -16,16 +20,17 @@ export default function AdminPanel() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [drawerOrderId, setDrawerOrderId] = useState(null);
+  // A rule change suggested by the Calibration tab, carried into the pricing console as a draft edit.
+  const [pendingRuleChange, setPendingRuleChange] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
     try {
-      const [mats, fins, lts, pr, qs, st, ord, prt] = await Promise.all([
+      const [mats, fins, lts, qs, st, ord, prt] = await Promise.all([
         api.getAdminMaterials(),
         api.getAdminFinishes(),
         api.getAdminLeadTimes(),
-        api.getPricingRules(),
         api.getAdminQuotes(),
         api.getAdminStats(),
         api.getOrders(),
@@ -34,7 +39,6 @@ export default function AdminPanel() {
       setMaterials(mats);
       setFinishes(fins);
       setLeadTimes(lts);
-      setPricing(pr);
       setQuotes(qs);
       setStats(st);
       setOrders(ord);
@@ -42,16 +46,6 @@ export default function AdminPanel() {
     } catch (err) {
       console.error('Admin load error:', err);
     }
-  }
-
-  async function saveMaterial(id, updates) {
-    setSaving(true);
-    try {
-      await api.updateMaterial(id, updates);
-      await loadData();
-      setEditingId(null);
-    } catch (err) { alert('Save failed: ' + err.message); }
-    setSaving(false);
   }
 
   async function saveFinish(id, updates) {
@@ -83,27 +77,20 @@ export default function AdminPanel() {
     setSaving(false);
   }
 
-  async function savePricingRules() {
-    setSaving(true);
-    try {
-      await api.updatePricingRules(pricing);
-      alert('Pricing rules saved.');
-    } catch (err) { alert('Save failed: ' + err.message); }
-    setSaving(false);
-  }
-
   const tabs = [
     { key: 'orders', label: 'Orders' },
+    { key: 'rfqs', label: 'RFQs' },
     { key: 'parts', label: 'Parts' },
     { key: 'materials', label: 'Materials' },
     { key: 'finishes', label: 'Finishes' },
     { key: 'lead-times', label: 'Lead Times' },
-    { key: 'pricing', label: 'Pricing Rules' },
+    { key: 'pricing', label: 'Pricing' },
+    { key: 'calibration', label: 'Calibration' },
     { key: 'quotes', label: 'Quotes' },
   ];
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: 32 }}>
+    <div style={{ maxWidth: 1320, margin: '0 auto', padding: '28px 32px 48px' }}>
       {/* Stats bar */}
       <div className="grid-4" style={{ marginBottom: 32 }}>
         {[
@@ -244,7 +231,7 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* ─── MATERIALS TAB ─── */}
+      {/* ─── PARTS TAB ─── */}
       {tab === 'parts' && (
           <div>
             <h2 style={{ marginBottom: '16px' }}>All Uploaded Parts ({parts.length})</h2>
@@ -296,63 +283,8 @@ export default function AdminPanel() {
           </div>
         )}
 
-        {tab === 'materials' && (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}>
-                {['Active', 'Name', 'Category', 'Price/kg', 'Grades', 'Thicknesses', ''].map((h) => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {materials.map((m) => (
-                <tr key={m.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '10px 14px' }}>
-                    <span className={`tag ${m.active ? 'tag-pass' : 'tag-fail'}`}>{m.active ? 'ON' : 'OFF'}</span>
-                  </td>
-                  <td style={{ padding: '10px 14px', fontWeight: 500, color: 'var(--text-secondary)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 12, height: 12, borderRadius: 2, background: m.color }} />
-                      {m.name}
-                    </div>
-                  </td>
-                  <td style={{ padding: '10px 14px', color: 'var(--text-dim)' }}>{m.category}</td>
-                  <td style={{ padding: '10px 14px' }}>
-                    {editingId === m.id ? (
-                      <input
-                        className="input"
-                        type="number"
-                        step="0.01"
-                        defaultValue={m.pricePerKg}
-                        style={{ width: 80 }}
-                        onBlur={(e) => saveMaterial(m.id, { pricePerKg: parseFloat(e.target.value) })}
-                        onKeyDown={(e) => e.key === 'Enter' && saveMaterial(m.id, { pricePerKg: parseFloat(e.target.value) })}
-                        autoFocus
-                      />
-                    ) : (
-                      <span style={{ color: 'var(--accent)', cursor: 'pointer' }} onClick={() => setEditingId(m.id)}>
-                        ${m.pricePerKg?.toFixed(2)}
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ padding: '10px 14px', color: 'var(--text-dim)' }}>{m.grades?.length}</td>
-                  <td style={{ padding: '10px 14px', color: 'var(--text-dim)' }}>{m.thicknesses?.length}</td>
-                  <td style={{ padding: '10px 14px' }}>
-                    <button className="btn btn-ghost" style={{ fontSize: 10, padding: '4px 10px' }}
-                      onClick={() => saveMaterial(m.id, { active: !m.active })}>
-                      {m.active ? 'Disable' : 'Enable'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* ─── MATERIALS TAB ─── */}
+      {tab === 'materials' && <MaterialsEditor materials={materials} onChanged={loadData} />}
 
       {/* ─── FINISHES TAB ─── */}
       {tab === 'finishes' && (
@@ -446,48 +378,14 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* ─── PRICING RULES TAB ─── */}
+      {/* ─── PRICING CONSOLE ─── */}
       {tab === 'pricing' && (
-        <div className="card" style={{ padding: 24 }}>
-          <div className="font-display" style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 20 }}>
-            Pricing Engine Configuration
-          </div>
-          <div className="grid-2" style={{ gap: 20 }}>
-            <PricingField label="Laser cut rate (per mm)" field="laserCutRatePerMm" value={pricing} onChange={setPricing} />
-            <PricingField label="Thickness exponent" field="laserThicknessExponent" value={pricing} onChange={setPricing} />
-            <PricingField label="Bend base cost ($)" field="bendBaseCost" value={pricing} onChange={setPricing} />
-            <PricingField label="Bend thickness multiplier" field="bendThicknessMultiplier" value={pricing} onChange={setPricing} />
-            <PricingField label="Hole base cost ($)" field="holeBaseCost" value={pricing} onChange={setPricing} />
-            <PricingField label="Tap cost ($)" field="tapCost" value={pricing} onChange={setPricing} />
-            <PricingField label="Minimum part price ($)" field="minimumPartPrice" value={pricing} onChange={setPricing} />
-            <PricingField label="Minimum order total ($)" field="minimumOrderTotal" value={pricing} onChange={setPricing} />
-            <PricingField label="Nesting efficiency bonus" field="nestingEfficiencyBonus" value={pricing} onChange={setPricing} step="0.01" />
-            <PricingField label="Target margin (%)" field="marginPercent" value={pricing} onChange={setPricing} step="0.01" />
-            <PricingField label="Shipping base rate ($)" field="shippingBaseRate" value={pricing} onChange={setPricing} />
-            <PricingField label="Shipping per kg ($)" field="shippingPerKg" value={pricing} onChange={setPricing} />
-          </div>
+        <PricingConsole initialChanges={pendingRuleChange} onConsumedInitialChanges={() => setPendingRuleChange(null)} />
+      )}
 
-          {/* Volume discount tiers */}
-          <div style={{ marginTop: 24 }}>
-            <span className="field-label">Volume Discount Tiers</span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-              {(pricing.volumeDiscounts || []).map((tier, i) => (
-                <div key={i} style={{
-                  padding: '6px 12px', borderRadius: 'var(--radius-md)',
-                  background: 'var(--bg-primary)', border: '1px solid var(--border-primary)',
-                  fontSize: 11,
-                }}>
-                  <span style={{ color: 'var(--text-muted)' }}>{tier.minQty}+ units:</span>{' '}
-                  <span style={{ color: 'var(--success-text)', fontWeight: 500 }}>{(tier.discount * 100).toFixed(0)}% off</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <button className="btn btn-primary" style={{ marginTop: 24 }} onClick={savePricingRules} disabled={saving}>
-            {saving ? 'Saving…' : 'Save Pricing Rules'}
-          </button>
-        </div>
+      {/* ─── CALIBRATION ─── */}
+      {tab === 'calibration' && (
+        <CalibrationTab onApplySuggestion={(change) => { setPendingRuleChange(change); setTab('pricing'); }} />
       )}
 
       {/* ─── ORDER DETAIL DRAWER ─── */}
@@ -498,6 +396,9 @@ export default function AdminPanel() {
           onUpdated={loadData}
         />
       )}
+
+      {/* ─── RFQ TAB ─── */}
+      {tab === 'rfqs' && <RfqQueue />}
 
       {/* ─── QUOTES TAB ─── */}
       {tab === 'quotes' && (
@@ -540,20 +441,5 @@ export default function AdminPanel() {
         </div>
       )}
     </div>
-  );
-}
-
-function PricingField({ label, field, value, onChange, step = '0.001' }) {
-  return (
-    <label>
-      <span className="field-label">{label}</span>
-      <input
-        className="input"
-        type="number"
-        step={step}
-        value={value[field] ?? ''}
-        onChange={(e) => onChange((prev) => ({ ...prev, [field]: parseFloat(e.target.value) || 0 }))}
-      />
-    </label>
   );
 }

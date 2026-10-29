@@ -1,14 +1,14 @@
 {
-  "name": "instant-quote-saas",
+  "name": "straightedge-quoting",
   "version": "1.0.0",
-  "description": "Production-ready instant quoting platform for 3D parts",
+  "description": "Straightedge \u2014 instant quoting and ordering for machined plastics, CNC routing and 3D printing",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "node server/index.js",
     "client": "cd client && npx vite --port 3001",
     "build": "cd client && npm ci --include=dev && npm run build",
     "start": "NODE_ENV=production node server/index.js",
-    "test": "node server/services/pricingEngine.test.js && node server/parsers/dfm.test.js && node server/processes/registry.test.js && node server/services/fileCrypto.test.js",
+    "test": "node scripts/run-tests.js",
     "postinstall": "cd client && npm ci --include=dev"
   },
   "dependencies": {

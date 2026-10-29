@@ -90,9 +90,32 @@ export const api = {
     return request('/admin/finishes', { method: 'POST', body: JSON.stringify(data) });
   },
 
+  async duplicateMaterial(id) {
+    return request(`/admin/materials/${id}/duplicate`, { method: 'POST' });
+  },
+
+  // Pricing console
+  async getPricingSchema() { return request('/admin/pricing/schema'); },
   async getPricingRules() { return request('/admin/pricing'); },
-  async updatePricingRules(data) {
-    return request('/admin/pricing', { method: 'PUT', body: JSON.stringify(data) });
+  /** Save changed rules with a one-line note (required; it goes in the history). */
+  async updatePricingRules(rules, note) {
+    return request('/admin/pricing', { method: 'PUT', body: JSON.stringify({ rules, note }) });
+  },
+  async previewPricing(rules) {
+    return request('/admin/pricing/preview', { method: 'POST', body: JSON.stringify({ rules }) });
+  },
+  async getPricingHistory(limit = 50) { return request(`/admin/pricing/history?limit=${limit}`); },
+  async restorePricing(id) {
+    return request(`/admin/pricing/restore/${id}`, { method: 'POST', body: JSON.stringify({}) });
+  },
+  async resetPricing() {
+    return request('/admin/pricing/reset', { method: 'POST', body: JSON.stringify({}) });
+  },
+
+  // Calibration
+  async getCalibration() { return request('/admin/calibration'); },
+  async updateOrderItemActuals(itemId, data) {
+    return request(`/admin/order-items/${itemId}/actuals`, { method: 'PUT', body: JSON.stringify(data) });
   },
 
   async getAdminLeadTimes() { return request('/admin/lead-times'); },
@@ -140,6 +163,25 @@ export const api = {
   async createOrder(quoteId, shippingFields) {
     return request('/orders', { method: 'POST', body: JSON.stringify({ quoteId, ...shippingFields }) });
   },
+
+  // RFQ (firm quotes)
+  async submitRfq(fields, drawingFile) {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) form.append(k, v);
+    if (drawingFile) form.append('drawing', drawingFile);
+    const headers = {};
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+    const res = await fetch(`${BASE}/rfq`, { method: 'POST', body: form, headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Could not submit request');
+    }
+    return res.json();
+  },
+  async getRfq(id) { return request(`/rfq/${id}`); },
+  async getAdminRfqs() { return request('/rfq/admin/list'); },
+  async updateRfq(id, data) { return request(`/rfq/admin/${id}`, { method: 'PUT', body: JSON.stringify(data) }); },
+  rfqDrawingUrl(id) { return `${BASE}/rfq/admin/${id}/drawing`; },
 
   // Stripe Checkout
   async createCheckoutSession(quoteId, shippingFields) {

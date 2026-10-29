@@ -15,7 +15,7 @@ const MAGIC_BYTES = {
       const ascii = buffer.slice(0, 6).toString("ascii");
       // ASCII STL starts with "solid "
       if (ascii.startsWith("solid")) return true;
-      // Binary STL: 80-byte header + 4-byte triangle count â just check it's long enough
+      // Binary STL: 80-byte header + 4-byte triangle count — just check it's long enough
       return buffer.length >= 84;
     },
   },
@@ -74,7 +74,7 @@ function validateFileContent(req, res, next) {
     const validator = MAGIC_BYTES[ext];
 
     if (!validator) {
-      // No validator for this extension â reject it
+      // No validator for this extension — reject it
       rejected.push({ fileName: file.originalname, reason: "No validator for extension" });
       safeDelete(file.path);
       continue;

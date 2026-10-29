@@ -1,12 +1,26 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 import { formatCurrency, formatDim } from '../utils/format';
 import ThreeViewer from '../components/ThreeViewer';
 import DFMPanel from '../components/DFMPanel';
 import PartConfigurator from '../components/PartConfigurator';
 import OrderSummary from '../components/OrderSummary';
+import ProcessPicker from '../components/ProcessPicker';
+import brand, { PROCESS_LABELS } from '../brand';
+
+// Closest stock thickness to the model's thinnest dimension (routing materials carry a thickness table).
+function pickThickness(mat, geometry) {
+  const list = mat?.thicknesses || [];
+  if (list.length === 0) return 0;
+  const bb = geometry?.boundingBox || {};
+  const t = Math.min(bb.width || Infinity, bb.height || Infinity, bb.depth || Infinity);
+  if (!Number.isFinite(t)) return list[Math.min(2, list.length - 1)].mm;
+  return list.reduce((best, x) => (Math.abs(x.mm - t) < Math.abs(best.mm - t) ? x : best), list[0]).mm;
+}
 
 export default function QuoteBuilder() {
+  const navigate = useNavigate();
   // Config data from server
   const [processes, setProcesses] = useState([]);
   const [materials, setMaterials] = useState([]);
@@ -17,7 +31,7 @@ export default function QuoteBuilder() {
   const [parts, setParts] = useState([]);          // { partId, fileName, geometry, dfm, meshPreview, materialSlug, grade, thicknessMm, finishSlug, quantity, process, subProcess, layerHeight, infill }
   const [activePart, setActivePart] = useState(null);
   const [selectedLeadTime, setSelectedLeadTime] = useState('standard');
-  const [selectedProcess, setSelectedProcess] = useState('3d-printing');
+  const [selectedProcess, setSelectedProcess] = useState('cnc');
   // Quote from server
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -32,7 +46,7 @@ export default function QuoteBuilder() {
 
   // Load config on mount
   useEffect(() => {
-    Promise.all([api.getProcesses(), api.getMaterials('3d-printing'), api.getFinishes('3d-printing'), api.getLeadTimes()])
+    Promise.all([api.getProcesses(), api.getMaterials('cnc'), api.getFinishes('cnc'), api.getLeadTimes()])
       .then(([procs, mats, fins, lts]) => {
         setProcesses(procs);
         setMaterials(mats);
@@ -64,7 +78,7 @@ export default function QuoteBuilder() {
       setQuoteError(null);
     } catch (err) {
       console.error('Quote error:', err);
-      setQuoteError(err?.message || 'We couldn’t calculate a price for this configuration. Please adjust and try again.');
+      setQuoteError(err?.message || `We couldn't price this setup. Change the material or quantity and try again, or call ${brand.phone}.`);
     }
     setQuoteLoading(false);
   }, [parts, selectedLeadTime, selectedProcess]);
@@ -92,13 +106,13 @@ export default function QuoteBuilder() {
         geometry: p.geometry,
         dfm: p.dfm,
         meshPreview: p.meshPreview,
-        materialSlug: defaultMat?.slug || 'pla',
+        materialSlug: defaultMat?.slug || 'cnc-delrin',
         grade: defaultMat?.grades?.[0]?.name || '',
-        thicknessMm: 0,
+        thicknessMm: pickThickness(defaultMat, p.geometry),
         finishSlug: finishes[0]?.slug || 'raw',
         quantity: 1,
         process: selectedProcess,
-        subProcess: defaultMat?.subProcess || '',
+        subProcess: selectedProcess === 'cnc' ? 'milling' : (defaultMat?.subProcess || ''),
         layerHeight: defaultMat?.defaultLayerHeight || 0,
         infill: 0.2,
         dfmAll: p.dfmAll,
@@ -111,7 +125,7 @@ export default function QuoteBuilder() {
       });
       if (result.errors?.length > 0) setUploadErrors(result.errors);
     } catch (err) {
-      setUploadErrors([{ fileName: 'Upload', error: err.message }]);
+      setUploadErrors([{ fileName: 'Upload', error: err.message || `The file didn't make it to our server. Try again, or email it to ${brand.email}.` }]);
     }
     setUploading(false);
   }, [materials, finishes, selectedProcess]);
@@ -131,6 +145,7 @@ export default function QuoteBuilder() {
   };
 
   async function handleProcessChange(processSlug) {
+    if (processSlug === selectedProcess) return;
     setSelectedProcess(processSlug);
     // Re-fetch materials and finishes for this process
     const [mats, fins] = await Promise.all([
@@ -144,10 +159,10 @@ export default function QuoteBuilder() {
       setParts((prev) => prev.map((p) => ({
         ...p,
         process: processSlug,
-        subProcess: mats[0].subProcess || '',
+        subProcess: processSlug === 'cnc' ? 'milling' : (mats[0].subProcess || ''),
         materialSlug: mats[0].slug,
         grade: mats[0].grades?.[0]?.name || '',
-        thicknessMm: mats[0].thicknesses?.[2]?.mm || mats[0].thicknesses?.[0]?.mm || 0,
+        thicknessMm: pickThickness(mats[0], p.geometry),
         finishSlug: fins[0]?.slug || 'raw',
         layerHeight: mats[0].defaultLayerHeight || 0,
         infill: 0.2,
@@ -157,6 +172,9 @@ export default function QuoteBuilder() {
 
   const active = parts.find((p) => p.partId === activePart);
   const activeLineItem = quote?.lineItems?.find((li) => li.partId === activePart);
+  const activeDfm = quote?.dfmByPartId?.[activePart] || active?.dfmAll?.[selectedProcess] || active?.dfm;
+  const needsRfq = Boolean(quote?.gate?.requiresRfq);
+  const cutLabel = selectedProcess === 'routing' ? 'Router cutting' : 'Laser cutting';
 
   return (
     <div className={parts.length > 0 ? 'qb-grid' : ''} style={{ display: 'grid', gridTemplateColumns: parts.length > 0 ? undefined : '1fr', minHeight: 'calc(100vh - 53px)' }}>
@@ -165,23 +183,25 @@ export default function QuoteBuilder() {
       {parts.length > 0 && (
         <aside style={{ borderRight: '1px solid var(--border-primary)', padding: 16, overflowY: 'auto', background: 'var(--bg-secondary)' }}>
           <div className="flex-between" style={{ marginBottom: 16 }}>
-            <span className="font-display" style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-muted)' }}>
-              PARTS ({parts.length})
+            <span className="font-display" style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Parts ({parts.length})
             </span>
             <button className="btn btn-primary" style={{ fontSize: 11, padding: '6px 12px' }} onClick={() => fileRef.current?.click()}>
-              + Add
+              + Add part
             </button>
           </div>
 
           {parts.map((pt, i) => {
             const lineItem = quote?.lineItems?.find((li) => li.partId === pt.partId);
             return (
-              <div
+              <button
+                type="button"
                 key={pt.partId}
                 className="fade-up"
+                aria-pressed={activePart === pt.partId}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
+                  padding: '10px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
                   transition: 'all 0.15s', marginBottom: 4,
                   border: `1px solid ${activePart === pt.partId ? 'var(--border-primary)' : 'transparent'}`,
                   background: activePart === pt.partId ? 'var(--bg-hover)' : 'transparent',
@@ -201,14 +221,14 @@ export default function QuoteBuilder() {
                   <div className="truncate" style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>
                     {pt.fileName}
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2, whiteSpace: 'nowrap' }}>
                     {formatDim(pt.geometry?.flatWidth || 0)} × {formatDim(pt.geometry?.flatHeight || 0)} · qty {pt.quantity}
                   </div>
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
-                  {lineItem ? formatCurrency(lineItem.lineTotal) : '...'}
+                  {lineItem ? formatCurrency(lineItem.lineTotal) : '…'}
                 </div>
-              </div>
+              </button>
             );
           })}
         </aside>
@@ -228,24 +248,34 @@ export default function QuoteBuilder() {
           onChange={(e) => handleFiles(e.target.files)}
         />
 
-        {/* Empty state: dropzone */}
+        {/* Empty state: process picker + dropzone */}
+        {parts.length === 0 && !uploading && (
+          <div style={{ maxWidth: 640, width: '100%', marginBottom: 16 }}>
+            <div className="field-label" style={{ marginBottom: 10 }}>How should we make it?</div>
+            <ProcessPicker processes={processes} value={selectedProcess} onChange={handleProcessChange} />
+          </div>
+        )}
         {parts.length === 0 && !uploading && (
           <div
             className="dropzone"
+            role="button"
+            tabIndex={0}
+            aria-label="Upload a part file"
             style={{ maxWidth: 640, width: '100%' }}
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
             onClick={() => fileRef.current?.click()}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); } }}
           >
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 16, opacity: 0.7 }}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true" style={{ marginBottom: 16, opacity: 0.7 }}>
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
             </svg>
             <div className="font-display" style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
-              Upload Your Parts
+              Upload a part
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.7, maxWidth: 440 }}>
-              Drag & drop your CAD files to get an instant quote.<br />
-              Custom parts manufactured and delivered to your door.
+            <div style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.7, maxWidth: 460, margin: '0 auto' }}>
+              Drop a STEP, STL, IGES or 3MF file here, or click to choose one. The price shows in a few seconds.<br />
+              Up to {brand.rfqQuantityThreshold} pieces checks out online. More than that, a person quotes it within {brand.quoteTurnaroundHours} hours.
             </div>
             <div style={{ marginTop: 24, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
               {['STEP', 'STL', 'IGES', '3MF'].map((f) => (
@@ -261,14 +291,14 @@ export default function QuoteBuilder() {
         {uploading && (
           <div className="flex-col fade-in" style={{ alignItems: 'center', gap: 20, paddingTop: 48 }}>
             <div className="spinner" style={{ width: 40, height: 40, borderWidth: 3 }} />
-            <div className="font-display" style={{ fontSize: 14, color: 'var(--text-muted)' }}>Analyzing your part…</div>
-            <div style={{ fontSize: 11, color: 'var(--accent)' }}>This will only take a moment</div>
+            <div className="font-display" style={{ fontSize: 14, color: 'var(--text-muted)' }} role="status">Reading the geometry…</div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>A few seconds for most files. Large STEP assemblies take longer.</div>
           </div>
         )}
 
         {/* Upload errors */}
         {uploadErrors.length > 0 && (
-          <div className="card fade-up" style={{ padding: 16, marginBottom: 16, borderColor: 'var(--error-bg)', maxWidth: 720, width: '100%' }}>
+          <div className="card fade-up" role="alert" style={{ padding: 16, marginBottom: 16, borderColor: '#FECACA', background: 'var(--error-bg)', maxWidth: 720, width: '100%' }}>
             {uploadErrors.map((err, i) => (
               <div key={i} style={{ fontSize: 12, color: 'var(--error-text)', marginBottom: 4 }}>
                 ⚠ {err.fileName}: {err.error}
@@ -280,35 +310,45 @@ export default function QuoteBuilder() {
         {/* Active part view */}
         {parts.length > 0 && !uploading && active && (
           <div className="fade-up" style={{ width: '100%', maxWidth: 720 }}>
-            {/* Technology label */}
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              padding: '6px 14px', borderRadius: 8, marginBottom: 16,
-              background: 'var(--accent-bg)', border: '1px solid var(--accent)',
-            }}>
-              <span style={{ fontSize: 14 }}>▲</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>3D Printing</span>
+            {/* Process switch */}
+            <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <ProcessPicker compact processes={processes} value={selectedProcess} onChange={handleProcessChange} />
+              <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Switching re-prices every part in this quote.</span>
             </div>
 
+            {/* Gate notice: shown up top so it isn't buried in the rail (or below the fold on a phone) */}
+            {needsRfq && (
+              <div className="gate-box" role="status" style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                <span style={{ flex: '1 1 320px' }}>
+                  <b>This one needs a person before you can buy.</b> The number below is budgetary.{' '}
+                  {quote?.gate?.reasons?.[0]?.message ? `${quote.gate.reasons[0].message}.` : ''}
+                </span>
+                <button type="button" className="btn btn-primary" onClick={() => navigate(quote?.quoteId ? `/rfq/${quote.quoteId}` : '/rfq')}>
+                  Request a firm quote →
+                </button>
+              </div>
+            )}
+
             {/* View toggle */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              <button className={`btn ${showDFM ? 'btn-ghost' : 'btn-ghost active'}`} onClick={() => setShowDFM(false)}>
-                3D Preview
+            <div className="qb-toolbar" role="tablist" aria-label="Part view">
+              <button role="tab" aria-selected={!showDFM} className={`btn ${showDFM ? 'btn-ghost' : 'btn-ghost active'}`} onClick={() => setShowDFM(false)}>
+                3D preview
               </button>
-              <button className={`btn ${showDFM ? 'btn-ghost active' : 'btn-ghost'}`} onClick={() => setShowDFM(true)}>
-                DFM Analysis
+              <button role="tab" aria-selected={showDFM} className={`btn ${showDFM ? 'btn-ghost active' : 'btn-ghost'}`} onClick={() => setShowDFM(true)}>
+                DFM check
               </button>
 
               {/* Price badge */}
               {activeLineItem && (
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  {quoteLoading && <div className="spinner" />}
+                <div className="qb-price" aria-live="polite">
+                  {quoteLoading && <div className="spinner" aria-label="Updating price" />}
+                  <span className="price-label">{needsRfq ? 'Budgetary' : 'Instant price'}</span>
                   <span className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>
                     {formatCurrency(activeLineItem.lineTotal)}
                   </span>
                   {active.quantity > 1 && (
-                    <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>
-                      ({formatCurrency(activeLineItem.perUnit.final)}/ea)
+                    <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                      {formatCurrency(activeLineItem.perUnit.final)} each
                     </span>
                   )}
                 </div>
@@ -324,21 +364,16 @@ export default function QuoteBuilder() {
                     color={materials.find((m) => m.slug === active.materialSlug)?.color || '#4F8CFF'}
                   />
                   {/* Overlay info */}
-                  <div style={{
-                    position: 'absolute', bottom: 0, left: 0, right: 0,
-                    padding: '10px 16px', background: 'linear-gradient(transparent, rgba(8,12,20,0.9))',
-                    display: 'flex', gap: 16, fontSize: 10, color: 'var(--text-dim)',
-                  }}>
+                  <div className="viewer-meta">
                     <span>{formatDim(active.geometry?.flatWidth || 0)} × {formatDim(active.geometry?.flatHeight || 0)}</span>
-                    <span>Area: {((active.geometry?.flatArea || 0) / 645.16).toFixed(1)} in²</span>
-                    <span>{(active.geometry?.triangleCount || 0).toLocaleString()} triangles</span>
-                    <span style={{ marginLeft: 'auto' }}>Drag to orbit · Scroll to zoom</span>
+                    <span>{((active.geometry?.flatArea || 0) / 645.16).toFixed(1)} in² footprint</span>
+                    <span className="hint">Drag to orbit · Scroll to zoom</span>
                   </div>
                 </div>
               </div>
             ) : (
               <div style={{ marginBottom: 20 }}>
-                <DFMPanel dfm={active.dfm} dfmAll={active.dfmAll} process={selectedProcess} />
+                <DFMPanel dfm={activeDfm} dfmAll={active.dfmAll} process={selectedProcess} />
               </div>
             )}
 
@@ -356,11 +391,11 @@ export default function QuoteBuilder() {
             {activeLineItem && (
               <div className="card fade-up" style={{ padding: 20, marginTop: 16 }}>
                 <span className="font-display" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: 12 }}>
-                  Price Breakdown (per unit)
+                  Price per piece
                 </span>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '6px 16px', fontSize: 11 }}>
                   <PriceRow label="Material" value={activeLineItem.perUnit.material} />
-                  {activeLineItem.perUnit.cutting > 0 && <PriceRow label="Laser cutting" value={activeLineItem.perUnit.cutting} />}
+                  {activeLineItem.perUnit.cutting > 0 && <PriceRow label={cutLabel} value={activeLineItem.perUnit.cutting} />}
                   {activeLineItem.perUnit.bending > 0 && <PriceRow label="Bending" value={activeLineItem.perUnit.bending} />}
                   {activeLineItem.perUnit.holes > 0 && <PriceRow label="Holes & features" value={activeLineItem.perUnit.holes} />}
                   {activeLineItem.perUnit.machining > 0 && <PriceRow label="Machining" value={activeLineItem.perUnit.machining} />}
@@ -373,7 +408,7 @@ export default function QuoteBuilder() {
                   {activeLineItem.perUnit.discount > 0 && (
                     <PriceRow label={`Volume discount (${(activeLineItem.perUnit.discount * 100).toFixed(0)}%)`} value={-activeLineItem.perUnit.discountAmount} color="var(--success-text)" />
                   )}
-                  <PriceRow label="Unit price" value={activeLineItem.perUnit.final} bold />
+                  <PriceRow label="Per piece" value={activeLineItem.perUnit.final} bold />
                 </div>
               </div>
             )}
@@ -382,10 +417,10 @@ export default function QuoteBuilder() {
             {activeLineItem?.quantityBreaks?.length > 1 && (
               <div className="card fade-up" style={{ padding: 20, marginTop: 16 }}>
                 <span className="font-display" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: 4 }}>
-                  Volume Pricing
+                  Quantity breaks
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--text-dim)', display: 'block', marginBottom: 12 }}>
-                  Order more, save per unit — click a quantity to apply it.
+                  Setup is spread across the run, so the per-piece price drops. Click a quantity to use it.
                 </span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {activeLineItem.quantityBreaks.map((b) => {
@@ -395,9 +430,10 @@ export default function QuoteBuilder() {
                         key={b.qty}
                         onClick={() => updatePart(active.partId, { quantity: b.qty })}
                         aria-label={`Set quantity to ${b.qty}, ${formatCurrency(b.perUnit)} each`}
+                        aria-pressed={isActive}
                         style={{
                           display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 16, alignItems: 'center',
-                          padding: '7px 10px', borderRadius: 6, cursor: 'pointer', textAlign: 'left',
+                          padding: '7px 10px', borderRadius: 6, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                           border: `1px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
                           background: isActive ? 'var(--accent-bg)' : 'transparent',
                           fontSize: 11,
@@ -406,7 +442,7 @@ export default function QuoteBuilder() {
                         <span style={{ fontWeight: isActive ? 700 : 500, color: isActive ? 'var(--accent)' : 'var(--text-secondary)' }}>
                           {b.qty} pc{b.qty > 1 ? 's' : ''}
                         </span>
-                        <span style={{ color: 'var(--text-dim)' }}>{formatCurrency(b.perUnit)}/ea</span>
+                        <span style={{ color: 'var(--text-muted)' }}>{formatCurrency(b.perUnit)} each</span>
                         <span style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{formatCurrency(b.lineTotal)}</span>
                       </button>
                     );
@@ -421,12 +457,15 @@ export default function QuoteBuilder() {
         {parts.length > 0 && !uploading && (
           <div
             className="dropzone"
+            role="button"
+            tabIndex={0}
             style={{ marginTop: 24, padding: '20px 32px', maxWidth: 720, width: '100%', fontSize: 12 }}
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
             onClick={() => fileRef.current?.click()}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); } }}
           >
-            <span style={{ color: 'var(--text-dim)' }}>Drop more files here or click to add parts</span>
+            <span style={{ color: 'var(--text-muted)' }}>Drop another file here, or click to add a part.</span>
           </div>
         )}
 
@@ -434,20 +473,20 @@ export default function QuoteBuilder() {
         {parts.length === 0 && !uploading && (
           <div style={{ maxWidth: 900, margin: '40px auto 0', padding: '0 32px' }}>
             <div style={{ textAlign: 'center', marginBottom: 16 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', color: 'var(--accent)' }}>HOW IT WORKS</span>
+                <span className="eyebrow">How it works</span>
               </div>
               <div className="grid-3">
               {[
-                { step: '1', title: 'Upload Your Design', desc: 'Drop in your CAD file — we accept STEP, STL, IGES, and 3MF. Get an instant quote in seconds.' },
-                { step: '2', title: 'Configure & Order', desc: 'Choose your material, finish, and quantity. Review your quote and place your order securely online.' },
-                { step: '3', title: 'We Deliver', desc: 'Our team manufactures your parts to spec and ships them straight to your door.' },
+                { step: '1', title: 'Upload', desc: 'STEP, STL, IGES or 3MF. The geometry is read on our server; the file is encrypted at rest and purged on a schedule.' },
+                { step: '2', title: 'Price and DFM', desc: 'Material, finish, quantity. The price updates as you go, with a manufacturability check written for our machines.' },
+                { step: '3', title: 'Check out, or get a firm quote', desc: `Up to ${brand.rfqQuantityThreshold} pieces, check out by card. Over that, or if the checker flags something, a firm quote from us within ${brand.quoteTurnaroundHours} hours.` },
               ].map((f, i) => (
                 <div key={i} className="card fade-up" style={{ padding: 24, textAlign: 'center', animationDelay: `${200 + i * 120}ms` }}>
-                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, margin: '0 auto 12px' }}>{f.step}</div>
+                  <div aria-hidden="true" style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, margin: '0 auto 12px' }}>{f.step}</div>
                   <div className="font-display" style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>
                     {f.title}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>{f.desc}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.6 }}>{f.desc}</div>
                 </div>
               ))}
             </div>
@@ -463,7 +502,9 @@ export default function QuoteBuilder() {
           selectedLeadTime={selectedLeadTime}
           onLeadTimeChange={setSelectedLeadTime}
           partsConfig={parts}
+          materials={materials}
           quoteError={quoteError}
+          quoteLoading={quoteLoading}
         />
       )}
     </div>

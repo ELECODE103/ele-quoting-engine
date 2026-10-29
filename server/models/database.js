@@ -93,6 +93,7 @@ const SCHEMA = `
     grades_json TEXT,
     thicknesses_json TEXT,
     layer_heights_json TEXT,
+    feed_class TEXT,
     active INTEGER DEFAULT 1,
     created_at TEXT,
     updated_at TEXT
@@ -165,6 +166,43 @@ const SCHEMA = `
     active INTEGER DEFAULT 1,
     created_at TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS pricing_audit (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    user_email TEXT,
+    action TEXT DEFAULT 'save',
+    note TEXT,
+    diff_json TEXT,
+    rules_json TEXT,
+    created_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS rfqs (
+    id TEXT PRIMARY KEY,
+    quote_id TEXT,
+    user_id TEXT,
+    status TEXT DEFAULT 'new',
+    contact_name TEXT,
+    email TEXT,
+    company TEXT,
+    phone TEXT,
+    process TEXT,
+    quantities TEXT,
+    tolerance TEXT,
+    finish_notes TEXT,
+    due_date TEXT,
+    notes TEXT,
+    drawing_file_name TEXT,
+    drawing_path TEXT,
+    budget_total REAL,
+    reasons_json TEXT,
+    parts_json TEXT,
+    quoted_at TEXT,
+    quoted_total REAL,
+    created_at TEXT,
+    updated_at TEXT
+  );
 `;
 
 // Singleton
@@ -210,6 +248,18 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       // Normalized per-item process config (thickness, sub-process, layer height,
       // infill, grade, …) as one JSON blob, so new processes don't need new columns.
       'ALTER TABLE order_items ADD COLUMN config_json TEXT',
+      // Checkout-vs-RFQ decision stored with the quote so checkout can enforce it.
+      'ALTER TABLE quotes ADD COLUMN gate_json TEXT',
+      // Routing: cut-feed class per sheet material (soft / medium / brittle / abrasive / aluminum)
+      'ALTER TABLE materials ADD COLUMN feed_class TEXT',
+      // Admin materials editor: free-text note shown with the material.
+      'ALTER TABLE materials ADD COLUMN description TEXT',
+      // Calibration: what the job actually took, entered by the owner per order line
+      // (machine minutes per piece, excluding setup) so the engine's time model can
+      // be compared with the shop floor.
+      'ALTER TABLE order_items ADD COLUMN actual_minutes REAL',
+      'ALTER TABLE order_items ADD COLUMN actual_notes TEXT',
+      'ALTER TABLE order_items ADD COLUMN actual_recorded_at TEXT',
     ];
     for (const sql of migrations) {
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }
