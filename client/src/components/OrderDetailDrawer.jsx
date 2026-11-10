@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatShipDate } from '../utils/format';
 
 /**
  * Fulfillment drawer — single unified view for an order.
@@ -10,6 +10,7 @@ import { formatCurrency } from '../utils/format';
 
 const STATUS_PIPELINE = [
   { key: 'pending_payment', label: 'Pending Payment' },
+  { key: 'pending_po', label: 'PO to confirm' },
   { key: 'paid', label: 'Paid' },
   { key: 'received', label: 'Received' },
   { key: 'in_production', label: 'In Production' },
@@ -134,6 +135,16 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                 <div style={{ color: '#888' }}>
                   Placed: {new Date(order.createdAt).toLocaleString()}
                 </div>
+                {order.shipBy && (
+                  <div style={{ color: '#333', fontWeight: 600, marginTop: 4 }}>
+                    Promised ship-by: {formatShipDate(order.shipBy, { year: true })}{order.leadTimeName ? ` (${order.leadTimeName})` : ''}
+                  </div>
+                )}
+                {order.paymentMethod === 'po' && (
+                  <div style={{ color: '#92400E', fontWeight: 600, marginTop: 4 }}>
+                    PO {order.poNumber} — not charged. Confirm the PO before starting.
+                  </div>
+                )}
               </div>
               <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--accent, #4F8CFF)' }}>
                 {formatCurrency(order.total || 0)}
@@ -226,6 +237,27 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                 </div>
               ))}
             </Section>
+
+            {/* What the buyer attached on the quote: notes + drawing (price unaffected) */}
+            {(order.customerNotes || order.drawingFileName) && (
+              <Section title="From the customer">
+                {order.customerNotes && <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', marginBottom: order.drawingFileName ? 8 : 0 }}>{order.customerNotes}</div>}
+                {order.drawingFileName && (
+                  <div style={{ fontSize: 12 }}>
+                    Drawing:{' '}
+                    {order.hasDrawing ? (
+                      <button
+                        onClick={() => api.downloadOrderDrawing(order.id, order.drawingFileName).catch(e => alert(e.message))}
+                        style={{ border: 'none', background: 'none', color: '#4F8CFF', cursor: 'pointer', padding: 0, textDecoration: 'underline', fontSize: 12 }}
+                      >
+                        {order.drawingFileName}
+                      </button>
+                    ) : order.drawingFileName}
+                    <span style={{ color: '#888' }}> — review before cutting; contact the customer if it changes the price.</span>
+                  </div>
+                )}
+              </Section>
+            )}
 
             {/* Tracking / shipping */}
             <Section title="Tracking">

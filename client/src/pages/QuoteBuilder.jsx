@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import { formatCurrency, formatDim } from '../utils/format';
 import ThreeViewer from '../components/ThreeViewer';
@@ -8,6 +8,7 @@ import PartConfigurator from '../components/PartConfigurator';
 import OrderSummary from '../components/OrderSummary';
 import ProcessPicker from '../components/ProcessPicker';
 import brand, { PROCESS_LABELS } from '../brand';
+import { sessionQuoteId, storedQuoteId, storeQuoteId } from '../utils/returnTo';
 
 // Closest stock thickness to the model's thinnest dimension (routing materials carry a thickness table).
 function pickThickness(mat, geometry) {
@@ -43,17 +44,55 @@ export default function QuoteBuilder() {
   const [showDFM, setShowDFM] = useState(false);
   const fileRef = useRef();
   const quoteTimer = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Load config on mount
+  // Notes + optional drawing for the shop. Stored with the quote; never priced.
+  const [notes, setNotes] = useState('');
+  const [drawingName, setDrawingName] = useState('');
+  const [drawingBusy, setDrawingBusy] = useState(false);
+  const [drawingError, setDrawingError] = useState('');
+  const drawingRef = useRef();
+
+  // Load config on mount, then reopen the quote this tab was working on (or the
+  // one named by ?quote=, e.g. from Reorder). This is what brings a buyer's
+  // parts and settings back after the sign-in / register detour or a reload.
   useEffect(() => {
-    Promise.all([api.getProcesses(), api.getMaterials('cnc'), api.getFinishes('cnc'), api.getLeadTimes()])
-      .then(([procs, mats, fins, lts]) => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [procs, lts] = await Promise.all([api.getProcesses(), api.getLeadTimes()]);
+        if (cancelled) return;
         setProcesses(procs);
+        setLeadTimes(lts);
+
+        const fromLink = searchParams.get('quote');
+        const savedId = fromLink || storedQuoteId();
+        let saved = null;
+        if (savedId) {
+          saved = await api.getQuoteSession(savedId).catch(() => null);
+          if (!saved || saved.parts.length === 0) { saved = null; if (!fromLink) storeQuoteId(null); }
+        }
+        const process = saved?.process || 'cnc';
+        const [mats, fins] = await Promise.all([api.getMaterials(process), api.getFinishes(process)]);
+        if (cancelled) return;
         setMaterials(mats);
         setFinishes(fins);
-        setLeadTimes(lts);
-      })
-      .catch((err) => console.error('Failed to load config:', err));
+        if (saved) {
+          storeQuoteId(saved.quoteId);
+          setSelectedProcess(process);
+          if (lts.some((lt) => lt.slug === saved.leadTimeSlug)) setSelectedLeadTime(saved.leadTimeSlug);
+          setNotes(saved.notes || '');
+          setDrawingName(saved.drawingFileName || '');
+          setParts(saved.parts.map((p) => ({ quantity: 1, infill: 0.2, ...p, process: p.process || process })));
+          setActivePart(saved.parts[0].partId);
+        }
+        if (fromLink) setSearchParams({}, { replace: true });
+      } catch (err) {
+        console.error('Failed to load config:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-refresh quote when parts change
@@ -73,15 +112,41 @@ export default function QuoteBuilder() {
         layerHeight: p.layerHeight || 0,
         infill: p.infill || 0.2,
       }));
-      const q = await api.getQuote(configs, selectedLeadTime);
+      // One quote per session: the same id is sent with every refresh so the
+      // server updates that quote instead of saving a new draft each time. If
+      // that quote has since been ordered, the server answers with a new id.
+      const q = await api.getQuote(configs, selectedLeadTime, { quoteId: sessionQuoteId(), process: selectedProcess, notes });
+      storeQuoteId(q.quoteId);
       setQuote(q);
+      setDrawingName(q.drawingFileName || '');
       setQuoteError(null);
     } catch (err) {
       console.error('Quote error:', err);
       setQuoteError(err?.message || `We couldn't price this setup. Change the material or quantity and try again, or call ${brand.phone}.`);
     }
     setQuoteLoading(false);
-  }, [parts, selectedLeadTime, selectedProcess]);
+  }, [parts, selectedLeadTime, selectedProcess, notes]);
+
+  async function attachDrawing(file) {
+    if (!file || !quote?.quoteId) return;
+    setDrawingBusy(true);
+    setDrawingError('');
+    try {
+      const r = await api.uploadQuoteDrawing(quote.quoteId, file);
+      setDrawingName(r.drawingFileName);
+    } catch (err) {
+      setDrawingError(err.message || 'Could not attach the drawing.');
+    }
+    setDrawingBusy(false);
+    if (drawingRef.current) drawingRef.current.value = '';
+  }
+
+  async function removeDrawing() {
+    if (!quote?.quoteId) return;
+    setDrawingBusy(true);
+    try { await api.removeQuoteDrawing(quote.quoteId); setDrawingName(''); } catch (err) { setDrawingError(err.message); }
+    setDrawingBusy(false);
+  }
 
   useEffect(() => {
     if (parts.length === 0) { setQuote(null); return; }
@@ -448,6 +513,47 @@ export default function QuoteBuilder() {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* Notes + drawing for the shop (whole order). Stored with the order; never changes the price. */}
+            {quote && (
+              <div className="card fade-up" style={{ padding: 20, marginTop: 16 }}>
+                <label htmlFor="qb-notes" className="font-display" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: 4 }}>
+                  Notes for the shop <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>(optional)</span>
+                </label>
+                <span style={{ fontSize: 11, color: 'var(--text-dim)', display: 'block', marginBottom: 10 }}>
+                  Which dimension matters, what it mates with, how to mark or bag it. Notes and drawings don't change the instant price.
+                </span>
+                <textarea
+                  id="qb-notes"
+                  className="input"
+                  rows={3}
+                  maxLength={2000}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="e.g. The Ø0.500 bore is the one that matters. Deburr all edges."
+                />
+                <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12 }}>
+                  <input ref={drawingRef} id="qb-drawing" type="file" accept=".pdf,application/pdf" className="sr-only" onChange={(e) => attachDrawing(e.target.files?.[0])} />
+                  {drawingName ? (
+                    <>
+                      <span style={{ color: 'var(--text-secondary)' }}>Drawing: <b>{drawingName}</b></span>
+                      <label htmlFor="qb-drawing" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', cursor: 'pointer' }}>Replace</label>
+                      <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }} disabled={drawingBusy} onClick={removeDrawing}>Remove</button>
+                    </>
+                  ) : (
+                    <label htmlFor="qb-drawing" className="btn btn-ghost" style={{ fontSize: 12, cursor: 'pointer' }}>
+                      {drawingBusy ? 'Attaching…' : 'Attach a drawing (PDF)'}
+                    </label>
+                  )}
+                </div>
+                {drawingName && (
+                  <div className="gate-box" role="status" style={{ marginTop: 10 }}>
+                    We review drawings before cutting; we'll contact you before work starts if anything changes the price.
+                  </div>
+                )}
+                {drawingError && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 12, marginTop: 8 }}>{drawingError}</div>}
               </div>
             )}
           </div>

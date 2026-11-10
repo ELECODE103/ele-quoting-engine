@@ -49,3 +49,39 @@ export function formatDateTime(dateStr) {
 export function classNames(...args) {
   return args.filter(Boolean).join(' ');
 }
+
+// Ship-by and other calendar dates arrive as "YYYY-MM-DD" (the shop's calendar);
+// format them without letting the browser's time zone move the day.
+export function formatShipDate(ymd, { year = false } = {}) {
+  if (!ymd) return '—';
+  const d = new Date(`${ymd}T12:00:00Z`);
+  return d.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric', ...(year ? { year: 'numeric' } : {}) });
+}
+
+const TRACKING_URLS = {
+  ups: (n) => `https://www.ups.com/track?tracknum=${n}`,
+  fedex: (n) => `https://www.fedex.com/fedextrack/?trknbr=${n}`,
+  usps: (n) => `https://tools.usps.com/go/TrackConfirmAction?tLabels=${n}`,
+  dhl: (n) => `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${n}`,
+};
+export function trackingUrl(carrier, number) {
+  const fn = TRACKING_URLS[String(carrier || '').toLowerCase()];
+  return fn && number ? fn(encodeURIComponent(String(number).trim())) : '';
+}
+
+const ORDER_STATUS_LABELS = {
+  pending_payment: 'Awaiting payment',
+  pending_po: 'PO received, awaiting confirmation',
+  paid: 'Paid',
+  paid_amount_mismatch: 'Paid, under review',
+  received: 'Received',
+  in_production: 'In production',
+  quality_check: 'Quality check',
+  packing: 'Packing',
+  shipped: 'Shipped',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
+};
+export function orderStatusLabel(status) {
+  return ORDER_STATUS_LABELS[status] || String(status || '').replace(/_/g, ' ');
+}

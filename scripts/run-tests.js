@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Runs every server/**\/*.test.js in its own process (the suites are plain
- * `node file.test.js` scripts). Exits non-zero if any suite fails.
+ * Runs every server/**\/*.test.js and client/src/**\/*.test.js in its own
+ * process (the suites are plain `node file.test.js` scripts). Exits non-zero
+ * if any suite fails.
  */
 const { spawnSync } = require("child_process");
 const fs = require("fs");
@@ -17,7 +18,10 @@ function findTests(dir, out = []) {
   return out.sort();
 }
 
-const tests = findTests(path.join(__dirname, "..", "server"));
+const tests = [
+  ...findTests(path.join(__dirname, "..", "server")),
+  ...findTests(path.join(__dirname, "..", "client", "src")),
+];
 let failed = 0;
 for (const t of tests) {
   const r = spawnSync(process.execPath, [t], { stdio: "inherit" });

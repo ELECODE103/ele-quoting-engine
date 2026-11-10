@@ -4,12 +4,15 @@ import { useAuth } from '../utils/authContext';
 import { api, setAuthToken } from '../utils/api';
 import Wordmark from '../components/Wordmark';
 import brand from '../brand';
+import { destinationAfterAuth, nextFrom, authPath } from '../utils/returnTo';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  // Carried over from the login page when a guest was heading to checkout.
-  const returnTo = location.state?.from || '/quote';
+  // Carried over (as ?next=) from the login page or a guarded page when a
+  // guest was heading to checkout, so a first-time buyer lands back on it.
+  const returnTo = destinationAfterAuth(location);
+  const toCheckout = returnTo.startsWith('/checkout');
   const { login } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -31,7 +34,7 @@ export default function RegisterPage() {
         setAuthToken(result.token);
         const decoded = JSON.parse(atob(result.token.split('.')[1]));
         login(result.token, decoded);
-        navigate(returnTo);
+        navigate(returnTo, { replace: true });
       }
     } catch (err) {
       setError(err.message || `We couldn't create the account. Try again, or call ${brand.phone}.`);
@@ -47,7 +50,9 @@ export default function RegisterPage() {
           <div style={{ marginBottom: 24 }}><Wordmark size={18} /></div>
           <h1 className="display" style={{ fontSize: 28, marginBottom: 8 }}>Create an account</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>
-            Needed to check out and track orders. Pricing a part doesn't need one.
+            {toCheckout
+              ? 'Create an account to finish checkout. Your quote is saved and you go straight back to it.'
+              : 'Needed to check out and track orders. Pricing a part doesn\'t need one.'}
           </p>
         </div>
 
@@ -102,7 +107,7 @@ export default function RegisterPage() {
               minLength={8}
               required
             />
-            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>At least 8 characters.</div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>At least 8 characters, with an upper-case letter, a lower-case letter and a number.</div>
           </div>
 
           {error && (
@@ -123,7 +128,7 @@ export default function RegisterPage() {
 
         <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.8 }}>
           Already have one?{' '}
-          <Link to="/login" state={location.state} style={{ color: 'var(--accent)' }}>Sign in</Link>
+          <Link to={authPath('/login', nextFrom(location))} style={{ color: 'var(--accent)' }}>Sign in</Link>
           <br />
           <Link to="/quote" style={{ color: 'var(--text-muted)' }}>Back to the quote</Link>
         </div>

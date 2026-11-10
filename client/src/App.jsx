@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './utils/authContext';
 import Header from './components/Header';
 import QuoteBuilder from './pages/QuoteBuilder';
@@ -15,9 +15,19 @@ import MaterialsPage from './pages/MaterialsPage';
 import QualityPage from './pages/QualityPage';
 import AboutPage from './pages/AboutPage';
 import RfqPage from './pages/RfqPage';
+import FirmQuotePage from './pages/FirmQuotePage';
+import { authPath } from './utils/returnTo';
+
+// Guests are sent to sign in and brought back to the page they asked for.
+function RequireAuth({ children }) {
+  const { isAuthenticated } = useAuth();
+  const location = useLocation();
+  if (isAuthenticated) return children;
+  return <Navigate to={authPath('/login', location.pathname + location.search)} replace />;
+}
 
 export default function App() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -41,6 +51,7 @@ export default function App() {
       <Route path="/about" element={<AboutPage />} />
       <Route path="/rfq" element={<RfqPage />} />
       <Route path="/rfq/:quoteId" element={<RfqPage />} />
+      <Route path="/firm-quote/:token" element={<FirmQuotePage />} />
 
       {/* Protected routes */}
       <Route
@@ -51,10 +62,10 @@ export default function App() {
             <Routes>
               <Route path="/quote" element={<QuoteBuilder />} />
               <Route path="/admin" element={<AdminPanel />} />
-              <Route path="/dashboard" element={isAuthenticated ? <CustomerDashboard /> : <Navigate to="/login" />} />
-              <Route path="/checkout/:quoteId" element={isAuthenticated ? <CheckoutPage /> : <Navigate to="/login" />} />
-              <Route path="/orders/:orderId" element={isAuthenticated ? <OrderTrackingPage /> : <Navigate to="/login" />} />
-              <Route path="/orders/:orderId/traveler" element={isAuthenticated ? <JobTravelerPage /> : <Navigate to="/login" />} />
+              <Route path="/dashboard" element={<RequireAuth><CustomerDashboard /></RequireAuth>} />
+              <Route path="/checkout/:quoteId" element={<RequireAuth><CheckoutPage /></RequireAuth>} />
+              <Route path="/orders/:orderId" element={<RequireAuth><OrderTrackingPage /></RequireAuth>} />
+              <Route path="/orders/:orderId/traveler" element={<RequireAuth><JobTravelerPage /></RequireAuth>} />
             </Routes>
           </div>
         }

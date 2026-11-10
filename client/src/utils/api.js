@@ -30,7 +30,7 @@ async function request(path, options = {}) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || `Request failed: ${res.status}`);
+    throw Object.assign(new Error(err.error || `Request failed: ${res.status}`), { status: res.status, code: err.code });
   }
   return res.json();
 }
@@ -49,12 +49,30 @@ export const api = {
   },
 
   // Quote
-  async getQuote(parts, leadTimeSlug = 'standard') {
+  /** Price the parts. `extra.quoteId` names the session's quote so it is updated, not re-created. */
+  async getQuote(parts, leadTimeSlug = 'standard', extra = {}) {
     return request('/quote', {
       method: 'POST',
-      body: JSON.stringify({ parts, leadTimeSlug }),
+      body: JSON.stringify({ parts, leadTimeSlug, ...extra }),
     });
   },
+
+  /** Parts + configuration of a saved quote, to reopen it in the builder. */
+  async getQuoteSession(id) { return request(`/quote/${id}/session`); },
+
+  async uploadQuoteDrawing(quoteId, file) {
+    const form = new FormData();
+    form.append('drawing', file);
+    const headers = {};
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+    const res = await fetch(`${BASE}/quote/${quoteId}/drawing`, { method: 'POST', body: form, headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || 'Could not attach the drawing');
+    }
+    return res.json();
+  },
+  async removeQuoteDrawing(quoteId) { return request(`/quote/${quoteId}/drawing`, { method: 'DELETE' }); },
 
   async getQuoteById(id) {
     return request(`/quote/${id}`);
@@ -138,6 +156,24 @@ export const api = {
   // Orders
   async getOrders() { return request('/orders'); },
   async getOrderById(id) { return request(`/orders/${id}`); },
+  /** Ask the server to check with Stripe whether a just-placed order has been paid. */
+  async confirmOrderPayment(id) { return request(`/orders/${id}/confirm-payment`, { method: 'POST', body: '{}' }); },
+  /** Re-quote an order's parts at today's prices; returns { quoteId } for the builder. */
+  async reorder(id) { return request(`/orders/${id}/reorder`, { method: 'POST', body: '{}' }); },
+  async downloadOrderDrawing(id, fileName) {
+    const headers = {};
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+    const res = await fetch(`${BASE}/orders/${id}/drawing`, { headers });
+    if (!res.ok) throw new Error('Could not download the drawing');
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'drawing.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
   async downloadPart(partId, fileName) {
     const headers = {};
     if (authToken) headers.Authorization = `Bearer ${authToken}`;
@@ -182,6 +218,11 @@ export const api = {
   async getAdminRfqs() { return request('/rfq/admin/list'); },
   async updateRfq(id, data) { return request(`/rfq/admin/${id}`, { method: 'PUT', body: JSON.stringify(data) }); },
   rfqDrawingUrl(id) { return `${BASE}/rfq/admin/${id}/drawing`; },
+
+  // Firm quote behind an emailed link (no account needed)
+  async getFirmQuote(token) { return request(`/rfq/quote/${token}`); },
+  async acceptFirmQuote(token, data) { return request(`/rfq/quote/${token}/accept`, { method: 'POST', body: JSON.stringify(data) }); },
+  async confirmFirmQuotePayment(token) { return request(`/rfq/quote/${token}/confirm-payment`, { method: 'POST', body: '{}' }); },
 
   // Stripe Checkout
   async createCheckoutSession(quoteId, shippingFields) {
