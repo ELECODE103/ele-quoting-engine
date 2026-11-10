@@ -135,12 +135,25 @@ const orderRoutes = require("./routes/orders");
 app.use("/api/orders", orderRoutes);
 
 // RFQ routes (firm-quote requests for production quantities / flagged parts)
+// Each request emails the shop and the address the sender typed, so creating
+// them is capped per IP well above what a buyer sends and well below a flood.
+const rfqCreateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: `Too many requests from this address. Call ${require("../shared/brand.json").phone} and we'll take it by phone.` },
+});
+app.post("/api/rfq", rfqCreateLimiter);
 const rfqRoutes = require("./routes/rfq");
 app.use("/api/rfq", rfqRoutes);
 
 // PDF routes (job travelers, packing lists)
 const pdfRoutes = require("./routes/pdf");
 app.use("/api/pdf", pdfRoutes);
+
+// Unknown API paths answer in JSON like the rest of the API (not Express's HTML page).
+app.use("/api", (req, res) => res.status(404).json({ error: "Not found" }));
 
 // In production, serve the built client
 if (process.env.NODE_ENV === "production") {
@@ -160,6 +173,15 @@ app.use((err, req, res, next) => {
   if (err.code === "LIMIT_FILE_SIZE") {
     return res.status(413).json({ error: "File too large. Maximum size is 100MB." });
   }
+  // Other upload refusals (multer): too many files, a field we don't read.
+  if (err.name === "MulterError") {
+    return res.status(400).json({ error: err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE" ? "Upload up to 20 part files at a time." : "That upload couldn't be read. Try again." });
+  }
+  // A body express could not parse, or one that is too big.
+  if (err.type === "entity.parse.failed") return res.status(400).json({ error: "The request body isn't valid JSON." });
+  if (err.type === "entity.too.large") return res.status(413).json({ error: "The request is too large." });
+  // Errors written for the customer (an unsupported file type, say) are safe to show.
+  if (err.expose === true && status < 500 && err.message) return res.status(status).json({ error: err.message });
 
   // CORS errors
   if (err.message && err.message.startsWith("CORS:")) {
@@ -168,7 +190,7 @@ app.use((err, req, res, next) => {
 
   // Never leak error messages in production
   res.status(status).json({
-    error: process.env.NODE_ENV === "production" ? "Internal server error" : err.message,
+    error: process.env.NODE_ENV === "production" ? (status < 500 ? "The request could not be processed." : "Internal server error") : err.message,
   });
 });
 
@@ -183,6 +205,17 @@ async function start() {
   // linger). Window via UPLOAD_RETENTION_HOURS (default 7 days).
   const { startRetentionSweep } = require("./services/fileRetention");
   startRetentionSweep(path.join(__dirname, "..", "data", "uploads"));
+
+  // Say at startup what is switched off, so a missing setting is found in the
+  // deploy log and not by a customer.
+  if (process.env.NODE_ENV === "production") {
+    const mailer = require("./services/mailer");
+    if (!mailer.configured()) console.warn("WARNING: EMAIL_API_KEY / EMAIL_FROM not set — no email is sent: RFQ notices, firm quotes, order confirmations and shipping notices are only logged.");
+    if (!process.env.STRIPE_WEBHOOK_SECRET) console.warn("WARNING: STRIPE_WEBHOOK_SECRET not set — Stripe webhooks are refused; orders are marked paid only when the buyer returns to the order page.");
+    if (!process.env.ADMIN_EMAIL) console.warn("WARNING: ADMIN_EMAIL not set — no account will be given the admin role.");
+    if (!process.env.FRONTEND_URL) console.warn("WARNING: FRONTEND_URL not set — links in emails are built from the request's Host header.");
+    if (!process.env.NORD_FILE_ENC_KEY) console.warn("WARNING: NORD_FILE_ENC_KEY not set — uploaded CAD files are stored unencrypted.");
+  }
 
   app.listen(PORT, () => {
     console.log(`\n  ┌─────────────────────────────────────────┐`);

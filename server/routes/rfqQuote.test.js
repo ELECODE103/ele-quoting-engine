@@ -310,5 +310,13 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
     assert.strictEqual(items[0].lineTotal, 300);
   });
 
+  test("a phone photo (HEIC) is accepted; an attachment we don't take is refused in words, not a 500", async () => {
+    const ok = await h.form("/api/rfq", { contactName: "Sam Maint", email: "sam@plant.test" }, { drawing: { name: "IMG_0042.HEIC", data: Buffer.from("fake heic bytes") } });
+    assert.strictEqual(ok.status, 201, ok.text);
+    const bad = await h.form("/api/rfq", { contactName: "Sam Maint", email: "sam@plant.test" }, { drawing: { name: "setup.exe", data: Buffer.from("MZ") } });
+    assert.strictEqual(bad.status, 400);
+    assert.ok(/isn't accepted/.test(bad.body.error));
+  });
+
   await run(h.stop);
 })();
