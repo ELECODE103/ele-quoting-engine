@@ -170,8 +170,21 @@ export default function OrderTrackingPage() {
                   </div>
                 </div>
               ))}
+              {(order.leadTimeSurcharge > 0 || order.shippingCost > 0) && (
+                <div style={{ fontSize: 13, paddingTop: 10 }}>
+                  {[
+                    order.leadTimeSurcharge > 0 && [`${order.leadTimeName || 'Faster'} lead time`, order.leadTimeSurcharge],
+                    order.shippingCost > 0 && ['Shipping', order.shippingCost],
+                    ['Total', order.total],
+                  ].filter(Boolean).map(([label, amount]) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: label === 'Total' ? 'var(--text-primary)' : 'var(--text-muted)', fontWeight: label === 'Total' ? 700 : 400 }}>
+                      <span>{label}</span><span>{formatCurrency(amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {order.customerNotes && (
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, whiteSpace: 'pre-wrap' }}><b>Your notes:</b> {order.customerNotes}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, whiteSpace: 'pre-wrap' }}><b>{order.rfqId ? 'Quote notes' : 'Your notes'}:</b> {order.customerNotes}</p>
               )}
               {order.drawingFileName && (
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>

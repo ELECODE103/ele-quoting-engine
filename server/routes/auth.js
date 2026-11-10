@@ -102,7 +102,7 @@ router.post("/register", registerLimiter, async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    if (!isValidEmail(email)) {
+    if (!isValidEmail(email) || typeof password !== "string") {
       return res.status(400).json({ error: "Please enter a valid email address" });
     }
 
@@ -120,7 +120,7 @@ router.post("/register", registerLimiter, async (req, res) => {
     const cleanPhone = sanitizeString(phone || "", 30);
 
     // Check if email already exists
-    const existing = usersDB.getAll().find((u) => u.email === email.toLowerCase());
+    const existing = usersDB.getAll().find((u) => u.email === email.toLowerCase().trim());
     if (existing) {
       return res.status(409).json({ error: "An account with this email already exists" });
     }
@@ -174,7 +174,10 @@ router.post("/login", loginLimiter, async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const user = usersDB.getAll().find((u) => u.email === email.toLowerCase());
+    if (typeof email !== "string" || typeof password !== "string") {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+    const user = usersDB.getAll().find((u) => u.email === email.toLowerCase().trim());
     if (!user) {
       return res.status(401).json({ error: "Invalid email or password" });
     }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import { formatCurrency, formatShipDate, formatDate } from '../utils/format';
+import { ok } from '../facts';
 
 export default function CheckoutPage() {
   const { quoteId } = useParams();
@@ -273,7 +274,7 @@ export default function CheckoutPage() {
               </div>
 
               <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                🔒 You retain full IP ownership of your designs. Files are stored securely and never shared. NDA available on request.
+                🔒 You retain full IP ownership of your designs. Files are stored securely and never shared. {ok('paperwork-packet') ? 'NDA available on request.' : ''}
               </div>
             </div>
           </div>

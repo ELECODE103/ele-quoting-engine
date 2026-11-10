@@ -38,7 +38,8 @@ const router = express.Router();
 const drawingDir = path.join(__dirname, "..", "..", "data", "rfq-drawings");
 if (!fs.existsSync(drawingDir)) fs.mkdirSync(drawingDir, { recursive: true });
 
-const DRAWING_EXT = [".pdf", ".dxf", ".dwg", ".png", ".jpg", ".jpeg"];
+// Phone photos arrive as HEIC or WebP as often as JPEG; they are stored for the shop to open, never parsed.
+const DRAWING_EXT = [".pdf", ".dxf", ".dwg", ".png", ".jpg", ".jpeg", ".heic", ".heif", ".webp"];
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, drawingDir),
@@ -48,9 +49,18 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (DRAWING_EXT.includes(ext)) cb(null, true);
-    else cb(new Error(`Drawing must be ${DRAWING_EXT.join(", ")}`));
+    else cb(Object.assign(new Error("That attachment type isn't accepted. Send a PDF, DXF, DWG, or a photo (JPG, PNG, HEIC)."), { status: 400, expose: true }));
   },
 });
+
+/** The one attachment, with upload errors answered in words (not a 500). */
+function attachment(req, res, next) {
+  upload.single("drawing")(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: `That file is over 25 MB. Send a smaller one, or email it to ${brand.email}.` });
+    res.status(400).json({ error: err.expose ? err.message : "We couldn't read that attachment. Try again, or send the request without it and reply to the confirmation email." });
+  });
+}
 
 // "accepted" and "expired" are set by the customer's actions and the calendar, not by hand.
 const ADMIN_STATUSES = ["new", "in-review", "quoted", "won", "lost", "declined"];
@@ -75,7 +85,7 @@ function snapshotParts(quote) {
 }
 
 // ─── Create ───────────────────────────────────────────────────
-router.post("/", optionalAuth, upload.single("drawing"), async (req, res) => {
+router.post("/", optionalAuth, attachment, async (req, res) => {
   try {
     const b = req.body || {};
     const quoteId = sanitizeString(b.quoteId || "", 64);

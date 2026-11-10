@@ -1,9 +1,12 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import PublicLayout from '../components/PublicLayout';
 import ShopPhoto from '../components/ShopPhoto';
 import ToleranceTable from '../components/ToleranceTable';
 import brand from '../brand';
 import { SERVICES } from '../data/services';
+
+// Each service page opens the quote tool on its own process.
+const QUOTE_PROCESS = { machining: 'cnc', routing: 'routing', '3d-printing': '3d-printing' };
 
 /**
  * One component, three service pages. Copy lives in data/services.js; anything
@@ -11,7 +14,6 @@ import { SERVICES } from '../data/services';
  */
 export default function ServicePage({ slug }) {
   const s = SERVICES[slug];
-  const navigate = useNavigate();
   if (!s) return null;
 
   return (
@@ -24,7 +26,7 @@ export default function ServicePage({ slug }) {
               <h1 className="display" style={{ marginBottom: 18 }}>{s.h1}</h1>
               <p className="lede" style={{ marginBottom: 26, maxWidth: 540 }}>{s.lede}</p>
               <div className="cta-row">
-                <button className="btn btn-primary btn-lg" onClick={() => navigate('/quote')}>Get an instant quote</button>
+                <Link className="btn btn-primary btn-lg" to={`/quote?process=${QUOTE_PROCESS[slug] || 'cnc'}`}>Get an instant quote</Link>
                 <a className="btn btn-outline btn-lg" href={brand.phoneHref}>{brand.phone}</a>
               </div>
               <p className="next-note">{s.next} {s.phoneNote}</p>

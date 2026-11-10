@@ -132,7 +132,7 @@ export default function RfqPage() {
               A confirmation email is on its way. {photo ? 'More photos? Reply to it and attach them.' : 'More files? Reply to it and attach them.'}{' '}
               In a hurry, call <a href={brand.phoneHref}>{brand.phone}</a> and give the reference below.
             </p>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 28 }}>Reference: {sent.rfqId}</p>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 28 }}>Reference: {String(sent.rfqId || '').slice(0, 8).toUpperCase()}</p>
             <div className="cta-row">
               <Link to="/quote" className="btn btn-primary">Quote another part</Link>
               <Link to="/" className="btn btn-ghost">Back to the site</Link>

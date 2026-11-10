@@ -4,6 +4,7 @@
  */
 const PDFDocument = require("pdfkit");
 const brand = require("../../shared/brand.json");
+const shopFacts = require("../shopFacts");
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -285,13 +286,27 @@ function generateJobTraveler(order, items) {
   y = addTable(doc, itemColumns, itemRows, y, { rowHeight: 22 });
 
   // DFM Notes Section
-  if (items.some((item) => item.dfm)) {
+  // What the buyer asked for comes first: their notes, their drawing, the promised date.
+  const fromCustomer = [
+    order.shipBy ? `Promised ship-by: ${require("./shipBy").formatShipBy(order.shipBy)}${order.leadTimeName ? ` (${order.leadTimeName})` : ""}` : "",
+    order.poNumber ? `Customer PO: ${order.poNumber}` : "",
+    order.customerNotes ? `Customer notes: ${order.customerNotes}` : "",
+    order.drawingFileName ? `Drawing on the order: ${order.drawingFileName} — review before cutting` : "",
+  ].filter(Boolean).join("\n");
+  if (fromCustomer || items.some((item) => item.dfm)) {
     y += 5;
     y = addSectionHeader(doc, "DFM NOTES & SPECIAL INSTRUCTIONS", y);
 
-    const dfmNotes = items
+    const dfmNotes = [fromCustomer].concat(items
       .filter((item) => item.dfm)
-      .map((item) => `${item.fileName}: ${item.dfm}`)
+      .map((item) => {
+        // item.dfm is the stored analysis ({ summary, checks }); print what needs attention, not the object.
+        if (typeof item.dfm === "string") return `${item.fileName}: ${item.dfm}`;
+        const flagged = (item.dfm.checks || []).filter((c) => c.status === "warn" || c.status === "fail");
+        return flagged.length ? `${item.fileName}: ${flagged.map((c) => `${String(c.status).toUpperCase()} ${c.name}${c.detail ? " — " + c.detail : ""}`).join("; ")}` : "";
+      })
+      .filter(Boolean))
+      .filter(Boolean)
       .join("\n\n");
 
     if (dfmNotes) {
@@ -392,9 +407,12 @@ function generateJobTraveler(order, items) {
 
   const subtotal = items.reduce((sum, item) => sum + (item.lineTotal || 0), 0);
   const tax = 0;
-  const total = subtotal + tax + (order.shippingCost || 0);
+  // The order's own total is the amount charged (it can include a lead-time fee); the sum is only a fallback for old records.
+  const fee = Number(order.leadTimeSurcharge) || 0;
+  const total = Number(order.total) > 0 ? Number(order.total) : subtotal + fee + tax + (order.shippingCost || 0);
 
   y = addInfoBlock(doc, "Subtotal:", `$${subtotal.toFixed(2)}`, y);
+  if (fee > 0) y = addInfoBlock(doc, `${order.leadTimeName || "Lead-time"} fee:`, `$${fee.toFixed(2)}`, y);
   y = addInfoBlock(
     doc,
     "Shipping:",
@@ -413,8 +431,8 @@ function generateJobTraveler(order, items) {
     .fontSize(10)
     .font("Helvetica")
     .fillColor("#000000");
-  y = addInfoBlock(doc, "Order Date:", order.createdAt || new Date().toISOString(), y);
-  y = addInfoBlock(doc, "Due Date:", "[Due Date TBD]", y);
+  y = addInfoBlock(doc, "Order Date:", new Date(order.createdAt || Date.now()).toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "short", day: "numeric" }), y);
+  y = addInfoBlock(doc, "Ship by:", order.shipBy ? require("./shipBy").formatShipBy(order.shipBy) : "Not set", y);
   y = addInfoBlock(doc, "Status:", order.status || "pending", y);
 
   y += 15;
@@ -585,7 +603,7 @@ function generatePackingList(order, items) {
     .fontSize(8)
     .font("Helvetica")
     .fillColor("#666666");
-  doc.text(brand.legalName, margin + 10, y);
+  doc.text(shopFacts.businessName(brand), margin + 10, y);
   doc.text(`${brand.city}, ${brand.state}`, margin + 10, y + 12);
   doc.text(`${brand.phone} · ${brand.email}`, margin + 10, y + 24);
   doc.text(`Order Reference: ${order.id.substring(0, 8)}`, margin + 10, y + 38);

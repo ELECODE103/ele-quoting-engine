@@ -156,6 +156,7 @@ router.get("/quote/:quoteId", authenticate, requireAdmin, documentRoute("quote",
 router.get("/rfq-response/:rfqId", authenticate, requireAdmin, documentRoute("RFQ response", async (req, res) => {
   const rfq = rfqsDB.getById(req.params.rfqId);
   if (!rfq) return res.status(404).json({ error: "RFQ not found" });
+  if (!(Number(rfq.quotedTotal) > 0)) return res.status(409).json({ error: "This RFQ has no quoted price yet. Enter the firm quote first." });
   const shaped = { ...rfq, parts: (rfq.parts || []).map(withNames) };
   const pdf = await documents.buildQuotePdf({ rfq: shaped });
   sendPdf(req, res, pdf, `${documents.docNumber("RFQ", rfq.id)}.pdf`);

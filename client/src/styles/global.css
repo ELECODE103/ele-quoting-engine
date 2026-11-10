@@ -12,7 +12,7 @@
   --text-primary: #101C33;
   --text-secondary: #334155;
   --text-muted: #64748B;
-  --text-dim: #94A3B8;
+  --text-dim: #64748B; /* was #94A3B8 (2.56:1 on white); small informational text needs 4.5:1 */
   --text-ghost: #CBD5E1;
   --accent: #101C33;
   --accent-dark: #0A1224;
@@ -616,3 +616,11 @@ h2.display.h3-like { font-size: 20px; letter-spacing: -0.3px; margin-bottom: 14p
 }
 .linklike-inline { background: none; border: none; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
 .lede a { color: var(--accent); }
+
+/* Touch targets: footer links, the header phone number and the menu button were ~21 px tall on a phone. */
+@media (max-width: 900px) {
+  .pub-footer a { display: inline-block; padding: 11px 0; }
+  .pub-footer li { margin: 0; }
+  .util-bar a.util-phone { display: inline-block; padding: 6px 0; }
+  .pub-nav-toggle { min-width: 44px; min-height: 44px; justify-content: center; align-items: center; }
+}

@@ -36,4 +36,36 @@ function when(id, fn = (v) => v, fallback = "") {
   return ok(id) ? fn(data.facts[id].value) : fallback;
 }
 
-module.exports = { ok, when, materialListed, finishListed, leadTimeListed };
+/**
+ * Catalog grade names carry "(FDA)". Food-contact compliance belongs to a
+ * maker's grade and lot, so emails and documents say it only once the owner has
+ * confirmed the statements can be had (same rule as gradeLabel in client/src/facts.js).
+ */
+function gradeLabel(name) {
+  const s = String(name || "");
+  if (!/\(FDA\)/.test(s)) return s;
+  return ok("food-docs")
+    ? s.replace(/\s*\(FDA\)/, ", food-contact grade (maker's compliance statement on request)")
+    : s.replace(/\s*\(FDA\)/, "");
+}
+
+// Tolerance facts by material, matched on the catalog slug or name (same table as client/src/facts.js).
+const TOLERANCE_FACTS = [
+  ["tol-acetal", ["delrin", "acetal"]], ["tol-nylon", ["nylon"]], ["tol-uhmw", ["uhmw"]], ["tol-hdpe", ["hdpe"]],
+  ["tol-peek", ["peek"]], ["tol-ptfe", ["ptfe"]], ["tol-polycarbonate", ["polycarbonate"]], ["tol-polypropylene", ["polypropylene"]],
+];
+/** The owner-confirmed standard tolerance for a material (slug or name), or "" when none is confirmed. */
+function standardTolerance(text) {
+  const hay = String(text || "").toLowerCase();
+  const hit = TOLERANCE_FACTS.find(([, keys]) => keys.some((k) => hay.includes(k)));
+  if (!hit || !ok(hit[0])) return "";
+  const v = data.facts[hit[0]].value;
+  return (v && typeof v === "object" ? v.standard : v) || "";
+}
+
+/** The name the business signs with: the legal name once the owner has confirmed it, else the trading name. */
+function businessName(brand) {
+  return ok("legal-name") ? data.facts["legal-name"].value : brand.name;
+}
+
+module.exports = { ok, when, materialListed, finishListed, leadTimeListed, gradeLabel, businessName, standardTolerance };

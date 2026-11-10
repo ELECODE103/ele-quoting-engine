@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import PublicLayout from '../components/PublicLayout';
 import ShopPhoto from '../components/ShopPhoto';
 import Photo from '../components/Photo';
@@ -58,7 +58,6 @@ const MOVES = lines([
 ]);
 
 export default function LandingPage() {
-  const navigate = useNavigate();
 
   return (
     <PublicLayout>
@@ -77,14 +76,14 @@ export default function LandingPage() {
                 the person who will cut the part quotes it{within}.
               </p>
               <div className="cta-row">
-                <button className="btn btn-primary btn-lg" onClick={() => navigate('/quote')}>Get an instant quote</button>
+                <Link className="btn btn-primary btn-lg" to="/quote">Get an instant quote</Link>
                 <Link className="btn btn-outline btn-lg" to="/replacement-parts">No CAD? Send a photo</Link>
               </div>
               <p className="next-note">
                 Or call <a href={brand.phoneHref}>{brand.phone}</a>. It rings the person who runs the machines.
               </p>
               <div className="chips" style={{ marginTop: 20 }}>
-                {['.step', '.stp', '.stl', '.iges', '.3mf'].map((f) => <span key={f} className="chip" style={{ fontFamily: 'var(--font-mono)' }}>{f}</span>)}
+                {['.step', '.stp', '.stl', '.iges', '.3mf', '.dxf'].map((f) => <span key={f} className="chip" style={{ fontFamily: 'var(--font-mono)' }}>{f}</span>)}
               </div>
             </div>
             <ShopPhoto id="tray-stack-edge" loading="eager" style={{ aspectRatio: '4 / 5', maxHeight: 560 }} />
@@ -251,7 +250,7 @@ export default function LandingPage() {
             No print? <Link to="/replacement-parts" style={{ color: '#fff' }}>Send a photo.</Link> Either way you are talking to the person who runs the machine.
           </p>
           <div className="cta-row" style={{ justifyContent: 'center' }}>
-            <button className="btn btn-primary btn-lg btn-on-dark" onClick={() => navigate('/quote')}>Get an instant quote</button>
+            <Link className="btn btn-primary btn-lg btn-on-dark" to="/quote">Get an instant quote</Link>
             <a className="btn btn-lg btn-dark-outline" href={brand.phoneHref}>{brand.phone}</a>
           </div>
         </div>

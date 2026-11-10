@@ -261,9 +261,10 @@ function run(geometry, options = {}) {
   }
 
   // 13. Tolerance capability
-  const tol = mat.soft ? "±0.25 mm (±0.010\")" : "±0.13 mm (±0.005\")";
-  checks.push(check({ id: "rt-tolerance", label: "Tolerance Capability", severity: "info", confidence: "n/a", ref: "SendCutSend ±0.005\"; Quadrant 0.1–0.2%",
-    detail: `Profile tolerance ${tol} typical on ${mat.label}. Large HDPE/UHMW parts move with temperature — call out critical dimensions on the drawing and we hold them at 68 °F` }));
+  // The profile tolerance is stated only once the owner has confirmed it (shop fact tol-routing).
+  const tol = require("../../shopFacts").when("tol-routing");
+  checks.push(check({ id: "rt-tolerance", label: "Tolerances", severity: "info", confidence: "n/a", ref: "Quadrant 0.1–0.2%",
+    detail: `${tol ? `Profile tolerance ${tol} on ${mat.label}. ` : ""}Large HDPE and UHMW parts move with temperature. Put the dimensions that matter in the notes or on a firm-quote request, and say what temperature the part runs at` }));
 
   // 14. Nesting
   const kerf = 6;

@@ -126,7 +126,7 @@ function layout(m) {
       </td></tr>
       <tr><td style="padding:20px 32px 8px;font:12px/1.7 ${FONT};color:${MUTED};">
         <strong style="color:${INK};">${esc(brand.name)}</strong> · ${esc(brand.descriptor)}<br>
-        ${esc(brand.legalName)}, ${esc(brand.city)}, ${esc(brand.state)}<br>
+        ${esc(shopFacts.businessName(brand))}, ${esc(brand.city)}, ${esc(brand.state)}<br>
         <a href="${esc(brand.phoneHref)}" style="color:${INK};">${esc(brand.phone)}</a> ·
         <a href="mailto:${esc(brand.email)}" style="color:${INK};">${esc(brand.email)}</a> ·
         <a href="${esc(brand.url)}" style="color:${INK};">${esc(brand.domain)}</a>
@@ -151,7 +151,7 @@ function layout(m) {
     ...(m.after || []).flatMap((t) => [t, ""]),
     "--",
     `${brand.name} · ${brand.phone} · ${brand.email}`,
-    `${brand.legalName}, ${brand.city}, ${brand.state} · ${brand.url}`,
+    `${shopFacts.businessName(brand)}, ${brand.city}, ${brand.state} · ${brand.url}`,
   ].filter((l) => l !== null).join("\n");
 
   return { subject: m.subject, text, html };
@@ -182,6 +182,16 @@ function rfqPartRows(rfq) {
   }));
 }
 
+/** The lines between the parts and the total: lead-time fee and shipping, when the order carries them. */
+function chargeRows(order) {
+  const rows = [];
+  const fee = Number(order.leadTimeSurcharge) || 0;
+  const shipping = Number(order.shippingCost) || 0;
+  if (fee > 0.004) rows.push({ name: `${order.leadTimeName || "Faster"} lead time`, amount: fee });
+  if (shipping > 0.004) rows.push({ name: "Shipping", amount: shipping });
+  return rows;
+}
+
 const DRAWING_NOTE = "We review drawings before cutting; we'll contact you before work starts if anything changes the price.";
 
 // ─── RFQ ───────────────────────────────────────────────────────
@@ -194,8 +204,9 @@ function rfqReceivedBuyer({ rfq }) {
     heading: "We have your request",
     paragraphs: [
       greeting(rfq.contactName),
-      `Thanks. We have your request${n ? ` for ${n} part${n === 1 ? "" : "s"}` : ""}. A firm quote comes back${shopFacts.when("quote-turnaround", (v) => ` within ${v}`)}, from the person who will run the job.`,
-      "If anything on the print needs a conversation first, you'll hear from us before then.",
+      `Thanks. We have your request${n ? ` for ${n} part${n === 1 ? "" : "s"}` : ""}. A firm quote comes back${shopFacts.when("quote-turnaround", (v) => ` within ${v},`)} from the person who will run the job.`,
+      // "before then" only means something when a turnaround is stated.
+      `If anything on the print needs a conversation first, you'll hear from us ${shopFacts.ok("quote-turnaround") ? "before then" : "about that first"}.`,
     ],
     items: rfqPartRows(rfq),
     facts: [["Reference", shortId(rfq.id)]],
@@ -302,14 +313,14 @@ function orderConfirmation({ order, items, orderUrl }) {
         : "Thanks. Your payment went through and your parts are in the queue.",
       ...(order.drawingFileName ? [DRAWING_NOTE] : []),
     ],
-    items: itemRows(items),
+    items: [...itemRows(items), ...chargeRows(order)],
     total: { label: po ? "Order total" : "Total paid", value: money(order.total) },
     facts: [
       ["Order", shortId(order.id)],
       ["Ships by", formatShipBy(order.shipBy)],
       ["Ship to", shipTo(order)],
       ["PO number", po ? order.poNumber : ""],
-      ["Your notes", order.customerNotes],
+      [order.rfqId ? "Quote notes" : "Your notes", order.customerNotes],
       ["Drawing", order.drawingFileName],
     ],
     cta: orderUrl ? { label: "View your order", url: orderUrl } : undefined,
@@ -329,7 +340,7 @@ function newOrderShop({ order, items, adminUrl, warning }) {
       ...(warning ? [warning] : []),
       ...(order.drawingFileName ? [`Drawing attached to the order: ${order.drawingFileName}. Review it before cutting.`] : []),
     ],
-    items: itemRows(items),
+    items: [...itemRows(items), ...chargeRows(order)],
     total: { label: "Total", value: money(order.total) },
     facts: [
       ["Order", shortId(order.id)],
