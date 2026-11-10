@@ -11,6 +11,10 @@ const FONTS = {
   'barlowc-700': '@fontsource/barlow-condensed/files/barlow-condensed-latin-700-normal.woff',
   'archivo-700': '@fontsource/archivo/files/archivo-latin-700-normal.woff',
   'archivo-600': '@fontsource/archivo/files/archivo-latin-600-normal.woff',
+  'inter-400': '@fontsource/inter/files/inter-latin-400-normal.woff',
+  'inter-500': '@fontsource/inter/files/inter-latin-500-normal.woff',
+  'inter-600': '@fontsource/inter/files/inter-latin-600-normal.woff',
+  'inter-700': '@fontsource/inter/files/inter-latin-700-normal.woff',
   'oswald-600': '@fontsource/oswald/files/oswald-latin-600-normal.woff',
   'oswald-700': '@fontsource/oswald/files/oswald-latin-700-normal.woff',
 };

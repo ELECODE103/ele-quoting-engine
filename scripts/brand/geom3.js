@@ -1,7 +1,7 @@
 // Round-3 geometry for STRAIGHTEDGE: the two directions the owner picked (D · Knife Edge,
 // E · The Kerf), each refined into two candidates with a nod to machining and additive.
 // Everything is authored in a 100-unit space and returned as SVG path data.
-const r = (n) => Math.round(n * 100) / 100;
+const r = (n, p = 2) => Math.round(n * 10 ** p) / 10 ** p;
 const poly = (pts) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${r(x)} ${r(y)}`).join('') + 'Z';
 const tx = (pts, dx, dy) => pts.map(([x, y]) => [x + dx, y + dy]);
 const scale = (pts, k) => pts.map(([x, y]) => [x * k, y * k]);
