@@ -45,7 +45,7 @@ const upload = multer({
     if (allowed.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error(`Unsupported file type: ${ext}`));
+      cb(Object.assign(new Error(`We can't read ${ext || "that kind of"} files here. Upload a STEP, STL, IGES or 3MF model, or a DXF for a flat routed part.`), { status: 400, expose: true }));
     }
   },
 });
@@ -188,7 +188,10 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
       } catch (err) {
         errors.push({
           fileName: file.originalname,
-          error: err.message,
+          // A parser running off the end of a truncated file throws a RangeError; say what to do, not where the buffer ended.
+          error: err instanceof RangeError || /out of range/i.test(err.message || "")
+            ? "This file is damaged or incomplete. Re-export it from your CAD program and upload again."
+            : err.message,
         });
       }
     }
@@ -280,12 +283,17 @@ function priceQuote(partConfigs, leadTimeSlug = "standard") {
       throw quoteError(400, `Part not found: ${config.partId}`);
     }
     const material = materialsDB.getAll().find((m) => m.slug === config.materialSlug);
-    if (!material) {
+    // Same rule as the lead time: a material the catalog does not list (switched
+    // off in admin, or not confirmed by the owner) cannot be priced or bought.
+    if (!material || !material.active || !shopFacts.materialListed(material)) {
       throw quoteError(400, `Material not found: ${config.materialSlug}`);
     }
 
     const defaultFinishSlug = resolveProcess(config.process).defaultFinishSlug || 'raw';
     const finish = finishesDB.getAll().find((f) => f.slug === (config.finishSlug || defaultFinishSlug)) || null;
+    if (finish && config.finishSlug && (finish.active === false || !shopFacts.finishListed(finish))) {
+      throw quoteError(400, `Finish not available: ${config.finishSlug}`);
+    }
 
     const process = config.process || material.process || defaultProcessSlug();
     // A DXF is a 2D profile: routing only, and nothing is assumed for it —
@@ -309,7 +317,8 @@ function priceQuote(partConfigs, leadTimeSlug = "standard") {
       grade: config.grade || material.grades?.[0]?.name || '',
       thicknessMm,
       finish,
-      quantity: config.quantity || 1,
+      // Whole pieces only: 1.5 or -5 from a hand-built request becomes 1.
+      quantity: positiveInt(config.quantity, 1),
       process,
       subProcess: config.subProcess || '',
       // Pass through only when actually provided — `|| 0` made an unset infill
@@ -906,7 +915,7 @@ router.get("/admin/backup/db", authenticate, requireAdmin, (req, res) => {
       return res.status(404).json({ error: "Database file not found" });
     }
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    res.setHeader("Content-Disposition", `attachment; filename="nordmfg-backup-${timestamp}.db"`);
+    res.setHeader("Content-Disposition", `attachment; filename="straightedge-backup-${timestamp}.db"`);
     res.setHeader("Content-Type", "application/x-sqlite3");
     const stream = fs.createReadStream(DB_PATH);
     stream.pipe(res);
@@ -934,7 +943,7 @@ router.get("/admin/backup/json", authenticate, requireAdmin, (req, res) => {
       },
     };
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    res.setHeader("Content-Disposition", `attachment; filename="nordmfg-backup-${timestamp}.json"`);
+    res.setHeader("Content-Disposition", `attachment; filename="straightedge-backup-${timestamp}.json"`);
     res.setHeader("Content-Type", "application/json");
     res.json(backup);
   } catch (err) {

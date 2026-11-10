@@ -341,5 +341,89 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.ok(toCustomer.text.includes("bracket-rev-B.pdf"));
   });
 
+  // ─── Launch QA: what the catalog hides cannot be bought, and orders add up ──
+  test("materials, finishes and lead times the catalog does not list are refused by the API", async () => {
+    const { materialsDB } = h.models;
+    const sls = materialsDB.getAll().find((m) => m.subProcess === "sls" && m.active);
+    assert.ok(sls, "the seed carries an SLS material the owner has not confirmed");
+    const hidden = await h.post("/api/quote", { parts: [{ partId, materialSlug: sls.slug, quantity: 1, process: "3d-printing", subProcess: "sls" }] });
+    assert.strictEqual(hidden.status, 400);
+    const off = materialsDB.getAll().find((m) => m.process === "cnc" && !m.active);
+    if (off) assert.strictEqual((await h.post("/api/quote", { parts: [{ ...h.cncConfig(partId, 1), materialSlug: off.slug }] })).status, 400, "an inactive material is refused");
+    const pla = materialsDB.getAll().find((m) => m.subProcess === "fdm" && m.active);
+    const dyed = await h.post("/api/quote", { parts: [{ partId, materialSlug: pla.slug, finishSlug: "3dp-vapor-smooth", quantity: 1, process: "3d-printing", subProcess: "fdm" }] });
+    assert.strictEqual(dyed.status, 400);
+    for (const slug of ["rush", "same-day"]) {
+      assert.strictEqual((await h.post("/api/quote", { parts: [h.cncConfig(partId, 1)], leadTimeSlug: slug })).status, 400, `${slug} cannot be priced`);
+    }
+  });
+
+  test("quantities are whole pieces", async () => {
+    const r = await h.post("/api/quote", { parts: [{ ...h.cncConfig(partId, 1), quantity: 2.7 }] });
+    assert.strictEqual(r.body.lineItems[0].quantity, 2);
+    const neg = await h.post("/api/quote", { parts: [{ ...h.cncConfig(partId, 1), quantity: -4 }] });
+    assert.strictEqual(neg.body.lineItems[0].quantity, 1);
+  });
+
+  test("a stored quote on a lead time that is no longer offered cannot be checked out", async () => {
+    const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 1)], leadTimeSlug: "standard" }, buyer);
+    quotesDB.update(q.body.quoteId, { leadTimeSlug: "same-day" }); // as an older database would hold it
+    const c = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, buyer);
+    assert.strictEqual(c.status, 409);
+    assert.strictEqual(c.body.code, "lead-time-unavailable");
+    assert.strictEqual(ordersDB.query((o) => o.quoteId === q.body.quoteId).length, 0);
+  });
+
+  test("a quote saved before the 30-day hold existed expires 30 days after it was last priced", async () => {
+    const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 1)], leadTimeSlug: "standard" }, buyer);
+    const { getDatabase } = require("../models/database");
+    getDatabase().run("UPDATE quotes SET expires_at = NULL, updated_at = ?, created_at = ? WHERE id = ?", [new Date(Date.now() - 40 * 864e5).toISOString(), new Date(Date.now() - 40 * 864e5).toISOString(), q.body.quoteId]);
+    const c = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, buyer);
+    assert.strictEqual(c.status, 410);
+  });
+
+  test("coming back from a cancelled Stripe page pays for the same order, not a second one", async () => {
+    const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 4)], leadTimeSlug: "standard" }, buyer);
+    const first = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, buyer);
+    const second = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP, shippingAddress: "200 Dock Rd" }, buyer);
+    assert.strictEqual(second.status, 200);
+    assert.strictEqual(second.body.orderId, first.body.orderId);
+    assert.notStrictEqual(second.body.sessionUrl, first.body.sessionUrl, "a fresh Stripe session");
+    assert.strictEqual(ordersDB.query((o) => o.quoteId === q.body.quoteId).length, 1);
+    assert.strictEqual(ordersDB.getById(first.body.orderId).shippingAddress, "200 Dock Rd", "the corrected address is kept");
+  });
+
+  test("when Stripe is down no unpayable order is left behind", async () => {
+    const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 6)], leadTimeSlug: "standard" }, buyer);
+    h.stripe.failNext = true;
+    const c = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, buyer);
+    assert.strictEqual(c.status, 500);
+    assert.strictEqual(ordersDB.query((o) => o.quoteId === q.body.quoteId).length, 0);
+    assert.strictEqual(quotesDB.getById(q.body.quoteId).status, "draft", "the quote can still be bought");
+  });
+
+  test("the order shows what the total is made of: parts, lead-time fee, shipping", async () => {
+    const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 5)], leadTimeSlug: "expedited" }, buyer);
+    assert.ok(q.body.leadTimeSurcharge > 0 && q.body.shippingEstimate > 0);
+    const c = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, buyer);
+    const order = ordersDB.getById(c.body.orderId);
+    assert.ok(Math.abs(order.subtotal - q.body.subtotal) < 0.005, "subtotal is the parts");
+    assert.ok(Math.abs(order.subtotal + order.leadTimeSurcharge + order.shippingCost - order.total) < 0.01, "the lines add up to the total");
+    const lines = orderItemsDB.query((i) => i.orderId === order.id).reduce((s, i) => s + i.lineTotal, 0);
+    assert.ok(Math.abs(lines - order.subtotal) < 0.01, "line items add up to the subtotal");
+    h.pay(`cs_test_${h.stripe.created.length}`);
+    h.sent.length = 0;
+    await h.post(`/api/orders/${order.id}/confirm-payment`, {}, buyer);
+    const mail = h.sent.find((m) => m.to === "dana@buyer.test");
+    assert.ok(/Expedited lead time/.test(mail.text) && /Shipping/.test(mail.text), "the email lists the fee and shipping");
+    const pdf = await require("../services/documents").buildOrderConfirmationPdf({ order: ordersDB.getById(order.id), items: orderItemsDB.query((i) => i.orderId === order.id) });
+    assert.ok(pdf.length > 2000);
+  });
+
+  test("an order without payment can only be created by the shop", async () => {
+    const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 1)], leadTimeSlug: "standard" }, buyer);
+    assert.strictEqual((await h.post("/api/orders", { quoteId: q.body.quoteId }, buyer)).status, 403);
+  });
+
   await run(h.stop);
 })();

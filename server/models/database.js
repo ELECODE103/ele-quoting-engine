@@ -285,6 +285,8 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       'ALTER TABLE orders ADD COLUMN customer_notes TEXT',
       'ALTER TABLE orders ADD COLUMN drawing_file_name TEXT',
       'ALTER TABLE orders ADD COLUMN drawing_path TEXT',
+      // What the total is made of besides the parts (shipping is in shipping_cost).
+      'ALTER TABLE orders ADD COLUMN lead_time_surcharge REAL',
       // RFQs: the firm quote sent to the customer and what they did with it.
       'ALTER TABLE rfqs ADD COLUMN quoted_lead_days INTEGER',
       'ALTER TABLE rfqs ADD COLUMN quote_note TEXT',

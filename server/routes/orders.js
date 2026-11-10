@@ -12,6 +12,9 @@ const stripeClient = require("../services/stripeClient");
 const orderEvents = require("../services/orderEvents");
 const shipBy = require("../services/shipBy");
 const { trackingUrl } = require("../emails/templates");
+const shopFacts = require("../shopFacts");
+
+const QUOTE_VALID_DAYS = 30; // same hold as routes/api.js
 
 const router = express.Router();
 
@@ -69,8 +72,11 @@ router.post("/checkout-session", authenticate, async (req, res) => {
       return res.status(400).json({ error: "Invalid order total" });
     }
 
-    // Prices hold for 30 days from the last time the quote was priced.
-    if (quote.expiresAt && new Date(quote.expiresAt) < new Date()) {
+    // Prices hold for 30 days from the last time the quote was priced. A quote
+    // saved before the hold existed has no date: count from when it was last touched.
+    const expiresAt = quote.expiresAt
+      || new Date(new Date(quote.updatedAt || quote.createdAt || 0).getTime() + QUOTE_VALID_DAYS * 864e5).toISOString();
+    if (new Date(expiresAt) < new Date()) {
       return res.status(410).json({
         error: "This price has expired. Reopen the quote to get today's price.",
         code: "quote-expired",
@@ -89,9 +95,44 @@ router.post("/checkout-session", authenticate, async (req, res) => {
     // The promised ship date is counted from today now and re-counted from the
     // payment day when the payment clears.
     const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === quote.leadTimeSlug) || null;
+    // A lead time that is no longer offered (switched off, or not confirmed by
+    // the owner) cannot be bought from an old quote either.
+    if (quote.leadTimeSlug && (!leadTime || !leadTime.active || !shopFacts.leadTimeListed(leadTime)) && req.user.role !== "admin") {
+      return res.status(409).json({
+        error: "The lead time on this quote is no longer offered. Reopen the quote and pick a lead time to get today's price.",
+        code: "lead-time-unavailable",
+      });
+    }
     const leadDays = leadTime ? shipBy.leadDays(leadTime) : null;
     const account = usersDB.getById(req.user.userId);
     const shipping = shippingFields(req.body);
+
+    const baseUrl = orderEvents.baseUrl(req);
+    const stripeUrls = (orderId) => ({
+      successUrl: `${baseUrl}/orders/${orderId}?paid=true`,
+      cancelUrl: `${baseUrl}/checkout/${quoteId}?cancelled=true`,
+      metadata: { quoteId, userId: req.user.userId },
+    });
+    const describe = (items) => {
+      const names = items.map((i) => i.fileName || "custom part").join(", ");
+      return names.length > 200 ? names.substring(0, 197) + "..." : names;
+    };
+
+    // Back from a cancelled or abandoned Stripe page: pay for the same order
+    // (with the address as now entered) instead of stacking a second one.
+    const pending = ordersDB.query((o) => o.quoteId === quoteId && o.userId === req.user.userId && o.status === "pending_payment" && !o.rfqId)[0];
+    if (pending && Math.abs((pending.total || 0) - orderTotal) < 0.005) {
+      const reused = ordersDB.update(pending.id, { ...shipping, shipBy: leadDays !== null ? shipBy.shipByDate(leadDays) : pending.shipBy });
+      const items = orderItemsDB.query((i) => i.orderId === reused.id);
+      const session = await orderEvents.createCheckoutSession(reused, { itemCount: items.length, description: describe(items), ...stripeUrls(reused.id) });
+      return res.json({ sessionUrl: session.url, orderId: reused.id });
+    }
+
+    // What the total is made of, so the order page, emails and documents can show it.
+    const partsSubtotal = Number(quote.subtotal) || 0;
+    const leadTimeSurcharge = Math.max(0, Number(quote.leadTimeSurcharge) || 0);
+    const shippingCost = Math.max(0, Number(quote.shippingEstimate) || 0);
+    const itemized = partsSubtotal > 0 && Math.abs(partsSubtotal + leadTimeSurcharge + shippingCost - orderTotal) < 0.01;
 
     // Create the order with pending_payment status
     const order = ordersDB.insert({
@@ -100,8 +141,11 @@ router.post("/checkout-session", authenticate, async (req, res) => {
       status: "pending_payment",
       ...shipping,
       shippingMethod: "standard",
-      shippingCost: 0,
-      subtotal: orderTotal,
+      // When the parts, the lead-time fee and shipping add up to the total they are
+      // stored separately; otherwise (order minimum applied, older quote) one line.
+      shippingCost: itemized ? shippingCost : 0,
+      leadTimeSurcharge: itemized ? leadTimeSurcharge : 0,
+      subtotal: itemized ? partsSubtotal : orderTotal,
       tax: 0,
       total: orderTotal,
       notes: "",
@@ -147,18 +191,15 @@ router.post("/checkout-session", authenticate, async (req, res) => {
       });
     }
 
-    // Build Stripe line items description
-    const partNames = lineItems.map(i => i.fileName || "custom part").join(", ");
-    const description = partNames.length > 200 ? partNames.substring(0, 197) + "..." : partNames;
-
-    const baseUrl = orderEvents.baseUrl(req);
-    const session = await orderEvents.createCheckoutSession(order, {
-      itemCount: lineItems.length,
-      description,
-      successUrl: `${baseUrl}/orders/${order.id}?paid=true`,
-      cancelUrl: `${baseUrl}/checkout/${quoteId}?cancelled=true`,
-      metadata: { quoteId, userId: req.user.userId },
-    });
+    let session;
+    try {
+      session = await orderEvents.createCheckoutSession(order, { itemCount: lineItems.length, description: describe(lineItems), ...stripeUrls(order.id) });
+    } catch (err) {
+      // No session, no order: don't leave an unpayable order behind for every failed try.
+      for (const it of orderItemsDB.query((i) => i.orderId === order.id)) orderItemsDB.delete(it.id);
+      ordersDB.delete(order.id);
+      throw err;
+    }
 
     // The quote is now an order: bind it to the buyer and stop the builder re-pricing it in place.
     quotesDB.update(quoteId, { status: "ordered", userId: quote.userId || req.user.userId });
@@ -171,9 +212,10 @@ router.post("/checkout-session", authenticate, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// POST /api/orders — Create order from a quote (legacy / admin)
+// POST /api/orders — Create an order from a quote without payment (admin only:
+// phone orders). Buyers go through /checkout-session.
 // ═══════════════════════════════════════════════════════════════
-router.post("/", authenticate, (req, res) => {
+router.post("/", authenticate, requireAdmin, (req, res) => {
   try {
     const {
       quoteId,
