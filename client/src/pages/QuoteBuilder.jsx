@@ -680,7 +680,7 @@ export default function QuoteBuilder() {
               </div>
               <div className="grid-3">
               {[
-                { step: '1', title: 'Upload', desc: 'STEP, STL, IGES or 3MF — or a DXF for flat routed parts. The geometry is read on our server; the file is encrypted at rest and purged on a schedule.' },
+                { step: '1', title: 'Upload', desc: 'STEP, STL, IGES or 3MF — or a DXF for flat routed parts. The geometry is read on our server; the file is ' + when('file-encryption', 'encrypted at rest and ') + 'purged on a schedule.' },
                 { step: '2', title: 'Price and DFM', desc: 'Material, finish, quantity. The price updates as you go, with a manufacturability check written for our machines.' },
                 { step: '3', title: 'Check out, or get a firm quote', desc: `Up to ${brand.rfqQuantityThreshold} pieces, check out by card. Over that, or if the checker flags something, a firm quote from a person${when('quote-turnaround', (v) => ` within ${v}`)}.` },
               ].map((f, i) => (

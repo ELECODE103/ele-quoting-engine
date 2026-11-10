@@ -117,7 +117,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
       {/* Totals */}
       <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 16, marginTop: 16 }}>
         <Row label="Subtotal" value={formatCurrency(quote.subtotal)} />
-        {quote.leadTimeSurcharge > 0 && <Row label="Rush fee" value={`+${formatCurrency(quote.leadTimeSurcharge)}`} color="var(--warn-text)" />}
+        {quote.leadTimeSurcharge > 0 && <Row label={`${leadTimes.find((lt) => lt.slug === selectedLeadTime)?.name || 'Faster'} lead time`} value={`+${formatCurrency(quote.leadTimeSurcharge)}`} color="var(--warn-text)" />}
         <Row label="Shipping estimate" value={formatCurrency(quote.shippingEstimate)} />
         {quote.nestingApplied && <Row label="Multi-part savings" value="Applied" color="var(--success-text)" />}
         <Row label="Ship weight" value={formatWeight(quote.totalWeight)} muted />
