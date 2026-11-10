@@ -446,9 +446,11 @@ function generateJobTraveler(order, items) {
   // Footer
   addFooter(doc, order.id.substring(0, 8), pageNum);
 
-  doc.end();
-
-  return Buffer.concat(chunks);
+  return new Promise((resolve, reject) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+    doc.end();
+  });
 }
 
 /**
@@ -591,9 +593,11 @@ function generatePackingList(order, items) {
   // Footer
   addFooter(doc, order.id.substring(0, 8), pageNum);
 
-  doc.end();
-
-  return Buffer.concat(chunks);
+  return new Promise((resolve, reject) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+    doc.end();
+  });
 }
 
 /**

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="50mm" height="50mm" viewBox="0 0 50 50">
+<title>Straightedge mark — embroidery, one colour, 50 mm</title>
+<desc>One thread colour. Two closed shapes, no overlaps, no strokes. 1 user unit = 1 mm. Smallest features at this size: riser 3.0 mm, tread 8.33 mm, kerf 3.25 mm where the straightedge touches each step and 6.5 mm between. Do not run this file smaller than 50 mm — below that use the solid kerf square (straightedge-mark-solid-*.dxf or e3-light-mark-small-1c.svg). See README.md in this folder.</desc>
+<path fill="#000000" transform="scale(0.5)" d="M0 0L100 0L100 28.34L0 64.74ZM0 100L100 100L100 41.33L83.33 41.33L83.33 47.39L66.67 47.39L66.67 53.46L50 53.46L50 59.52L33.33 59.52L33.33 65.59L16.67 65.59L16.67 71.66L0 71.66Z"/>
+</svg>
