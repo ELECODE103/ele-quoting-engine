@@ -98,6 +98,8 @@ per lot    routerSetupMinutes
 tooling    metres cut × routerToolWearPerMeter × (abrasive 3, aluminum 1.5)
 ```
 
+**DXF input.** A DXF part is priced by this same model with no special case: `server/geometry/dxf` extrudes the drawing to the selected stock thickness and hands the model the `features` object a STEP plate would produce (outer/inner perimeter, bounding size, hole and slot lists, smallest inside-corner radius). The thickness is whatever the customer selects — nothing is defaulted — and an unconfirmed unitless drawing is not priced at all. `tools/vet-quotes` quotes four DXF parts beside STEP twins of the same profile; the unit prices agree within 0.01 % (limit 2 %, check `dxf-step-parity`). Because a DXF's perimeters are exact rather than tessellated, the DXF is, if anything, the more accurate of the two.
+
 ### 2.4 Printing
 
 ```

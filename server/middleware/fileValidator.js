@@ -46,6 +46,16 @@ const MAGIC_BYTES = {
       return header.includes("S      1") || header.includes("S ") || header.includes("IGES");
     },
   },
+  // DXF: ASCII group-code pairs — optional 999 comments, then "0 / SECTION".
+  // (Binary DXF starts with a sentinel string; the parser rejects it with a
+  // message telling the customer to save as ASCII. A DWG renamed .dxf fails here.)
+  ".dxf": {
+    check: (buffer) => {
+      const head = buffer.toString("latin1").replace(/^\uFEFF/, "").replace(/^\xEF\xBB\xBF/, "");
+      if (head.startsWith("AutoCAD Binary DXF")) return true;
+      return /^\s*(999\s*\r?\n[^\n]*\n\s*)*0\s*\r?\n\s*SECTION\s*\r?\n/.test(head);
+    },
+  },
   // 3MF files are ZIP archives (magic bytes: PK\x03\x04)
   ".3mf": {
     check: (buffer) => {

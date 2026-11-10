@@ -1,0 +1,181 @@
+{
+ "units": "mm",
+ "parts": [
+  {
+   "id": "dxf_plate_holes",
+   "file": "dxf_plate_holes.dxf",
+   "twin": "dxf_plate_holes.step",
+   "family": "flat-sheet",
+   "hand_sized": true,
+   "source": "dxf",
+   "bbox": [
+    150,
+    100,
+    6.35
+   ],
+   "volume": 93946.5249336917,
+   "truth": {
+    "holes": 6,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 624.4070690821558,
+    "outer_perimeter_mm": 500,
+    "inner_perimeter_mm": 124.4070690821558,
+    "area_mm2": 14794.728336014443,
+    "removed_mm3": 1303.4750663082875
+   },
+   "description": "DXF: flat plate 150 × 100 with six Ø6.6 through holes (LWPOLYLINE + CIRCLE, mm). Same part as plate_hole_pattern.",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-hdpe",
+     "subProcess": "sheet",
+     "thicknessMm": 6.35,
+     "finishSlug": null,
+     "label": "routing:rt-hdpe@6.35"
+    },
+    {
+     "process": "routing",
+     "materialSlug": "rt-delrin",
+     "subProcess": "sheet",
+     "thicknessMm": 6.35,
+     "finishSlug": null,
+     "label": "routing:rt-delrin@6.35"
+    }
+   ],
+   "expected": {},
+   "reasoning": "Must price like plate_hole_pattern.stl and its STEP twin at 1/4\"."
+  },
+  {
+   "id": "dxf_slotted_guide",
+   "file": "dxf_slotted_guide.dxf",
+   "twin": "dxf_slotted_guide.step",
+   "family": "flat-sheet",
+   "hand_sized": true,
+   "source": "dxf",
+   "bbox": [
+    200,
+    80,
+    12.7
+   ],
+   "volume": 191916.96306927895,
+   "truth": {
+    "holes": 2,
+    "slots": 1,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 729.9380400258999,
+    "outer_perimeter_mm": 542.8318530717959,
+    "inner_perimeter_mm": 187.10618695410398,
+    "area_mm2": 15111.571895218816,
+    "removed_mm3": 11283.036930721033
+   },
+   "description": "DXF: conveyor guide 200 × 80 with R10 corners (bulged LWPOLYLINE), a 60 × 12 adjustment slot and two Ø8.5 holes, quoted in 1/2\" UHMW.",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-uhmw",
+     "subProcess": "sheet",
+     "thicknessMm": 12.7,
+     "finishSlug": null,
+     "label": "routing:rt-uhmw@12.7"
+    },
+    {
+     "process": "routing",
+     "materialSlug": "rt-hdpe",
+     "subProcess": "sheet",
+     "thicknessMm": 12.7,
+     "finishSlug": null,
+     "label": "routing:rt-hdpe@12.7"
+    }
+   ],
+   "expected": {},
+   "reasoning": "Arcs via bulges; 1/2\" stock takes the 3/8\" tool in two passes."
+  },
+  {
+   "id": "dxf_bracket_window",
+   "file": "dxf_bracket_window.dxf",
+   "twin": "dxf_bracket_window.step",
+   "family": "flat-sheet",
+   "hand_sized": true,
+   "source": "dxf",
+   "bbox": [
+    160,
+    120,
+    9.5
+   ],
+   "volume": 106141.27222653134,
+   "truth": {
+    "holes": 2,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 736.5486677646163,
+    "outer_perimeter_mm": 560,
+    "inner_perimeter_mm": 176.54866776461628,
+    "area_mm2": 11172.765497529614,
+    "removed_mm3": 76258.72777346866
+   },
+   "description": "DXF: L bracket 160 × 120 drawn as six separate LINEs, with a square 30 × 30 window and two Ø9 holes, quoted in 3/8\" acetal.",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-delrin",
+     "subProcess": "sheet",
+     "thicknessMm": 9.5,
+     "finishSlug": null,
+     "label": "routing:rt-delrin@9.5"
+    }
+   ],
+   "expected": {},
+   "reasoning": "Outline must chain from loose lines; the square window's corners select the 1/8\" tool (slower feed), same as the STEP."
+  },
+  {
+   "id": "dxf_inch_guard",
+   "file": "dxf_inch_guard.dxf",
+   "twin": "dxf_inch_guard.step",
+   "family": "flat-sheet",
+   "hand_sized": true,
+   "source": "dxf",
+   "bbox": [
+    152.39999999999998,
+    101.6,
+    6.35
+   ],
+   "volume": 97517.98587693271,
+   "truth": {
+    "holes": 4,
+    "slots": 0,
+    "pockets": 0,
+    "countersinks": 0,
+    "cut_perimeter_mm": 587.7964534011808,
+    "outer_perimeter_mm": 508,
+    "inner_perimeter_mm": 79.79645340118074,
+    "area_mm2": 15357.163130225625,
+    "removed_mm3": 804.3981230672614
+   },
+   "description": "DXF drawn in inches: 6 × 4 in guard panel with four Ø1/4\" holes, quoted in 1/4\" polycarbonate and acrylic.",
+   "configs": [
+    {
+     "process": "routing",
+     "materialSlug": "rt-polycarbonate",
+     "subProcess": "sheet",
+     "thicknessMm": 6.35,
+     "finishSlug": null,
+     "label": "routing:rt-polycarbonate@6.35"
+    },
+    {
+     "process": "routing",
+     "materialSlug": "rt-acrylic",
+     "subProcess": "sheet",
+     "thicknessMm": 6.35,
+     "finishSlug": null,
+     "label": "routing:rt-acrylic@6.35"
+    }
+   ],
+   "expected": {},
+   "reasoning": "Units come from $INSUNITS; a wrong scale would be off by 25.4× and fail the parser checks."
+  }
+ ]
+}

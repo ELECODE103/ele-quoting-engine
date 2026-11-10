@@ -11,6 +11,8 @@ const fs = require("fs");
 const path = require("path");
 const { resolveProcess, activeProcesses } = require("../processes/registry");
 const { analyzeGeometry, legacyFromFeatures } = require("../geometry");
+const dxf = require("../geometry/dxf");
+const { summarizeChecks } = require("../processes/shared");
 
 // ─── STL PARSER (Binary + ASCII) ──────────────────────────────
 function parseSTL(buffer) {
@@ -719,6 +721,14 @@ function defaultProcessSlug() {
 // DFM Router — dispatches to the process-specific DFM function via the registry.
 function runDFMAnalysis(geometry, options = {}) {
   const def = resolveProcess(options.process || defaultProcessSlug());
+  // A DXF is a flat drawing: routing only, extruded to the selected stock thickness.
+  if (dxf.is2D(geometry)) {
+    if (def.slug !== "routing") {
+      const checks = require("../processes/routing/dfm2d").notRoutable(def.name);
+      return { checks, summary: summarizeChecks(checks) };
+    }
+    geometry = dxf.materialize(geometry, options.thicknessMm);
+  }
   const fn = (def.dfm && def.dfm.run) || DFM_FN_BY_NAME[def.dfmFn] || runSheetMetalDFM;
   // Sheet metal DFM takes a thickness argument; the others take an options object.
   if (def.slug === "sheetmetal" || fn === runSheetMetalDFM) {
@@ -729,8 +739,10 @@ function runDFMAnalysis(geometry, options = {}) {
 
 // ─── MAIN PARSE FUNCTION ──────────────────────────────────────
 async function parseFile(filePath, processOptions = {}) {
-  const ext = path.extname(filePath).toLowerCase();
-  const buffer = fs.readFileSync(filePath);
+  // processOptions.ext / .buffer let a caller parse bytes it already holds (an
+  // upload that is encrypted at rest is decrypted in memory, never to disk).
+  const ext = (processOptions.ext || path.extname(filePath)).toLowerCase();
+  const buffer = processOptions.buffer || fs.readFileSync(filePath);
 
   let geometry;
 
@@ -749,12 +761,16 @@ async function parseFile(filePath, processOptions = {}) {
     case ".igs":
       geometry = await parseIGES(buffer);
       break;
+    case ".dxf":
+      // 2D profile for routing; processOptions.units is the customer's inch/mm choice when given
+      geometry = dxf.parseDXF(buffer, { units: processOptions.units });
+      break;
     default:
-      throw new Error(`Unsupported file format: ${ext}. Supported: .step, .stp, .stl, .iges, .igs`);
+      throw new Error(`Unsupported file format: ${ext}. Supported: .step, .stp, .stl, .iges, .igs, .3mf, .dxf`);
   }
 
-  // Run DFM analysis for the requested process (default: first active process)
-  const dfm = runDFMAnalysis(geometry, { process: defaultProcessSlug(), ...processOptions });
+  // Run DFM analysis for the requested process (default: first active process; a DXF is always routing)
+  const dfm = runDFMAnalysis(geometry, { process: dxf.is2D(geometry) ? "routing" : defaultProcessSlug(), ...processOptions });
 
   // Also run DFM for every active process so the client can show all tabs.
   // Driven by the registry — a new process appears here automatically.
