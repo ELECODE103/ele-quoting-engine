@@ -420,6 +420,17 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.ok(pdf.length > 2000);
   });
 
+  test("reorder brings the buyer's notes and drawing along", async () => {
+    const withDrawing = ordersDB.getAll().find((o) => o.drawingFileName === "bracket-rev-B.pdf");
+    const r = await h.post(`/api/orders/${withDrawing.id}/reorder`, {}, buyer);
+    assert.strictEqual(r.status, 201);
+    const s = await h.get(`/api/quote/${r.body.quoteId}/session`, buyer);
+    assert.strictEqual(s.body.notes, "The 0.500 bore is the one that matters.");
+    assert.strictEqual(s.body.drawingFileName, "bracket-rev-B.pdf");
+    const again = await h.post("/api/quote", { quoteId: r.body.quoteId, parts: s.body.parts.map(({ partId, materialSlug, quantity, process, subProcess }) => ({ partId, materialSlug, quantity, process, subProcess })), leadTimeSlug: "standard" }, buyer);
+    assert.strictEqual(again.body.drawingFileName, "bracket-rev-B.pdf", "re-pricing the reorder keeps the drawing");
+  });
+
   test("an order without payment can only be created by the shop", async () => {
     const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 1)], leadTimeSlug: "standard" }, buyer);
     assert.strictEqual((await h.post("/api/orders", { quoteId: q.body.quoteId }, buyer)).status, 403);

@@ -486,6 +486,11 @@ router.post("/:id/reorder", authenticate, (req, res) => {
         return res.status(409).json({ error: `This order can't be re-quoted as it was: ${err2.message}. Start a new quote instead.`, code: "reorder-failed" });
       }
     }
+    // The buyer's notes and drawing describe the part, so they come along (not for
+    // firm-quote orders, where the note on the order is the shop's, not the buyer's).
+    if (!order.rfqId && (order.customerNotes || order.drawingPath)) {
+      quotesDB.update(result.saved.id, { notes: order.customerNotes || "", drawingFileName: order.drawingFileName || "", drawingPath: order.drawingPath || "" });
+    }
     res.status(201).json({ quoteId: result.saved.id, parts: configs.length, skipped: items.length - configs.length });
   } catch (err) {
     console.error("Reorder error:", err);
