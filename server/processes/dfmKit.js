@@ -195,10 +195,15 @@ function meshIntegrity(prefix, f, conf) {
 }
 
 function toleranceNote(mat, longest, id) {
-  const std = mat.isMetal ? "±0.05 mm (±0.002\")" : mat.soft ? "±0.25 mm (±0.010\")" : "±0.13 mm (±0.005\")";
-  const pct = longest > 250 && mat.isPlastic ? ` On a ${longest.toFixed(0)} mm part add 0.1–0.2% of length for thermal movement (${(longest * 0.001).toFixed(2)}–${(longest * 0.002).toFixed(2)} mm).` : "";
-  return check({ id, label: "Tolerance Capability", severity: "info", confidence: "n/a", ref: "Quadrant/Boedeker",
-    detail: `Standard ${std} on ${mat.label}${mat.hygroscopic ? " (dry)" : ""}.${pct} Call out the features that need tighter and we hold those; uncalled dimensions follow ISO 2768-m` });
+  // A tolerance number is the owner's promise: it is stated only once the fact for
+  // this material is confirmed in shared/shop-facts.json (the public pages follow
+  // the same rule). Until then the note says how plastic moves and what to call out.
+  const std = require("../shopFacts").standardTolerance(`${mat.key} ${mat.label}`);
+  const pct = longest > 250 && mat.isPlastic ? ` On a ${longest.toFixed(0)} mm part allow 0.1–0.2% of length for thermal movement (${(longest * 0.001).toFixed(2)}–${(longest * 0.002).toFixed(2)} mm).` : "";
+  return check({ id, label: "Tolerances", severity: "info", confidence: "n/a", ref: "Quadrant/Boedeker",
+    detail: std
+      ? `Standard ${std} on ${mat.label}${mat.hygroscopic ? " (dry)" : ""}.${pct} Call out the features that need tighter in the notes or on a firm-quote request`
+      : `${mat.isPlastic ? `${mat.label} moves with temperature${mat.hygroscopic ? " and moisture" : ""}, so the tolerance depends on the feature and where the part runs.` : `Tolerances on ${mat.label} depend on the feature.`}${pct} Put the dimensions that matter in the notes or on a firm-quote request, and the tolerance for them is agreed before anything is cut` });
 }
 
 module.exports = {
