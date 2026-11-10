@@ -4,6 +4,7 @@ import NotFoundPage from './NotFoundPage';
 import brand from '../brand';
 import { TYPICAL_VALUES_NOTE, FOOD_CONTACT_GENERAL } from '../data/materialPages';
 import { getMaterialPage, getMaterialPages, buildFaqs, quoteHref, thicknessRange } from '../data/materials';
+import { when, gradeLabel, MILLING } from '../facts';
 
 /**
  * /materials/:slug - one page per engineering plastic in the catalog.
@@ -28,7 +29,7 @@ export default function MaterialPage() {
   const primary = page.cnc ? quoteHref('cnc', page.cnc.slug) : quoteHref('routing', page.routing.slug);
 
   return (
-    <PublicLayout title={page.metaTitle} description={page.metaDescription}>
+    <PublicLayout>
       <section className="section" style={{ paddingTop: 40, paddingBottom: 48 }}>
         <div className="pub-wrap">
           <nav aria-label="Breadcrumb" className="crumbs">
@@ -45,8 +46,8 @@ export default function MaterialPage() {
               <Link className="btn btn-primary btn-lg" to={primary}>Price this part in {page.shortName}</Link>
               <Link className="btn btn-outline btn-lg" to="/rfq">Request a firm quote</Link>
             </div>
-            <p style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 12 }}>
-              Upload a STEP or STL. Instant price to {brand.rfqQuantityThreshold} pieces; firm quote within {brand.quoteTurnaroundHours} hours above that.
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 12, maxWidth: 620, lineHeight: 1.6 }}>
+              Upload a STEP or STL and the price shows in a few seconds; no account needed. Up to {brand.rfqQuantityThreshold} pieces checks out by card. Above that a person quotes it{when('quote-turnaround', (v) => ` within ${v}`)}. Questions: <a href={brand.phoneHref} style={{ color: 'var(--accent)' }}>{brand.phone}</a> rings the shop.
             </p>
           </div>
         </div>
@@ -60,13 +61,13 @@ export default function MaterialPage() {
               <ul className="checklist">{page.uses.map((u) => <li key={u}>{u}</li>)}</ul>
             </div>
             <div>
-              <h2 className="display h2-sm">How we run it</h2>
+              <h2 className="display h2-sm">How it is priced here</h2>
               <ul className="checklist">
                 {page.cnc && (
                   <li>
                     <span>
-                      <Link to="/machining">CNC milling and turning</Link> from {(page.cnc.stockForms || []).join(' and ') || 'stock'}.
-                      {' '}Grades quoted online: {page.cnc.grades.map((g) => g.name).join('; ')}.
+                      <Link to="/machining">CNC {MILLING}</Link> from {(page.cnc.stockForms || []).join(' and ') || 'stock'}.
+                      {' '}Grades quoted online: {page.cnc.grades.map((g) => gradeLabel(g.name)).join('; ')}.
                     </span>
                   </li>
                 )}
@@ -75,14 +76,14 @@ export default function MaterialPage() {
                     <span>
                       <Link to="/routing">CNC routing</Link> from sheet, {thicknessRange(page.routing)} thick
                       {' '}({page.routing.thicknesses.map((t) => t.label).join(', ')}).
-                      {' '}Sheet grades quoted online: {page.routing.grades.map((g) => g.name).join('; ')}.
+                      {' '}Sheet grades quoted online: {page.routing.grades.map((g) => gradeLabel(g.name)).join('; ')}.
                     </span>
                   </li>
                 )}
                 {!page.routing && (
                   <li><span>Not quoted online as routed sheet. Ask on a <Link to="/rfq">firm quote</Link> if you need flat parts from sheet.</span></li>
                 )}
-                <li><span>Machine envelopes, standard tolerances and design limits are on the <Link to="/machining">machining</Link> and <Link to="/routing">routing</Link> pages.</span></li>
+                <li><span>Size limits and design rules are on the <Link to="/machining">machining</Link> and <Link to="/routing">routing</Link> pages.</span></li>
               </ul>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 18 }}>
                 {page.cnc && <Link className="btn btn-ghost" to={quoteHref('cnc', page.cnc.slug)}>Quote a machined part →</Link>}
@@ -133,7 +134,7 @@ export default function MaterialPage() {
             <div>
               <h3 className="display" style={{ marginBottom: 10 }}>Food contact</h3>
               <p className="body-copy">{page.foodContact}</p>
-              <p className="body-copy" style={{ marginTop: 10 }}>{FOOD_CONTACT_GENERAL}</p>
+              <p className="body-copy" style={{ marginTop: 10 }}>{FOOD_CONTACT_GENERAL} <Link to="/food-contact">More on food-contact plastics</Link>.</p>
             </div>
           </div>
         </div>

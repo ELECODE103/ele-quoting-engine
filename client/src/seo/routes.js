@@ -15,10 +15,11 @@
 import brand from '../../../shared/brand.json';
 import { SERVICES } from '../data/services';
 import { getMaterialPages, getMaterialPage, buildFaqs, processSentence } from '../data/materials';
+import { ok, fact, when, MILLING } from '../facts';
 
 export const SITE_URL = brand.url.replace(/\/$/, ''); // https://straightedgemfg.com - the canonical host
 export const DEFAULT_OG_IMAGE = '/brand/og-default.png'; // 1200x630, supplied by the brand work
-export const HOME_TITLE = `${brand.name} — Machined Plastics, CNC Routing & 3D Printing · ${brand.region}`;
+export const HOME_TITLE = `Plastic machining in ${brand.city}, Illinois | ${brand.name}`;
 
 const abs = (path) => `${SITE_URL}${path === '/' ? '/' : path}`;
 const pageTitle = (t) => `${t} · ${brand.name}`;
@@ -32,7 +33,7 @@ const AREA_SERVED = ['Illinois', 'Wisconsin', 'Indiana', 'Iowa', 'Michigan', 'Mi
   .map((name) => ({ '@type': 'State', name }));
 
 const SERVICE_NAMES = {
-  machining: 'CNC machining of plastics',
+  machining: `CNC machining of plastics (${MILLING})`,
   routing: 'CNC routing of plastic sheet and plate',
   '3d-printing': '3D printing (FDM and SLA)',
 };
@@ -51,20 +52,21 @@ export function businessGraph() {
     '@type': 'Organization',
     '@id': ORG_ID,
     name: brand.name,
-    legalName: brand.legalName,
+    // Legal name, founding year and parent are published only once the owner has
+    // confirmed them (shared/shop-facts.json).
+    ...(ok('legal-name') ? { legalName: fact('legal-name') } : {}),
     url: `${SITE_URL}/`,
     logo: `${SITE_URL}/brand/e3-light-mark.svg`,
     email: brand.email,
     telephone,
-    foundingDate: String(brand.foundedYear),
     address,
-    parentOrganization: { '@type': 'Organization', name: brand.parentName, url: brand.parentUrl },
+    ...(ok('parent-company') ? { parentOrganization: { '@type': 'Organization', name: brand.parentName, url: brand.parentUrl } } : {}),
   };
   const business = {
     '@type': 'LocalBusiness',
     '@id': BUSINESS_ID,
     name: brand.name,
-    description: 'CNC machining and routing of engineering plastics (Delrin, UHMW, HDPE, nylon, PEEK), plus FDM and SLA 3D printing. Instant online quoting.',
+    description: 'Plastics machine shop. CNC machining and routing of Delrin, UHMW, HDPE, nylon and PEEK, plus FDM and SLA 3D printing. Prices shown online.',
     url: `${SITE_URL}/`,
     image: abs('/photos/tray-stack-edge.jpg'),
     telephone,
@@ -114,50 +116,74 @@ const graph = (nodes) => [{ '@context': 'https://schema.org', '@graph': nodes }]
 
 // ─── Static public pages ───────────────────────────────────────────────────
 // `sources` are the files whose last commit date becomes <lastmod> in the sitemap.
+const within = when('quote-turnaround', (v) => ` within ${v}`);
+const crumbs = (name, path) => breadcrumb([['Home', '/'], [name, path]]);
+const page = (path, name) => (m) => graph([...businessGraph(), webPage(path, m.title, m.description), crumbs(name, path)]);
+
 const STATIC = {
   '/': {
     fullTitle: HOME_TITLE,
-    ogTitle: `${brand.name} — Machined plastic parts, one to a few thousand`,
-    description: `Machined plastic parts from ${brand.city}, Illinois. CNC milling, turning and routing in Delrin, UHMW, HDPE, nylon, PEEK and 6061, plus FDM and SLA printing. Instant online pricing; firm quotes in ${brand.quoteTurnaroundHours} hours.`,
+    ogTitle: `Machined plastic parts. Price now, made in ${brand.city}, Illinois.`,
+    description: `Machined plastic parts from a shop in ${brand.region}. Delrin, UHMW, HDPE, nylon and PEEK, ${when('turning', 'milled, turned and routed', 'milled and routed')}. See a price online; no account needed.`,
     priority: 1.0,
-    sources: ['client/src/pages/LandingPage.jsx'],
+    sources: ['client/src/pages/LandingPage.jsx', 'shared/shop-facts.json'],
     jsonLd: (m) => graph([...businessGraph(), websiteNode(), webPage('/', m.title, m.description)]),
   },
   '/materials': {
-    title: 'Plastic Materials for CNC Machining & Routing',
-    description: `Engineering plastics we machine and route in ${brand.city}, Illinois: Delrin, UHMW, HDPE, nylon, PEEK, Ultem, PTFE, polycarbonate, acrylic, PVC, polypropylene, G-10 and phenolic, plus 6061 and brass.`,
+    fullTitle: `Machining plastics: Delrin, UHMW, HDPE, nylon, PEEK | ${brand.name}`,
+    description: `What each plastic is for, why it works and what to watch out for: Delrin, UHMW, HDPE, nylon, PEEK, Ultem, PTFE, polycarbonate, acrylic, PVC, polypropylene, G-10 and phenolic. All priced online.`,
     priority: 0.8,
     sources: ['client/src/pages/MaterialsPage.jsx', 'server/config/defaults.js'],
-    jsonLd: (m) => graph([...businessGraph(), webPage('/materials', m.title, m.description), breadcrumb([['Home', '/'], ['Materials', '/materials']])]),
+    jsonLd: page('/materials', 'Materials'),
+  },
+  '/replacement-parts': {
+    fullTitle: `Replacement plastic parts, no drawing needed | ${brand.name}`,
+    description: `Worn guide, wear strip or bushing and no drawing? Send a photo with a tape measure in it, or call ${brand.phone}. Replacement plastic parts machined in ${brand.city}, Illinois.`,
+    priority: 0.8,
+    sources: ['client/src/pages/ReplacementPartsPage.jsx', 'shared/shop-facts.json'],
+    jsonLd: page('/replacement-parts', 'Replacement parts'),
+  },
+  '/parts': {
+    fullTitle: `Plastic parts by type: wear strips, guides, bushings | ${brand.name}`,
+    description: 'Wear strips, guides, bushings, rollers, trays, guards and manifolds: which plastic each is usually made from, why, and whether it is milled or routed. Price any of them online.',
+    priority: 0.7,
+    sources: ['client/src/pages/PartsPage.jsx'],
+    jsonLd: page('/parts', 'Parts by type'),
+  },
+  '/food-contact': {
+    fullTitle: `Food-contact plastics and machined parts | ${brand.name}`,
+    description: 'FDA compliance belongs to a maker\'s grade under 21 CFR Part 177. NSF and 3-A apply to finished equipment and listed materials. What to ask for when a machined plastic part touches food.',
+    priority: 0.6,
+    sources: ['client/src/pages/FoodContactPage.jsx', 'shared/shop-facts.json'],
+    jsonLd: page('/food-contact', 'Food-contact plastics'),
   },
   '/quality': {
-    title: 'Quality & Inspection',
-    description: `How ${brand.name} inspects machined plastic parts: first-article reports, certificates of conformance, material certs, traceability, and a documented path to ISO 9001.`,
+    fullTitle: `Quality: what gets checked and how | ${brand.name}`,
+    description: `Not ISO 9001 certified, no CMM, one person. What ${brand.name} measures on a machined plastic part, how, and what happens when a part is wrong.`,
     priority: 0.7,
-    sources: ['client/src/pages/QualityPage.jsx'],
-    jsonLd: (m) => graph([...businessGraph(), webPage('/quality', m.title, m.description), breadcrumb([['Home', '/'], ['Quality', '/quality']])]),
+    sources: ['client/src/pages/QualityPage.jsx', 'shared/shop-facts.json'],
+    jsonLd: page('/quality', 'Quality'),
   },
   '/about': {
-    title: `About ${brand.name}`,
-    fullTitle: `About ${brand.name} · Plastics Machining in ${brand.city}, ${brand.state}`,
-    description: `${brand.name} is the plastics machining division of ${brand.parentName}, a fabrication and engineering shop in ${brand.city}, Illinois, running since ${brand.foundedYear}.`,
+    fullTitle: `About ${brand.name}, a one-person plastics machine shop`,
+    description: `${brand.name} is a one-person plastics machine shop in ${brand.city}, Illinois. The person who quotes your part cuts it and answers the phone.`,
     priority: 0.6,
-    sources: ['client/src/pages/AboutPage.jsx', 'shared/brand.json'],
-    jsonLd: (m) => graph([...businessGraph(), { ...webPage('/about', m.title, m.description), '@type': 'AboutPage' }, breadcrumb([['Home', '/'], ['About', '/about']])]),
+    sources: ['client/src/pages/AboutPage.jsx', 'shared/brand.json', 'shared/shop-facts.json'],
+    jsonLd: (m) => graph([...businessGraph(), { ...webPage('/about', m.title, m.description), '@type': 'AboutPage' }, crumbs('About', '/about')]),
   },
   '/rfq': {
-    title: 'Request a Firm Quote',
-    description: `Request a firm quote from ${brand.name} for production quantities of machined plastic parts. Quotes within ${brand.quoteTurnaroundHours} hours.`,
+    fullTitle: `Request a firm quote for machined plastic parts | ${brand.name}`,
+    description: `Send a drawing and a quantity, or a photo of a worn part with a tape measure in it. The person who will cut the part prices it${within}.`,
     priority: 0.5,
     sources: ['client/src/pages/RfqPage.jsx'],
-    jsonLd: (m) => graph([...businessGraph(), webPage('/rfq', m.title, m.description), breadcrumb([['Home', '/'], ['Request a firm quote', '/rfq']])]),
+    jsonLd: page('/rfq', 'Request a firm quote'),
   },
 };
 
 for (const slug of Object.keys(SERVICES)) {
   const s = SERVICES[slug];
   STATIC[`/${slug}`] = {
-    title: s.metaTitle,
+    fullTitle: s.fullTitle,
     description: s.description,
     priority: slug === '3d-printing' ? 0.8 : 0.9,
     sources: ['client/src/data/services.js', 'client/src/pages/ServicePage.jsx'],
@@ -278,9 +304,9 @@ export function getRouteMeta(pathname, opts = {}) {
 /** Every indexable URL, in sitemap order. */
 export function listPublicPaths() {
   return [
-    '/', '/machining', '/routing', '/3d-printing', '/materials',
+    '/', '/machining', '/routing', '/3d-printing', '/replacement-parts', '/materials',
     ...getMaterialPages().map((p) => `/materials/${p.slug}`),
-    '/quality', '/about', '/rfq',
+    '/parts', '/food-contact', '/quality', '/about', '/rfq',
   ];
 }
 

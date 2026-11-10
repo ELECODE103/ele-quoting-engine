@@ -7,6 +7,7 @@ import DFMPanel from '../components/DFMPanel';
 import PartConfigurator from '../components/PartConfigurator';
 import OrderSummary from '../components/OrderSummary';
 import ProcessPicker from '../components/ProcessPicker';
+import { when } from '../facts';
 import brand, { PROCESS_LABELS } from '../brand';
 
 // Closest stock thickness to the model's thinnest dimension (routing materials carry a thickness table).
@@ -285,7 +286,7 @@ export default function QuoteBuilder() {
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.7, maxWidth: 460, margin: '0 auto' }}>
               Drop a STEP, STL, IGES or 3MF file here, or click to choose one. The price shows in a few seconds.<br />
-              Up to {brand.rfqQuantityThreshold} pieces checks out online. More than that, a person quotes it within {brand.quoteTurnaroundHours} hours.
+              Up to {brand.rfqQuantityThreshold} pieces checks out online. More than that, a person quotes it{when('quote-turnaround', (v) => ` within ${v}`)}.
             </div>
             {preferredMaterial && materials.some((m) => m.slug === preferredMaterial) && (
               <div data-testid="preselected-material" style={{ marginTop: 14, fontSize: 12.5, color: 'var(--accent)', fontWeight: 600 }}>
@@ -494,7 +495,7 @@ export default function QuoteBuilder() {
               {[
                 { step: '1', title: 'Upload', desc: 'STEP, STL, IGES or 3MF. The geometry is read on our server; the file is encrypted at rest and purged on a schedule.' },
                 { step: '2', title: 'Price and DFM', desc: 'Material, finish, quantity. The price updates as you go, with a manufacturability check written for our machines.' },
-                { step: '3', title: 'Check out, or get a firm quote', desc: `Up to ${brand.rfqQuantityThreshold} pieces, check out by card. Over that, or if the checker flags something, a firm quote from us within ${brand.quoteTurnaroundHours} hours.` },
+                { step: '3', title: 'Check out, or get a firm quote', desc: `Up to ${brand.rfqQuantityThreshold} pieces, check out by card. Over that, or if the checker flags something, a firm quote from a person${when('quote-turnaround', (v) => ` within ${v}`)}.` },
               ].map((f, i) => (
                 <div key={i} className="card fade-up" style={{ padding: 24, textAlign: 'center', animationDelay: `${200 + i * 120}ms` }}>
                   <div aria-hidden="true" style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, margin: '0 auto 12px' }}>{f.step}</div>

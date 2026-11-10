@@ -18,6 +18,7 @@ const { sanitizeString, isValidSlug, nonNegativeNumber, positiveInt } = require(
 const { validateFileContent } = require("../middleware/fileValidator");
 const fileCrypto = require("../services/fileCrypto");
 
+const shopFacts = require("../shopFacts"); // hides catalog options the owner has not confirmed
 const router = express.Router();
 
 // ─── FILE UPLOAD CONFIG ──────────────────────────────────────
@@ -298,7 +299,7 @@ router.get("/processes", (req, res) => {
   res.json(activeProcesses());
 });
 router.get("/materials", (req, res) => {
-  let mats = materialsDB.getAll().filter((m) => m.active);
+  let mats = materialsDB.getAll().filter((m) => m.active && shopFacts.materialListed(m));
   if (req.query.process) {
     // Materials without a process field are legacy sheet metal
     mats = mats.filter((m) => (m.process || 'sheetmetal') === req.query.process);
@@ -310,7 +311,7 @@ router.get("/materials", (req, res) => {
 });
 
 router.get("/finishes", (req, res) => {
-  let fins = finishesDB.getAll().filter((f) => f.active);
+  let fins = finishesDB.getAll().filter((f) => f.active && shopFacts.finishListed(f));
   if (req.query.process) {
     // Finishes without a process field are legacy sheet metal
     fins = fins.filter((f) => (f.process || 'sheetmetal') === req.query.process);
@@ -319,7 +320,7 @@ router.get("/finishes", (req, res) => {
 });
 
 router.get("/lead-times", (req, res) => {
-  res.json(leadTimesDB.getAll().filter((lt) => lt.active));
+  res.json(leadTimesDB.getAll().filter((lt) => lt.active && shopFacts.leadTimeListed(lt)));
 });
 
 // ═══════════════════════════════════════════════════════════════
