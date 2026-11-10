@@ -7,6 +7,7 @@ const assert = require("assert");
 const zlib = require("zlib");
 const docs = require("./documents");
 const brand = require("../../shared/brand.json");
+const shopFacts = require("../shopFacts");
 
 let passed = 0;
 const pending = [];
@@ -40,7 +41,8 @@ function assertPdf(buf, number) {
   const raw = buf.toString("latin1");
   assert.ok(raw.includes(`- ${brand.name})`) || raw.includes(brand.name), "Title metadata names the brand");
   const text = pageText(buf);
-  assert.ok(text.includes(brand.legalName), "page text carries the legal name");
+  assert.ok(text.includes(shopFacts.businessName(brand)), "page text carries the business name (the legal name only once the owner confirms it)");
+  if (!shopFacts.ok("legal-name")) assert.ok(!text.includes(brand.legalName), "an unconfirmed legal name is not printed");
   assert.ok(text.includes(brand.domain), "page text carries the domain");
   assert.ok(text.includes(number), `page text carries the document number ${number}`);
   return text;

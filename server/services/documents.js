@@ -13,6 +13,9 @@
 const PDFDocument = require("pdfkit");
 const brand = require("../../shared/brand.json");
 const art = require("../../shared/brand-mark.json");
+const shopFacts = require("../shopFacts");
+// The legal name prints only once the owner has confirmed it (shared/shop-facts.json); until then the trading name.
+const businessName = () => shopFacts.businessName(brand);
 
 const PAGE = { w: 612, h: 792, m: 54 };          // US Letter, 0.75 in margins
 const INNER = PAGE.w - 2 * PAGE.m;
@@ -68,18 +71,18 @@ function processLabel(item) {
 function describe(item) {
   const meta = item.meta || item.config || {};
   const material = item.materialName || meta.materialName || titleFromSlug(item.materialSlug || meta.materialSlug);
-  const grade = item.grade || meta.grade;
+  const grade = shopFacts.gradeLabel(item.grade || meta.grade);
   const finishSlug = item.finishSlug || meta.finishSlug;
   const finish = item.finishName || meta.finishName || (finishSlug && finishSlug !== "raw" && finishSlug !== "none" ? titleFromSlug(finishSlug) : "");
   const thick = item.thicknessMm || meta.thicknessMm;
   return [processLabel(item), [material, grade && !String(material).includes(grade) ? grade : ""].filter(Boolean).join(" "), thick ? `${thick} mm` : "", finish].filter(Boolean).join(" · ");
 }
-const companyLine = () => [brand.legalName, [brand.address, `${brand.city}, ${brand.state}`, brand.zip].filter(Boolean).join(" "), brand.phone, brand.email, brand.domain].filter(Boolean).join("  ·  ");
+const companyLine = () => [businessName(), [brand.address, `${brand.city}, ${brand.state}`, brand.zip].filter(Boolean).join(" "), brand.phone, brand.email, brand.domain].filter(Boolean).join("  ·  ");
 
 // ─── document frame ─────────────────────────────────────────────────────────
 function create({ title, number, subject }) {
   const doc = new PDFDocument({ size: "LETTER", margin: 0, bufferPages: true, autoFirstPage: true,
-    info: { Title: `${title} ${number} - ${brand.name}`, Author: brand.legalName, Subject: subject || title, Creator: brand.domain } });
+    info: { Title: `${title} ${number} - ${brand.name}`, Author: businessName(), Subject: subject || title, Creator: brand.domain } });
   doc._se = { title, number };
   return doc;
 }
@@ -95,7 +98,7 @@ function finish(doc) {
       const y = PAGE.h - 40;
       doc.moveTo(PAGE.m, y - 6).lineTo(PAGE.w - PAGE.m, y - 6).lineWidth(0.5).strokeColor(RULE).stroke();
       doc.font("Helvetica").fontSize(7.5).fillColor(DIM);
-      doc.text(clean(`${brand.legalName}  ·  ${brand.domain}`), PAGE.m, y, { lineBreak: false });
+      doc.text(clean(`${businessName()}  ·  ${brand.domain}`), PAGE.m, y, { lineBreak: false });
       doc.text(clean(`${doc._se.title} ${doc._se.number}  ·  Page ${i + 1} of ${range.count}`), PAGE.m, y, { width: INNER, align: "right", lineBreak: false });
     }
     doc.end();
@@ -268,7 +271,9 @@ function customerLines(c) {
   if (!c) return [];
   return [c.company || c.name || c.contactName, c.company ? (c.name || c.contactName) : "", c.email, c.phone];
 }
-const shipFrom = () => [brand.legalName, brand.address, [`${brand.city}, ${brand.state}`, brand.zip].filter(Boolean).join(" "), brand.phone];
+/** A ship-by day ("2026-11-17") as the emails print it; anything else as a plain date. */
+const shipByText = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? require("./shipBy").formatShipBy(v) : fmtDate(v));
+const shipFrom = () => [businessName(), brand.address, [`${brand.city}, ${brand.state}`, brand.zip].filter(Boolean).join(" "), brand.phone];
 const partName = (item) => item.partNumber || item.fileName || item.partId || "";
 const leadTimeLabel = (v) => (v && typeof v === "object" ? v.name || titleFromSlug(v.slug) : titleFromSlug(v));
 
@@ -291,22 +296,29 @@ async function buildQuotePdf({ quote, customer, rfq, options = {} } = {}) {
   let y = header(doc);
   y = facts(doc, y, [
     ["Date", fmtDate(date)],
-    ["Valid until", fmtDate(addDays(date, validDays))],
-    ["Lead time", leadTimeLabel(options.leadTime || src.leadTimeSlug)],
+    ["Valid until", fmtDate(isRfq && rfq.validUntil ? rfq.validUntil : addDays(date, validDays))],
+    ["Lead time", isRfq && rfq.quotedLeadDays != null && !options.leadTime ? `${rfq.quotedLeadDays} business day${Number(rfq.quotedLeadDays) === 1 ? "" : "s"}` : leadTimeLabel(options.leadTime || src.leadTimeSlug)],
     isRfq ? ["Your reference", rfq.reference || (src.id ? docNumber("Q", src.id) : "")] : ["Currency", "USD"],
   ]);
   const who = customer || (isRfq ? { name: rfq.contactName, company: rfq.company, email: rfq.email, phone: rfq.phone } : null);
-  y = parties(doc, y, [{ title: "Prepared for", lines: customerLines(who) }, { title: "From", lines: [brand.legalName, `${brand.city}, ${brand.state}`, brand.email, brand.phone] }]);
+  y = parties(doc, y, [{ title: "Prepared for", lines: customerLines(who) }, { title: "From", lines: [businessName(), `${brand.city}, ${brand.state}`, brand.email, brand.phone] }]);
 
+  // An RFQ response carries the firm price, not the budgetary numbers the buyer saw online:
+  // one part gets the quoted total on its line, several parts get quantities only.
+  const firm = isRfq && Number(rfq.quotedTotal) > 0 ? Number(rfq.quotedTotal) : null;
   const items = isRfq && (!src.lineItems || !src.lineItems.length)
-    ? (rfq.parts || []).map((p) => ({ ...p, perUnit: { final: p.budgetUnit }, lineTotal: p.budgetLine }))
+    ? (rfq.parts || []).map((p, i, all) => {
+      const quantity = p.quotedQuantity || p.quantity;
+      if (firm === null) return { ...p, quantity, perUnit: { final: p.budgetUnit }, lineTotal: p.budgetLine };
+      return all.length === 1 ? { ...p, quantity, perUnit: { final: firm / (quantity || 1) }, lineTotal: firm } : { ...p, quantity, perUnit: {}, lineTotal: undefined };
+    })
     : (src.lineItems || []);
   const rows = items.map((li, i) => {
     const unit = li.perUnit?.final ?? li.unitPrice;
     const breaks = (li.quantityBreaks || []).filter((b) => b.qty !== li.quantity).map((b) => `${b.qty}: ${money(b.perUnit)}`);
     return {
       n: String(i + 1), part: partName(li), desc: describe(li), qty: String(li.quantity ?? ""),
-      unit: Number.isFinite(Number(unit)) ? money(unit) : "", ext: Number.isFinite(Number(li.lineTotal)) ? money(li.lineTotal) : "",
+      unit: unit != null && Number.isFinite(Number(unit)) ? money(unit) : "", ext: li.lineTotal != null && Number.isFinite(Number(li.lineTotal)) ? money(li.lineTotal) : "",
       _note: breaks.length ? `Price each at other quantities — ${breaks.join("   ")}` : "",
     };
   });
@@ -315,7 +327,7 @@ async function buildQuotePdf({ quote, customer, rfq, options = {} } = {}) {
     { key: "qty", label: "Qty", w: 8, align: "right" }, { key: "unit", label: "Unit price", w: 13, align: "right" }, { key: "ext", label: "Extended", w: 15, align: "right" },
   ], rows);
 
-  const quotedTotal = isRfq && Number.isFinite(Number(rfq.quotedTotal)) ? Number(rfq.quotedTotal) : null;
+  const quotedTotal = firm;
   y = totals(doc, y, quotedTotal !== null
     ? [["Quoted total", money(quotedTotal), true]]
     : [
@@ -327,7 +339,7 @@ async function buildQuotePdf({ quote, customer, rfq, options = {} } = {}) {
   if (isRfq) {
     y = facts(doc, y, [["Quantities requested", rfq.quantities], ["Tolerance", rfq.tolerance], ["Finish", rfq.finishNotes], ["Needed by", rfq.dueDate]]);
   }
-  y = paragraph(doc, y, "Notes", options.notes);
+  y = paragraph(doc, y, "Notes", options.notes || (isRfq ? rfq.quoteNote : ""));
   y = paragraph(doc, y, "Terms", options.terms || `Prices are in US dollars and hold for ${validDays} days from the date above. This quote covers the files, materials and quantities listed; a change to any of them is re-quoted. To order or ask a question: ${brand.email} or ${brand.phone}.`);
   return finish(doc);
 }
@@ -341,11 +353,13 @@ async function buildOrderConfirmationPdf({ order, items = [], customer, options 
     ["Order date", fmtDate(order.createdAt)],
     ["Your PO", order.poNumber],
     ["Quote", order.quoteId ? docNumber("Q", order.quoteId) : ""],
-    ["Ship via", titleFromSlug(order.shippingMethod)],
+    ["Lead time", order.leadTimeName],
+    ["Ships by", options.shipBy || order.shipBy ? shipByText(options.shipBy || order.shipBy) : ""],
     ["Status", titleFromSlug(order.status)],
-    ["Ship by", options.shipBy ? fmtDate(options.shipBy) : ""],
   ]);
-  y = parties(doc, y, [{ title: "Ordered by", lines: customerLines(customer) }, { title: "Ship to", lines: shipTo(order) }]);
+  // Orders taken from a firm quote have no account: fall back to the contact stored on the order.
+  const orderedBy = customer || (order.customerName || order.customerEmail ? { name: order.customerName, email: order.customerEmail } : null);
+  y = parties(doc, y, [{ title: "Ordered by", lines: customerLines(orderedBy) }, { title: "Ship to", lines: shipTo(order) }]);
   const rows = items.map((it, i) => ({ n: String(i + 1), part: partName(it), desc: describe(it), qty: String(it.quantity ?? ""), unit: money(it.unitPrice), ext: money(it.lineTotal) }));
   y = table(doc, y, [
     { key: "n", label: "Line", w: 5 }, { key: "part", label: "Part / file", w: 27, bold: true }, { key: "desc", label: "Process · material · finish", w: 32 },
@@ -353,11 +367,13 @@ async function buildOrderConfirmationPdf({ order, items = [], customer, options 
   ], rows);
   y = totals(doc, y, [
     ["Subtotal", money(order.subtotal)],
-    ["Shipping", money(order.shippingCost)],
+    Number(order.leadTimeSurcharge) > 0 ? [`${order.leadTimeName || "Faster"} lead time`, money(order.leadTimeSurcharge)] : null,
+    Number(order.shippingCost) > 0 ? ["Shipping", money(order.shippingCost)] : null,
     Number(order.tax) > 0 ? ["Sales tax", money(order.tax)] : null,
     ["Order total", money(order.total), true],
   ]);
-  y = paragraph(doc, y, "Order notes", order.notes);
+  // The buyer's own notes. `order.notes` is the shop's internal note and never prints on a customer document.
+  y = paragraph(doc, y, "Your notes", order.customerNotes);
   y = paragraph(doc, y, null, options.closing || `Please check the parts, quantities and ship-to address above and tell us about anything that is wrong before we cut material: ${brand.email} or ${brand.phone}. Please give order number ${number} in any message about this order.`);
   return finish(doc);
 }
@@ -415,7 +431,7 @@ async function buildCocPdf({ order, items = [], customer, options = {} } = {}) {
     { key: "n", label: "Line", w: 5 }, { key: "part", label: "Part number / file", w: 31, bold: true }, { key: "rev", label: "Rev", w: 7 },
     { key: "mat", label: "Material", w: 27 }, { key: "qty", label: "Qty", w: 8, align: "right" }, { key: "lot", label: "Material lot / heat", w: 22 },
   ], rows, { rowPad: 7 });
-  y = paragraph(doc, y + 4, "Certification", options.statement || `${brand.legalName} certifies that the parts listed above were made and inspected to the drawings, models, specifications and purchase order requirements supplied by the customer, and that they conform to those requirements except as noted below.`, { size: 9.5 });
+  y = paragraph(doc, y + 4, "Certification", options.statement || `${businessName()} certifies that the parts listed above were made and inspected to the drawings, models, specifications and purchase order requirements supplied by the customer, and that they conform to those requirements except as noted below.`, { size: 9.5 });
   y = ensure(doc, y, 110);
   label(doc, "Material certification", PAGE.m, y, INNER);
   let x = checkbox(doc, PAGE.m, y + 12, "Attached", options.materialCert === "attached");

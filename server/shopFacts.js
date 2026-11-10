@@ -36,4 +36,22 @@ function when(id, fn = (v) => v, fallback = "") {
   return ok(id) ? fn(data.facts[id].value) : fallback;
 }
 
-module.exports = { ok, when, materialListed, finishListed, leadTimeListed };
+/**
+ * Catalog grade names carry "(FDA)". Food-contact compliance belongs to a
+ * maker's grade and lot, so emails and documents say it only once the owner has
+ * confirmed the statements can be had (same rule as gradeLabel in client/src/facts.js).
+ */
+function gradeLabel(name) {
+  const s = String(name || "");
+  if (!/\(FDA\)/.test(s)) return s;
+  return ok("food-docs")
+    ? s.replace(/\s*\(FDA\)/, ", food-contact grade (maker's compliance statement on request)")
+    : s.replace(/\s*\(FDA\)/, "");
+}
+
+/** The name the business signs with: the legal name once the owner has confirmed it, else the trading name. */
+function businessName(brand) {
+  return ok("legal-name") ? data.facts["legal-name"].value : brand.name;
+}
+
+module.exports = { ok, when, materialListed, finishListed, leadTimeListed, gradeLabel, businessName };

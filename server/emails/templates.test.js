@@ -2,6 +2,7 @@
  * Email template + mailer tests. Run: `node server/emails/templates.test.js`
  */
 const assert = require("assert");
+const shopFacts = require("../shopFacts");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -41,7 +42,7 @@ test("no remote images or other remote resources", () => {
 
 test("brand facts come from shared/brand.json, in both bodies", () => {
   for (const [name, m] of all) {
-    for (const fact of [brand.phone, brand.email, brand.legalName, brand.city]) {
+    for (const fact of [brand.phone, brand.email, shopFacts.businessName(brand), brand.city]) {
       assert.ok(m.html.includes(fact), `${name} html has ${fact}`);
       assert.ok(m.text.includes(fact), `${name} text has ${fact}`);
     }
