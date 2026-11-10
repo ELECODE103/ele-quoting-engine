@@ -1,64 +1,86 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './utils/authContext';
+import useHeadSync from './seo/useHeadSync';
 import Header from './components/Header';
-import QuoteBuilder from './pages/QuoteBuilder';
-import AdminPanel from './pages/AdminPanel';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import CustomerDashboard from './pages/CustomerDashboard';
-import CheckoutPage from './pages/CheckoutPage';
-import OrderTrackingPage from './pages/OrderTrackingPage';
-import JobTravelerPage from './pages/JobTravelerPage';
+// Public (marketing) pages are in the main bundle: they are small, they are
+// what search engines and first-time visitors load, and they are prerendered
+// to static HTML at build time (scripts/seo/prerender.mjs) and hydrated.
 import LandingPage from './pages/LandingPage';
 import ServicePage from './pages/ServicePage';
 import MaterialsPage from './pages/MaterialsPage';
+import MaterialPage from './pages/MaterialPage';
 import QualityPage from './pages/QualityPage';
 import AboutPage from './pages/AboutPage';
 import RfqPage from './pages/RfqPage';
+import NotFoundPage from './pages/NotFoundPage';
+
+// App pages are split out so three.js, the quote builder and the admin panel
+// are never downloaded by someone reading a marketing page.
+const QuoteBuilder = lazy(() => import('./pages/QuoteBuilder'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const CustomerDashboard = lazy(() => import('./pages/CustomerDashboard'));
+const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
+const OrderTrackingPage = lazy(() => import('./pages/OrderTrackingPage'));
+const JobTravelerPage = lazy(() => import('./pages/JobTravelerPage'));
+
+function Spinner() {
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="spinner" />
+    </div>
+  );
+}
+
+/** App chrome (shared header) around a lazily loaded app page. */
+function AppShell({ children }) {
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
+      <Header />
+      <Suspense fallback={<Spinner />}>{children}</Suspense>
+    </div>
+  );
+}
+
+/** Waits for the saved session to be read before deciding to redirect to /login. */
+function Protected({ children }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <Spinner />;
+  return isAuthenticated ? children : <Navigate to="/login" />;
+}
 
 export default function App() {
-  const { isAuthenticated, isLoading } = useAuth();
+  useHeadSync();
 
-  if (isLoading) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div className="spinner" />
-      </div>
-    );
-  }
-
+  // Note: public routes must render the same markup on the server and on the
+  // first client render, so nothing here may wait on auth state.
   return (
     <Routes>
-      {/* Public routes */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      {/* Public, prerendered */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/machining" element={<ServicePage slug="machining" />} />
       <Route path="/routing" element={<ServicePage slug="routing" />} />
       <Route path="/3d-printing" element={<ServicePage slug="3d-printing" />} />
       <Route path="/materials" element={<MaterialsPage />} />
+      <Route path="/materials/:slug" element={<MaterialPage />} />
       <Route path="/quality" element={<QualityPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/rfq" element={<RfqPage />} />
       <Route path="/rfq/:quoteId" element={<RfqPage />} />
 
-      {/* Protected routes */}
-      <Route
-        path="*"
-        element={
-          <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
-            <Header />
-            <Routes>
-              <Route path="/quote" element={<QuoteBuilder />} />
-              <Route path="/admin" element={<AdminPanel />} />
-              <Route path="/dashboard" element={isAuthenticated ? <CustomerDashboard /> : <Navigate to="/login" />} />
-              <Route path="/checkout/:quoteId" element={isAuthenticated ? <CheckoutPage /> : <Navigate to="/login" />} />
-              <Route path="/orders/:orderId" element={isAuthenticated ? <OrderTrackingPage /> : <Navigate to="/login" />} />
-              <Route path="/orders/:orderId/traveler" element={isAuthenticated ? <JobTravelerPage /> : <Navigate to="/login" />} />
-            </Routes>
-          </div>
-        }
-      />
+      {/* App, client-rendered, noindex */}
+      <Route path="/login" element={<Suspense fallback={<Spinner />}><LoginPage /></Suspense>} />
+      <Route path="/register" element={<Suspense fallback={<Spinner />}><RegisterPage /></Suspense>} />
+      <Route path="/quote" element={<AppShell><QuoteBuilder /></AppShell>} />
+      <Route path="/admin" element={<AppShell><AdminPanel /></AppShell>} />
+      <Route path="/dashboard" element={<AppShell><Protected><CustomerDashboard /></Protected></AppShell>} />
+      <Route path="/checkout/:quoteId" element={<AppShell><Protected><CheckoutPage /></Protected></AppShell>} />
+      <Route path="/orders/:orderId" element={<AppShell><Protected><OrderTrackingPage /></Protected></AppShell>} />
+      <Route path="/orders/:orderId/traveler" element={<AppShell><Protected><JobTravelerPage /></Protected></AppShell>} />
+
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }

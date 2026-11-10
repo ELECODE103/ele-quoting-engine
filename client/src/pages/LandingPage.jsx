@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import PublicLayout from '../components/PublicLayout';
+import Photo from '../components/Photo';
 import brand from '../brand';
 
 const GALLERY = [
@@ -41,7 +42,7 @@ export default function LandingPage() {
               </div>
             </div>
             <div className="photo-frame" style={{ aspectRatio: '4 / 5', maxHeight: 560 }}>
-              <img className="photo" src="/photos/tray-stack-edge.jpg" alt="Stack of router-cut HDPE trays on the shop bench" loading="eager" />
+              <Photo src="/photos/tray-stack-edge.jpg" alt="Stack of router-cut HDPE trays on the shop bench" loading="eager" />
               <div className="cap">HDPE, 3/4" — router-cut and pocketed. A production lot, not a prototype.</div>
             </div>
           </div>
@@ -113,7 +114,7 @@ export default function LandingPage() {
           <div className="photo-grid">
             {GALLERY.map((g) => (
               <div key={g.src} className="photo-frame">
-                <img className="photo" src={g.src} alt={g.cap} loading="lazy" />
+                <Photo src={g.src} alt={g.cap} loading="lazy" sizes="(max-width: 720px) 100vw, (max-width: 900px) 50vw, 33vw" />
                 <div className="cap">{g.cap}</div>
               </div>
             ))}
@@ -150,7 +151,7 @@ export default function LandingPage() {
         <div className="pub-wrap">
           <div className="hero-grid" style={{ gap: 48 }}>
             <div className="photo-frame" style={{ aspectRatio: '4 / 5', maxHeight: 520 }}>
-              <img className="photo" src="/photos/brackets-inspection.jpg" alt="Acetal brackets being checked with a height gage on a granite surface plate" loading="lazy" />
+              <Photo src="/photos/brackets-inspection.jpg" alt="Acetal brackets being checked with a height gage on a granite surface plate" loading="lazy" />
               <div className="cap">Every production lot sees the surface plate before it sees a box.</div>
             </div>
             <div>
@@ -192,7 +193,7 @@ export default function LandingPage() {
 function ProcessCard({ to, img, alt, title, sub, text, chips }) {
   return (
     <Link to={to} className="card proc-card" style={{ textDecoration: 'none' }}>
-      <div className="photo-frame"><img className="photo" src={img} alt={alt} loading="lazy" /></div>
+      <div className="photo-frame"><Photo src={img} alt={alt} loading="lazy" sizes="(max-width: 768px) 100vw, 33vw" /></div>
       <div>
         <h3 className="display" style={{ marginBottom: 2 }}>{title}</h3>
         <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>{sub}</div>

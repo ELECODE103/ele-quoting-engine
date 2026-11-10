@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import PublicLayout from '../components/PublicLayout';
+import Photo from '../components/Photo';
 import brand from '../brand';
 import { KerfMark } from '../components/Wordmark';
 
@@ -41,7 +42,7 @@ export default function AboutPage() {
               </p>
             </div>
             <div className="photo-frame" style={{ aspectRatio: '4 / 5', maxHeight: 520 }}>
-              <img className="photo" src="/photos/disc-hand.jpg" alt="Router-cut UHMW disc held in front of the CNC router" loading="eager" />
+              <Photo src="/photos/disc-hand.jpg" alt="Router-cut UHMW disc held in front of the CNC router" loading="eager" />
               <div className="cap">UHMW, 1/2" — one of a sheet's worth, off the router.</div>
             </div>
           </div>

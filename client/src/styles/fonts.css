@@ -1,0 +1,9 @@
+/* Self-hosted variable fonts (no request to fonts.googleapis.com / gstatic.com).
+   The @fontsource-variable packages ship woff2 split by unicode-range with
+   font-display: swap, so a browser downloads only the Latin subset files it
+   needs. The Latin files for Inter and Archivo are preloaded in the HTML by
+   scripts/seo/prerender.mjs. Family names are "Inter Variable",
+   "Archivo Variable", "JetBrains Mono Variable" (see global.css). */
+@import '@fontsource-variable/inter/wght.css';
+@import '@fontsource-variable/archivo/wght.css';
+@import '@fontsource-variable/jetbrains-mono/wght.css';
