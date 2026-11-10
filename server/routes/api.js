@@ -18,6 +18,7 @@ const { sanitizeString, isValidSlug, isValidUUID, nonNegativeNumber, positiveInt
 const shipBy = require("../services/shipBy");
 const { validateFileContent } = require("../middleware/fileValidator");
 const fileCrypto = require("../services/fileCrypto");
+const dxf = require("../geometry/dxf");
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
   fileFilter: (req, file, cb) => {
-    const allowed = [".step", ".stp", ".stl", ".3mf", ".iges", ".igs"];
+    const allowed = [".step", ".stp", ".stl", ".3mf", ".iges", ".igs", ".dxf"];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) {
       cb(null, true);
@@ -91,21 +92,80 @@ function whitelist(body, allowedFields) {
 // FILE UPLOAD & PARSING
 // ═══════════════════════════════════════════════════════════════
 
+const DXF_ROUTING_ONLY = "A DXF is a 2D profile, so it can only be quoted for CNC routing (sheet and plate cut on the router). Switch the process to CNC routing and upload it again, or upload a STEP, STL, IGES or 3MF model for machining or printing.";
+
+/** What the client needs to show a part: geometry summary, DFM, and a 3D mesh or a 2D profile. */
+function partPayload(part, parsed) {
+  const g = parsed.geometry;
+  return {
+    partId: part.id,
+    fileName: part.fileName,
+    geometry: {
+      boundingBox: g.boundingBox,
+      surfaceArea: g.surfaceArea,
+      volume: g.volume,
+      triangleCount: g.triangleCount,
+      estimatedThickness: g.estimatedThickness,
+      flatWidth: g.flatWidth,
+      flatHeight: g.flatHeight,
+      flatArea: g.flatArea,
+      estimatedPerimeter: g.estimatedPerimeter,
+      estimatedHoles: g.estimatedHoles,
+      estimatedBends: g.estimatedBends,
+      estimatedSlots: g.estimatedSlots,
+      units: g.units,
+      // Recognised features (server/geometry/SCHEMA.md): holes, pockets,
+      // slots, walls, access, stock, confidence. Mesh data stays in meshPreview.
+      features: g.features || null,
+      // 2D input (DXF): the loops for the SVG preview, units, and what was skipped.
+      ...(dxf.is2D(g) ? { sourceFormat: "dxf", is2D: true, sourceUnit: g.sourceUnit, profile2d: g.profile2d } : {}),
+    },
+    dfm: parsed.dfm,
+    dfmAll: parsed.dfmAll,
+    meshPreview: {
+      positions: g.meshData?.positions || [],
+      triangleCount: g.meshData?.triangleCount || 0,
+    },
+  };
+}
+
 /**
  * POST /api/upload
  * Upload one or more CAD files, parse geometry, return analysis.
  * Requires authentication. Files validated for magic bytes.
+ *
+ * Optional form field `process`: the process the customer has selected. A
+ * .dxf is a 2D profile and is only accepted for routing — with any other
+ * process it is refused with a message that offers routing (code
+ * "dxf-routing-only"). Send the field before the files.
  */
 router.post("/upload", upload.array("files", 20), validateFileContent, async (req, res) => {
   try {
+    const errors = [];
+    for (const r of req.rejectedFiles || []) {
+      const isDxf = /\.dxf$/i.test(r.fileName || "");
+      errors.push({
+        fileName: r.fileName,
+        error: isDxf
+          ? "This does not look like a DXF file (a DWG renamed to .dxf will not work). Export the part outline as DXF from your CAD program and upload again."
+          : "The file's contents do not match its extension. Re-export it from your CAD program and upload again.",
+      });
+    }
     if (!req.files || req.files.length === 0) {
+      if (errors.length) return res.json({ parts: [], errors });
       return res.status(400).json({ error: "No files uploaded" });
     }
 
+    const selectedProcess = typeof req.body?.process === "string" ? req.body.process.trim() : "";
     const results = [];
-    const errors = [];
     for (const file of req.files) {
       try {
+        const isDxfFile = path.extname(file.originalname).toLowerCase() === ".dxf";
+        if (isDxfFile && selectedProcess && selectedProcess !== "routing") {
+          fs.unlink(file.path, () => {});
+          errors.push({ fileName: file.originalname, error: DXF_ROUTING_ONLY, code: "dxf-routing-only", offerProcess: "routing" });
+          continue;
+        }
         const parsed = await parseFile(file.path);
 
         // Encrypt the stored file at rest now that parsing is done (no-op unless
@@ -123,34 +183,7 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
           dfm: parsed.dfm,
         });
 
-        results.push({
-          partId: part.id,
-          fileName: file.originalname,
-          geometry: {
-            boundingBox: parsed.geometry.boundingBox,
-            surfaceArea: parsed.geometry.surfaceArea,
-            volume: parsed.geometry.volume,
-            triangleCount: parsed.geometry.triangleCount,
-            estimatedThickness: parsed.geometry.estimatedThickness,
-            flatWidth: parsed.geometry.flatWidth,
-            flatHeight: parsed.geometry.flatHeight,
-            flatArea: parsed.geometry.flatArea,
-            estimatedPerimeter: parsed.geometry.estimatedPerimeter,
-            estimatedHoles: parsed.geometry.estimatedHoles,
-            estimatedBends: parsed.geometry.estimatedBends,
-            estimatedSlots: parsed.geometry.estimatedSlots,
-            units: parsed.geometry.units,
-            // Recognised features (server/geometry/SCHEMA.md): holes, pockets,
-            // slots, walls, access, stock, confidence. Mesh data stays in meshPreview.
-            features: parsed.geometry.features || null,
-          },
-          dfm: parsed.dfm,
-          dfmAll: parsed.dfmAll,
-          meshPreview: {
-            positions: parsed.geometry.meshData?.positions || [],
-            triangleCount: parsed.geometry.meshData?.triangleCount || 0,
-          },
-        });
+        results.push(partPayload(part, parsed));
       } catch (err) {
         errors.push({
           fileName: file.originalname,
@@ -163,6 +196,40 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
   } catch (err) {
     console.error("Upload error:", err);
     res.status(500).json({ error: "Upload failed. Please try again." });
+  }
+});
+
+/**
+ * POST /api/parts/:partId/units   { units: "mm" | "in" }
+ * Set (or confirm) the drawing units of an uploaded DXF. The file is read
+ * again at the chosen scale, so every tolerance, DFM check and location is
+ * computed in real millimetres, and the stored part is replaced. Returns the
+ * same payload as an upload. Like /upload and /quote this is open: a part is
+ * addressed by its unguessable id.
+ */
+router.post("/parts/:partId/units", async (req, res) => {
+  try {
+    const units = req.body?.units;
+    if (units !== "mm" && units !== "in") return res.status(400).json({ error: 'units must be "mm" or "in"' });
+    const part = partsDB.getById(req.params.partId);
+    if (!part) return res.status(404).json({ error: "Part not found" });
+    if (!dxf.is2D(part.geometry)) return res.status(400).json({ error: "Units can only be chosen for a DXF. STEP, IGES and 3MF carry their own units; STL is read as millimetres." });
+    const safeName = path.basename(part.storedName || "");
+    const filePath = path.join(uploadDir, safeName);
+    if (!safeName || !fs.existsSync(filePath)) return res.status(410).json({ error: "The uploaded file is no longer on our server. Upload it again." });
+    const buffer = fileCrypto.isEncryptedPath(safeName) ? fileCrypto.decryptToBuffer(filePath) : fs.readFileSync(filePath);
+    let parsed;
+    try {
+      parsed = await parseFile(filePath, { buffer, ext: ".dxf", units });
+    } catch (err) {
+      // e.g. two outlines that were one loop at the other scale's weld tolerance
+      return res.status(422).json({ error: err.message });
+    }
+    const updated = partsDB.update(part.id, { geometry: parsed.geometry, dfm: parsed.dfm }) || { ...part, geometry: parsed.geometry };
+    res.json(partPayload({ id: part.id, fileName: updated.fileName || part.fileName }, parsed));
+  } catch (err) {
+    console.error("Units error:", err);
+    res.status(500).json({ error: "Could not change the units. Please try again." });
   }
 });
 
@@ -181,8 +248,8 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
 const QUOTE_VALID_DAYS = 30;
 const CONFIG_FIELDS = ["partId", "materialSlug", "grade", "thicknessMm", "finishSlug", "quantity", "process", "subProcess", "layerHeight", "infill"];
 
-function quoteError(status, message) {
-  return Object.assign(new Error(message), { status, expose: true });
+function quoteError(status, message, extra = {}) {
+  return Object.assign(new Error(message), { status, expose: true, extra });
 }
 
 /** The rate card's rush table wins when it names this lead time, else the lead-time record's own multiplier. */
@@ -219,7 +286,19 @@ function priceQuote(partConfigs, leadTimeSlug = "standard") {
     const finish = finishesDB.getAll().find((f) => f.slug === (config.finishSlug || defaultFinishSlug)) || null;
 
     const process = config.process || material.process || defaultProcessSlug();
-    const thicknessMm = config.thicknessMm || material.thicknesses?.[2]?.mm || material.thicknesses?.[0]?.mm || 0;
+    // A DXF is a 2D profile: routing only, and nothing is assumed for it —
+    // the customer confirms ambiguous units and picks the stock thickness.
+    if (dxf.is2D(part.geometry)) {
+      const extra = { partId: config.partId };
+      if (process !== "routing") throw quoteError(400, `${part.fileName}: ${DXF_ROUTING_ONLY}`, { ...extra, code: "dxf-routing-only" });
+      if (part.geometry.profile2d.units?.needsConfirmation) {
+        throw quoteError(400, `${part.fileName}: choose whether this drawing is in inches or millimetres before we price it.`, { ...extra, code: "dxf-units-required" });
+      }
+      if (!(Number(config.thicknessMm) > 0)) {
+        throw quoteError(400, `${part.fileName}: select a stock thickness — a DXF has no thickness of its own.`, { ...extra, code: "dxf-thickness-required" });
+      }
+    }
+    const thicknessMm = Number(config.thicknessMm) > 0 ? Number(config.thicknessMm) : (material.thicknesses?.[2]?.mm || material.thicknesses?.[0]?.mm || 0);
     pricingParts.push({
       partId: config.partId,
       fileName: part.fileName,
@@ -338,7 +417,7 @@ router.post("/quote", optionalAuth, (req, res) => {
       ),
     });
   } catch (err) {
-    if (err.expose) return res.status(err.status).json({ error: err.message });
+    if (err.expose) return res.status(err.status).json({ error: err.message, ...(err.extra || {}) });
     console.error("Quote error:", err);
     res.status(500).json({ error: "Quote calculation failed. Please try again." });
   }

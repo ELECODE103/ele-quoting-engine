@@ -14,6 +14,7 @@
 
 const { DEFAULT_PRICING_RULES } = require("../config/defaults");
 const { resolveProcess } = require("../processes/registry");
+const dxf = require("../geometry/dxf");
 
 // Back-compat map from legacy PricingEngine method names to the standalone
 // pricing module `calculate` functions. Used to dispatch process definitions
@@ -45,6 +46,13 @@ class PricingEngine {
       (def.pricing && def.pricing.calculate) ||
       PRICE_METHOD_CALCULATORS[def.priceMethod] ||
       PRICE_METHOD_CALCULATORS.calculateSheetMetalPrice;
+    // 2D input (DXF): extrude the profile to the selected stock thickness so
+    // the routing model sees the same features a STEP plate gives it.
+    if (dxf.is2D(params.geometry)) {
+      if (def.slug !== "routing") throw new Error("A DXF is a 2D profile and can only be priced for CNC routing");
+      if (!(Number(params.thicknessMm) > 0)) throw new Error("A DXF part needs a stock thickness before it can be priced");
+      params = { ...params, geometry: dxf.materialize(params.geometry, params.thicknessMm) };
+    }
     return calculate(params, this.rules);
   }
 

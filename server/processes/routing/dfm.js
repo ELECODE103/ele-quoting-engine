@@ -12,6 +12,7 @@
 const { summarizeChecks } = require("../shared");
 const { check, COST, mm, dia, ratio, num, materialProfile, isLegacy, meshIntegrity } = require("../dfmKit");
 const { getFeatures, extents } = require("../featureAdapter");
+const dfm2d = require("./dfm2d");
 
 // Techno: 59" × 96" bed, 12" under the gantry. Usable sheet is 48" × 96".
 const BED_X_MM = 2438;   // 96"
@@ -60,7 +61,12 @@ function run(geometry, options = {}) {
   const reachTool = smallestToolReaching(thickness);
   const minR = reachTool.dia / 2;
 
+  // 2D input (DXF extruded to the selected stock): the drawing checks come first.
+  const from2d = f.source === "dxf" && geometry && geometry.profile2d;
+  const ctx2d = { thickness, reachTool, provisional: !!f.provisionalThickness };
+
   checks.push(...meshIntegrity("rt", f, conf));
+  if (from2d) checks.push(...dfm2d.run2d(geometry, ctx2d));
 
   // 1. Fits the bed (hard limit — either orientation)
   const fitsBed = (Math.max(flatW, flatH) <= BED_X_MM && Math.min(flatW, flatH) <= BED_Y_MM) && thin <= BED_Z_MM;
@@ -83,7 +89,8 @@ function run(geometry, options = {}) {
           : `Part is not clearly flat (${thin.toFixed(1)} × ${mid.toFixed(1)} × ${long.toFixed(1)} mm). Routing works for 2.5D parts; 3D surfaces should go to CNC Machining` }));
 
   // 3. Selected thickness vs. model thickness
-  if (selectedThickness > 0 && thin > 0) {
+  // (a drawing has no thickness of its own, so there is nothing to compare for 2D input)
+  if (selectedThickness > 0 && thin > 0 && !from2d) {
     const delta = Math.abs(selectedThickness - thin);
     const ok = delta <= Math.max(0.6, thin * 0.12);
     checks.push(check({ id: "rt-thickness-match", label: "Stock Thickness Match", severity: ok ? "pass" : "warn", cost: ok ? COST.NONE : COST.MINOR, confidence: conf.extents, measured: thin, threshold: selectedThickness,
@@ -269,6 +276,7 @@ function run(geometry, options = {}) {
       ? `About ${perSheet} part(s) per 48" × 96" sheet. Quantities that fill whole sheets price best`
       : `Part is larger than a single 48" × 96" sheet footprint — oversize stock or a split is needed` }));
 
+  if (from2d) dfm2d.annotate(checks, geometry, ctx2d);
   return { checks, summary: summarizeChecks(checks) };
 }
 

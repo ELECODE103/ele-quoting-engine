@@ -9,7 +9,7 @@ All lengths mm, areas mm², volumes mm³, angles degrees. `null` means "not dete
 ```js
 features = {
   schemaVersion: 1,
-  source: "step" | "stl" | "3mf" | "iges",
+  source: "step" | "stl" | "3mf" | "iges" | "dxf",   // "dxf": extruded from a 2D drawing, see §2D input
   mesh: { triangles, watertight: bool, manifold: bool, selfIntersections: bool },
 
   // Extents
@@ -65,7 +65,8 @@ features = {
     removalVolumeBlock, removalRatioBlock,
   },
 
-  confidence: { holes: 0..1, pockets: 0..1, walls: 0..1, shape: 0..1, overall: 0..1 },
+  confidence: { holes: 0..1, pockets: 0..1, walls: 0..1, shape: 0..1, overall: 0..1,
+                source?: "dxf" },     // optional: set when the numbers come from drawn entities, not a mesh
   notes: [ "strings for the admin view: what was ambiguous" ],
 }
 ```
@@ -76,3 +77,53 @@ Rules for implementers:
 - STL/3MF use mesh methods: normal clustering into planar regions, cylinder fitting on edge loops, ray-cast thickness (minimum of opposite-face distances along normals), per-axis visibility for setups/undercuts, outline from projection along the principal axis.
 - Every field has a unit test with a synthetic part whose true value is known analytically.
 - `confidence` is honest: a hole found from a B-rep cylinder is 1.0; one inferred from an STL loop is ≤ 0.8.
+
+## 2D input (DXF) — `geometry.profile2d`
+
+A DXF has a profile but no thickness, so the geometry module produces two things (all additions are
+optional fields; nothing above changed meaning, and 3D sources never carry them):
+
+1. `geometry.profile2d` — the thickness-independent analysis of the drawing, stored with the part
+   (`server/geometry/dxf`). mm, origin at the lower-left corner of the part's bounding box.
+2. `geometry.features` — the object above, built by `materialize(geometry, thicknessMm)` at quote time
+   by extruding the profile to the **stock thickness the customer selected**. The pricing engine and
+   `runDFMAnalysis` call it for every 2D geometry, so the routing model and DFM read a DXF exactly as
+   they read a STEP plate. Until a thickness is chosen `features.provisionalThickness: true` is set
+   (built at 6.35 mm for the upload-time DFM preview only; the quote route refuses to price it).
+
+```js
+geometry.sourceFormat = "dxf"; geometry.is2D = true; geometry.sourceUnit = "mm" | "in" | …;
+geometry.profile2d = {
+  version: 1,
+  units: { unit, source: "file" | "assumed" | "customer", needsConfirmation: bool, reason,
+           declared, insunits, measurement,          // $INSUNITS / $MEASUREMENT as read
+           sizeIfMm: { w, h }, sizeIfInch: { w, h } }, // footprint in mm under each reading
+  bbox: { w, h, originX, originY },
+  perimeter, innerPerimeter, area,     // outer loop / all cutouts / net material (exact: arcs are analytic)
+  outerCount, nestedCount, cutoutCount, closedCount, openCount,
+  holes: [{ diameter, center: [x, y], exact: bool }],            // exact = drawn as a circle/arcs
+  slots: [{ width, length, shape: "stadium" | "elongated", center }],
+  minInternalRadius, minInternalRadiusAt, sharpCorners: [[x, y]…],  // same convention as outline.js
+  minSlotWidth, minSlotWidthAt,        // narrowest cutout / notch (not round holes)
+  minWeb, minWebAt,                    // narrowest material between two cuts or a cut and the edge
+  problems: [{ code: "open-contour" | "junction" | "self-intersection" | "crossing" | "duplicate" | "overlap" | "sliver",
+               at: [x, y], gap? }],
+  cleaned: { degenerate, duplicates, overlaps, slivers },
+  ignored: { total, entityTypes: { TEXT: n, … }, layers: [{ name, reason, count }], solids, nonPlanar, paperSpace, unknownBlocks },
+  layers: [ "cut layer names" ], approxCurves, tolerances: { weldMm, flattenMm },
+  loops: [{ role: "outer" | "hole" | "slot" | "cutout" | "open" | "sliver", closed, depth, perimeter, area,
+            pts: [[x, y]…], diameter?, center? }],   // flattened, for the 2D preview
+}
+```
+
+How the 2D features map onto the schema: `shape.kind = "flat"`, `is25D = true`, `primaryAxis = [0,0,1]`,
+`shape.stockThickness = aabb.d =` the selected thickness; `volume = area × t`,
+`surfaceArea = 2·area + (perimeter + innerPerimeter)·t`; `shape.profile.*` straight from `profile2d`;
+every drawn circle is a through `holes[]` entry (`depth = t`, `kind: "round"`); elongated cutouts are
+`slots[]` (same definition as `detectSlots`); `pockets = []` (a drawing cannot express depth);
+`walls.minThickness = profile2d.minWeb` (in-plane web, which is what the routing rule reads);
+`mesh.watertight/manifold = null` (there is no mesh); `confidence` is 1.0 for holes and shape when every
+contour is closed and nothing crosses, 0.5 otherwise, with `confidence.source = "dxf"`.
+
+DFM check records may carry an optional `locations: [{ x, y, note }]` (mm, same origin) so the 2D
+preview can mark where a check applies. Consumers that do not know the field ignore it.

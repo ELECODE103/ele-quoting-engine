@@ -136,6 +136,27 @@ Tool reach model: a profile tool cuts cleanly to ~3–4× its diameter in plasti
 
 15 ids. FAIL-capable: `rt-bed-size`, `rt-mesh-integrity`, `rt-thin-web` (zero web). A sharp inside corner on a routed outline never fails — it is always relievable with a dog-bone (SendCutSend adds them automatically), so it warns major.
 
+### 5.1 Routing from a DXF (2D input)
+
+A DXF is extruded to the stock thickness the customer selects (`server/geometry/dxf`, SCHEMA.md §2D input) and then runs through the **same 15 rules** — inside-corner radius vs the tool that reaches, slot width, hole diameter vs thickness, thin webs between features and to the edge, bed size, small-part retention — with exact inputs (a drawn circle is a hole; arcs are analytic). `rt-thickness-match` is skipped: a drawing has no thickness to compare. `server/processes/routing/dfm2d.js` adds the rules only a drawing can break:
+
+| id | Rule | Threshold | Severity · cost | Why |
+|---|---|---|---|---|
+| `rt-dxf-contours` | every contour closed; no point where 3+ lines meet | endpoints within 0.02 mm are welded; anything wider is a gap | **FAIL** major — reports the gap size and its X/Y | no closed loop = no inside/outside = no toolpath. |
+| `rt-dxf-intersections` | a contour crossing itself or another contour | proper crossing of two segments | **FAIL** major — at the crossing | cut side undefined |
+| `rt-dxf-duplicates` | duplicate entities, lines overlapping on the same path | same endpoints + midpoint within 0.02 mm; collinear overlap > 0.2 mm | WARN minor | would be cut twice; we remove them for the price and cut once |
+| `rt-dxf-slivers` | closed loop with no area | area ÷ perimeter < 0.02 mm | WARN minor | a router cannot cut a zero-width line; left out of the price |
+| `rt-dxf-units` | drawing units and resulting size | `$INSUNITS` set → INFO; unitless or inches-with-metric-flag → WARN until the customer picks | INFO / WARN major | a 25.4× scale error is the classic DXF mistake; the quote route will not price an unconfirmed file |
+| `rt-dxf-scope` | what a 2D file cannot say; what was skipped | — | INFO | pockets, countersinks, taps, engraving are not in a DXF; lists ignored layers / entity types |
+
+FAIL-capable: `rt-dxf-contours`, `rt-dxf-intersections` (plus the shared `rt-bed-size` and zero-web `rt-thin-web`, which catches two cuts that touch). Everything else warns, per the severity philosophy in §1. Checks that point at a place carry `locations: [{x, y, note}]` (mm from the lower-left of the drawing); the 2D preview draws a numbered marker at each: gaps, crossings, duplicates, sharp inside corners, the narrowest slot, the thinnest web, undersized holes.
+
+Not cut, by rule (counted and listed in `rt-dxf-scope`): TEXT, MTEXT, DIMENSION, LEADER, HATCH, POINT, images, viewports; anything on a layer named like dim/text/anno/note/title/border/construction/defpoints/hidden/center/hatch; frozen or switched-off layers; non-continuous linetypes (center, hidden, dashed, phantom); paper space; entities not in the XY plane.
+
+Refused at upload with a message (not a DFM result): binary DXF, a file with no cut geometry or only 3D solids, **more than one part in the file**, and a closed shape inside a cutout (a part within a part). One part per file keeps material, thickness and quantity per part and avoids pricing a nested sheet as one part.
+
+On any other process a DXF yields a single FAIL `dxf-2d-file` that points the customer to routing.
+
 ## 6. 3D printing rules (`subProcess: "fdm" | "sla" | "sls"`)
 
 | id | Rule | FDM | SLA | SLS | Severity · cost | Source |

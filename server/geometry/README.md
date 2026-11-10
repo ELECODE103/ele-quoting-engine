@@ -157,6 +157,19 @@ Files:
    `bar` for revolved parts = max diameter + 2 × pad, length + 2 × pad; `sheet`
    for flat parts = thickness (no pad) × profile bbox + 2 × pad.
 
+## 2D input (DXF)
+
+`server/geometry/dxf/` is a separate, mesh-free path for flat routed parts:
+
+| file | job |
+|---|---|
+| `parse.js` | ASCII DXF → header (`$INSUNITS`, `$MEASUREMENT`), layers, blocks → curves in mm. LINE, ARC, CIRCLE, LWPOLYLINE/POLYLINE with bulges are kept as exact lines and arcs; ELLIPSE and SPLINE (NURBS, de Boor) are flattened to ±0.005 mm; INSERT is expanded (nested, scaled, rotated, mirrored, arrayed). Annotation, construction and hidden content is counted, not cut. |
+| `analyze.js` | curves → loops: explode, de-duplicate, merge overlaps, chain by endpoint (0.02 mm weld), measure exactly, classify by containment (outer / cutout / nested), find crossings, then holes, slots, smallest inside-corner radius, narrowest cutout and narrowest web — each with a location. |
+| `index.js` | `parseDXF(buffer, { units })` → geometry with `profile2d`; `materialize(geometry, thicknessMm)` → the SCHEMA.md `features` for that stock thickness. Refuses multi-part files and parts inside cutouts. |
+| `writer.js` | small DXF writer for fixtures (tests, `tools/vet-quotes/generate_dxf_parts.js`). |
+
+Units: `$INSUNITS` decides; a unitless file is read as mm (or inches when `$MEASUREMENT = 0`) and flagged `needsConfirmation` — the customer picks, the file is re-read at that scale (`POST /api/parts/:id/units`), and only then is it priced. Tolerances are physical (mm), which is why the file is re-read rather than rescaled.
+
 ## Confidence
 
 | field | rule |

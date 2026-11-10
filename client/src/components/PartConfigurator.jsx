@@ -66,10 +66,15 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
   const isCnc = selectedProcess === 'cnc';
   const isRouting = selectedProcess === 'routing';
 
+  // A DXF is a flat drawing: it has no thickness, so the customer must pick one.
+  const is2D = Boolean(part.geometry?.is2D);
+
   // Closest stock thickness to the model's thinnest dimension (routing).
   function closestThickness(mat) {
     const list = mat?.thicknesses || [];
     if (list.length === 0) return 0;
+    // 2D: keep the customer's pick when the new material stocks it, otherwise ask again — never guess.
+    if (is2D) return list.some((x) => x.mm === part.thicknessMm) ? part.thicknessMm : 0;
     const bb = part.geometry?.boundingBox || {};
     const t = Math.min(bb.width || Infinity, bb.height || Infinity, bb.depth || Infinity);
     if (!Number.isFinite(t)) return list[Math.min(2, list.length - 1)].mm;
@@ -137,7 +142,13 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
         {currentMat?.thicknesses?.length > 0 && (
           <label>
             <span className="field-label">Stock thickness</span>
-            <select className="input" value={part.thicknessMm || closestThickness(currentMat)} onChange={(e) => onChange({ thicknessMm: parseFloat(e.target.value) })}>
+            <select
+              className="input" aria-required={is2D || undefined}
+              value={part.thicknessMm || closestThickness(currentMat) || ''}
+              onChange={(e) => onChange({ thicknessMm: parseFloat(e.target.value) || 0 })}
+              style={is2D && !part.thicknessMm ? { borderColor: 'var(--warn)', boxShadow: '0 0 0 3px rgba(217,119,6,0.15)' } : undefined}
+            >
+              {is2D && !part.thicknessMm && <option value="">Select a thickness…</option>}
               {currentMat.thicknesses.map((t) => <option key={t.mm} value={t.mm}>{t.label} ({t.mm} mm)</option>)}
             </select>
           </label>
@@ -206,9 +217,11 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
           <span>Size: {formatBox(
             part.geometry.boundingBox?.width || part.geometry.flatWidth || 0,
             part.geometry.boundingBox?.height || part.geometry.flatHeight || 0,
-            part.geometry.boundingBox?.depth || part.geometry.estimatedThickness || 0,
+            is2D ? (part.thicknessMm || 0) : (part.geometry.boundingBox?.depth || part.geometry.estimatedThickness || 0),
           )}</span>
-          <span>Volume: {((part.geometry.volume || 0) / 16387.064).toFixed(2)} in³ ({((part.geometry.volume || 0) / 1000).toFixed(1)} cm³)</span>
+          {is2D
+            ? <span>Cut length: {((part.geometry.estimatedPerimeter || 0) / 25.4).toFixed(1)} in ({(part.geometry.estimatedPerimeter || 0).toFixed(0)} mm) · 2D drawing{part.thicknessMm ? '' : ' — pick a stock thickness'}</span>
+            : <span>Volume: {((part.geometry.volume || 0) / 16387.064).toFixed(2)} in³ ({((part.geometry.volume || 0) / 1000).toFixed(1)} cm³)</span>}
         </div>
       )}
 

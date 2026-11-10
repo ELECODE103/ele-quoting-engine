@@ -37,8 +37,10 @@ async function request(path, options = {}) {
 
 export const api = {
   // File upload
-  async uploadFiles(files) {
+  // `process` (optional) lets the server refuse a DXF for anything but routing.
+  async uploadFiles(files, process) {
     const form = new FormData();
+    if (process) form.append('process', process); // before the files
     for (const f of files) form.append('files', f);
     const res = await fetch(`${BASE}/upload`, { method: 'POST', body: form });
     if (!res.ok) {
@@ -46,6 +48,11 @@ export const api = {
       throw new Error(err.error || 'Upload failed');
     }
     return res.json();
+  },
+
+  // DXF only: confirm or change the drawing units ("mm" | "in"); returns the re-read part.
+  async setPartUnits(partId, units) {
+    return request(`/parts/${partId}/units`, { method: 'POST', body: JSON.stringify({ units }) });
   },
 
   // Quote

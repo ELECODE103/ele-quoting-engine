@@ -34,6 +34,10 @@ Notes
 - `whatif.js` imports `server/processes/*/pricing.js` directly with `DEFAULT_PRICING_RULES` + your overrides. It does not touch the engine or the database. Nested rules use dots: `--set routerFeedMmPerMin.soft=3000`.
 - To test a *stored* (admin-tuned) rule set instead of the defaults, just run step 3 against a server that has them — the API uses whatever rules are in its database.
 
+### DXF parts
+
+`node tools/vet-quotes/generate_dxf_parts.js` writes four DXF parts and `parts/dxf_manifest.json` (merged into the run automatically). Each has a STEP twin of the same profile (`generate_dxf_twins.py`, needs cadquery; the `.step` files are committed). The run adds two checks: `dxf-geometry` (outer perimeter, inner perimeter and area within 0.1 % of the analytic truth) and `dxf-step-parity` (routed unit price within 2 % of the STEP twin at every quantity), and a "DXF vs STEP parity" table in `results.md`.
+
 ## 2. Reading the output
 
 `results.md` has four parts:

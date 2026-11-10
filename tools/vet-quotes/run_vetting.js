@@ -50,6 +50,7 @@ const EXPECTED_RATIO_HIGH = 2.0;         // engine > 200 % of the shop estimate 
 const PRICE_PER_CM3_OUTLIER_FACTOR = 4;  // ×/÷ the process median at qty 10
 const SHEET_PART_MAX_THICKNESS_MM = 25.4;
 const MIN_PRICE = { cnc: 5.0, routing: 6.0, fdm: 8.0, sla: 12.0, sls: 15.0 };
+const DXF_STEP_PARITY = 0.02;            // a DXF must price within 2 % of the STEP plate it describes
 
 // ─── http helpers ────────────────────────────────────────────────────────────
 let reqCounter = 0;
@@ -114,6 +115,10 @@ function median(arr) {
 // ─── main ────────────────────────────────────────────────────────────────────
 async function main() {
   const manifest = JSON.parse(fs.readFileSync(path.join(PARTS_DIR, "manifest.json"), "utf8"));
+  // DXF parts (node generate_dxf_parts.js) live in their own manifest so the
+  // Python generator can rewrite manifest.json without dropping them.
+  const dxfManifestPath = path.join(PARTS_DIR, "dxf_manifest.json");
+  if (fs.existsSync(dxfManifestPath)) manifest.parts.push(...JSON.parse(fs.readFileSync(dxfManifestPath, "utf8")).parts);
   const QTYS = QTYS_OVERRIDE.length ? QTYS_OVERRIDE : manifest.quantities;
   const parts = manifest.parts.filter((p) => !ONLY.length || ONLY.includes(p.id));
   const benchmarks = fs.existsSync(path.join(HERE, "benchmarks.json"))
@@ -133,14 +138,19 @@ async function main() {
     process.stdout.write(`  ${part.id.padEnd(24)} upload … `);
     const up = await uploadPart(file);
     const g = up.geometry;
+    // A DXF has no thickness until one is quoted: grade its volume at the manifest thickness.
+    const t2d = g.is2D ? Math.min(...part.bbox) : null;
     const parsed = {
-      bbox: [g.boundingBox.width, g.boundingBox.height, g.boundingBox.depth],
-      volume: g.volume, surfaceArea: g.surfaceArea, estimatedThickness: g.estimatedThickness,
+      bbox: [g.boundingBox.width, g.boundingBox.height, g.is2D ? t2d : g.boundingBox.depth],
+      volume: g.is2D ? g.profile2d.area * t2d : g.volume, surfaceArea: g.surfaceArea, estimatedThickness: g.is2D ? t2d : g.estimatedThickness,
       flatWidth: g.flatWidth, flatHeight: g.flatHeight, estimatedPerimeter: g.estimatedPerimeter,
       estimatedHoles: g.estimatedHoles, estimatedSlots: g.estimatedSlots, estimatedBends: g.estimatedBends,
       triangleCount: g.triangleCount,
     };
-    const pr = { id: part.id, part, parsed, partId: up.partId, configs: [] };
+    const pr = { id: part.id, part, parsed, partId: up.partId, configs: [], parity: [] };
+    // STEP twin of a DXF part: quoted with the same configurations for the parity check.
+    const twin = part.twin && fs.existsSync(path.join(PARTS_DIR, part.twin)) ? await uploadPart(path.join(PARTS_DIR, part.twin)) : null;
+    if (g.is2D) pr.profile2d = { perimeter: g.profile2d.perimeter, innerPerimeter: g.profile2d.innerPerimeter, area: g.profile2d.area, units: g.profile2d.units.unit };
     let n = 0;
     for (const cfg of part.configs) {
       const mat = matBySlug[cfg.materialSlug];
@@ -188,6 +198,12 @@ async function main() {
           parsedPerimeterMm: parsed.estimatedPerimeter, truePerimeterMm: part.truth.cut_perimeter_mm,
           quoteId: q.quoteId,
         };
+        if (twin) {
+          const tq = await api("POST", "/api/quote", { json: { ...body, parts: [{ ...body.parts[0], partId: twin.partId }] } });
+          const tu = tq.lineItems[0].perUnit.final;
+          row.twinFile = part.twin; row.twinUnitPrice = tu; row.twinDiff = li.perUnit.final / tu - 1;
+          pr.parity.push({ label: cfg.label, qty, dxf: li.perUnit.final, step: tu, diff: row.twinDiff, floor: !!meta.floorApplied });
+        }
         rows.push(row);
         cr.quotes.push(row);
         n++;
@@ -213,6 +229,18 @@ async function main() {
     }
     const tp = part.truth.cut_perimeter_mm, pp = pr.parsed.estimatedPerimeter;
     if (tp > 0 && (pp / tp < 0.67 || pp / tp > 1.5)) add("parser-perimeter", "warn", pr.id, "", "", `parser cut perimeter ${pp.toFixed(0)} mm vs true ${tp.toFixed(0)} mm (×${(pp / tp).toFixed(2)})`);
+
+    // 11. DXF prices like its STEP twin
+    for (const x of pr.parity) {
+      if (Math.abs(x.diff) > DXF_STEP_PARITY) add("dxf-step-parity", "fail", pr.id, x.label, x.qty, `DXF ${money(x.dxf)} vs STEP twin ${money(x.step)} (${(x.diff * 100).toFixed(2)} %)`);
+    }
+    if (part.twin && !pr.parity.length) add("dxf-step-parity", "warn", pr.id, "", "", `STEP twin ${part.twin} not found — run generate_dxf_twins.py`);
+    // parser accuracy of the 2D path: outer / inner perimeter and area within 0.1 %
+    if (part.source === "dxf" && pr.profile2d) {
+      for (const [name, got, want] of [["outer perimeter", pr.profile2d.perimeter, part.truth.outer_perimeter_mm], ["inner perimeter", pr.profile2d.innerPerimeter, part.truth.inner_perimeter_mm], ["area", pr.profile2d.area, part.truth.area_mm2]]) {
+        if (Math.abs(got - want) > 0.001 * want) add("dxf-geometry", "fail", pr.id, "", "", `${name} ${got.toFixed(3)} vs true ${want.toFixed(3)}`);
+      }
+    }
 
     for (const cr of pr.configs) {
       const label = cr.cfg.label;
@@ -369,6 +397,18 @@ async function main() {
       L.push(`Flags: ` + pf.map((f) => `**${f.check}**${f.config ? ` (${f.config}${f.qty ? ` @${f.qty}` : ""})` : ""}: ${f.detail}`).join("; "));
       L.push(``);
     }
+  }
+
+  const parityParts = partResults.filter((pr) => pr.parity.length);
+  if (parityParts.length) {
+    L.push(`## DXF vs STEP parity`);
+    L.push(``);
+    L.push(`Each DXF part is quoted next to a STEP plate of the same profile at the same thickness. The routed unit prices must agree within ${DXF_STEP_PARITY * 100} % (\`dxf-step-parity\`). "floor" marks quantities where both hit the minimum part price, so they agree trivially.`);
+    L.push(``);
+    L.push(`| part | configuration | qty | DXF | STEP twin | difference |`);
+    L.push(`|---|---|---|---|---|---|`);
+    for (const pr of parityParts) for (const x of pr.parity) L.push(`| ${pr.id} | ${md(x.label)} | ${x.qty} | ${money(x.dxf)} | ${money(x.step)} | ${(x.diff * 100).toFixed(2)} %${x.floor ? " (floor)" : ""} |`);
+    L.push(``);
   }
 
   L.push(`## Sanity checks`);

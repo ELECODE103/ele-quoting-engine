@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import { formatCurrency, formatDim } from '../utils/format';
 import ThreeViewer from '../components/ThreeViewer';
+import DxfPreview from '../components/DxfPreview';
 import DFMPanel from '../components/DFMPanel';
 import PartConfigurator from '../components/PartConfigurator';
 import OrderSummary from '../components/OrderSummary';
@@ -14,6 +15,7 @@ import { sessionQuoteId, storedQuoteId, storeQuoteId } from '../utils/returnTo';
 function pickThickness(mat, geometry) {
   const list = mat?.thicknesses || [];
   if (list.length === 0) return 0;
+  if (geometry?.is2D) return 0; // a DXF has no thickness: the customer picks it before a price shows
   const bb = geometry?.boundingBox || {};
   const t = Math.min(bb.width || Infinity, bb.height || Infinity, bb.depth || Infinity);
   if (!Number.isFinite(t)) return list[Math.min(2, list.length - 1)].mm;
@@ -23,6 +25,15 @@ function pickThickness(mat, geometry) {
 // Deep link from the material and service pages: /quote?process=cnc&material=cnc-delrin
 // opens the builder on that process with that material preselected for uploaded parts.
 const LINKABLE_PROCESSES = ['cnc', 'routing', '3d-printing'];
+// DXF parts are priced only once the customer has settled what the file cannot say:
+// the drawing units (when the file is unitless) and the stock thickness.
+const isDxfName = (name) => /\.dxf$/i.test(name || '');
+function dxfTodo(p) {
+  if (!p.geometry?.is2D) return null;
+  if (p.geometry.profile2d?.units?.needsConfirmation) return `Choose inches or millimetres for ${p.fileName} to see a price.`;
+  if (!(p.thicknessMm > 0)) return `Select a stock thickness for ${p.fileName} to see a price.`;
+  return null;
+}
 
 export default function QuoteBuilder() {
   const navigate = useNavigate();
@@ -51,6 +62,8 @@ export default function QuoteBuilder() {
   const [uploading, setUploading] = useState(false);
   const [uploadErrors, setUploadErrors] = useState([]);
   const [showDFM, setShowDFM] = useState(false);
+  const [dxfOffer, setDxfOffer] = useState(null);   // DXF files waiting on "switch to routing?"
+  const [unitsBusy, setUnitsBusy] = useState(false);
   const fileRef = useRef();
   const quoteTimer = useRef(null);
 
@@ -106,6 +119,8 @@ export default function QuoteBuilder() {
   // Auto-refresh quote when parts change
   const fetchQuote = useCallback(async () => {
     if (parts.length === 0) return;
+    const todo = parts.map(dxfTodo).find(Boolean);
+    if (todo) { setQuote(null); setQuoteError(todo); return; }
     setQuoteLoading(true);
     try {
       const configs = parts.map((p) => ({
@@ -164,14 +179,21 @@ export default function QuoteBuilder() {
   }, [fetchQuote]);
 
   // File upload handler
-  const handleFiles = useCallback(async (fileList) => {
+  // `ctx` carries the process/materials/finishes to use when the caller has just switched process.
+  const handleFiles = useCallback(async (fileList, ctx) => {
     if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    const proc = ctx?.process || selectedProcess;
+    // A DXF is a 2D profile: routing only. Offer the switch instead of failing the upload.
+    if (proc !== 'routing' && files.some((f) => isDxfName(f.name))) { setDxfOffer(files); return; }
+    const mats = ctx?.materials || materials;
+    const fins = ctx?.finishes || finishes;
     setUploading(true);
     setUploadErrors([]);
 
     try {
-      const result = await api.uploadFiles(Array.from(fileList));
-      const defaultMat = materials.find((m) => m.slug === preferredMaterial) || materials[0];
+      const result = await api.uploadFiles(files, proc);
+      const defaultMat = mats.find((m) => m.slug === preferredMaterial) || mats[0];
 
       const newParts = result.parts.map((p) => ({
         partId: p.partId,
@@ -182,10 +204,10 @@ export default function QuoteBuilder() {
         materialSlug: defaultMat?.slug || 'cnc-delrin',
         grade: defaultMat?.grades?.[0]?.name || '',
         thicknessMm: pickThickness(defaultMat, p.geometry),
-        finishSlug: finishes[0]?.slug || 'raw',
+        finishSlug: fins[0]?.slug || 'raw',
         quantity: 1,
-        process: selectedProcess,
-        subProcess: selectedProcess === 'cnc' ? 'milling' : (defaultMat?.subProcess || ''),
+        process: proc,
+        subProcess: proc === 'cnc' ? 'milling' : (defaultMat?.subProcess || ''),
         layerHeight: defaultMat?.defaultLayerHeight || 0,
         infill: 0.2,
         dfmAll: p.dfmAll,
@@ -219,6 +241,11 @@ export default function QuoteBuilder() {
 
   async function handleProcessChange(processSlug) {
     if (processSlug === selectedProcess) return;
+    const dxfPart = processSlug !== 'routing' && parts.find((p) => p.geometry?.is2D);
+    if (dxfPart) {
+      setUploadErrors([{ fileName: dxfPart.fileName, error: `A DXF is a 2D profile, so it can only be quoted for CNC routing. Remove it, or upload a STEP of the part, to quote ${PROCESS_LABELS[processSlug] || processSlug}.` }]);
+      return;
+    }
     setSelectedProcess(processSlug);
     setPreferredMaterial('');
     // Re-fetch materials and finishes for this process
@@ -242,6 +269,28 @@ export default function QuoteBuilder() {
         infill: 0.2,
       })));
     }
+    return { mats, fins };
+  }
+
+  // "Switch to CNC routing" from the DXF offer: change process, then upload the held files with it.
+  async function acceptDxfOffer() {
+    const files = dxfOffer;
+    setDxfOffer(null);
+    const r = await handleProcessChange('routing');
+    await handleFiles(files, { process: 'routing', materials: r?.mats, finishes: r?.fins });
+  }
+
+  // DXF units: the server re-reads the drawing at the chosen scale and returns the part again.
+  async function handleUnitsChange(partId, units) {
+    setUnitsBusy(true);
+    try {
+      const p = await api.setPartUnits(partId, units);
+      updatePart(partId, { geometry: p.geometry, dfm: p.dfm, dfmAll: p.dfmAll });
+      setUploadErrors([]);
+    } catch (err) {
+      setUploadErrors([{ fileName: 'Units', error: err.message || 'Could not change the units. Try again.' }]);
+    }
+    setUnitsBusy(false);
   }
 
   const active = parts.find((p) => p.partId === activePart);
@@ -317,7 +366,7 @@ export default function QuoteBuilder() {
       }}>
         <input
           ref={fileRef} type="file" multiple
-          accept=".step,.stp,.stl,.3mf,.iges,.igs"
+          accept=".step,.stp,.stl,.3mf,.iges,.igs,.dxf"
           style={{ display: 'none' }}
           onChange={(e) => handleFiles(e.target.files)}
         />
@@ -348,7 +397,7 @@ export default function QuoteBuilder() {
               Upload a part
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.7, maxWidth: 460, margin: '0 auto' }}>
-              Drop a STEP, STL, IGES or 3MF file here, or click to choose one. The price shows in a few seconds.<br />
+              Drop a STEP, STL, IGES or 3MF file here, or click to choose one. Flat part? Drop a DXF and pick the thickness. The price shows in a few seconds.<br />
               Up to {brand.rfqQuantityThreshold} pieces checks out online. More than that, a person quotes it within {brand.quoteTurnaroundHours} hours.
             </div>
             {preferredMaterial && materials.some((m) => m.slug === preferredMaterial) && (
@@ -357,7 +406,7 @@ export default function QuoteBuilder() {
               </div>
             )}
             <div style={{ marginTop: 24, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-              {['STEP', 'STL', 'IGES', '3MF'].map((f) => (
+              {['STEP', 'STL', 'IGES', '3MF', 'DXF'].map((f) => (
                 <span key={f} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 4, background: 'var(--bg-card)', border: '1px solid var(--border-primary)', color: 'var(--text-muted)', fontWeight: 500 }}>
                   {f}
                 </span>
@@ -372,6 +421,21 @@ export default function QuoteBuilder() {
             <div className="spinner" style={{ width: 40, height: 40, borderWidth: 3 }} />
             <div className="font-display" style={{ fontSize: 14, color: 'var(--text-muted)' }} role="status">Reading the geometry…</div>
             <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>A few seconds for most files. Large STEP assemblies take longer.</div>
+          </div>
+        )}
+
+        {/* DXF with another process selected: offer routing rather than refusing the file */}
+        {dxfOffer && !uploading && (
+          <div className="gate-box fade-up" role="alertdialog" aria-label="DXF files are quoted for CNC routing" style={{ marginBottom: 16, maxWidth: 720, width: '100%', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+            <span style={{ flex: '1 1 320px' }}>
+              <b>{dxfOffer.filter((f) => isDxfName(f.name)).map((f) => f.name).join(', ')} is a 2D drawing.</b>{' '}
+              A DXF has an outline but no thickness, so we cut it from sheet on the router — it cannot be quoted for {PROCESS_LABELS[selectedProcess] || selectedProcess}.
+              {parts.length > 0 ? ' Switching re-prices every part in this quote as routed.' : ''}
+            </span>
+            <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-primary" onClick={acceptDxfOffer}>Switch to CNC routing and upload</button>
+              <button type="button" className="btn btn-ghost" onClick={() => setDxfOffer(null)}>Cancel</button>
+            </span>
           </div>
         )}
 
@@ -411,7 +475,7 @@ export default function QuoteBuilder() {
             {/* View toggle */}
             <div className="qb-toolbar" role="tablist" aria-label="Part view">
               <button role="tab" aria-selected={!showDFM} className={`btn ${showDFM ? 'btn-ghost' : 'btn-ghost active'}`} onClick={() => setShowDFM(false)}>
-                3D preview
+                {active.geometry?.is2D ? '2D preview' : '3D preview'}
               </button>
               <button role="tab" aria-selected={showDFM} className={`btn ${showDFM ? 'btn-ghost active' : 'btn-ghost'}`} onClick={() => setShowDFM(true)}>
                 DFM check
@@ -432,10 +496,28 @@ export default function QuoteBuilder() {
                   )}
                 </div>
               )}
+              {/* DXF: say what is still needed instead of showing a price built on a guess */}
+              {!activeLineItem && dxfTodo(active) && (
+                <div className="qb-price" role="status" style={{ whiteSpace: 'normal', maxWidth: 300, textAlign: 'right' }}>
+                  <span style={{ fontSize: 11.5, color: 'var(--warn-text)', fontWeight: 600 }}>
+                    {active.geometry.profile2d?.units?.needsConfirmation ? 'Choose inches or millimetres to see the price' : 'Select a stock thickness to see the price'}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* 3D Preview or DFM */}
-            {!showDFM ? (
+            {!showDFM && active.geometry?.is2D ? (
+              <div className="card" style={{ marginBottom: 20, overflow: 'hidden' }}>
+                <DxfPreview
+                  profile={active.geometry.profile2d}
+                  dfm={activeDfm}
+                  materialColor={materials.find((m) => m.slug === active.materialSlug)?.color || '#F4F4F5'}
+                  onUnitsChange={(u) => handleUnitsChange(active.partId, u)}
+                  unitsBusy={unitsBusy}
+                />
+              </div>
+            ) : !showDFM ? (
               <div className="card" style={{ marginBottom: 20, overflow: 'hidden' }}>
                 <div style={{ height: 360, position: 'relative' }}>
                   <ThreeViewer
@@ -597,7 +679,7 @@ export default function QuoteBuilder() {
               </div>
               <div className="grid-3">
               {[
-                { step: '1', title: 'Upload', desc: 'STEP, STL, IGES or 3MF. The geometry is read on our server; the file is encrypted at rest and purged on a schedule.' },
+                { step: '1', title: 'Upload', desc: 'STEP, STL, IGES or 3MF — or a DXF for flat routed parts. The geometry is read on our server; the file is encrypted at rest and purged on a schedule.' },
                 { step: '2', title: 'Price and DFM', desc: 'Material, finish, quantity. The price updates as you go, with a manufacturability check written for our machines.' },
                 { step: '3', title: 'Check out, or get a firm quote', desc: `Up to ${brand.rfqQuantityThreshold} pieces, check out by card. Over that, or if the checker flags something, a firm quote from us within ${brand.quoteTurnaroundHours} hours.` },
               ].map((f, i) => (
