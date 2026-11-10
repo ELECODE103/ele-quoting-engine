@@ -203,8 +203,9 @@ async function start() {
 
   // Periodically purge old uploaded customer files (proprietary CAD shouldn't
   // linger). Window via UPLOAD_RETENTION_HOURS (default 7 days).
-  const { startRetentionSweep } = require("./services/fileRetention");
-  startRetentionSweep(path.join(__dirname, "..", "data", "uploads"));
+  // Files behind an order or an open firm-quote request are kept whatever their age.
+  const { startRetentionSweep, neededUploads } = require("./services/fileRetention");
+  startRetentionSweep(path.join(__dirname, "..", "data", "uploads"), { keep: () => neededUploads(require("./models")) });
 
   // Say at startup what is switched off, so a missing setting is found in the
   // deploy log and not by a customer.
