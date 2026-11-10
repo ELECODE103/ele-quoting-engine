@@ -3,6 +3,7 @@ import { formatCurrency, formatWeight, formatShipDate, formatDate } from '../uti
 import { authPath } from '../utils/returnTo';
 import { useAuth } from '../utils/authContext';
 import brand, { PROCESS_LABELS } from '../brand';
+import { when } from '../facts';
 
 const PROCESS_SHORT = { '3d-printing': '3D print', cnc: 'CNC', routing: 'Routing', sheetmetal: 'Sheet metal' };
 
@@ -142,7 +143,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
             Request a firm quote →
           </button>
           <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-dim)', marginTop: 8 }}>
-            Within {brand.quoteTurnaroundHours} hours, from the person who runs the job.
+            From the person who will cut the part{when('quote-turnaround', (v) => `, within ${v}`)}.
           </div>
         </>
       ) : (

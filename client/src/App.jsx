@@ -13,6 +13,9 @@ import MaterialPage from './pages/MaterialPage';
 import QualityPage from './pages/QualityPage';
 import AboutPage from './pages/AboutPage';
 import RfqPage from './pages/RfqPage';
+import ReplacementPartsPage from './pages/ReplacementPartsPage';
+import PartsPage from './pages/PartsPage';
+import FoodContactPage from './pages/FoodContactPage';
 import NotFoundPage from './pages/NotFoundPage';
 import { authPath } from './utils/returnTo';
 
@@ -72,6 +75,9 @@ export default function App() {
       <Route path="/3d-printing" element={<ServicePage slug="3d-printing" />} />
       <Route path="/materials" element={<MaterialsPage />} />
       <Route path="/materials/:slug" element={<MaterialPage />} />
+      <Route path="/replacement-parts" element={<ReplacementPartsPage />} />
+      <Route path="/parts" element={<PartsPage />} />
+      <Route path="/food-contact" element={<FoodContactPage />} />
       <Route path="/quality" element={<QualityPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/rfq" element={<RfqPage />} />

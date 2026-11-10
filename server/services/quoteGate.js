@@ -20,6 +20,7 @@
  * The budgetary price is still shown in every case; only the button changes.
  */
 const brand = require("../../shared/brand.json");
+const shopFacts = require("../shopFacts");
 
 const RFQ_QTY_THRESHOLD = Number(brand.rfqQuantityThreshold) || 100;
 const BIG_TICKET_LINE_TOTAL = 5000;  // $ — above this, a human confirms before money moves
@@ -56,7 +57,7 @@ function evaluate(lineItems = [], dfmByPartId = {}, rules = {}) {
       reasons.push({
         partId,
         code: "quantity",
-        message: `${qty} pieces is over our ${qtyThreshold}-piece instant-order limit — production runs are quoted by a person within ${brand.quoteTurnaroundHours} hours`,
+        message: `${qty} pieces is over our ${qtyThreshold}-piece instant-order limit — production runs are quoted by a person${shopFacts.when("quote-turnaround", (v) => ` within ${v}`)}`,
       });
     }
 

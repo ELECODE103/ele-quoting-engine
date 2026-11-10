@@ -16,14 +16,18 @@
  *     per column. Do not mix numbers from different sheets in one column and
  *     do not round "towards" a competitor's page. `null` renders as
  *     "not listed" - prefer that to a number from memory.
- *  3. Nothing here may claim a certification, FDA/NSF/USDA compliance of
- *     Straightedge parts, or a tolerance the site does not already state.
- *     Food-contact text is about the stock material in general terms only.
- *  4. Any statement about what THIS SHOP does that could not be verified from
- *     the repo is marked `TODO(owner)`. Grep for it before launch.
+ *  3. Nothing here may claim a certification or FDA/NSF/USDA compliance of
+ *     Straightedge parts. Food-contact text is about the stock material in
+ *     general terms only.
+ *  4. Any statement about what THIS SHOP does or will hold (tolerances,
+ *     finishes, paperwork) comes from a fact flag in shared/shop-facts.json
+ *     via ../facts and only prints once the owner has confirmed it. Do not
+ *     type a shop tolerance into this file.
  *
  * Datasheet values were retrieved on 2026-11-09 (see `retrieved`).
  */
+
+import { when, lines, toleranceFor } from '../facts';
 
 // Shown under every property table.
 export const TYPICAL_VALUES_NOTE =
@@ -34,16 +38,19 @@ export const TYPICAL_VALUES_NOTE =
 // General food-contact wording, appended to every material's own note.
 export const FOOD_CONTACT_GENERAL =
   'Food-contact status belongs to a specific grade, color and lot from the stock manufacturer, not to the polymer family. ' +
-  'If your part touches food or drinking water, say so on the quote request and name the regulation you need; ' +
-  'we can request the stock manufacturer\'s compliance statement for the material lot. ' +
-  'We do not certify finished parts for food contact.';
-// TODO(owner): confirm you will request and pass along manufacturer compliance statements / material certs
-// for food-contact jobs, and whether that is free or a line item (site-plan open question 10).
+  'If your part touches food or drinking water, say so on the quote request and name the regulation your customer cites. ' +
+  when('food-docs',
+    'The stock manufacturer\'s compliance statement and the lot cert come with the job. ',
+    'You will be told before you order what paperwork can be had for that stock. ') +
+  'A machine shop cannot certify a finished part for food contact, and this one does not claim to.';
 
-// Tolerance wording reused across pages. The numbers are the ones /machining and /routing already publish.
-export const SHOP_TOLERANCE =
-  'Our published standard for machined plastics is ±0.005" (±0.13 mm), with ±0.002" on called-out features; ' +
-  'routed profiles are ±0.005" typical.';
+// Shop tolerance for a material. Prints a number only when the owner has
+// confirmed that material's row (tol-* in shared/shop-facts.json).
+function tol(key) {
+  const t = toleranceFor(key);
+  if (!t) return 'Call out the dimensions that matter on a firm-quote request, and the tolerance for them is agreed before you order.';
+  return `Standard tolerance on ${t.material} here is ${t.standard}` + (t.tight ? `; the tightest quoted is ${t.tight}.` : '.');
+}
 
 const ENSINGER = 'Ensinger';
 const RETRIEVED = '2026-11-09';
@@ -58,7 +65,7 @@ export const MATERIAL_PAGES = [
     shortName: 'acetal',
     metaTitle: 'Acetal & Delrin (POM) CNC Machining',
     metaDescription:
-      'CNC milled, turned and routed acetal and Delrin (POM) parts from Wauconda, Illinois. Typical datasheet properties, machining notes, stock forms, and instant online pricing.',
+      'CNC machined and routed acetal and Delrin (POM) parts from Wauconda, Illinois. Typical datasheet properties, machining notes, stock forms, and instant online pricing.',
     h1: 'Acetal and Delrin (POM) machining',
     summary:
       'Acetal (polyoxymethylene, POM) is a stiff, low-friction, dimensionally stable engineering plastic. ' +
@@ -98,13 +105,13 @@ export const MATERIAL_PAGES = [
       'Natural (unpigmented) acetal grades are commonly offered by stock manufacturers with FDA food-contact compliance statements; black and filled grades often are not.',
     machining: [
       'One of the easiest plastics to machine. It forms a clean chip, takes a good finish straight off the cutter and deburrs easily.',
-      'Dimensionally stable for a plastic, so it is the usual choice when a plastic part needs a real tolerance. ' + SHOP_TOLERANCE,
+      'Dimensionally stable for a plastic, so it is the usual choice when a plastic part needs to hold a dimension. ' + tol('acetal-delrin'),
       'Thick plate and large-diameter rod carry internal stress from extrusion. Removing a lot of material from one side can let a part bow; roughing both sides and letting the part rest before the finish pass reduces this.',
       'Homopolymer rod and plate can have centerline porosity. If a part is cut through the middle of thick stock and the surface there matters (seal faces, pressure passages), ask for copolymer.',
       'Not suitable for strong acids or chlorine service. It cannot be reliably glued; design for fasteners or press fits.',
     ],
     toleranceAnswer:
-      'Acetal is the most dimensionally stable of the common machined plastics. ' + SHOP_TOLERANCE +
+      'Acetal is among the most dimensionally stable of the common machined plastics. ' + tol('acetal-delrin') +
       ' Tighter requests are reviewed on a firm quote with the drawing.',
   },
 
@@ -126,7 +133,7 @@ export const MATERIAL_PAGES = [
     uses: [
       'Conveyor guides, wear strips and lane dividers',
       'Chute, hopper and bin liners',
-      'Star wheels, timing screws and packaging change parts',
+      'Guide rails and corner tracks on packaging lines',
       'Bumpers, slide pads and dock components',
       'Cutting and work surfaces',
     ],
@@ -152,10 +159,9 @@ export const MATERIAL_PAGES = [
       'Sheet is skived or pressed and is rarely flat; thick sheet can move when one face is machined away. Flatness callouts on large UHMW parts should be generous.',
       'It will not hold a fine thread well and cannot be glued. Use through-bolts, inserts or mechanical capture.',
       'Realistic tolerances are looser than for acetal. If a dimension on a UHMW part is critical, call it out on the drawing so it can be reviewed before the job is quoted.',
-      // TODO(owner): state the tolerance you will actually hold on UHMW (the site only publishes ±0.005" for "plastics" generally).
     ],
     toleranceAnswer:
-      'UHMW is soft and moves with temperature, so realistic tolerances are looser than for acetal or nylon. ' + SHOP_TOLERANCE +
+      'UHMW is soft and moves with temperature, so realistic tolerances are looser than for acetal or nylon. ' + tol('uhmw') +
       ' On UHMW, call out any critical dimension so it is reviewed on a firm quote rather than assumed.',
   },
 
@@ -202,11 +208,9 @@ export const MATERIAL_PAGES = [
       'Low stiffness and high thermal expansion. It is not a material for tight tolerances or for parts that must stay flat over a long span.',
       'Sheet has residual stress from extrusion. Deep pockets or heavy one-sided cuts can let a part cup; balanced pocketing and leaving a floor thicker than a third of the sheet helps.',
       'Paint, adhesive and most inks do not stick to it. Mark by engraving and join with fasteners or plastic welding.',
-      // TODO(owner): state the tolerance and flatness you will actually hold on routed HDPE.
     ],
     toleranceAnswer:
-      'HDPE is soft and expands with temperature, so it is not a precision material. ' + SHOP_TOLERANCE +
-      ' Treat that as the best case on HDPE and call out any dimension that must be held so it is reviewed on a firm quote.',
+      'HDPE is soft and expands with temperature, so it is not a precision material. ' + tol('hdpe'),
   },
 
   // ─────────────────────────────────────────────────────────────── Nylon
@@ -258,12 +262,12 @@ export const MATERIAL_PAGES = [
     machining: [
       'Machines well with sharp tools but is tougher and stringier than acetal; burrs take more work to remove.',
       'Moisture is the main issue. Nylon takes up water from the air over weeks and grows as it does, so a part can be in tolerance when machined and measurably larger in humid or wet service. Say what environment the part lives in.',
-      'Because of that, very tight tolerances on nylon are only meaningful if the measurement condition is stated. ' + SHOP_TOLERANCE,
+      'Because of that, very tight tolerances on nylon are only meaningful if the measurement condition is stated. ' + tol('nylon'),
       'Cast nylon has lower internal stress than extruded and is the better choice for large or thick parts and for parts with a lot of material removed.',
       'For a part that must hold size in wet service, acetal is usually the better material.',
     ],
     toleranceAnswer:
-      'Nylon absorbs moisture and grows, so a tolerance on nylon needs a stated condition (as machined and dry, or conditioned). ' + SHOP_TOLERANCE +
+      'Nylon absorbs moisture and grows, so a tolerance on nylon needs a stated condition (as machined and dry, or conditioned). ' + tol('nylon') +
       ' If the part runs wet or humid, say so on the request.',
   },
 
@@ -276,7 +280,7 @@ export const MATERIAL_PAGES = [
     shortName: 'PEEK',
     metaTitle: 'PEEK CNC Machining',
     metaDescription:
-      'CNC milled and turned unfilled PEEK parts from Wauconda, Illinois: seals, bushings, insulators and pump parts. Typical datasheet properties, machining notes and instant online pricing.',
+      'CNC machined unfilled PEEK parts from Wauconda, Illinois: seals, bushings, insulators and pump parts. Typical datasheet properties, machining notes and instant online pricing.',
     h1: 'PEEK machining',
     summary:
       'PEEK (polyetheretherketone) is a high-performance thermoplastic that keeps its strength at temperatures where most plastics have softened. ' +
@@ -308,10 +312,10 @@ export const MATERIAL_PAGES = [
       'Extruded rod and plate carry internal stress. Stock is normally supplied annealed; for parts with heavy material removal or thin sections, roughing, resting and then finishing reduces movement.',
       'It is notch-sensitive compared with nylon. Inside corners should carry a radius, and thin features should not be designed with sharp roots.',
       'Material is most of the price. A drawing that lets the stock be sized closely, or a design that nests in standard rod or plate sizes, makes a real difference.',
-      SHOP_TOLERANCE,
+      tol('peek'),
     ],
     toleranceAnswer:
-      'PEEK is stable and holds dimensions well for a plastic. ' + SHOP_TOLERANCE +
+      'PEEK is stable and holds dimensions well for a plastic. ' + tol('peek') +
       ' Tighter requirements are reviewed on a firm quote with the drawing.',
   },
 
@@ -324,7 +328,7 @@ export const MATERIAL_PAGES = [
     shortName: 'Ultem',
     metaTitle: 'Ultem (PEI) CNC Machining',
     metaDescription:
-      'CNC milled and turned Ultem (PEI) insulators, fixtures and housings from Wauconda, Illinois. Typical datasheet properties, machining notes and instant online pricing.',
+      'CNC machined Ultem (PEI) insulators, fixtures and housings from Wauconda, Illinois. Typical datasheet properties, machining notes and instant online pricing.',
     h1: 'Ultem (PEI) machining',
     summary:
       'PEI (polyetherimide; Ultem is the best-known resin brand) is a strong, stiff, amber-transparent plastic that stays rigid at elevated temperature ' +
@@ -354,10 +358,10 @@ export const MATERIAL_PAGES = [
       'Machines cleanly and holds size well.',
       'It is notch-sensitive and can stress-crack. Inside corners need a radius, and cutting fluids and cleaners have to be compatible; some solvents craze it.',
       'Extruded stock carries internal stress. Thick sections with heavy material removal benefit from roughing and resting before the finish pass.',
-      SHOP_TOLERANCE,
+      tol('ultem-pei'),
     ],
     toleranceAnswer:
-      'PEI is rigid and dimensionally stable. ' + SHOP_TOLERANCE + ' Tighter requirements are reviewed on a firm quote with the drawing.',
+      'PEI is rigid and dimensionally stable. ' + tol('ultem-pei') + ' Tighter requirements are reviewed on a firm quote with the drawing.',
   },
 
   // ─────────────────────────────────────────────────────────────── PTFE
@@ -369,7 +373,7 @@ export const MATERIAL_PAGES = [
     shortName: 'PTFE',
     metaTitle: 'PTFE CNC Machining',
     metaDescription:
-      'CNC milled and turned virgin PTFE seals, seats, slide pads and insulators from Wauconda, Illinois. Typical datasheet properties, machining notes and instant online pricing.',
+      'CNC machined virgin PTFE seals, seats, slide pads and insulators from Wauconda, Illinois. Typical datasheet properties, machining notes and instant online pricing.',
     h1: 'PTFE machining',
     summary:
       'PTFE (polytetrafluoroethylene; Teflon is the best-known brand) has very low friction, a very wide temperature range and resistance to almost all chemicals. ' +
@@ -401,11 +405,10 @@ export const MATERIAL_PAGES = [
       'It has a volume change near room temperature (around 66 °F / 19 °C) and high thermal expansion, so a measurement depends on the temperature it is taken at.',
       'It creeps under load. A dimension that is right after machining can relax under a clamped joint or a press fit.',
       'For those reasons, realistic tolerances on PTFE are wide. If a dimension is critical, call it out so it is reviewed before the job is quoted.',
-      // TODO(owner): state the tolerance you will actually hold on PTFE (the site only publishes ±0.005" for "plastics" generally).
       'It cannot be glued without special surface treatment.',
     ],
     toleranceAnswer:
-      'PTFE is soft, creeps and changes size with temperature, so tolerances are wider than for rigid plastics. ' + SHOP_TOLERANCE +
+      'PTFE is soft, creeps and changes size with temperature, so tolerances are wider than for rigid plastics. ' + tol('ptfe') +
       ' On PTFE, call out any critical dimension so it is reviewed on a firm quote rather than assumed.',
   },
 
@@ -445,15 +448,15 @@ export const MATERIAL_PAGES = [
     foodContact:
       'Some polycarbonate grades are sold with food-contact statements. Check the specific sheet or rod product.',
     machining: [
-      'Machines and routes well with sharp tools. Machined faces come off the cutter frosted, not clear; optical clarity on a cut face takes vapor or mechanical polishing as a separate step.',
-      // TODO(owner): confirm which edge/face finishes you offer on polycarbonate (the /routing page mentions polished edges on guards).
+      'Machines and routes well with sharp tools. Machined faces come off the cutter frosted, not clear; optical clarity on a cut face takes polishing as a separate step.',
+      ...lines([{ needs: 'edge-polish' }]),
       'It is sensitive to stress cracking. Some coolants, thread lockers, cleaners and solvents will craze it, especially around stressed holes and tight fasteners.',
       'Thick machined parts hold internal stress; stress-relieving before polishing or solvent exposure reduces cracking.',
       'Use generous inside radii and avoid sharp-rooted threads in highly loaded areas.',
-      SHOP_TOLERANCE,
+      tol('polycarbonate'),
     ],
     toleranceAnswer:
-      'Polycarbonate is rigid and holds size well. ' + SHOP_TOLERANCE + ' Tighter requirements are reviewed on a firm quote with the drawing.',
+      'Polycarbonate is rigid and holds size well. ' + tol('polycarbonate') + ' Tighter requirements are reviewed on a firm quote with the drawing.',
   },
 
   // ─────────────────────────────────────────────────────────────── Acrylic
@@ -493,15 +496,15 @@ export const MATERIAL_PAGES = [
     foodContact:
       'Some acrylic sheet products are sold with food-contact statements. Check the specific sheet product.',
     machining: [
-      'Cast acrylic machines and routes to a clean, matte edge. Edges and faces can be polished clear as a separate step.',
-      // TODO(owner): confirm the acrylic edge finishes you offer (as-cut, sanded, flame- or buff-polished) and whether they are priced online.
+      'Cast acrylic machines and routes to a clean, matte edge. A cut edge is not clear until it is polished.',
+      ...lines([{ needs: 'edge-polish' }]),
       'It is brittle and notch-sensitive. Inside corners need a radius, holes should sit well in from an edge, and fasteners should not be over-tightened.',
       'Heat from cutting and some solvents and cleaners can craze the surface, sometimes days later. Annealing after heavy machining reduces that risk.',
       'Thickness tolerance of cast sheet is wide. If the thickness matters, it has to be machined, not taken from the sheet.',
-      SHOP_TOLERANCE,
+      tol('acrylic'),
     ],
     toleranceAnswer:
-      'Acrylic is rigid and machines to size well, but cast sheet thickness varies as supplied. ' + SHOP_TOLERANCE +
+      'Acrylic is rigid and machines to size well, but cast sheet thickness varies as supplied. ' + tol('acrylic') +
       ' If the thickness is critical, say so, because it then has to be machined.',
   },
 
@@ -546,10 +549,10 @@ export const MATERIAL_PAGES = [
       'Overheating PVC releases corrosive fumes, so it is cut conservatively and never laser-cut.',
       'It is more brittle than polyethylene or nylon, especially when cold. Avoid sharp inside corners and thin unsupported tabs.',
       'Expanded (foamed) PVC sheet is a different material: light, soft and intended for panels and signage, not for load.',
-      SHOP_TOLERANCE,
+      tol('pvc'),
     ],
     toleranceAnswer:
-      'Rigid PVC machines to size reasonably well. ' + SHOP_TOLERANCE + ' Tighter requirements are reviewed on a firm quote with the drawing.',
+      'Rigid PVC machines to size reasonably well. ' + tol('pvc') + ' Tighter requirements are reviewed on a firm quote with the drawing.',
   },
 
   // ─────────────────────────────────────────────────────────────── Polypropylene
@@ -593,11 +596,9 @@ export const MATERIAL_PAGES = [
       'It becomes brittle in the cold and is notch-sensitive there; radius inside corners.',
       'It cannot be glued with ordinary adhesives. Join by welding or with fasteners.',
       'Realistic tolerances are looser than for acetal. If a dimension is critical, call it out so it is reviewed before the job is quoted.',
-      // TODO(owner): state the tolerance you will actually hold on polypropylene.
     ],
     toleranceAnswer:
-      'Polypropylene is soft and moves with temperature, so it is not a precision material. ' + SHOP_TOLERANCE +
-      ' Treat that as the best case on polypropylene and call out any dimension that must be held.',
+      'Polypropylene is soft and moves with temperature, so it is not a precision material. ' + tol('polypropylene'),
   },
 ];
 

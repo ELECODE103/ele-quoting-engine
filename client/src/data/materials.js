@@ -4,6 +4,7 @@
 import catalog from './catalog.generated.json';
 import brand from '../../../shared/brand.json';
 import { MATERIAL_PAGES, FOOD_CONTACT_GENERAL } from './materialPages';
+import { when, MILLING } from '../facts';
 
 export { catalog };
 
@@ -45,7 +46,7 @@ export function processSentence(page) {
   const parts = [];
   if (page.cnc) {
     const forms = (page.cnc.stockForms || []).map((f) => STOCK_FORM_LABEL[f] || f).join(' and ');
-    parts.push(`CNC milling and turning${forms ? ` from ${forms}` : ''}`);
+    parts.push(`CNC ${MILLING}${forms ? ` from ${forms}` : ''}`);
   }
   if (page.routing) parts.push(`CNC routing from sheet ${thicknessRange(page.routing)} thick`);
   return parts.join(', and ');
@@ -66,7 +67,7 @@ export function buildFaqs(page) {
   faqs.push({ q: `Is ${page.shortName} suitable for food contact?`, a: `${page.foodContact} ${FOOD_CONTACT_GENERAL}` });
   faqs.push({
     q: `How do I get a price for a part in ${page.shortName}?`,
-    a: `Upload a STEP or STL file to the quote builder and choose ${page.name}. Quantities up to ${brand.rfqQuantityThreshold} pieces are priced online; larger quantities and parts that need review get a firm quote within ${brand.quoteTurnaroundHours} hours.`,
+    a: `Upload a STEP or STL file to the quote builder and choose ${page.name}. Quantities up to ${brand.rfqQuantityThreshold} pieces are priced online; larger quantities and parts that need review get a firm quote from a person${when('quote-turnaround', (v) => ` within ${v}`)}.`,
   });
   return faqs;
 }

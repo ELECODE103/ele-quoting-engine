@@ -20,6 +20,7 @@ const { validateFileContent } = require("../middleware/fileValidator");
 const fileCrypto = require("../services/fileCrypto");
 const dxf = require("../geometry/dxf");
 
+const shopFacts = require("../shopFacts"); // hides catalog options the owner has not confirmed
 const router = express.Router();
 
 // ─── FILE UPLOAD CONFIG ──────────────────────────────────────
@@ -265,7 +266,8 @@ function rushMultiplier(leadTime) {
  */
 function priceQuote(partConfigs, leadTimeSlug = "standard") {
   const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === leadTimeSlug);
-  if (!leadTime) {
+  // A lead time the shop has not confirmed it offers cannot be bought, even by a hand-built request.
+  if (!leadTime || !leadTime.active || !shopFacts.leadTimeListed(leadTime)) {
     throw quoteError(400, "Invalid lead time");
   }
 
@@ -342,7 +344,7 @@ function priceQuote(partConfigs, leadTimeSlug = "standard") {
 
 /** Ship-by date and surcharge in dollars for every active lead time, for the option list. */
 function leadTimeOptions(subtotal) {
-  return leadTimesDB.getAll().filter((lt) => lt.active).map((lt) => ({
+  return leadTimesDB.getAll().filter((lt) => lt.active && shopFacts.leadTimeListed(lt)).map((lt) => ({
     slug: lt.slug,
     name: lt.name,
     shipBy: shipBy.shipByDate(lt),
@@ -548,7 +550,7 @@ router.get("/processes", (req, res) => {
   res.json(activeProcesses());
 });
 router.get("/materials", (req, res) => {
-  let mats = materialsDB.getAll().filter((m) => m.active);
+  let mats = materialsDB.getAll().filter((m) => m.active && shopFacts.materialListed(m));
   if (req.query.process) {
     // Materials without a process field are legacy sheet metal
     mats = mats.filter((m) => (m.process || 'sheetmetal') === req.query.process);
@@ -560,7 +562,7 @@ router.get("/materials", (req, res) => {
 });
 
 router.get("/finishes", (req, res) => {
-  let fins = finishesDB.getAll().filter((f) => f.active);
+  let fins = finishesDB.getAll().filter((f) => f.active && shopFacts.finishListed(f));
   if (req.query.process) {
     // Finishes without a process field are legacy sheet metal
     fins = fins.filter((f) => (f.process || 'sheetmetal') === req.query.process);
@@ -569,7 +571,7 @@ router.get("/finishes", (req, res) => {
 });
 
 router.get("/lead-times", (req, res) => {
-  res.json(leadTimesDB.getAll().filter((lt) => lt.active).map((lt) => ({ ...lt, shipBy: shipBy.shipByDate(lt) })));
+  res.json(leadTimesDB.getAll().filter((lt) => lt.active && shopFacts.leadTimeListed(lt)).map((lt) => ({ ...lt, shipBy: shipBy.shipByDate(lt) })));
 });
 
 // ═══════════════════════════════════════════════════════════════

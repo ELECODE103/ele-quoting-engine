@@ -9,6 +9,7 @@
  * Preview: `node scripts/preview-emails.js [outDir]`.
  */
 const brand = require("../../shared/brand.json");
+const shopFacts = require("../shopFacts");
 const { formatShipBy, SHOP_TZ } = require("../services/shipBy");
 
 const INK = "#101C33";
@@ -189,11 +190,11 @@ function rfqReceivedBuyer({ rfq }) {
   const n = (rfq.parts || []).length;
   return layout({
     subject: `${brand.name}: we have your quote request`,
-    preheader: `A firm quote comes back within ${brand.quoteTurnaroundHours} hours.`,
+    preheader: `A firm quote comes back${shopFacts.when("quote-turnaround", (v) => ` within ${v}`)} from the person who will run the job.`,
     heading: "We have your request",
     paragraphs: [
       greeting(rfq.contactName),
-      `Thanks. We have your request${n ? ` for ${n} part${n === 1 ? "" : "s"}` : ""}. A firm quote comes back within ${brand.quoteTurnaroundHours} hours, from the person who will run the job.`,
+      `Thanks. We have your request${n ? ` for ${n} part${n === 1 ? "" : "s"}` : ""}. A firm quote comes back${shopFacts.when("quote-turnaround", (v) => ` within ${v}`)}, from the person who will run the job.`,
       "If anything on the print needs a conversation first, you'll hear from us before then.",
     ],
     items: rfqPartRows(rfq),

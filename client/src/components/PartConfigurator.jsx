@@ -1,4 +1,5 @@
 import { formatBox } from '../utils/format';
+import { gradeLabel } from '../facts';
 
 // Short, friendly use-case guidance per material. Keyed by lowercase keywords
 // matched against the material name/category, so it works without a DB field.
@@ -10,17 +11,17 @@ const MATERIAL_GUIDANCE = [
   { match: ['pa12', 'pa 12'], text: 'Strong, tough, a little flexible. Living hinges, clips, end-use parts.' },
   { match: ['resin', 'sla'], text: 'Finest detail and smoothest surface. Small housings, snap fits, cosmetic models. More brittle than FDM.' },
   { match: ['tough resin', 'abs-like'], text: 'Resin with some give. Working prototypes that need detail and a little impact resistance.' },
-  { match: ['delrin', 'acetal', 'pom'], text: 'The default machined plastic: stiff, stable, low-friction. Bushings, gears, wear parts, housings. Natural grade is FDA-compliant.' },
-  { match: ['uhmw'], text: 'Best abrasion resistance and very slippery — conveyor guides, wear strips, chute liners. Looser tolerances than acetal.' },
+  { match: ['delrin', 'acetal', 'pom'], text: 'The default machined plastic: stiff, stable, low-friction. Bushings, gears, wear parts, housings.' },
+  { match: ['uhmw'], text: 'Very abrasion-resistant and slippery. Conveyor guides, wear strips, chute liners. Looser tolerances than acetal.' },
   { match: ['hdpe'], text: 'Cheap, tough, chemical-resistant — trays, totes, boards, outdoor parts. Not for tight tolerances.' },
-  { match: ['nylon'], text: 'Strong and tough with good wear life — gears, rollers, sprockets. Absorbs moisture and grows; we machine it dry.' },
-  { match: ['peek'], text: 'Service to ~480 °F with excellent chemical and wear resistance. The stock is most of the price.' },
-  { match: ['ultem', 'pei'], text: 'Stiff, strong to ~340 °F, flame-rated insulator. Keep inside corners radiused.' },
+  { match: ['nylon'], text: 'Strong and tough with good wear life — gears, rollers, sprockets. Absorbs moisture and grows; say if it runs wet.' },
+  { match: ['peek'], text: 'Keeps its strength hot and resists most chemicals. The stock is most of the price.' },
+  { match: ['ultem', 'pei'], text: 'Stiff and strong when warm, a good insulator. Keep inside corners radiused.' },
   { match: ['ptfe', 'teflon'], text: 'Nothing sticks to it, almost nothing attacks it. Soft and creeps — tolerances are wide.' },
-  { match: ['polycarbonate'], text: 'Near-unbreakable and clear — guards, windows, covers. Polishes well.' },
-  { match: ['acrylic'], text: 'Optically clear, flame-polishes glass-clear. Brittle — radius corners, don\'t over-tighten fasteners.' },
+  { match: ['polycarbonate'], text: 'Clear, with very high impact strength. Guards, windows, covers.' },
+  { match: ['acrylic'], text: 'Optically clear. Brittle, so radius corners and don\'t over-tighten fasteners.' },
   { match: ['pvc'], text: 'Chemical-resistant, solvent-weldable, cheap — tanks, manifolds, fixtures.' },
-  { match: ['polypropylene'], text: 'Chemical resistance near PTFE at a fraction of the price. Flexible; hard to hold tight.' },
+  { match: ['polypropylene'], text: 'Resists most acids and bases, light and cheap. Flexible; hard to hold to a close tolerance.' },
   { match: ['g10', 'g 10', 'fr 4'], text: 'Very stiff, stable insulator. Abrasive on tooling, so it prices above plastics.' },
   { match: ['phenolic'], text: 'Stiff, stable, cheap insulator with good wear life. Abrasive; edges need care on through-holes.' },
   { match: ['aluminum'], text: 'Light, stiff, machines fast. Brackets, plates and fixtures that mate with metal.' },
@@ -122,7 +123,7 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
           <label>
             <span className="field-label">Grade / color</span>
             <select className="input" value={part.grade || currentMat.grades[0].name} onChange={(e) => onChange({ grade: e.target.value })}>
-              {currentMat.grades.map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
+              {currentMat.grades.map((g) => <option key={g.name} value={g.name}>{gradeLabel(g.name)}</option>)}
             </select>
           </label>
         )}
