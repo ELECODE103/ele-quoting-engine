@@ -184,7 +184,7 @@ export default function OrderTrackingPage() {
                 </div>
               )}
               {order.customerNotes && (
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, whiteSpace: 'pre-wrap' }}><b>Your notes:</b> {order.customerNotes}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, whiteSpace: 'pre-wrap' }}><b>{order.rfqId ? 'Quote notes' : 'Your notes'}:</b> {order.customerNotes}</p>
               )}
               {order.drawingFileName && (
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>

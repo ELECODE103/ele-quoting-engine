@@ -619,8 +619,8 @@ h2.display.h3-like { font-size: 20px; letter-spacing: -0.3px; margin-bottom: 14p
 
 /* Touch targets: footer links, the header phone number and the menu button were ~21 px tall on a phone. */
 @media (max-width: 900px) {
-  .pub-footer a { display: inline-block; padding: 9px 0; }
+  .pub-footer a { display: inline-block; padding: 11px 0; }
   .pub-footer li { margin: 0; }
-  .util-bar a.util-phone { display: inline-block; padding: 8px 0; }
+  .util-bar a.util-phone { display: inline-block; padding: 6px 0; }
   .pub-nav-toggle { min-width: 44px; min-height: 44px; justify-content: center; align-items: center; }
 }

@@ -373,7 +373,8 @@ async function buildOrderConfirmationPdf({ order, items = [], customer, options 
     ["Order total", money(order.total), true],
   ]);
   // The buyer's own notes. `order.notes` is the shop's internal note and never prints on a customer document.
-  y = paragraph(doc, y, "Your notes", order.customerNotes);
+  // (On an order taken from a firm quote that field holds the note the quote carried.)
+  y = paragraph(doc, y, order.rfqId ? "Quote notes" : "Your notes", order.customerNotes);
   y = paragraph(doc, y, null, options.closing || `Please check the parts, quantities and ship-to address above and tell us about anything that is wrong before we cut material: ${brand.email} or ${brand.phone}. Please give order number ${number} in any message about this order.`);
   return finish(doc);
 }

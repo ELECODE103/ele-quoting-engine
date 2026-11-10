@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, orderStatusLabel } from '../utils/format';
 
 export default function CustomerDashboard() {
   const navigate = useNavigate();
@@ -100,8 +100,8 @@ export default function CustomerDashboard() {
                     <td style={{ padding: '12px 16px', color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>{String(order.id).slice(0, 8).toUpperCase()}</td>
                     <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: 12 }}>{formatDate(order.createdAt)}</td>
                     <td style={{ padding: '12px 16px' }}>
-                      <span style={{ color: getStatusColor(order.status), fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>
-                        {order.status.replace(/_/g, ' ')}
+                      <span style={{ color: getStatusColor(order.status), fontSize: 11, fontWeight: 600 }}>
+                        {orderStatusLabel(order.status)}
                       </span>
                     </td>
                     <td style={{ padding: '12px 16px', color: 'var(--text-primary)', fontSize: 12, textAlign: 'right', fontWeight: 500 }}>

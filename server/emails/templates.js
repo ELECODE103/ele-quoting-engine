@@ -320,7 +320,7 @@ function orderConfirmation({ order, items, orderUrl }) {
       ["Ships by", formatShipBy(order.shipBy)],
       ["Ship to", shipTo(order)],
       ["PO number", po ? order.poNumber : ""],
-      ["Your notes", order.customerNotes],
+      [order.rfqId ? "Quote notes" : "Your notes", order.customerNotes],
       ["Drawing", order.drawingFileName],
     ],
     cta: orderUrl ? { label: "View your order", url: orderUrl } : undefined,

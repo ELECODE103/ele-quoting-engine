@@ -407,9 +407,12 @@ function generateJobTraveler(order, items) {
 
   const subtotal = items.reduce((sum, item) => sum + (item.lineTotal || 0), 0);
   const tax = 0;
-  const total = subtotal + tax + (order.shippingCost || 0);
+  // The order's own total is the amount charged (it can include a lead-time fee); the sum is only a fallback for old records.
+  const fee = Number(order.leadTimeSurcharge) || 0;
+  const total = Number(order.total) > 0 ? Number(order.total) : subtotal + fee + tax + (order.shippingCost || 0);
 
   y = addInfoBlock(doc, "Subtotal:", `$${subtotal.toFixed(2)}`, y);
+  if (fee > 0) y = addInfoBlock(doc, `${order.leadTimeName || "Lead-time"} fee:`, `$${fee.toFixed(2)}`, y);
   y = addInfoBlock(
     doc,
     "Shipping:",
@@ -428,8 +431,8 @@ function generateJobTraveler(order, items) {
     .fontSize(10)
     .font("Helvetica")
     .fillColor("#000000");
-  y = addInfoBlock(doc, "Order Date:", order.createdAt || new Date().toISOString(), y);
-  y = addInfoBlock(doc, "Due Date:", "[Due Date TBD]", y);
+  y = addInfoBlock(doc, "Order Date:", new Date(order.createdAt || Date.now()).toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "short", day: "numeric" }), y);
+  y = addInfoBlock(doc, "Ship by:", order.shipBy ? require("./shipBy").formatShipBy(order.shipBy) : "Not set", y);
   y = addInfoBlock(doc, "Status:", order.status || "pending", y);
 
   y += 15;
