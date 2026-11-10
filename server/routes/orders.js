@@ -3,36 +3,51 @@
  * Handles order creation from quotes, status updates, and order retrieval.
  */
 const express = require("express");
-const { ordersDB, orderItemsDB, quotesDB, partsDB } = require("../models");
-const brand = require("../../shared/brand.json");
+const fs = require("fs");
+const path = require("path");
+const { ordersDB, orderItemsDB, quotesDB, partsDB, usersDB, leadTimesDB, materialsDB, finishesDB } = require("../models");
 const { authenticate, requireAdmin } = require("./auth");
 const { sanitizeString, nonNegativeNumber } = require("../middleware/validate");
+const stripeClient = require("../services/stripeClient");
+const orderEvents = require("../services/orderEvents");
+const shipBy = require("../services/shipBy");
+const { trackingUrl } = require("../emails/templates");
 
 const router = express.Router();
 
-// Initialize Stripe (only if key is configured)
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? require("stripe")(process.env.STRIPE_SECRET_KEY)
-  : null;
+/** Shipping fields from a request body, sanitized. */
+function shippingFields(body = {}) {
+  return {
+    shippingName: sanitizeString(body.shippingName || "", 200),
+    shippingAddress: sanitizeString(body.shippingAddress || "", 500),
+    shippingCity: sanitizeString(body.shippingCity || "", 100),
+    shippingState: sanitizeString(body.shippingState || "", 100),
+    shippingZip: sanitizeString(body.shippingZip || "", 20),
+    shippingCountry: sanitizeString(body.shippingCountry || "US", 5),
+  };
+}
+
+/** An order as its customer (or an admin) may see it. Internal notes and server paths stay out of customer responses. */
+function orderView(order, { admin = false } = {}) {
+  const { drawingPath, notes, ...safe } = order;
+  return {
+    ...safe,
+    ...(admin ? { notes } : {}),
+    hasDrawing: Boolean(drawingPath),
+    trackingUrl: trackingUrl(order.carrier, order.trackingNumber),
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════
 // POST /api/orders/checkout-session — Create Stripe Checkout Session
 // ═══════════════════════════════════════════════════════════════
 router.post("/checkout-session", authenticate, async (req, res) => {
   try {
-    if (!stripe) {
+    if (!stripeClient.get()) {
       return res.status(503).json({ error: "Payment processing is not configured" });
     }
 
-    const {
-      quoteId,
-      shippingName,
-      shippingAddress,
-      shippingCity,
-      shippingState,
-      shippingZip,
-      shippingCountry,
-    } = req.body;
+    const { quoteId } = req.body;
 
     if (!quoteId) {
       return res.status(400).json({ error: "Quote ID is required" });
@@ -54,6 +69,14 @@ router.post("/checkout-session", authenticate, async (req, res) => {
       return res.status(400).json({ error: "Invalid order total" });
     }
 
+    // Prices hold for 30 days from the last time the quote was priced.
+    if (quote.expiresAt && new Date(quote.expiresAt) < new Date()) {
+      return res.status(410).json({
+        error: "This price has expired. Reopen the quote to get today's price.",
+        code: "quote-expired",
+      });
+    }
+
     // Quotes the gate routed to RFQ can't be bought online — a person prices them first.
     if (quote.gate?.requiresRfq && req.user.role !== "admin") {
       return res.status(409).json({
@@ -63,27 +86,44 @@ router.post("/checkout-session", authenticate, async (req, res) => {
       });
     }
 
+    // The promised ship date is counted from today now and re-counted from the
+    // payment day when the payment clears.
+    const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === quote.leadTimeSlug) || null;
+    const leadDays = leadTime ? shipBy.leadDays(leadTime) : null;
+    const account = usersDB.getById(req.user.userId);
+    const shipping = shippingFields(req.body);
+
     // Create the order with pending_payment status
     const order = ordersDB.insert({
       userId: req.user.userId,
       quoteId,
       status: "pending_payment",
-      shippingName: sanitizeString(shippingName || "", 200),
-      shippingAddress: sanitizeString(shippingAddress || "", 500),
-      shippingCity: sanitizeString(shippingCity || "", 100),
-      shippingState: sanitizeString(shippingState || "", 100),
-      shippingZip: sanitizeString(shippingZip || "", 20),
-      shippingCountry: sanitizeString(shippingCountry || "US", 5),
+      ...shipping,
       shippingMethod: "standard",
       shippingCost: 0,
       subtotal: orderTotal,
       tax: 0,
       total: orderTotal,
       notes: "",
+      paymentMethod: "card",
+      customerEmail: account?.email || req.user.email || "",
+      customerName: account?.name || shipping.shippingName,
+      leadTimeSlug: quote.leadTimeSlug || "",
+      leadTimeName: leadTime?.name || "",
+      leadDays,
+      shipBy: leadDays !== null ? shipBy.shipByDate(leadDays) : null,
+      // Notes and drawing the buyer attached on the instant path (price unaffected).
+      customerNotes: quote.notes || "",
+      drawingFileName: quote.drawingFileName || "",
+      drawingPath: quote.drawingPath || "",
     });
 
     // Create order items from quote line items
     const lineItems = quote.lineItems || [];
+    const inputs = Object.fromEntries((quote.config?.parts || []).map((c) => [c.partId, c]));
+    // The engine's line items carry slugs; orders and emails show names.
+    const materialNames = Object.fromEntries(materialsDB.getAll().map((m) => [m.slug, m.name]));
+    const finishNames = Object.fromEntries(finishesDB.getAll().map((f) => [f.slug, f.name]));
     for (const item of lineItems) {
       // Map from the pricing-engine line-item shape: per-unit price lives at
       // perUnit.final and material/finish/process live under meta.
@@ -93,62 +133,39 @@ router.post("/checkout-session", authenticate, async (req, res) => {
         fileName: item.fileName,
         process: item.meta?.process || "",
         materialSlug: item.meta?.materialSlug || "",
-        materialName: item.meta?.materialName || "",
+        materialName: item.meta?.materialName || materialNames[item.meta?.materialSlug] || "",
         finishSlug: item.meta?.finishSlug || "",
-        finishName: item.meta?.finishName || "",
+        finishName: item.meta?.finishName || finishNames[item.meta?.finishSlug] || "",
         quantity: item.quantity || 1,
         unitPrice: item.perUnit?.final || 0,
         lineTotal: item.lineTotal || 0,
         // Normalized per-item process config (process-specific fields live in meta:
         // grade/thicknessMm for sheet metal, subProcess/layerHeightMm for printing,
         // machinability for CNC, etc.). Stored as one JSON blob — no per-process columns.
-        config: item.meta || {},
+        // `input` is what the buyer configured, kept so the order can be re-quoted (reorder).
+        config: { ...(item.meta || {}), input: inputs[item.partId] || null },
       });
     }
-
-    // Update quote status
-    quotesDB.update(quoteId, { status: "ordered" });
 
     // Build Stripe line items description
     const partNames = lineItems.map(i => i.fileName || "custom part").join(", ");
     const description = partNames.length > 200 ? partNames.substring(0, 197) + "..." : partNames;
 
-    // Determine base URL for redirects
-    const baseUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get("host")}`;
-
-    // Create Stripe Checkout Session
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "payment",
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: `${brand.name} Order — ${lineItems.length} part${lineItems.length !== 1 ? "s" : ""}`,
-              description: description || "Custom machined and printed parts",
-            },
-            unit_amount: Math.round(orderTotal * 100), // Stripe uses cents
-          },
-          quantity: 1,
-        },
-      ],
-      metadata: {
-        orderId: order.id,
-        quoteId: quoteId,
-        userId: req.user.userId,
-      },
-      success_url: `${baseUrl}/orders/${order.id}?paid=true`,
-      cancel_url: `${baseUrl}/checkout/${quoteId}?cancelled=true`,
-            allow_promotion_codes: true,
+    const baseUrl = orderEvents.baseUrl(req);
+    const session = await orderEvents.createCheckoutSession(order, {
+      itemCount: lineItems.length,
+      description,
+      successUrl: `${baseUrl}/orders/${order.id}?paid=true`,
+      cancelUrl: `${baseUrl}/checkout/${quoteId}?cancelled=true`,
+      metadata: { quoteId, userId: req.user.userId },
     });
 
-    // Store stripe session ID on the order for reference
-    ordersDB.update(order.id, { stripeSessionId: session.id });
+    // The quote is now an order: bind it to the buyer and stop the builder re-pricing it in place.
+    quotesDB.update(quoteId, { status: "ordered", userId: quote.userId || req.user.userId });
 
     res.json({ sessionUrl: session.url, orderId: order.id });
   } catch (err) {
-    console.error("Checkout session error:", err);
+    console.error("Checkout session error:", err.message);
     res.status(500).json({ error: "Failed to create checkout session" });
   }
 });
@@ -276,7 +293,7 @@ router.get("/", authenticate, (req, res) => {
         dfm: part?.dfm || null,
       };
       });
-      return { ...order, items: enrichedItems, itemCount: items.length };
+      return { ...orderView(order, { admin: req.user.role === "admin" }), items: enrichedItems, itemCount: items.length };
     });
 
     res.json(result);
@@ -303,7 +320,7 @@ router.get("/:id", authenticate, (req, res) => {
       const part = it.partId ? partsDB.getById(it.partId) : null;
       return { ...it, storedName: part?.storedName || null };
     });
-    res.json({ ...order, items: enrichedItems });
+    res.json({ ...orderView(order, { admin: req.user.role === "admin" }), items: enrichedItems });
   } catch (err) {
     console.error("Order detail error:", err);
     res.status(500).json({ error: "Failed to retrieve order" });
@@ -315,6 +332,7 @@ router.get("/:id", authenticate, (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 const VALID_STATUSES = [
   "pending_payment",
+  "pending_po",
   "paid",
   "received",  "in_production",
   "quality_check",
@@ -324,7 +342,7 @@ const VALID_STATUSES = [
   "cancelled",
 ];
 
-router.put("/:id/status", authenticate, requireAdmin, (req, res) => {
+router.put("/:id/status", authenticate, requireAdmin, async (req, res) => {
   try {
     const { status, trackingNumber, carrier, shippedAt, notes } = req.body;
 
@@ -340,23 +358,107 @@ router.put("/:id/status", authenticate, requireAdmin, (req, res) => {
     if (shippedAt !== undefined) updates.shippedAt = sanitizeString(shippedAt, 40);
     if (notes !== undefined) updates.notes = sanitizeString(notes, 2000);
 
+    const existing = ordersDB.getById(req.params.id);
+    if (!existing) return res.status(404).json({ error: "Order not found" });
+
     // Auto-stamp shippedAt when transitioning to shipped if not provided
-    if (status === "shipped" && !updates.shippedAt) {
-      const existing = ordersDB.getById(req.params.id);
-      if (existing && !existing.shippedAt) {
-        updates.shippedAt = new Date().toISOString();
-      }
+    if (status === "shipped" && !updates.shippedAt && !existing.shippedAt) {
+      updates.shippedAt = new Date().toISOString();
     }
 
     const updated = ordersDB.update(req.params.id, updates);
-    if (!updated) return res.status(404).json({ error: "Order not found" });
 
-    // TODO: Send email notification to customer on status change
+    // Shipped (or tracking added afterwards) → tell the customer.
+    const emailed = await orderEvents.notifyStatusChange(existing, updated, { base: orderEvents.baseUrl(req) });
 
-    res.json(updated);
+    res.json({ ...orderView(updated, { admin: true }), customerEmailed: emailed });
   } catch (err) {
     console.error("Status update error:", err);    res.status(500).json({ error: "Failed to update order status" });
   }
+});
+
+/** Load an order its owner or an admin may act on, or answer 404/403. */
+function ownedOrder(req, res) {
+  const order = ordersDB.getById(req.params.id);
+  if (!order) { res.status(404).json({ error: "Order not found" }); return null; }
+  if (req.user.role !== "admin" && order.userId !== req.user.userId) { res.status(403).json({ error: "Access denied" }); return null; }
+  return order;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// POST /api/orders/:id/confirm-payment — settle on return from Stripe
+// The webhook normally marks an order paid; this asks Stripe directly so the
+// buyer's confirmation page doesn't depend on webhook timing.
+// ═══════════════════════════════════════════════════════════════
+router.post("/:id/confirm-payment", authenticate, async (req, res) => {
+  try {
+    const order = ownedOrder(req, res);
+    if (!order) return;
+    const { order: settled } = await orderEvents.confirmPayment(order, { base: orderEvents.baseUrl(req) });
+    res.json({ status: settled.status, shipBy: settled.shipBy || null });
+  } catch (err) {
+    console.error("Confirm payment error:", err.message);
+    res.status(502).json({ error: "Could not confirm the payment yet" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// POST /api/orders/:id/reorder — rebuild a quote from an order
+// Re-prices the same parts and configuration at today's rates and returns a
+// draft quote the builder can open. Nothing is ordered here.
+// ═══════════════════════════════════════════════════════════════
+router.post("/:id/reorder", authenticate, (req, res) => {
+  try {
+    const order = ownedOrder(req, res);
+    if (!order) return;
+    const items = orderItemsDB.query((i) => i.orderId === order.id);
+    const configs = items
+      .filter((it) => it.partId && partsDB.getById(it.partId))
+      .map((it) => ({
+        materialSlug: it.materialSlug,
+        finishSlug: it.finishSlug,
+        process: it.process,
+        subProcess: it.config?.subProcess || "",
+        grade: it.config?.grade || "",
+        ...(it.config?.input || {}),
+        partId: it.partId,
+        quantity: it.quantity,
+      }));
+    if (configs.length === 0) {
+      return res.status(409).json({
+        error: "We no longer have the part files for this order on hand. Upload them again for a fresh quote.",
+        code: "parts-unavailable",
+      });
+    }
+    const { saveQuote } = require("./api");
+    const input = { parts: configs, process: configs[0].process };
+    let result;
+    try {
+      result = saveQuote({ ...input, leadTimeSlug: order.leadTimeSlug || "standard" }, req.user);
+    } catch (err) {
+      if (!err.expose) throw err;
+      // A retired lead time shouldn't block a reorder; anything else (a retired material) does.
+      try { result = saveQuote({ ...input, leadTimeSlug: "standard" }, req.user); }
+      catch (err2) {
+        if (!err2.expose) throw err2;
+        return res.status(409).json({ error: `This order can't be re-quoted as it was: ${err2.message}. Start a new quote instead.`, code: "reorder-failed" });
+      }
+    }
+    res.status(201).json({ quoteId: result.saved.id, parts: configs.length, skipped: items.length - configs.length });
+  } catch (err) {
+    console.error("Reorder error:", err);
+    res.status(500).json({ error: "Could not rebuild the quote" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// GET /api/orders/:id/drawing — the drawing the buyer attached (owner or admin)
+// ═══════════════════════════════════════════════════════════════
+router.get("/:id/drawing", authenticate, (req, res) => {
+  const order = ownedOrder(req, res);
+  if (!order) return;
+  if (!order.drawingPath || !fs.existsSync(order.drawingPath)) return res.status(404).json({ error: "No drawing on this order" });
+  res.download(order.drawingPath, order.drawingFileName || path.basename(order.drawingPath));
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -406,7 +508,7 @@ router.get("/admin/queue", authenticate, requireAdmin, (req, res) => {
     const { status, process: processFilter } = req.query;
 
     let orders = ordersDB.getAll().filter((o) =>
-      ["paid", "received", "in_production", "quality_check", "packing"].includes(o.status)
+      ["pending_po", "paid", "received", "in_production", "quality_check", "packing"].includes(o.status)
     );
 
     if (status) {
