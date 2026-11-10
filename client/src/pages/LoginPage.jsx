@@ -4,13 +4,14 @@ import { useAuth } from '../utils/authContext';
 import { api, setAuthToken } from '../utils/api';
 import Wordmark from '../components/Wordmark';
 import brand from '../brand';
+import { destinationAfterAuth, nextFrom, authPath } from '../utils/returnTo';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  // Where to go after login — set by a guarded page (e.g. guest → checkout) so
-  // the in-progress quote/checkout survives the login detour.
-  const returnTo = location.state?.from || '/quote';
+  // Where to go after login — set by a guarded page (e.g. guest → checkout) as
+  // ?next=, so the in-progress quote/checkout survives the login detour.
+  const returnTo = destinationAfterAuth(location);
   const toCheckout = returnTo.startsWith('/checkout');
   const { login } = useAuth();
   const [email, setEmail] = useState('');
@@ -31,7 +32,7 @@ export default function LoginPage() {
         setAuthToken(result.token);
         const decoded = JSON.parse(atob(result.token.split('.')[1]));
         login(result.token, decoded);
-        navigate(returnTo);
+        navigate(returnTo, { replace: true });
       }
     } catch (err) {
       setError(err.message || `That email and password didn't match. Try again, or call ${brand.phone}.`);
@@ -98,7 +99,7 @@ export default function LoginPage() {
 
         <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.8 }}>
           No account yet?{' '}
-          <Link to="/register" state={location.state} style={{ color: 'var(--accent)' }}>Create one</Link>
+          <Link to={authPath('/register', nextFrom(location))} style={{ color: 'var(--accent)' }}>Create one</Link>
           <br />
           <Link to="/quote" style={{ color: 'var(--text-muted)' }}>Back to the quote</Link>
         </div>

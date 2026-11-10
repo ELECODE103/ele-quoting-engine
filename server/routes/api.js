@@ -14,7 +14,8 @@ const pricingPreview = require("../services/pricingPreview");
 const calibration = require("../services/calibration");
 const { resolveProcess, activeProcesses } = require("../processes/registry");
 const { authenticate, optionalAuth, requireAdmin } = require("./auth");
-const { sanitizeString, isValidSlug, nonNegativeNumber, positiveInt } = require("../middleware/validate");
+const { sanitizeString, isValidSlug, isValidUUID, nonNegativeNumber, positiveInt } = require("../middleware/validate");
+const shipBy = require("../services/shipBy");
 const { validateFileContent } = require("../middleware/fileValidator");
 const fileCrypto = require("../services/fileCrypto");
 
@@ -177,117 +178,287 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
  *   leadTimeSlug: "standard" | "expedited" | "rush" | "same-day"
  * }
  */
+const QUOTE_VALID_DAYS = 30;
+const CONFIG_FIELDS = ["partId", "materialSlug", "grade", "thicknessMm", "finishSlug", "quantity", "process", "subProcess", "layerHeight", "infill"];
+
+function quoteError(status, message) {
+  return Object.assign(new Error(message), { status, expose: true });
+}
+
+/** The rate card's rush table wins when it names this lead time, else the lead-time record's own multiplier. */
+function rushMultiplier(leadTime) {
+  const fromTable = Number((pricingEngine.rules.rushMultipliers || {})[leadTime.slug]);
+  return Number.isFinite(fromTable) && fromTable >= 1 ? fromTable : leadTime.multiplier;
+}
+
+/**
+ * Price a set of configured parts. Shared by the quote builder (POST /quote)
+ * and reorder. Throws quoteError(400) for a bad lead time, part or material.
+ * @returns {{ quote, gate, dfmByPartId, leadTime }}
+ */
+function priceQuote(partConfigs, leadTimeSlug = "standard") {
+  const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === leadTimeSlug);
+  if (!leadTime) {
+    throw quoteError(400, "Invalid lead time");
+  }
+
+  // Build pricing input
+  const pricingParts = [];
+  const dfmByPartId = {};
+  for (const config of partConfigs) {
+    const part = partsDB.getById(config.partId);
+    if (!part) {
+      throw quoteError(400, `Part not found: ${config.partId}`);
+    }
+    const material = materialsDB.getAll().find((m) => m.slug === config.materialSlug);
+    if (!material) {
+      throw quoteError(400, `Material not found: ${config.materialSlug}`);
+    }
+
+    const defaultFinishSlug = resolveProcess(config.process).defaultFinishSlug || 'raw';
+    const finish = finishesDB.getAll().find((f) => f.slug === (config.finishSlug || defaultFinishSlug)) || null;
+
+    const process = config.process || material.process || defaultProcessSlug();
+    const thicknessMm = config.thicknessMm || material.thicknesses?.[2]?.mm || material.thicknesses?.[0]?.mm || 0;
+    pricingParts.push({
+      partId: config.partId,
+      fileName: part.fileName,
+      geometry: part.geometry,
+      material,
+      grade: config.grade || material.grades?.[0]?.name || '',
+      thicknessMm,
+      finish,
+      quantity: config.quantity || 1,
+      process,
+      subProcess: config.subProcess || '',
+      // Pass through only when actually provided — `|| 0` made an unset infill
+      // look like an intentional 0% (the engine then under-costed FDM material).
+      layerHeight: config.layerHeight != null ? Number(config.layerHeight) : undefined,
+      infill: config.infill != null ? Number(config.infill) : undefined,
+    });
+
+    // DFM for the chosen process/material/thickness — drives the checkout-vs-RFQ gate.
+    dfmByPartId[config.partId] = runDFMAnalysis(part.geometry, {
+      process,
+      subProcess: config.subProcess || resolveProcess(process).previewSubProcess,
+      thicknessMm,
+      materialType: /plastic|composite/i.test(material.category || "") ? "plastic" : "metal",
+      // Material identity for material-aware thresholds (acrylic brittle, nylon moisture, PEEK cost …)
+      materialSlug: material.slug,
+      materialName: material.name,
+    });
+  }
+
+  const leadTimeMultiplier = rushMultiplier(leadTime);
+  const quote = pricingEngine.calculateOrderQuote({
+    parts: pricingParts,
+    leadTimeMultiplier,
+  });
+
+  // Instant checkout or RFQ? Stored with the quote so checkout can enforce it.
+  const gate = quoteGate.evaluate(quote.lineItems, dfmByPartId, pricingEngine.rules);
+
+  return { quote, gate, dfmByPartId, leadTime, leadTimeMultiplier };
+}
+
+/** Ship-by date and surcharge in dollars for every active lead time, for the option list. */
+function leadTimeOptions(subtotal) {
+  return leadTimesDB.getAll().filter((lt) => lt.active).map((lt) => ({
+    slug: lt.slug,
+    name: lt.name,
+    shipBy: shipBy.shipByDate(lt),
+    surcharge: Math.max(0, (subtotal || 0) * ((rushMultiplier(lt) || 1) - 1)),
+  }));
+}
+
+/** May this requester re-price (update in place) this stored quote? */
+function quoteEditableBy(quote, user) {
+  return quote.status === "draft" && (!quote.userId || quote.userId === user?.userId);
+}
+
+/**
+ * Price the parts and save the result as a draft quote. One row per builder
+ * session: when `quoteId` names a draft the requester may edit, that row is
+ * updated; otherwise a row is inserted (under `quoteId` if it is unused).
+ * Every re-price restarts the 30-day price hold.
+ */
+function saveQuote({ parts: partConfigs, leadTimeSlug = "standard", quoteId, process: builderProcess, notes }, user) {
+  const priced = priceQuote(partConfigs, leadTimeSlug);
+  const config = {
+    process: sanitizeString(String(builderProcess || partConfigs[0]?.process || ""), 40),
+    parts: partConfigs.map((c) => whitelist(c, CONFIG_FIELDS)),
+  };
+  const existing = isValidUUID(quoteId) ? quotesDB.getById(quoteId) : null;
+  const record = {
+    ...priced.quote,
+    gate: priced.gate,
+    config,
+    leadTimeSlug,
+    status: "draft",
+    expiresAt: new Date(Date.now() + QUOTE_VALID_DAYS * 864e5).toISOString(),
+    // Bind the quote to the user when signed in; anonymous quotes (public
+    // quoting / guest-before-login) stay unbound and remain readable by id.
+    userId: user?.userId || null,
+  };
+  if (notes !== undefined) record.notes = sanitizeString(String(notes || ""), 2000);
+  let saved;
+  if (existing && quoteEditableBy(existing, user)) {
+    saved = quotesDB.update(existing.id, { ...record, userId: user?.userId || existing.userId || null });
+  } else {
+    // A quote that has moved on (ordered, sent as an RFQ) is forked, keeping the buyer's notes and drawing.
+    const carry = existing && (!existing.userId || existing.userId === user?.userId)
+      ? { notes: existing.notes || "", drawingFileName: existing.drawingFileName || "", drawingPath: existing.drawingPath || "" }
+      : {};
+    saved = quotesDB.insert(!existing && isValidUUID(quoteId) ? { id: quoteId, ...record } : { ...carry, ...record });
+  }
+  return { saved, ...priced };
+}
+
 router.post("/quote", optionalAuth, (req, res) => {
   try {
-    const { parts: partConfigs, leadTimeSlug = "standard" } = req.body;
+    const { parts: partConfigs } = req.body;
 
     if (!partConfigs || !Array.isArray(partConfigs) || partConfigs.length === 0) {
       return res.status(400).json({ error: "No parts configured" });
     }
 
-    const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === leadTimeSlug);
-    if (!leadTime) {
-      return res.status(400).json({ error: "Invalid lead time" });
-    }
-
-    // Build pricing input
-    const pricingParts = [];
-    const dfmByPartId = {};
-    for (const config of partConfigs) {
-      const part = partsDB.getById(config.partId);
-      if (!part) {
-        return res.status(400).json({ error: `Part not found: ${config.partId}` });
-      }
-      const material = materialsDB.getAll().find((m) => m.slug === config.materialSlug);
-      if (!material) {
-        return res.status(400).json({ error: `Material not found: ${config.materialSlug}` });
-      }
-
-      const defaultFinishSlug = resolveProcess(config.process).defaultFinishSlug || 'raw';
-      const finish = finishesDB.getAll().find((f) => f.slug === (config.finishSlug || defaultFinishSlug)) || null;
-
-      const process = config.process || material.process || defaultProcessSlug();
-      const thicknessMm = config.thicknessMm || material.thicknesses?.[2]?.mm || material.thicknesses?.[0]?.mm || 0;
-      pricingParts.push({
-        partId: config.partId,
-        fileName: part.fileName,
-        geometry: part.geometry,
-        material,
-        grade: config.grade || material.grades?.[0]?.name || '',
-        thicknessMm,
-        finish,
-        quantity: config.quantity || 1,
-        process,
-        subProcess: config.subProcess || '',
-        // Pass through only when actually provided — `|| 0` made an unset infill
-        // look like an intentional 0% (the engine then under-costed FDM material).
-        layerHeight: config.layerHeight != null ? Number(config.layerHeight) : undefined,
-        infill: config.infill != null ? Number(config.infill) : undefined,
-      });
-
-      // DFM for the chosen process/material/thickness — drives the checkout-vs-RFQ gate.
-      dfmByPartId[config.partId] = runDFMAnalysis(part.geometry, {
-        process,
-        subProcess: config.subProcess || resolveProcess(process).previewSubProcess,
-        thicknessMm,
-        materialType: /plastic|composite/i.test(material.category || "") ? "plastic" : "metal",
-        // Material identity for material-aware thresholds (acrylic brittle, nylon moisture, PEEK cost …)
-        materialSlug: material.slug,
-        materialName: material.name,
-      });
-    }
-
-    // Rush multiplier: the rate card's table wins when it names this lead time,
-    // else the lead-time record's own multiplier.
-    const rushTable = pricingEngine.rules.rushMultipliers || {};
-    const leadTimeMultiplier = Number.isFinite(Number(rushTable[leadTimeSlug])) && Number(rushTable[leadTimeSlug]) >= 1
-      ? Number(rushTable[leadTimeSlug]) : leadTime.multiplier;
-    const quote = pricingEngine.calculateOrderQuote({
-      parts: pricingParts,
-      leadTimeMultiplier,
-    });
-
-    // Instant checkout or RFQ? Stored with the quote so checkout can enforce it.
-    const gate = quoteGate.evaluate(quote.lineItems, dfmByPartId, pricingEngine.rules);
-
-    // Store quote
-    const savedQuote = quotesDB.insert({
-      ...quote,
-      gate,
-      leadTimeSlug,
-      status: "draft",
-      // Bind the quote to the user when signed in; anonymous quotes (public
-      // quoting / guest-before-login) stay unbound and remain readable by id.
-      userId: req.user?.userId || null,
-    });
+    const { saved, quote, gate, dfmByPartId, leadTime } = saveQuote(req.body, req.user);
 
     res.json({
-      quoteId: savedQuote.id,
+      quoteId: saved.id,
       ...quote,
       gate,
+      expiresAt: saved.expiresAt,
+      notes: saved.notes || "",
+      drawingFileName: saved.drawingFileName || "",
+      shipBy: shipBy.shipByDate(leadTime),
+      leadTimeOptions: leadTimeOptions(quote.subtotal),
       dfmByPartId: Object.fromEntries(
         Object.entries(dfmByPartId).map(([id, d]) => [id, { summary: d.summary, checks: d.checks }])
       ),
     });
   } catch (err) {
+    if (err.expose) return res.status(err.status).json({ error: err.message });
     console.error("Quote error:", err);
     res.status(500).json({ error: "Quote calculation failed. Please try again." });
   }
 });
 
+/** A stored quote as the customer may see it: no server paths, plus the live ship-by date. */
+function quoteView(quote) {
+  const { drawingPath, ...safe } = quote;
+  const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === quote.leadTimeSlug);
+  return {
+    ...safe,
+    leadTimeName: leadTime?.name || "",
+    shipBy: leadTime ? shipBy.shipByDate(leadTime) : null,
+    expired: Boolean(quote.expiresAt && new Date(quote.expiresAt) < new Date()),
+  };
+}
+
+/** Load a quote the requester may read, or answer 404. Anonymous quotes are readable by id (UUID). */
+function readableQuote(req, res) {
+  const quote = quotesDB.getById(req.params.id);
+  // If the quote is bound to a user, only that user (or an admin) may read it.
+  if (!quote || (quote.userId && (!req.user || (req.user.userId !== quote.userId && req.user.role !== "admin")))) {
+    res.status(404).json({ error: "Quote not found" });
+    return null;
+  }
+  return quote;
+}
+
 /**
  * GET /api/quote/:id
  */
 router.get("/quote/:id", optionalAuth, (req, res) => {
-  const quote = quotesDB.getById(req.params.id);
-  if (!quote) return res.status(404).json({ error: "Quote not found" });
-  // If the quote is bound to a user, only that user (or an admin) may read it.
-  // Anonymous quotes (no userId) remain publicly readable by id (UUID) so the
-  // public quote and guest-before-login flows keep working.
-  if (quote.userId && (!req.user || (req.user.userId !== quote.userId && req.user.role !== "admin"))) {
-    return res.status(404).json({ error: "Quote not found" });
+  const quote = readableQuote(req, res);
+  if (quote) res.json(quoteView(quote));
+});
+
+/**
+ * GET /api/quote/:id/session
+ * Everything the quote builder needs to reopen a quote: each part's geometry
+ * and preview mesh with the configuration it was priced at. Used after the
+ * sign-in / register detour, on reload, and by reorder.
+ */
+router.get("/quote/:id/session", optionalAuth, (req, res) => {
+  const quote = readableQuote(req, res);
+  if (!quote) return;
+  // Quotes saved before the builder config was stored: rebuild it from the priced lines.
+  const configs = quote.config?.parts || (quote.lineItems || []).map((li) => ({
+    partId: li.partId, quantity: li.quantity, process: li.meta?.process, subProcess: li.meta?.subProcess,
+    materialSlug: li.meta?.materialSlug, grade: li.meta?.grade, finishSlug: li.meta?.finishSlug,
+  }));
+  const parts = [];
+  for (const config of configs) {
+    const part = partsDB.getById(config.partId);
+    if (!part) continue;
+    const { meshData, ...geometry } = part.geometry || {};
+    parts.push({
+      ...config,
+      fileName: part.fileName,
+      geometry,
+      dfm: part.dfm,
+      meshPreview: { positions: meshData?.positions || [], triangleCount: meshData?.triangleCount || 0 },
+    });
   }
-  res.json(quote);
+  res.json({
+    quoteId: quote.id,
+    status: quote.status,
+    process: quote.config?.process || parts[0]?.process || "",
+    leadTimeSlug: quote.leadTimeSlug || "standard",
+    notes: quote.notes || "",
+    drawingFileName: quote.drawingFileName || "",
+    parts,
+  });
+});
+
+// ─── Drawing on the instant path ─────────────────────────────
+// An optional PDF the buyer attaches to a quote. It rides along to the order
+// and the admin view; it never changes the price.
+const quoteDrawingDir = path.join(__dirname, "..", "..", "data", "quote-drawings");
+if (!fs.existsSync(quoteDrawingDir)) fs.mkdirSync(quoteDrawingDir, { recursive: true });
+
+const drawingUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, quoteDrawingDir),
+    filename: (req, file, cb) => cb(null, `${uuidv4()}.pdf`),
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (path.extname(file.originalname).toLowerCase() === ".pdf") cb(null, true);
+    else cb(Object.assign(new Error("The drawing must be a PDF"), { status: 400, expose: true }));
+  },
+});
+
+router.post("/quote/:id/drawing", optionalAuth, (req, res) => {
+  const quote = readableQuote(req, res);
+  if (!quote) return;
+  if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed" });
+  drawingUpload.single("drawing")(req, res, (err) => {
+    if (err) return res.status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: err.code === "LIMIT_FILE_SIZE" ? "The drawing is over 25 MB" : err.message });
+    if (!req.file) return res.status(400).json({ error: "No drawing attached" });
+    // Extension is not proof: a PDF starts with "%PDF".
+    const head = Buffer.alloc(4);
+    const fd = fs.openSync(req.file.path, "r");
+    fs.readSync(fd, head, 0, 4, 0);
+    fs.closeSync(fd);
+    if (head.toString("latin1") !== "%PDF") {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: "That file isn't a PDF" });
+    }
+    // The previous file is left on disk: an earlier order may still point at it.
+    const updated = quotesDB.update(quote.id, { drawingFileName: sanitizeString(req.file.originalname, 255), drawingPath: req.file.path });
+    res.json({ drawingFileName: updated.drawingFileName });
+  });
+});
+
+router.delete("/quote/:id/drawing", optionalAuth, (req, res) => {
+  const quote = readableQuote(req, res);
+  if (!quote) return;
+  if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed" });
+  quotesDB.update(quote.id, { drawingFileName: "", drawingPath: "" });
+  res.json({ drawingFileName: "" });
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -319,7 +490,7 @@ router.get("/finishes", (req, res) => {
 });
 
 router.get("/lead-times", (req, res) => {
-  res.json(leadTimesDB.getAll().filter((lt) => lt.active));
+  res.json(leadTimesDB.getAll().filter((lt) => lt.active).map((lt) => ({ ...lt, shipBy: shipBy.shipByDate(lt) })));
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -716,3 +887,5 @@ router.get("/parts/:partId/download", authenticate, requireAdmin, (req, res) => 
 
 module.exports = router;
 module.exports.loadPricingRules = loadPricingRules;
+module.exports.saveQuote = saveQuote;
+module.exports.QUOTE_VALID_DAYS = QUOTE_VALID_DAYS;

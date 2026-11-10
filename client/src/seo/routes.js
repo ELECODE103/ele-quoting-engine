@@ -206,6 +206,7 @@ export const APP_ROUTES = [
   { pattern: '^/orders/[^/]+$', title: 'Order' },
   { pattern: '^/orders/[^/]+/traveler$', title: 'Job Traveler' },
   { pattern: '^/rfq/[^/]+$', title: 'Request a Firm Quote' },
+  { pattern: '^/firm-quote/[^/]+$', title: 'Your Firm Quote' },
 ];
 
 export function normalizePath(pathname) {

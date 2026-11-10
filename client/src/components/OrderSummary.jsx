@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { formatCurrency, formatWeight } from '../utils/format';
+import { formatCurrency, formatWeight, formatShipDate, formatDate } from '../utils/format';
+import { authPath } from '../utils/returnTo';
 import { useAuth } from '../utils/authContext';
 import brand, { PROCESS_LABELS } from '../brand';
 
@@ -17,9 +18,10 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
   const handleCheckout = () => {
     if (!quote || !quote.quoteId) return;
     const checkoutPath = '/checkout/' + quote.quoteId;
-    // Guests: send to login but remember the checkout destination so the quote
-    // (persisted server-side by quoteId) survives the round-trip.
-    if (!isAuthenticated) { navigate('/login', { state: { from: checkoutPath } }); return; }
+    // Guests: send to login with the checkout destination in the URL (?next=),
+    // so the quote (persisted server-side by quoteId) survives sign-in or
+    // registering, a reload, or opening the link in another tab.
+    if (!isAuthenticated) { navigate(authPath('/login', checkoutPath)); return; }
     navigate(checkoutPath);
   };
 
@@ -69,6 +71,10 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
         <div className="flex-col gap-sm" style={{ marginTop: 6 }}>
           {leadTimes.map((lt) => {
             const on = selectedLeadTime === lt.slug;
+            // Dates and dollar surcharges come priced from the server with each quote;
+            // the lead-time list's own date covers the moment before the first price.
+            const opt = quote.leadTimeOptions?.find((o) => o.slug === lt.slug);
+            const shipBy = opt?.shipBy || lt.shipBy;
             return (
               <label key={lt.slug} className={`lead-option${on ? ' on' : ''}`}>
                 <input
@@ -81,9 +87,10 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
                 />
                 <span className="lead-dot" aria-hidden="true" />
                 <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1 }}>
-                  {lt.name} <span style={{ color: 'var(--text-dim)' }}>· {lt.days}</span>
+                  {lt.name}
+                  <span style={{ display: 'block', color: 'var(--text-dim)' }}>Ships by {formatShipDate(shipBy)}</span>
                 </span>
-                {lt.multiplier > 1 && <span style={{ fontSize: 10, color: 'var(--warn-text)' }}>+{((lt.multiplier - 1) * 100).toFixed(0)}%</span>}
+                {opt?.surcharge > 0 && <span style={{ fontSize: 10, color: 'var(--warn-text)', whiteSpace: 'nowrap' }}>+{formatCurrency(opt.surcharge)}</span>}
               </label>
             );
           })}
@@ -113,12 +120,14 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
         <Row label="Shipping estimate" value={formatCurrency(quote.shippingEstimate)} />
         {quote.nestingApplied && <Row label="Multi-part savings" value="Applied" color="var(--success-text)" />}
         <Row label="Ship weight" value={formatWeight(quote.totalWeight)} muted />
+        {quote.shipBy && <Row label="Ships by" value={formatShipDate(quote.shipBy, { year: true })} />}
         <div className="flex-between" style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-display)', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-primary)' }}>
           <span>{needsRfq ? 'Budgetary' : 'Total'}</span>
           <span>{formatCurrency(quote.orderTotal)}</span>
         </div>
         <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
           {quote.partCount} part{quote.partCount !== 1 ? 's' : ''} · {quote.totalUnits} piece{quote.totalUnits !== 1 ? 's' : ''}
+          {quote.expiresAt && !needsRfq && <> · price held until {formatDate(quote.expiresAt)}</>}
         </div>
       </div>
 
@@ -142,7 +151,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
             Check out →
           </button>
           <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-dim)', marginTop: 8 }}>
-            Instant price. Shipping is confirmed at checkout.
+            Instant price. Ship date counts from the day you pay.
           </div>
           <button className="btn btn-ghost" style={{ width: '100%', marginTop: 10, justifyContent: 'center', fontSize: 12 }} onClick={handleRfq}>
             Or request a firm quote

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './utils/authContext';
 import useHeadSync from './seo/useHeadSync';
 import Header from './components/Header';
@@ -14,6 +14,7 @@ import QualityPage from './pages/QualityPage';
 import AboutPage from './pages/AboutPage';
 import RfqPage from './pages/RfqPage';
 import NotFoundPage from './pages/NotFoundPage';
+import { authPath } from './utils/returnTo';
 
 // App pages are split out so three.js, the quote builder and the admin panel
 // are never downloaded by someone reading a marketing page.
@@ -25,6 +26,7 @@ const CustomerDashboard = lazy(() => import('./pages/CustomerDashboard'));
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 const OrderTrackingPage = lazy(() => import('./pages/OrderTrackingPage'));
 const JobTravelerPage = lazy(() => import('./pages/JobTravelerPage'));
+const FirmQuotePage = lazy(() => import('./pages/FirmQuotePage'));
 
 function Spinner() {
   return (
@@ -44,11 +46,16 @@ function AppShell({ children }) {
   );
 }
 
-/** Waits for the saved session to be read before deciding to redirect to /login. */
+/**
+ * Waits for the saved session to be read, then sends guests to sign in and
+ * brings them back to the page they asked for.
+ */
 function Protected({ children }) {
   const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
   if (isLoading) return <Spinner />;
-  return isAuthenticated ? children : <Navigate to="/login" />;
+  if (isAuthenticated) return children;
+  return <Navigate to={authPath('/login', location.pathname + location.search)} replace />;
 }
 
 export default function App() {
@@ -73,6 +80,7 @@ export default function App() {
       {/* App, client-rendered, noindex */}
       <Route path="/login" element={<Suspense fallback={<Spinner />}><LoginPage /></Suspense>} />
       <Route path="/register" element={<Suspense fallback={<Spinner />}><RegisterPage /></Suspense>} />
+      <Route path="/firm-quote/:token" element={<Suspense fallback={<Spinner />}><FirmQuotePage /></Suspense>} />
       <Route path="/quote" element={<AppShell><QuoteBuilder /></AppShell>} />
       <Route path="/admin" element={<AppShell><AdminPanel /></AppShell>} />
       <Route path="/dashboard" element={<AppShell><Protected><CustomerDashboard /></Protected></AppShell>} />

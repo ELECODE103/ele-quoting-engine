@@ -352,7 +352,18 @@ export default function AdminPanel() {
                     <span className={`tag ${lt.active ? 'tag-pass' : 'tag-fail'}`}>{lt.active ? 'ON' : 'OFF'}</span>
                   </td>
                   <td style={{ padding: '10px 14px', fontWeight: 500, color: 'var(--text-secondary)' }}>{lt.name}</td>
-                  <td style={{ padding: '10px 14px', color: 'var(--text-dim)' }}>{lt.days}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text-dim)' }}>
+                    {/* Customers see a ship-by date counted from the largest number in this text. */}
+                    {editingId === `ltd-${lt.id}` ? (
+                      <input className="input" type="text" defaultValue={lt.days} style={{ width: 200 }}
+                        onBlur={(e) => saveLeadTime(lt.id, { days: e.target.value.trim() || lt.days })}
+                        autoFocus />
+                    ) : (
+                      <span style={{ cursor: 'pointer' }} title="Click to edit. The ship-by date uses the largest number here, in business days." onClick={() => setEditingId(`ltd-${lt.id}`)}>
+                        {lt.days}
+                      </span>
+                    )}
+                  </td>
                   <td style={{ padding: '10px 14px' }}>
                     {editingId === `lt-${lt.id}` ? (
                       <input className="input" type="number" step="0.01" defaultValue={lt.multiplier}
