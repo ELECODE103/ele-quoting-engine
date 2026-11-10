@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../utils/authContext';
 import Wordmark from './Wordmark';
 import brand from '../brand';
@@ -64,9 +64,9 @@ export default function SiteHeader() {
             {onQuote ? (
               <NavLink to="/quote" className="active">Instant quote</NavLink>
             ) : (
-              <button type="button" className="btn btn-primary nav-cta" onClick={() => navigate('/quote')}>
+              <Link className="btn btn-primary nav-cta" to="/quote">
                 Get an instant quote
-              </button>
+              </Link>
             )}
           </div>
           <button

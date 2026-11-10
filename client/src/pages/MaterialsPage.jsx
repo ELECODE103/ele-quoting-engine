@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import PublicLayout from '../components/PublicLayout';
 import { api } from '../utils/api';
 import brand from '../brand';
@@ -36,7 +36,6 @@ function noteFor(m) {
 }
 
 export default function MaterialsPage() {
-  const navigate = useNavigate();
   // Seeded from the build-time catalog so the table is in the prerendered HTML
   // (and never shows "Loading"); the API call below then refreshes it with any
   // admin edits.
@@ -136,7 +135,7 @@ export default function MaterialsPage() {
           </div>
 
           <div className="cta-row" style={{ marginTop: 32 }}>
-            <button className="btn btn-primary btn-lg" onClick={() => navigate('/quote')}>Get an instant quote</button>
+            <Link className="btn btn-primary btn-lg" to="/quote">Get an instant quote</Link>
             <a className="btn btn-outline btn-lg" href={brand.phoneHref}>{brand.phone}</a>
           </div>
           <p className="next-note">Upload a STEP or STL, pick a material from this list, and the price shows in a few seconds. No account needed to look.</p>

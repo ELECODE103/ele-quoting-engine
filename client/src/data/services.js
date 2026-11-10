@@ -81,7 +81,7 @@ export const SERVICES = {
     lede: 'If your part is flat, cutting it from sheet on the router is usually the cheapest way to make it. Outline, pockets, holes and counterbores come off in one setup'
       + when('router-thickness', (v) => `, in stock from ${v} thick.`, '. Sheet from 1/16" to 1" thick is priced online.'),
     phoneNote: `Not sure it is a router part? ${brand.phone} rings the shop.`,
-    next: 'The button opens the quote tool. Drop in a STEP file, pick routing, and the check tells you how many of your part fit on a sheet.',
+    next: 'The button opens the quote tool on routing. Drop in a STEP file, or a DXF of the outline and pick the thickness, and the check tells you how many of your part fit on a sheet.',
     hero: 'tray-stack-router',
     blocks: keep([
       block('What belongs on a router', [
