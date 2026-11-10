@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import PublicLayout from '../components/PublicLayout';
 import { api } from '../utils/api';
 import brand from '../brand';
+import { catalog, pageSlugForCatalogSlug } from '../data/materials';
 
 // Plain-language notes per material family. Keyed by slug prefix match.
 const NOTES = [
@@ -30,9 +31,12 @@ function noteFor(m) {
 
 export default function MaterialsPage() {
   const navigate = useNavigate();
-  const [cnc, setCnc] = useState([]);
-  const [routing, setRouting] = useState([]);
-  const [printing, setPrinting] = useState([]);
+  // Seeded from the build-time catalog so the table is in the prerendered HTML
+  // (and never shows "Loading"); the API call below then refreshes it with any
+  // admin edits.
+  const [cnc, setCnc] = useState(catalog.cnc);
+  const [routing, setRouting] = useState(catalog.routing);
+  const [printing, setPrinting] = useState(catalog.printing);
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
@@ -80,7 +84,10 @@ export default function MaterialsPage() {
                   return (
                     <tr key={m.slug}>
                       <td style={{ whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        <span className="swatch" aria-hidden="true" style={{ background: m.color || '#eee' }} />{m.name}
+                        <span className="swatch" aria-hidden="true" style={{ background: m.color || '#eee' }} />
+                        {pageSlugForCatalogSlug(m.slug)
+                          ? <Link className="mat-link" to={`/materials/${pageSlugForCatalogSlug(m.slug)}`}>{m.name}</Link>
+                          : m.name}
                       </td>
                       <td data-label="Grades" style={{ minWidth: 150 }}>{(m.grades || []).map((g) => g.name).join(' · ')}</td>
                       <td data-label="Good for" style={{ minWidth: 200 }}>{n.use || '—'}</td>

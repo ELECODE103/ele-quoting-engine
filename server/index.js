@@ -104,6 +104,9 @@ app.use((req, res, next) => cors({
   maxAge: 86400, // Cache preflight for 24 hours
 })(req, res, next));
 
+// ─── Compression (text assets and HTML; Railway's edge does not gzip for us) ──
+app.use(require("compression")());
+
 // ─── Stripe Webhook (raw body — must be before express.json) ────
 const stripeWebhook = require("./routes/stripeWebhook");
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhook);
@@ -141,10 +144,9 @@ app.use("/api/pdf", pdfRoutes);
 
 // In production, serve the built client
 if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "..", "client", "dist")));
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "..", "client", "dist", "index.html"));
-  });
+  // Per-route static HTML, canonical-host and legacy redirects, real 404s and
+  // asset caching all live in server/seo.js.
+  app.use(require("./seo").createSeoRouter(path.join(__dirname, "..", "client", "dist")));
 }
 
 // ─── Error Handler ──────────────────────────────────────────────

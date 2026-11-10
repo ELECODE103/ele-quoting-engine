@@ -32,9 +32,9 @@
   --error: #DC2626;
   --error-bg: #FEF2F2;
   --error-text: #DC2626;
-  --font-body: 'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif;
-  --font-display: 'Archivo', 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --font-body: 'Inter Variable', 'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif;
+  --font-display: 'Archivo Variable', 'Archivo', 'Inter Variable', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -530,4 +530,40 @@ h3.display { font-family: var(--font-display); font-size: 20px; letter-spacing: 
 @media (max-width: 480px) {
   .grid-4 { grid-template-columns: 1fr; }
   .qb-price { margin-left: 0; width: 100%; }
+}
+
+/* ─── Material pages (/materials/:slug) ─── */
+.crumbs { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--text-dim); margin-bottom: 28px; }
+.crumbs a { color: var(--text-muted); text-decoration: none; }
+.crumbs a:hover { color: var(--accent); }
+.mat-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start; }
+h2.display.h2-sm { font-size: 24px; letter-spacing: -0.5px; margin-bottom: 16px; }
+.checklist li a, .body-copy a, .faq a, .prop-table a { color: var(--accent); }
+.body-copy { font-size: 14px; line-height: 1.65; color: var(--text-secondary); }
+.fineprint { font-size: 12px; line-height: 1.6; color: var(--text-dim); margin-top: 12px; max-width: 860px; }
+.prop-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.prop-table th, .prop-table td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; line-height: 1.5; }
+.prop-table thead th { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); border-bottom: 1px solid var(--border-primary); }
+.prop-table tbody th { font-weight: 600; color: var(--text-primary); width: 24%; min-width: 150px; }
+.prop-table td { color: var(--text-secondary); min-width: 200px; }
+.prop-table tbody tr:last-child th, .prop-table tbody tr:last-child td { border-bottom: none; }
+.faq { display: grid; gap: 22px; }
+.faq dt { font-family: var(--font-display); font-weight: 700; font-size: 16px; color: var(--text-primary); margin-bottom: 6px; }
+.faq dd { font-size: 14px; line-height: 1.65; color: var(--text-secondary); margin: 0; }
+.chip-link { text-decoration: none; font-size: 13px; padding: 6px 12px; }
+.chip-link:hover { border-color: var(--accent); color: var(--accent); }
+.mat-link { color: inherit; text-decoration: underline; text-decoration-color: var(--border-primary); text-underline-offset: 3px; }
+.mat-link:hover { color: var(--accent); text-decoration-color: var(--accent); }
+@media (max-width: 768px) {
+  .mat-cols { grid-template-columns: 1fr; gap: 32px; }
+  h2.display.h2-sm { font-size: 21px; }
+  .prop-table tbody th { min-width: 110px; }
+  .prop-table td { min-width: 180px; }
+}
+/* Header wordmark is a fixed-width SVG (373 px at nav size); let it shrink so
+   narrow phones do not get a horizontally scrolling page. */
+@media (max-width: 480px) {
+  .pub-nav > a { flex: 1 1 auto; min-width: 0; }
+  .pub-nav > a > span { display: flex; max-width: 100%; }
+  .pub-nav > a svg { max-width: 100%; height: auto; }
 }

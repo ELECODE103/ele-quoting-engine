@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import PublicLayout from '../components/PublicLayout';
+import Photo from '../components/Photo';
 import brand from '../brand';
 
 export default function QualityPage() {
@@ -21,7 +22,7 @@ export default function QualityPage() {
               </p>
             </div>
             <div className="photo-frame" style={{ aspectRatio: '4 / 5', maxHeight: 480 }}>
-              <img className="photo" src="/photos/brackets-inspection.jpg" alt="Height gage and acetal brackets on a granite surface plate" loading="eager" />
+              <Photo src="/photos/brackets-inspection.jpg" alt="Height gage and acetal brackets on a granite surface plate" loading="eager" />
               <div className="cap">Surface plate, height gage, gage pins, calipers. Checked at 68 °F.</div>
             </div>
           </div>
