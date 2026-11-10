@@ -193,6 +193,12 @@ export default function RfqQueue() {
                           {notice?.id === r.id && (
                             <div role="status" className={notice.warn ? 'gate-box' : ''} style={{ marginTop: 10, color: notice.warn ? undefined : 'var(--success-text)' }}>{notice.text}</div>
                           )}
+                          {r.quotedTotal > 0 && (
+                            <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', marginTop: 10 }}
+                              onClick={() => api.openPdf(`rfq-response/${r.id}`).catch((e) => alert(e.message))}>
+                              Quote as a PDF
+                            </button>
+                          )}
                           {r.acceptUrl && (
                             <label style={{ display: 'block', marginTop: 10 }}>
                               <span className="field-label">Customer's accept link</span>

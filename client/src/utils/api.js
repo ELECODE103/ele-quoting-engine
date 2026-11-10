@@ -200,6 +200,29 @@ export const api = {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
 
+  /**
+   * Open one of the admin PDFs (/api/pdf/...) in a new tab. The tab is opened
+   * first, inside the click, so the browser does not treat it as a pop-up.
+   */
+  async openPdf(path) {
+    const tab = window.open('', '_blank');
+    try {
+      const headers = {};
+      if (authToken) headers.Authorization = `Bearer ${authToken}`;
+      const res = await fetch(`${BASE}/pdf/${path}`, { headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || `Could not make the PDF (${res.status})`);
+      }
+      const url = URL.createObjectURL(await res.blob());
+      if (tab) tab.location = url; else window.location.assign(url);
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      if (tab) tab.close();
+      throw err;
+    }
+  },
+
   async updateOrderStatus(id, data) {
     return request(`/orders/${id}/status`, { method: 'PUT', body: JSON.stringify(data) });
   },

@@ -304,6 +304,25 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
               />
             </Section>
 
+            {/* Documents: the branded PDFs (server/services/documents.js) */}
+            <Section title="Documents (PDF)">
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[
+                  ['Order confirmation', `order-confirmation/${order.id}`],
+                  ['Packing slip', `packing-slip/${order.id}`],
+                  ['Certificate of conformance', `coc/${order.id}`],
+                  ['First-article form', `fai?orderId=${order.id}&line=1`],
+                  ['Traveler', `traveler/${order.id}`],
+                  ...(order.quoteId ? [['Quote', `quote/${order.quoteId}`]] : []),
+                ].map(([label, path]) => (
+                  <button key={path} type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}
+                    onClick={() => api.openPdf(path).catch((e) => alert(e.message))}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </Section>
+
             {/* Actions */}
             <div style={{ display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
               <button
@@ -321,7 +340,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                 className="btn btn-ghost"
                 style={{ fontSize: 12, textDecoration: 'none' }}
               >
-                ð Open Job Traveler
+                Open job traveler
               </a>
               <a
                 href={`/orders/${order.id}`}
@@ -330,7 +349,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                 className="btn btn-ghost"
                 style={{ fontSize: 12, textDecoration: 'none' }}
               >
-                ð Customer View
+                Customer view
               </a>
             </div>
           </>

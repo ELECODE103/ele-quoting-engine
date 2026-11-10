@@ -53,10 +53,12 @@ function AppShell({ children }) {
  * Waits for the saved session to be read, then sends guests to sign in and
  * brings them back to the page they asked for.
  */
-function Protected({ children }) {
-  const { isAuthenticated, isLoading } = useAuth();
+function Protected({ children, adminOnly = false }) {
+  const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
   if (isLoading) return <Spinner />;
+  // The API enforces the admin role; this only keeps a signed-in customer from landing on an empty admin shell.
+  if (isAuthenticated && adminOnly && user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
   if (isAuthenticated) return children;
   return <Navigate to={authPath('/login', location.pathname + location.search)} replace />;
 }
@@ -88,7 +90,7 @@ export default function App() {
       <Route path="/register" element={<Suspense fallback={<Spinner />}><RegisterPage /></Suspense>} />
       <Route path="/firm-quote/:token" element={<Suspense fallback={<Spinner />}><FirmQuotePage /></Suspense>} />
       <Route path="/quote" element={<AppShell><QuoteBuilder /></AppShell>} />
-      <Route path="/admin" element={<AppShell><AdminPanel /></AppShell>} />
+      <Route path="/admin" element={<AppShell><Protected adminOnly><AdminPanel /></Protected></AppShell>} />
       <Route path="/dashboard" element={<AppShell><Protected><CustomerDashboard /></Protected></AppShell>} />
       <Route path="/checkout/:quoteId" element={<AppShell><Protected><CheckoutPage /></Protected></AppShell>} />
       <Route path="/orders/:orderId" element={<AppShell><Protected><OrderTrackingPage /></Protected></AppShell>} />
