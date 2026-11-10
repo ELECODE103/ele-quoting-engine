@@ -1,0 +1,240 @@
+{
+  "/photos/acetal-clamps.jpg": {
+    "w": 1200,
+    "h": 1600,
+    "bytes": 324853,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/acetal-clamps-640.webp",
+        "bytes": 71780
+      },
+      {
+        "w": 1200,
+        "src": "/photos/acetal-clamps-1200.webp",
+        "bytes": 156776
+      }
+    ]
+  },
+  "/photos/brackets-inspection.jpg": {
+    "w": 1200,
+    "h": 1600,
+    "bytes": 295233,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/brackets-inspection-640.webp",
+        "bytes": 59516
+      },
+      {
+        "w": 1200,
+        "src": "/photos/brackets-inspection-1200.webp",
+        "bytes": 154102
+      }
+    ]
+  },
+  "/photos/cups-lot.jpg": {
+    "w": 1600,
+    "h": 2844,
+    "bytes": 209450,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/cups-lot-640.webp",
+        "bytes": 32482
+      },
+      {
+        "w": 1200,
+        "src": "/photos/cups-lot-1200.webp",
+        "bytes": 65470
+      }
+    ]
+  },
+  "/photos/disc-hand.jpg": {
+    "w": 1200,
+    "h": 1600,
+    "bytes": 95099,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/disc-hand-640.webp",
+        "bytes": 12432
+      },
+      {
+        "w": 1200,
+        "src": "/photos/disc-hand-1200.webp",
+        "bytes": 28928
+      }
+    ]
+  },
+  "/photos/disc-router-bed.jpg": {
+    "w": 1200,
+    "h": 1600,
+    "bytes": 123644,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/disc-router-bed-640.webp",
+        "bytes": 17874
+      },
+      {
+        "w": 1200,
+        "src": "/photos/disc-router-bed-1200.webp",
+        "bytes": 43010
+      }
+    ]
+  },
+  "/photos/disc-stacks.jpg": {
+    "w": 1600,
+    "h": 1200,
+    "bytes": 224423,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/disc-stacks-640.webp",
+        "bytes": 22104
+      },
+      {
+        "w": 1200,
+        "src": "/photos/disc-stacks-1200.webp",
+        "bytes": 63106
+      }
+    ]
+  },
+  "/photos/dish-part.jpg": {
+    "w": 1200,
+    "h": 1600,
+    "bytes": 297384,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/dish-part-640.webp",
+        "bytes": 62084
+      },
+      {
+        "w": 1200,
+        "src": "/photos/dish-part-1200.webp",
+        "bytes": 136382
+      }
+    ]
+  },
+  "/photos/fdm-print.jpg": {
+    "w": 1200,
+    "h": 1600,
+    "bytes": 252743,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/fdm-print-640.webp",
+        "bytes": 41118
+      },
+      {
+        "w": 1200,
+        "src": "/photos/fdm-print-1200.webp",
+        "bytes": 126428
+      }
+    ]
+  },
+  "/photos/fourth-axis.jpg": {
+    "w": 1600,
+    "h": 1323,
+    "bytes": 181541,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/fourth-axis-640.webp",
+        "bytes": 18464
+      },
+      {
+        "w": 1200,
+        "src": "/photos/fourth-axis-1200.webp",
+        "bytes": 42922
+      }
+    ]
+  },
+  "/photos/hdpe-plate.jpg": {
+    "w": 1200,
+    "h": 1600,
+    "bytes": 172060,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/hdpe-plate-640.webp",
+        "bytes": 24212
+      },
+      {
+        "w": 1200,
+        "src": "/photos/hdpe-plate-1200.webp",
+        "bytes": 69756
+      }
+    ]
+  },
+  "/photos/phenolic-prototype.jpg": {
+    "w": 1200,
+    "h": 1600,
+    "bytes": 327948,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/phenolic-prototype-640.webp",
+        "bytes": 57156
+      },
+      {
+        "w": 1200,
+        "src": "/photos/phenolic-prototype-1200.webp",
+        "bytes": 150482
+      }
+    ]
+  },
+  "/photos/tray-stack-edge.jpg": {
+    "w": 1200,
+    "h": 1600,
+    "bytes": 154957,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/tray-stack-edge-640.webp",
+        "bytes": 22192
+      },
+      {
+        "w": 1200,
+        "src": "/photos/tray-stack-edge-1200.webp",
+        "bytes": 52654
+      }
+    ]
+  },
+  "/photos/tray-stack-router.jpg": {
+    "w": 1200,
+    "h": 1600,
+    "bytes": 229724,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/tray-stack-router-640.webp",
+        "bytes": 28832
+      },
+      {
+        "w": 1200,
+        "src": "/photos/tray-stack-router-1200.webp",
+        "bytes": 89820
+      }
+    ]
+  },
+  "/photos/uhmw-rack.jpg": {
+    "w": 1600,
+    "h": 1200,
+    "bytes": 313260,
+    "webp": [
+      {
+        "w": 640,
+        "src": "/photos/uhmw-rack-640.webp",
+        "bytes": 37432
+      },
+      {
+        "w": 1200,
+        "src": "/photos/uhmw-rack-1200.webp",
+        "bytes": 95066
+      }
+    ]
+  }
+}

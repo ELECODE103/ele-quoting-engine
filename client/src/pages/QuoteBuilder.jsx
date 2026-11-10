@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import { formatCurrency, formatDim } from '../utils/format';
 import ThreeViewer from '../components/ThreeViewer';
@@ -19,8 +19,15 @@ function pickThickness(mat, geometry) {
   return list.reduce((best, x) => (Math.abs(x.mm - t) < Math.abs(best.mm - t) ? x : best), list[0]).mm;
 }
 
+// Deep link from the material and service pages: /quote?process=cnc&material=cnc-delrin
+// opens the builder on that process with that material preselected for uploaded parts.
+const LINKABLE_PROCESSES = ['cnc', 'routing', '3d-printing'];
+
 export default function QuoteBuilder() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const linkedProcess = LINKABLE_PROCESSES.includes(searchParams.get('process')) ? searchParams.get('process') : 'cnc';
+  const linkedMaterial = searchParams.get('material') || '';
   // Config data from server
   const [processes, setProcesses] = useState([]);
   const [materials, setMaterials] = useState([]);
@@ -31,7 +38,9 @@ export default function QuoteBuilder() {
   const [parts, setParts] = useState([]);          // { partId, fileName, geometry, dfm, meshPreview, materialSlug, grade, thicknessMm, finishSlug, quantity, process, subProcess, layerHeight, infill }
   const [activePart, setActivePart] = useState(null);
   const [selectedLeadTime, setSelectedLeadTime] = useState('standard');
-  const [selectedProcess, setSelectedProcess] = useState('cnc');
+  const [selectedProcess, setSelectedProcess] = useState(linkedProcess);
+  // Material slug to preselect on upload; cleared when the buyer switches process.
+  const [preferredMaterial, setPreferredMaterial] = useState(linkedMaterial);
   // Quote from server
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -46,7 +55,7 @@ export default function QuoteBuilder() {
 
   // Load config on mount
   useEffect(() => {
-    Promise.all([api.getProcesses(), api.getMaterials('cnc'), api.getFinishes('cnc'), api.getLeadTimes()])
+    Promise.all([api.getProcesses(), api.getMaterials(linkedProcess), api.getFinishes(linkedProcess), api.getLeadTimes()])
       .then(([procs, mats, fins, lts]) => {
         setProcesses(procs);
         setMaterials(mats);
@@ -98,7 +107,7 @@ export default function QuoteBuilder() {
 
     try {
       const result = await api.uploadFiles(Array.from(fileList));
-      const defaultMat = materials[0];
+      const defaultMat = materials.find((m) => m.slug === preferredMaterial) || materials[0];
 
       const newParts = result.parts.map((p) => ({
         partId: p.partId,
@@ -128,7 +137,7 @@ export default function QuoteBuilder() {
       setUploadErrors([{ fileName: 'Upload', error: err.message || `The file didn't make it to our server. Try again, or email it to ${brand.email}.` }]);
     }
     setUploading(false);
-  }, [materials, finishes, selectedProcess]);
+  }, [materials, finishes, selectedProcess, preferredMaterial]);
 
   const handleDrop = useCallback((e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }, [handleFiles]);
 
@@ -147,6 +156,7 @@ export default function QuoteBuilder() {
   async function handleProcessChange(processSlug) {
     if (processSlug === selectedProcess) return;
     setSelectedProcess(processSlug);
+    setPreferredMaterial('');
     // Re-fetch materials and finishes for this process
     const [mats, fins] = await Promise.all([
       api.getMaterials(processSlug),
@@ -277,6 +287,11 @@ export default function QuoteBuilder() {
               Drop a STEP, STL, IGES or 3MF file here, or click to choose one. The price shows in a few seconds.<br />
               Up to {brand.rfqQuantityThreshold} pieces checks out online. More than that, a person quotes it within {brand.quoteTurnaroundHours} hours.
             </div>
+            {preferredMaterial && materials.some((m) => m.slug === preferredMaterial) && (
+              <div data-testid="preselected-material" style={{ marginTop: 14, fontSize: 12.5, color: 'var(--accent)', fontWeight: 600 }}>
+                Material preselected: {materials.find((m) => m.slug === preferredMaterial).name}. You can change it after upload.
+              </div>
+            )}
             <div style={{ marginTop: 24, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
               {['STEP', 'STL', 'IGES', '3MF'].map((f) => (
                 <span key={f} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 4, background: 'var(--bg-card)', border: '1px solid var(--border-primary)', color: 'var(--text-muted)', fontWeight: 500 }}>

@@ -5,17 +5,20 @@ import Wordmark from './Wordmark';
 import brand from '../brand';
 
 /**
- * Shell for the public pages: nav + footer. Sets document.title per page.
+ * Shell for the public pages: nav + footer.
+ *
+ * <title>, meta description, canonical and JSON-LD are NOT set here any more:
+ * they come from seo/routes.js (server-rendered into the HTML, and kept in
+ * sync on navigation by seo/useHeadSync.js in App). The `title` and
+ * `description` props are kept so existing pages do not change, but the route
+ * map is the source of truth - edit titles and descriptions there.
  */
-export default function PublicLayout({ title, description, children }) {
+export default function PublicLayout({ children }) {
   const location = useLocation();
 
   useEffect(() => {
-    document.title = title ? `${title} · ${brand.name}` : `${brand.name} — Machined Plastics, CNC Routing & 3D Printing · ${brand.region}`;
-    const meta = document.querySelector('meta[name="description"]');
-    if (meta && description) meta.setAttribute('content', description);
     window.scrollTo(0, 0);
-  }, [title, description, location.pathname]);
+  }, [location.pathname]);
 
   return (
     <div style={{ minHeight: '100vh', background: '#fff', display: 'flex', flexDirection: 'column' }}>
