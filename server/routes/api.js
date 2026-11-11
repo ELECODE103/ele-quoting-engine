@@ -145,7 +145,14 @@ function loadPricingRules() {
 const MATERIAL_FIELDS = ["name", "slug", "process", "subProcess", "category", "density", "costPerKg", "pricePerKg", "pricePerCm3", "machinability", "materialClass", "stockForms", "wasteFactor", "feedClass", "costPerSheet", "grades", "thicknesses", "layerHeights", "defaultLayerHeight", "active", "description", "color"];
 const MATERIAL_NUMBER_FIELDS = { density: [0, 30], costPerKg: [0, 10000], pricePerKg: [0, 10000], pricePerCm3: [0, 100], machinability: [0.05, 10], costPerSheet: [0, 100000], defaultLayerHeight: [0.01, 2], wasteFactor: [0, 2] };
 const FEED_CLASSES = ruleSchema.FEED_CLASSES;
-const FINISH_FIELDS = ["name", "slug", "process", "costPerSqMm", "costFlat", "minCost", "active", "description", "category"];
+// A finish's price is what the pricing models read (processes/shared.js): a charge per part
+// (pricePerPart, else minCost), per square inch of surface (pricePerSqIn) and per square decimetre
+// (costPerDm2). These are the columns the table has and the names the admin panel sends. The list
+// used to name costPerSqMm and costFlat, which are neither: an edit to "Per Part" in the panel was
+// dropped without a word and the old price came back.
+const FINISH_FIELDS = ["name", "slug", "process", "pricePerPart", "pricePerSqIn", "costPerDm2", "minCost", "active"];
+// Names an older client might still send for a price. They are not stored, so they are refused out loud.
+const FINISH_UNSTORED_PRICE_FIELDS = ["costPerSqMm", "costFlat"];
 // Pricing rules are whitelisted and range-checked by the rule schema (config/ruleSchema.js) in services/pricingAdmin.js.
 const LEAD_TIME_FIELDS = ["name", "slug", "days", "multiplier", "active", "description"];
 
@@ -180,7 +187,15 @@ function validateTyped(safe, spec) {
   }
   return { ok: true, values };
 }
-const FINISH_SPEC = { name: ["string", 120], slug: ["slug"], process: ["string", 40], costPerSqMm: ["number", 0, 1000], costFlat: ["number", 0, 100000], minCost: ["number", 0, 100000], active: ["boolean"], description: ["string", 1000], category: ["string", 80] };
+const FINISH_SPEC = { name: ["string", 120], slug: ["slug"], process: ["string", 40], pricePerPart: ["number", 0, 100000], pricePerSqIn: ["number", 0, 1000], costPerDm2: ["number", 0, 100000], minCost: ["number", 0, 100000], active: ["boolean"] };
+
+/** The whitelisted, typed fields of a finish from an admin request; a price under a name we do not store is an error, not a no-op. */
+function validateFinish(body) {
+  const b = body || {};
+  const unstored = FINISH_UNSTORED_PRICE_FIELDS.find((k) => b[k] !== undefined);
+  if (unstored) return { ok: false, error: `${unstored} is not a field of a finish. Its prices are pricePerPart, pricePerSqIn, costPerDm2 and minCost.` };
+  return validateTyped(whitelist(b, FINISH_FIELDS), FINISH_SPEC);
+}
 // A lead-time multiplier below 1 would be a discount for rushing, and null breaks the price: 1–10 only.
 const LEAD_TIME_SPEC = { name: ["string", 120], slug: ["slug"], days: ["string", 80], multiplier: ["number", 1, 10], active: ["boolean"], description: ["string", 1000] };
 
@@ -951,7 +966,7 @@ router.get("/admin/finishes", authenticate, requireAdmin, (req, res) => {
   res.json(finishesDB.getAll());
 });
 router.put("/admin/finishes/:id", authenticate, requireAdmin, (req, res) => {
-  const v = validateTyped(whitelist(req.body || {}, FINISH_FIELDS), FINISH_SPEC);
+  const v = validateFinish(req.body);
   if (!v.ok) return res.status(400).json({ error: v.error });
   const updated = finishesDB.update(req.params.id, v.values);
   if (!updated) return res.status(404).json({ error: "Finish not found" });
@@ -959,7 +974,7 @@ router.put("/admin/finishes/:id", authenticate, requireAdmin, (req, res) => {
 });
 
 router.post("/admin/finishes", authenticate, requireAdmin, (req, res) => {
-  const v = validateTyped(whitelist(req.body || {}, FINISH_FIELDS), FINISH_SPEC);
+  const v = validateFinish(req.body);
   if (!v.ok) return res.status(400).json({ error: v.error });
   if (!v.values.name || !v.values.slug) return res.status(400).json({ error: "name and slug are required" });
   const finish = finishesDB.insert(v.values);
@@ -1172,8 +1187,11 @@ router.get("/admin/parts", authenticate, requireAdmin, (req, res) => {
 // ———————————————————————————————————————————————————————————
 // ADMIN — Database Backup
 // Downloads the SQLite database file for safekeeping.
-// IMPORTANT: Railway uses ephemeral storage — the database
-// resets on every deploy. Download backups before deploying.
+// The database lives on the Railway volume mounted at /app/data
+// (the service's Volumes setting), so it survives deploys and restarts. A backup
+// is still worth taking before a risky change: a volume is one
+// disk, not a copy. The file holds every account's password hash
+// and the encrypted two-step secret — keep it like a credential.
 // ———————————————————————————————————————————————————————————
 
 router.get("/admin/backup/db", authenticate, requireAdmin, (req, res) => {
