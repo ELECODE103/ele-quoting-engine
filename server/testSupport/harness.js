@@ -8,12 +8,31 @@
  *   h.sent      → emails captured: [{ to, subject, text, html, replyTo }]
  *   h.stripe    → { created: [...sessions.create args], sessions: { id: session }, failNext }
  *   await h.stop();
+ *
+ * Bot check: Cloudflare Turnstile is switched on with throwaway keys made at
+ * start-up and the siteverify call stubbed (h.turnstile). The helpers behave
+ * like a person using the site: h.register passes the check, waits out the
+ * minimum form time (with a back-dated form token) and confirms the emailed
+ * link; uploads and pricing carry a verified-human token; h.form("/api/rfq")
+ * carries a passed check. `h.raw(...)` sends exactly what it is given, for the
+ * tests of what happens without those.
+ *
+ *   start({ turnstile: "off" })       no keys: the bot check is not configured
+ *   start({ mailer: "configured" })   EMAIL_* set (sends are still captured), so
+ *                                     email confirmation is enforced
+ *   h.turnstile → { calls: [...], mode: "pass" | "fail" | "down" }
+ *   h.ip = "203.0.113.7"              pin the caller's address (default: a new one per call)
+ *   h.limits = true                   keep the form limits counting across h.form("/api/rfq") calls
  */
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const crypto = require("crypto");
 
-async function start() {
+// A password that passes the rules in server/security/passwords.js. Made per run; not a real credential.
+const PASSWORD = `Tt9-${crypto.randomBytes(9).toString("base64url")}`;
+
+async function start(opts = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "se-test-"));
   process.env.QUOTING_DB_PATH = path.join(tmp, "quoting.db");
   process.env.JWT_SECRET = "test-secret";
@@ -22,7 +41,32 @@ async function start() {
   delete process.env.EMAIL_API_KEY;
   delete process.env.EMAIL_FROM;
   delete process.env.STRIPE_WEBHOOK_SECRET;
+  delete process.env.ADMIN_RECOVERY;
   process.env.NODE_ENV = "test";
+  if (opts.mailer === "configured") {
+    // Nothing is sent: mailer.send is replaced below. This only makes mailer.configured() true.
+    process.env.EMAIL_API_KEY = "test-not-a-key";
+    process.env.EMAIL_FROM = "Straightedge <quotes@shop.test>";
+  }
+
+  // Turnstile: throwaway keys and a stubbed siteverify.
+  const turnstileStub = { calls: [], mode: "pass" };
+  const turnstileOn = opts.turnstile !== "off";
+  if (turnstileOn) {
+    process.env.TURNSTILE_SITE_KEY = `test-site-${crypto.randomBytes(6).toString("hex")}`;
+    process.env.TURNSTILE_SECRET_KEY = `test-secret-${crypto.randomBytes(12).toString("hex")}`;
+  } else {
+    delete process.env.TURNSTILE_SITE_KEY;
+    delete process.env.TURNSTILE_SECRET_KEY;
+  }
+  require("../security/turnstile").setFetchForTests(async (url, init) => {
+    const body = new URLSearchParams(String(init.body));
+    const token = body.get("response");
+    turnstileStub.calls.push({ url, token, remoteip: body.get("remoteip"), secretSent: body.get("secret") === process.env.TURNSTILE_SECRET_KEY });
+    if (turnstileStub.mode === "down") throw new Error("network down");
+    const pass = turnstileStub.mode === "pass" && token.startsWith("pass");
+    return { ok: true, json: async () => (pass ? { success: true, hostname: "shop.test" } : { success: false, "error-codes": ["invalid-input-response"] }) };
+  });
 
   // Captured mail.
   const mailer = require("../services/mailer");
@@ -56,8 +100,10 @@ async function start() {
   api.loadPricingRules();
 
   const app = express();
+  app.set("trust proxy", true); // so each call can come from its own address (X-Forwarded-For)
   app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), require("../routes/stripeWebhook"));
   app.use(express.json());
+  require("../security").mount(app);
   app.use("/api", api);
   app.use("/api/auth", require("../routes/auth"));
   app.use("/api/orders", require("../routes/orders"));
@@ -65,17 +111,30 @@ async function start() {
   const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
 
-  async function call(method, url, body, token, raw) {
-    const headers = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    let payload;
-    if (raw) payload = raw;
-    else if (body !== undefined) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
-    const res = await fetch(base + url, { method, headers, body: payload });
+  const botGuard = require("../security/botGuard");
+  let ipSeq = 0;
+  const nextIp = () => { ipSeq++; return `198.51.${Math.floor(ipSeq / 250) % 250}.${(ipSeq % 250) + 1}`; };
+  /** A form token issued ten seconds ago, as if a person had been filling the form in. */
+  const formToken = (form, agoMs = 10000) => botGuard.issueFormToken(form, { now: Date.now() - agoMs });
+
+  /** Send exactly this request: no token, header or address is added. */
+  async function raw(method, url, { headers = {}, json, body, token, ip } = {}) {
+    const hdrs = { "X-Forwarded-For": ip || h.ip || nextIp(), ...headers };
+    if (token) hdrs.Authorization = `Bearer ${token}`;
+    let payload = body;
+    if (json !== undefined) { hdrs["Content-Type"] = "application/json"; payload = JSON.stringify(json); }
+    const res = await fetch(base + url, { method, headers: hdrs, body: payload, redirect: "manual" });
     const text = await res.text();
-    let json = null;
-    try { json = JSON.parse(text); } catch { /* not JSON */ }
-    return { status: res.status, body: json, text };
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch { /* not JSON */ }
+    return { status: res.status, body: parsed, text, headers: res.headers };
+  }
+
+  /** A request as the site's own pages send it: the verified-human token rides along. */
+  async function call(method, url, body, token, rawBody, extraHeaders = {}) {
+    const headers = { ...extraHeaders };
+    if (h.humanToken) headers["X-Human-Token"] = h.humanToken;
+    return raw(method, url, { headers, json: rawBody ? undefined : body, body: rawBody, token });
   }
 
   const h = {
@@ -90,11 +149,47 @@ async function start() {
       const fd = new FormData();
       for (const [k, v] of Object.entries(fields)) fd.append(k, v);
       for (const [k, f] of Object.entries(files)) fd.append(k, new Blob([f.data]), f.name);
-      return call("POST", url, undefined, token, fd);
+      // The request form, as a person sends it: check passed, form open for a few seconds.
+      // These suites send many requests from one address inside a second; the hourly and daily
+      // limits are tested on their own (h.limits = true keeps the counters running).
+      if (url === "/api/rfq" && !h.limits) botGuard.resetForTests();
+      const headers = url === "/api/rfq" ? { "X-Form-Token": formToken("rfq"), ...(turnstileOn ? { "X-Turnstile-Token": "pass-rfq" } : {}) } : {};
+      return call("POST", url, undefined, token, fd, headers);
     },
-    async register(email, name = "Test Buyer") {
-      const r = await call("POST", "/api/auth/register", { email, password: "Passw0rd1", name });
+    raw,
+    formToken,
+    password: PASSWORD,
+    turnstile: turnstileStub,
+    humanToken: "",
+    ip: "",
+    limits: false,
+    /**
+     * Create an account the way a person does: bot check passed, a few seconds
+     * on the form, then the emailed link confirmed. Returns the session token.
+     * `{ verify: false }` leaves the address unconfirmed.
+     */
+    async register(email, name = "Test Buyer", { verify = true, password = PASSWORD } = {}) {
+      const r = await raw("POST", "/api/auth/register", {
+        json: { email, password, name },
+        headers: { "X-Form-Token": formToken("register"), ...(turnstileOn ? { "X-Turnstile-Token": "pass-register" } : {}) },
+      });
       if (r.status !== 201) throw new Error(`register failed: ${r.text}`);
+      if (verify) await h.confirmEmail(email);
+      return r.body.token;
+    },
+    /** Open the confirmation link that was emailed to `email` (and take that email out of h.sent). */
+    async confirmEmail(email) {
+      const i = sent.findIndex((m) => m.to === email && /confirm your email/i.test(m.subject));
+      if (i < 0) throw new Error(`no confirmation email captured for ${email}`);
+      const [mail] = sent.splice(i, 1);
+      const token = (mail.text.match(/#token=(\S+)/) || [])[1];
+      const v = await raw("POST", "/api/auth/verify-email", { json: { token } });
+      if (v.status !== 200) throw new Error(`verify failed: ${v.text}`);
+      return v.body;
+    },
+    async login(email, password = PASSWORD, extra = {}) {
+      const r = await raw("POST", "/api/auth/login", { json: { email, password, ...extra } });
+      if (r.status !== 200) throw new Error(`login failed: ${r.text}`);
       return r.body.token;
     },
     /** Upload the 20 mm cube and return its partId. */
@@ -113,6 +208,12 @@ async function start() {
     pay(sessionId, over = {}) { Object.assign(stripe.sessions[sessionId], { payment_status: "paid" }, over); },
     stop: () => new Promise((resolve) => server.close(() => { fs.rmSync(tmp, { recursive: true, force: true }); resolve(); })),
   };
+  // The quote tool's one-time check: trade a passed Turnstile token for a verified-human token.
+  if (turnstileOn) {
+    const v = await raw("POST", "/api/human/verify", { json: { turnstileToken: "pass-quote" } });
+    if (v.status !== 200 || !v.body.humanToken) throw new Error(`human verify failed: ${v.text}`);
+    h.humanToken = v.body.humanToken;
+  }
   return h;
 }
 

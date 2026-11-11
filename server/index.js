@@ -123,6 +123,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // ─── API Routes ─────────────────────────────────────────────────
+require("./security").mount(app); // bot check, form tokens and the gates in front of upload / pricing
 const apiRoutes = require("./routes/api");
 app.use("/api", apiRoutes);
 
@@ -230,6 +231,7 @@ async function start() {
   // deploy log and not by a customer.
   if (process.env.NODE_ENV === "production") {
     const mailer = require("./services/mailer");
+    require("./security").startupWarnings(); // bot check and email verification: what is off, by name
     if (!mailer.configured()) console.warn("WARNING: EMAIL_API_KEY / EMAIL_FROM not set — no email is sent: RFQ notices, firm quotes, order confirmations and shipping notices are only logged.");
     if (!process.env.STRIPE_WEBHOOK_SECRET) console.warn("WARNING: STRIPE_WEBHOOK_SECRET not set — Stripe webhooks are refused; orders are marked paid only when the buyer returns to the order page.");
     if (!process.env.ADMIN_EMAIL) console.warn("WARNING: ADMIN_EMAIL not set — no account will be given the admin role.");

@@ -13,10 +13,24 @@ const orderEvents = require("../services/orderEvents");
 const shipBy = require("../services/shipBy");
 const { trackingUrl } = require("../emails/templates");
 const shopFacts = require("../shopFacts");
+const mailer = require("../services/mailer");
 
 const QUOTE_VALID_DAYS = 30; // same hold as routes/api.js
 
 const router = express.Router();
+
+/**
+ * Checkout needs a confirmed email address: the order confirmation, the
+ * shipping notice and any question about the job go there. Not enforced while
+ * the mailer is unconfigured, because then no confirmation link can be sent.
+ */
+function requireConfirmedEmail(req, res, next) {
+  if (req.user.emailVerified || !mailer.configured()) return next();
+  res.status(403).json({
+    error: `Confirm your email address before you check out. We sent a link to ${req.user.email}.`,
+    code: "email-unverified",
+  });
+}
 
 /** Shipping fields from a request body, sanitized. */
 function shippingFields(body = {}) {
@@ -44,7 +58,7 @@ function orderView(order, { admin = false } = {}) {
 // ═══════════════════════════════════════════════════════════════
 // POST /api/orders/checkout-session — Create Stripe Checkout Session
 // ═══════════════════════════════════════════════════════════════
-router.post("/checkout-session", authenticate, async (req, res) => {
+router.post("/checkout-session", authenticate, requireConfirmedEmail, async (req, res) => {
   try {
     if (!stripeClient.get()) {
       return res.status(503).json({ error: "Payment processing is not configured" });
@@ -532,12 +546,12 @@ router.get("/:id/drawing", authenticate, (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 router.get("/:id/traveler", authenticate, (req, res) => {
   try {
-    const order = ordersDB.getById(req.params.id);
-    if (!order) return res.status(404).json({ error: "Order not found" });
-
+    // Admin only, checked before the lookup so the answer does not say whether an order id exists.
     if (req.user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
+    const order = ordersDB.getById(req.params.id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
 
     const items = orderItemsDB.query((i) => i.orderId === order.id);
 

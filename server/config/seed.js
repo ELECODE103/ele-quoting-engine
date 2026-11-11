@@ -118,19 +118,8 @@ function seedDatabaseNow() {
       }
     }
 
-    // --- Auto-promote owner to admin based on ADMIN_EMAIL env var ---
-    const adminEmail = (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
-    if (adminEmail) {
-      const owner = usersDB.getAll().find((u) => u.email === adminEmail);
-      if (owner && owner.role !== "admin") {
-        usersDB.update(owner.id, { role: "admin" });
-        console.log(`  Promoted ${adminEmail} to admin role.`);
-      } else if (owner) {
-        console.log(`  Admin user ${adminEmail} already has admin role.`);
-      } else {
-        console.log(`  ADMIN_EMAIL set to ${adminEmail} but no matching user yet.`);
-      }
-    }
+    // --- The owner's account (ADMIN_EMAIL): promoted once its email is confirmed ---
+    require("../security/adminAccount").ensureAtStartup();
 
     console.log("  Database ready.");
   } catch (err) {

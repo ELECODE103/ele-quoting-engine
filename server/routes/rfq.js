@@ -8,6 +8,9 @@
  * saw.
  *
  *   POST /api/rfq                          create (multipart: optional drawing PDF/DXF/DWG).
+ *                                          Bot-checked (see "Create" below): the buyer's
+ *                                          confirmation email and, for a part request, the
+ *                                          ship-to address go out only to a sender who passed.
  *                                          requestType=part (a worn part, no drawing): the buyer
  *                                          ships the part in; the response and the confirmation
  *                                          email carry a reference and the ship-to address.
@@ -15,7 +18,9 @@
  *                                          of conformance are wanted; returnPart=true (part requests):
  *                                          the original goes back with the order. Both are stored so
  *                                          the owner prices them in, and the firm quote says so.
- *   GET  /api/rfq/:id                      read (owner, admin, or anonymous-by-id)
+ *   GET  /api/rfq/:id                      read: the signed-in owner or an admin gets the request;
+ *                                          anyone else holding the id of a request sent without an
+ *                                          account gets its status only (no contact details)
  *   GET  /api/rfq/admin/list               admin queue, newest first
  *   PUT  /api/rfq/admin/:id                admin: status / quoted price + lead time / notes /
  *                                          whether the price includes the inspection paperwork
@@ -42,8 +47,12 @@ const stripeClient = require("../services/stripeClient");
 const orderEvents = require("../services/orderEvents");
 const brand = require("../../shared/brand.json");
 const shopFacts = require("../shopFacts");
+const crypto = require("crypto");
+const botGuard = require("../security/botGuard");
+const turnstile = require("../security/turnstile");
 // Where a buyer ships a worn part. Server-side only: it is given out after a
-// request is sent (response + email), never on a public page.
+// request is sent by someone who passed the bot check (response + email),
+// never on a public page and never to an unverified sender.
 const shipFrom = require("../config/shipFrom.json");
 
 const router = express.Router();
@@ -106,29 +115,92 @@ function snapshotParts(quote) {
 }
 
 // ─── Create ───────────────────────────────────────────────────
+//
+// Anyone can send a request, so three things are decided per request:
+//
+//   is the sender verified?   yes when the Turnstile check passed, or when the
+//                             request comes from a signed-in account with a
+//                             confirmed email and is for that account's address.
+//                             With Turnstile configured, a missing or rejected
+//                             token refuses the request. With no keys (or with
+//                             Cloudflare unreachable) the request is taken as
+//                             an UNVERIFIED sender, so no lead is lost.
+//   does the buyer get mail?  only a verified sender, never a signed-in account
+//                             that has not confirmed its email, and within the
+//                             daily cap per recipient address and per IP.
+//   is the ship-to address    only to a verified sender, on screen and by email.
+//   given out?
+//
+// The shop is always told, and told when the sender is unverified.
+
+/** Who is behind this request, as far as we can tell. */
+async function assessSender(req, email) {
+  const accountSender = Boolean(req.user && req.user.emailVerified && req.user.email === email);
+  const hasToken = Boolean(req.headers["x-turnstile-token"] || (req.body && (req.body.turnstileToken || req.body["cf-turnstile-response"])));
+  if (accountSender && !(turnstile.configured() && hasToken)) return { verified: true, method: "account" };
+  const human = await botGuard.assess(req, { action: "rfq", allowAccount: false, allowHumanToken: false });
+  if (!human.verified && accountSender) return { verified: true, method: "account" };
+  return human;
+}
+
 router.post("/", optionalAuth, attachment, async (req, res) => {
+  let check = null;
+  const dropFile = () => { if (req.file) fs.unlink(req.file.path, () => {}); };
   try {
     const b = req.body || {};
     const quoteId = sanitizeString(b.quoteId || "", 64);
-    const email = (b.email || "").trim().toLowerCase();
-    const contactName = sanitizeString(b.contactName || "", 120);
+    const email = (typeof b.email === "string" ? b.email : "").trim().toLowerCase();
+    const contactName = sanitizeString(b.contactName || "", 120).replace(/[\r\n]+/g, " ");
 
-    if (!contactName) return res.status(400).json({ error: "Your name is required" });
-    if (!isValidEmail(email)) return res.status(400).json({ error: "A valid email is required" });
+    if (!contactName) { dropFile(); return res.status(400).json({ error: "Your name is required" }); }
+    if (!isValidEmail(email) || !mailer.cleanAddress(email)) { dropFile(); return res.status(400).json({ error: "A valid email is required" }); }
+
+    const sendPart = !quoteId && String(b.requestType || "") === "part";
+
+    // Honeypot, per-IP and per-address limits, minimum time to submit, duplicates.
+    check = botGuard.checkForm(req, {
+      form: "rfq",
+      email,
+      dedupe: [contactName, quoteId, sendPart, String(b.notes || ""), String(b.quantities || ""), req.file ? req.file.originalname : "", req.file ? req.file.size : 0],
+    });
+    if (!check.ok) {
+      dropFile();
+      if (check.honeypot) {
+        // A script filled the field no person sees. It gets an answer shaped like a success and nothing happens.
+        return res.status(201).json({ rfqId: crypto.randomUUID(), status: "new", turnaroundHours: brand.quoteTurnaroundHours, paperwork: false, confirmationEmail: true });
+      }
+      return res.status(check.status).json({ error: check.error, code: check.code });
+    }
+    if (check.replay) {
+      // The same request again inside half an hour (a double click, a retry): the first answer, no second request.
+      dropFile();
+      return res.status(201).json({ ...check.replay, duplicate: true });
+    }
 
     let quote = null;
     if (quoteId) {
       quote = quotesDB.getById(quoteId);
-      if (!quote) return res.status(404).json({ error: "Quote not found" });
-      if (quote.userId && (!req.user || (req.user.userId !== quote.userId && req.user.role !== "admin"))) {
+      const hidden = quote && quote.userId && (!req.user || (req.user.userId !== quote.userId && req.user.role !== "admin"));
+      if (!quote || hidden) {
+        dropFile();
+        botGuard.releaseForm(check);
         return res.status(404).json({ error: "Quote not found" });
       }
     }
 
+    const sender = await assessSender(req, email);
+    if (!sender.verified && sender.method === "failed") {
+      dropFile();
+      botGuard.releaseForm(check);
+      return res.status(403).json({ error: botGuard.MESSAGES.humanRequired, code: "human-check-required" });
+    }
+    const senderVerified = sender.verified;
+    // An account that has not confirmed its email does not trigger mail to that address yet.
+    const accountUnconfirmed = Boolean(req.user && !req.user.emailVerified && mailer.configured());
+    const buyerEmail = senderVerified && !accountUnconfirmed && botGuard.allowConfirmationEmail(req, email);
+
     const parts = quote ? snapshotParts(quote) : [];
     const process = parts[0]?.process || sanitizeString(b.process || "", 40);
-    // "Send us the part": no drawing and no file; the worn part is shipped in and measured.
-    const sendPart = !quote && String(b.requestType || "") === "part";
     // Checkboxes arrive as multipart text ("true" / "false"). The return box is on by default on
     // the form, but a request that does not send it at all (an older client, a hand-built post)
     // is not assumed to want anything back.
@@ -160,18 +232,43 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       // The owner prices both of these into the firm quote; the quote then says so.
       paperwork,
       returnPart,
+      // "turnstile" / "account" when the sender was verified; "none" when not.
+      senderCheck: senderVerified ? sender.method : "none",
+      buyerEmailed: buyerEmail,
     });
 
     if (quote) quotesDB.update(quote.id, { status: "rfq" });
 
-    // Notify the shop and acknowledge the buyer. Both best-effort.
+    // The ship-to address is for verified senders only.
     const part = sendPart ? partShipTo(rfq.id) : null;
-    mailer.send({ to: mailer.shopNotifyAddress(), replyTo: email, ...templates.rfqReceivedShop({ rfq, adminUrl: `${orderEvents.baseUrl(req)}/admin`, part }) });
-    mailer.send({ to: email, replyTo: mailer.shopNotifyAddress(), ...templates.rfqReceivedBuyer({ rfq, part }) });
+    const partForBuyer = sendPart && senderVerified ? part : null;
 
-    res.status(201).json({ rfqId: rfq.id, status: rfq.status, turnaroundHours: brand.quoteTurnaroundHours, paperwork: Boolean(rfq.paperwork), ...(part ? { ...part, returnPart: Boolean(rfq.returnPart) } : {}) });
+    // Notify the shop; acknowledge the buyer when allowed. Both best-effort.
+    mailer.send({
+      to: mailer.shopNotifyAddress(),
+      // Reply-To is the typed address only when its sender was verified.
+      replyTo: senderVerified ? email : undefined,
+      ...templates.rfqReceivedShop({ rfq, adminUrl: `${orderEvents.baseUrl(req)}/admin`, part, unverified: !senderVerified, buyerEmailed: buyerEmail, partPending: sendPart && !partForBuyer }),
+    });
+    if (buyerEmail) mailer.send({ to: email, replyTo: mailer.shopNotifyAddress(), ...templates.rfqReceivedBuyer({ rfq, part: partForBuyer }) });
+
+    const response = {
+      rfqId: rfq.id,
+      status: rfq.status,
+      turnaroundHours: brand.quoteTurnaroundHours,
+      paperwork: Boolean(rfq.paperwork),
+      // What the page should tell the buyer about email and, for a part, the address.
+      senderVerified,
+      confirmationEmail: buyerEmail,
+      ...(accountUnconfirmed ? { needsEmailVerification: true } : {}),
+      ...(sendPart ? { reference: part.reference, returnPart: Boolean(rfq.returnPart), ...(partForBuyer ? { shipTo: part.shipTo } : { shipToPending: true }) } : {}),
+    };
+    botGuard.recordForm(req, check, { email, response });
+    res.status(201).json(response);
   } catch (err) {
-    console.error("RFQ create error:", err);
+    dropFile();
+    botGuard.releaseForm(check);
+    console.error("RFQ create error:", err.message);
     res.status(500).json({ error: "Could not submit the request. Please try again or call us." });
   }
 });
@@ -497,14 +594,20 @@ router.post("/quote/:token/confirm-payment", async (req, res) => {
 });
 
 // ─── Read ─────────────────────────────────────────────────────
+// A request holds a name, an email, a phone number and notes. The signed-in
+// owner and the admin see it. A request sent without an account has no owner
+// to check, so its id alone shows only where it stands.
 router.get("/:id", optionalAuth, (req, res) => {
   const rfq = rfqsDB.getById(req.params.id);
   if (!rfq) return res.status(404).json({ error: "RFQ not found" });
-  if (rfq.userId && (!req.user || (req.user.userId !== rfq.userId && req.user.role !== "admin"))) {
-    return res.status(404).json({ error: "RFQ not found" });
+  const admin = req.user && req.user.role === "admin";
+  const owner = req.user && rfq.userId && req.user.userId === rfq.userId;
+  if (admin || owner) {
+    const { drawingPath, senderCheck, buyerEmailed, ...safe } = rfq;
+    return res.json(admin ? { ...safe, senderCheck, buyerEmailed } : safe);
   }
-  const { drawingPath, ...safe } = rfq;
-  res.json(safe);
+  if (rfq.userId) return res.status(404).json({ error: "RFQ not found" });
+  res.json({ id: rfq.id, reference: templates.shortId(rfq.id), status: expireIfDue(rfq).status, requestType: rfq.requestType || "", createdAt: rfq.createdAt });
 });
 
 module.exports = router;

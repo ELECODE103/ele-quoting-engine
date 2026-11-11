@@ -255,7 +255,7 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
   });
 
   test("shipped with tracking → one email with the tracking link; saving again doesn't resend", async () => {
-    const owner = (await h.post("/api/auth/login", { email: "owner@shop.test", password: "Passw0rd1" })).body.token;
+    const owner = await h.login("owner@shop.test");
     h.sent.length = 0;
     const r = await h.put(`/api/orders/${orderId}/status`, { status: "shipped", carrier: "UPS", trackingNumber: "1Z999AA10123456784" }, owner);
     assert.strictEqual(r.status, 200);
@@ -275,7 +275,7 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
   });
 
   test("shipped without tracking, then tracking added → a second email carries it", async () => {
-    const owner = (await h.post("/api/auth/login", { email: "owner@shop.test", password: "Passw0rd1" })).body.token;
+    const owner = await h.login("owner@shop.test");
     const other = ordersDB.getAll().find((o) => o.id !== orderId && o.status === "paid");
     h.sent.length = 0;
     await h.put(`/api/orders/${other.id}/status`, { status: "shipped" }, owner);
@@ -287,7 +287,7 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
   });
 
   test("moving through other statuses sends no email", async () => {
-    const owner = (await h.post("/api/auth/login", { email: "owner@shop.test", password: "Passw0rd1" })).body.token;
+    const owner = await h.login("owner@shop.test");
     const pending = ordersDB.getAll().find((o) => o.status === "paid_amount_mismatch");
     h.sent.length = 0;
     await h.put(`/api/orders/${pending.id}/status`, { status: "in_production" }, owner);
@@ -341,7 +341,7 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     const order = ordersDB.getById(c.body.orderId);
     assert.strictEqual(order.customerNotes, "The 0.500 bore is the one that matters.");
     assert.strictEqual(order.drawingFileName, "bracket-rev-B.pdf");
-    const owner = (await h.post("/api/auth/login", { email: "owner@shop.test", password: "Passw0rd1" })).body.token;
+    const owner = await h.login("owner@shop.test");
     const dl = await fetch(`${h.base}/api/orders/${order.id}/drawing`, { headers: { Authorization: `Bearer ${owner}` } });
     assert.strictEqual(dl.status, 200);
     assert.ok((await dl.text()).startsWith("%PDF"));

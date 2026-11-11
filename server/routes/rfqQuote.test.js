@@ -152,7 +152,9 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
     assert.strictEqual(h.sent.length, 2);
     const shop = h.sent.find((m) => m.to === "owner@shop.test");
     const buyer = h.sent.find((m) => m.to === "pat@oem.test");
-    assert.ok(shop.subject.includes("PO-77812"));
+    // The PO number is typed by the customer: it is in the body, never in a subject line.
+    assert.ok(!shop.subject.includes("PO-77812") && /purchase order/.test(shop.subject));
+    assert.ok(shop.text.includes("PO number: PO-77812"));
     assert.ok(/Nothing has been charged/.test(shop.text));
     assert.ok(buyer.text.includes("PO-77812"));
     assert.ok(buyer.text.includes(shipBy.formatShipBy(order.shipBy)));
