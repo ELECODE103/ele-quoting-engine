@@ -417,6 +417,9 @@ select.input option {
 .pub-nav-links .linklike { font-size: 13px; font-weight: 500; color: var(--text-muted); padding: 8px 12px; border-radius: 8px; background: none; border: none; cursor: pointer; font-family: var(--font-body); text-align: left; }
 .pub-nav-links .linklike:hover { color: var(--accent); background: var(--accent-bg); }
 .pub-nav-links .nav-cta { margin-left: 8px; }
+/* The quote button is the one primary action in the header: the nav-link rule above must not flatten it. */
+.pub-nav-links a.nav-cta { background: var(--accent); color: #fff; padding: 9px 16px; font-weight: 600; box-shadow: var(--shadow-sm); }
+.pub-nav-links a.nav-cta:hover { background: var(--accent-dark); color: #fff; }
 .pub-nav-toggle { display: none; font-size: 16px; line-height: 1; padding: 8px 12px; }
 .br-wide { display: inline; }
 .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); }
