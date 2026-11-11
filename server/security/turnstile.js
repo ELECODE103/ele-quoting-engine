@@ -16,9 +16,13 @@ const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverif
 const TIMEOUT_MS = 5000;
 const MAX_TOKEN_LENGTH = 2048; // Cloudflare: tokens are at most 2048 characters
 
-// https://developers.cloudflare.com/turnstile/troubleshooting/testing/
-const DUMMY_SITE_KEYS = ["1x00000000000000000000AA", "2x00000000000000000000AB", "1x00000000000000000000BB", "2x00000000000000000000BB", "3x00000000000000000000FF"];
-const DUMMY_SECRETS = ["1x0000000000000000000000000000000AA", "2x0000000000000000000000000000000AA", "3x0000000000000000000000000000000AA"];
+// Cloudflare publishes test keys (https://developers.cloudflare.com/turnstile/troubleshooting/testing/):
+// a digit, "x", a run of zeros and two letters. They are recognised by that shape so that no
+// key, not even a public test one, is written into this file.
+const DUMMY_KEY_SHAPE = /^[1-3]x0{16,}[A-F]{2}$/;
+function isDummyKey(value) {
+  return DUMMY_KEY_SHAPE.test(String(value || ""));
+}
 
 let fetchImpl = (...args) => fetch(...args);
 
@@ -32,7 +36,7 @@ function keys() {
 /** Are the configured keys Cloudflare's public test keys? */
 function usingDummyKeys() {
   const { siteKey, secret } = keys();
-  return DUMMY_SITE_KEYS.includes(siteKey) || DUMMY_SECRETS.includes(secret);
+  return isDummyKey(siteKey) || isDummyKey(secret);
 }
 
 /** Is the bot check switched on? Both keys set, and not the public test keys in production. */
@@ -98,4 +102,4 @@ function setFetchForTests(fn) {
   fetchImpl = fn || ((...args) => fetch(...args));
 }
 
-module.exports = { configured, siteKey, verify, usingDummyKeys, setFetchForTests, SITEVERIFY_URL, TIMEOUT_MS, DUMMY_SITE_KEYS, DUMMY_SECRETS };
+module.exports = { configured, siteKey, verify, usingDummyKeys, isDummyKey, setFetchForTests, SITEVERIFY_URL, TIMEOUT_MS };

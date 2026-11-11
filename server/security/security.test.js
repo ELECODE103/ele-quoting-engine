@@ -4,7 +4,7 @@
  *
  * No network: the Turnstile and Resend calls are stubbed. Every key, password
  * and token here is made at run time (Cloudflare's published dummy keys are
- * named only to prove they are refused in production).
+ * listed only to prove they are refused in production).
  */
 const assert = require("assert");
 const crypto = require("crypto");
@@ -316,15 +316,25 @@ test("fail closed: a missing, oversized or rejected token, an HTTP error, garbag
   } finally { global.setTimeout = realSetTimeout; }
 }));
 
+// Cloudflare's published test keys (always pass / always block / force a challenge; pass / fail / spent).
+const CF_TEST_SITE_KEYS = ["1x00000000000000000000AA", "2x00000000000000000000AB", "1x00000000000000000000BB", "2x00000000000000000000BB", "3x00000000000000000000FF"];
+const CF_TEST_SECRETS = ["1x0000000000000000000000000000000AA", "2x0000000000000000000000000000000AA", "3x0000000000000000000000000000000AA"];
+
 test("Cloudflare's public test keys count as 'not configured' in production", async () => {
-  await withTurnstile({ TURNSTILE_SITE_KEY: turnstile.DUMMY_SITE_KEYS[0], TURNSTILE_SECRET_KEY: turnstile.DUMMY_SECRETS[0], NODE_ENV: "production" }, async () => {
+  for (const k of [...CF_TEST_SITE_KEYS, ...CF_TEST_SECRETS]) assert.strictEqual(turnstile.isDummyKey(k), true, k);
+  for (const k of [KEYS.TURNSTILE_SITE_KEY, KEYS.TURNSTILE_SECRET_KEY, "0x4AAAAAAAexampleRealShapedKey", "", undefined]) assert.strictEqual(turnstile.isDummyKey(k), false, String(k));
+  // A real key next to a test key is still refused: either one being a test key is enough.
+  await withTurnstile({ TURNSTILE_SITE_KEY: KEYS.TURNSTILE_SITE_KEY, TURNSTILE_SECRET_KEY: CF_TEST_SECRETS[0], NODE_ENV: "production" }, async () => {
+    assert.strictEqual(turnstile.configured(), false);
+  });
+  await withTurnstile({ TURNSTILE_SITE_KEY: CF_TEST_SITE_KEYS[0], TURNSTILE_SECRET_KEY: CF_TEST_SECRETS[0], NODE_ENV: "production" }, async () => {
     assert.strictEqual(turnstile.usingDummyKeys(), true);
     assert.strictEqual(turnstile.configured(), false);
     assert.strictEqual(turnstile.siteKey(), "");
     const lines = require("./index").startupWarnings(() => {});
     assert.ok(lines.some((l) => /BOT CHECK IS OFF/.test(l) && /TEST keys/.test(l)));
   });
-  await withTurnstile({ TURNSTILE_SITE_KEY: turnstile.DUMMY_SITE_KEYS[0], TURNSTILE_SECRET_KEY: turnstile.DUMMY_SECRETS[0], NODE_ENV: "test" }, async () => {
+  await withTurnstile({ TURNSTILE_SITE_KEY: CF_TEST_SITE_KEYS[0], TURNSTILE_SECRET_KEY: CF_TEST_SECRETS[0], NODE_ENV: "test" }, async () => {
     assert.strictEqual(turnstile.configured(), true, "usable in tests and local development");
   });
 });
