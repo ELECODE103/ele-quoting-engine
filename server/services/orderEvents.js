@@ -13,12 +13,18 @@ const templates = require("../emails/templates");
 const shipBy = require("./shipBy");
 const rfqToken = require("./rfqToken");
 const stripeClient = require("./stripeClient");
+const { accountLinkBase } = require("../security/links");
 
 const ORDER_LINK_DAYS = 180; // how long an emailed order link for an account-less (RFQ) buyer keeps working
 
+/**
+ * Base URL for links we email and for Stripe's return URLs. Firm-quote links
+ * carry a credential, so the host is not taken on trust from the request:
+ * FRONTEND_URL, else the request's host only if it is one of ours, else the
+ * brand URL (security/links.js).
+ */
 function baseUrl(req) {
-  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/$/, "");
-  return req ? `${req.protocol}://${req.get("host")}` : brand.url;
+  return accountLinkBase(req);
 }
 
 function itemsFor(order) {

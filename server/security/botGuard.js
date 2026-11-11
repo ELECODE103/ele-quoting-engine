@@ -164,8 +164,13 @@ function fingerprint(parts) {
  */
 function checkForm(req, { form, email, dedupe }) {
   const body = req.body || {};
-  // 1. Honeypot: answered like a success by the route, with nothing done.
-  if (typeof body[HONEYPOT_FIELD] === "string" && body[HONEYPOT_FIELD].trim() !== "") return { ok: false, honeypot: true };
+  // 1. Honeypot: answered like a success by the route, with nothing done. One
+  //    log line (no contents) so a run of them, or a real visitor whose browser
+  //    filled the field, leaves a trace.
+  if (typeof body[HONEYPOT_FIELD] === "string" && body[HONEYPOT_FIELD].trim() !== "") {
+    console.warn(`[botguard] honeypot filled on the ${form} form: submission dropped`);
+    return { ok: false, honeypot: true };
+  }
 
   // 2. Per-IP limits.
   const ip = clientIp(req);

@@ -7,7 +7,8 @@ import brand from '../../brand';
  * Shown where an unconfirmed email address stops something: checkout, and the
  * confirmation of a request. Says what is needed and why, offers to send the
  * link again, and notices by itself when the address has been confirmed in
- * another tab (it asks the server every few seconds while it is on screen).
+ * another tab (it asks the server every 15 seconds while it is on screen, and
+ * when the tab is brought back to the front).
  *
  * Renders nothing when the account is confirmed, when nobody is signed in, or
  * when the server cannot send confirmation links at all (no mailer).
@@ -20,7 +21,10 @@ export default function VerifyEmailNotice({ reason = 'before you pay', style }) 
 
   useEffect(() => {
     if (!needed) return undefined;
-    const timer = setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+    // Every 15 seconds for the first ten minutes (well inside the API's per-visitor
+    // request limit), and whenever the tab gets the focus back.
+    let polls = 0;
+    const timer = setInterval(() => { if (!document.hidden && polls++ < 40) refresh(); }, 15000);
     const onFocus = () => refresh();
     window.addEventListener('focus', onFocus);
     return () => { clearInterval(timer); window.removeEventListener('focus', onFocus); };

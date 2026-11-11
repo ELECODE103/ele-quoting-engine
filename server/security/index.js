@@ -120,6 +120,10 @@ function startupWarnings(log = console.warn) {
       "  - a new ADMIN_EMAIL account cannot be confirmed by link (see ADMIN_RECOVERY=verify-email)",
     );
   }
+  // Sessions, every signed link and the key that encrypts two-factor secrets all hang on JWT_SECRET.
+  if ((process.env.JWT_SECRET || "").length < 32) {
+    lines.push("WARNING: JWT_SECRET is shorter than 32 characters. Sessions, emailed links and stored two-factor secrets are only as strong as it is: set a long random value (changing it signs everyone out and resets two-factor enrolment).");
+  }
   if (process.env.ADMIN_RECOVERY) lines.push("WARNING: ADMIN_RECOVERY is set. It repeats its action on every start: remove it.");
   for (const l of lines) log(l);
   return lines;

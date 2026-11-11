@@ -6,7 +6,7 @@ import Wordmark from '../components/Wordmark';
 import HumanCheck from '../components/security/HumanCheck';
 import brand from '../brand';
 import { destinationAfterAuth, nextFrom, authPath } from '../utils/returnTo';
-import { CHECK_BLOCKED_MESSAGE } from '../utils/security';
+import { CHECK_BLOCKED_SUBMIT } from '../utils/security';
 
 /**
  * Sign in. Three things can be asked for beyond email and password, each only
@@ -26,6 +26,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
   const [needCheck, setNeedCheck] = useState(false);
   const [checkToken, setCheckToken] = useState('');
@@ -41,7 +42,8 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (needCheck && checkState === 'blocked') return setError(CHECK_BLOCKED_MESSAGE);
+    setInfo('');
+    if (needCheck && checkState === 'blocked') return setError(CHECK_BLOCKED_SUBMIT);
     if (needCheck && checkState !== 'off' && !checkToken) return setError('Finish the spam check below, then sign in again.');
     setLoading(true);
 
@@ -55,6 +57,9 @@ export default function LoginPage() {
       if (err.code === 'two-factor-required') {
         setTwoFactor(true);
         setCode('');
+      } else if (err.code === 'human-check-required' && !needCheck) {
+        // The server wants the spam check and this page had not shown it yet: not an error of the visitor's.
+        setInfo('One quick check first, after the earlier wrong passwords. It appears below; when it has passed, press Sign in again.');
       } else {
         setError(err.message || `That email and password didn't match. Try again, or call ${brand.phone}.`);
         if (twoFactor) setCode('');
@@ -146,6 +151,7 @@ export default function LoginPage() {
             </div>
           )}
 
+          {info && <div role="status" className="verify-box" style={{ marginBottom: 16 }}>{info}</div>}
           {error && <div role="alert" className="auth-error">{error}</div>}
 
           <button

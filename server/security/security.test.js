@@ -10,7 +10,7 @@ const assert = require("assert");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 
-process.env.JWT_SECRET = `unit-${crypto.randomBytes(12).toString("hex")}`;
+process.env.JWT_SECRET = `unit-${crypto.randomBytes(24).toString("hex")}`;
 process.env.NODE_ENV = "test";
 
 const { runner } = require("../testSupport/harness");
@@ -345,6 +345,13 @@ test("startup warning: with no keys it names each check that is off and what sti
     await withTurnstile(KEYS, async () => {
       const lines = require("./index").startupWarnings(() => {});
       assert.deepStrictEqual(lines, []);
+      // A short JWT_SECRET is called out: every session, link and stored two-factor secret hangs on it.
+      const keep = process.env.JWT_SECRET;
+      process.env.JWT_SECRET = "short";
+      try {
+        const weak = require("./index").startupWarnings(() => {});
+        assert.ok(weak.length === 1 && /JWT_SECRET is shorter than 32 characters/.test(weak[0]) && !weak[0].includes("short\""));
+      } finally { process.env.JWT_SECRET = keep; }
     });
   } finally {
     for (const [k, v] of [["EMAIL_API_KEY", keepMail.k], ["EMAIL_FROM", keepMail.f]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
@@ -443,6 +450,10 @@ test("account links never take their host from a forged Host header in productio
     assert.strictEqual(accountLinkBase(req("nordmfg.com")), "https://nordmfg.com");
     process.env.RAILWAY_PUBLIC_DOMAIN = "straightedge-production.up.railway.app";
     assert.strictEqual(accountLinkBase(req("straightedge-production.up.railway.app")), "https://straightedge-production.up.railway.app");
+    // Firm-quote links and Stripe return URLs are built the same way.
+    const orderEvents = require("../services/orderEvents");
+    assert.strictEqual(orderEvents.baseUrl(req("evil.example")), "https://straightedgemfg.com");
+    assert.strictEqual(orderEvents.baseUrl(), "https://straightedgemfg.com");
     process.env.NODE_ENV = "test";
     assert.strictEqual(accountLinkBase({ protocol: "http", get: () => "localhost:3091" }), "http://localhost:3091");
   } finally {

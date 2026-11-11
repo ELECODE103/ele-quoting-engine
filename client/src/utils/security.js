@@ -21,6 +21,10 @@ const SCRIPT_TIMEOUT_MS = 12000;
 export const CHECK_BLOCKED_MESSAGE =
   `The spam check didn't load. A content blocker or a firewall may be stopping challenges.cloudflare.com. Allow it and reload the page, or call ${brand.phone} or email ${brand.email} and we'll take it from there.`;
 
+/** Said next to the send button when a form cannot go because the check did not load. */
+export const CHECK_BLOCKED_SUBMIT =
+  `Nothing was sent: the spam check above didn't load, and this form needs it. Call ${brand.phone} or email ${brand.email} instead.`;
+
 // ─── Config ───────────────────────────────────────────────────
 let configPromise = null;
 export function publicConfig() {
