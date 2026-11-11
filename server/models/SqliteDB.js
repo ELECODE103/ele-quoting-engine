@@ -118,6 +118,9 @@ const FIELD_TO_COLUMN = {
   totpLastStep: "totp_last_step",
   senderCheck: "sender_check",
   buyerEmailed: "buyer_emailed",
+  // Part payloads kept in files (2026-11-11): bytes of preview mesh / geometry detail under data/part-payloads
+  meshBytes: "mesh_bytes",
+  detailBytes: "detail_bytes",
 };
 
 // 0/1 columns that read back as booleans (SQLite has no boolean type).
@@ -295,8 +298,11 @@ class SqliteDB {
     if (!db) return 0;
     try {
       db.run(sql, params);
+      // Read the count before the save: exporting the database (which a save does) resets it to 0,
+      // which is why delete() used to answer "nothing deleted" for a row it had just removed.
+      const changed = db.getRowsModified();
       saveToDisk();
-      return db.getRowsModified();
+      return changed;
     } catch (err) {
       console.error(`SqliteDB run error [${this.tableName}]:`, err.message);
       return 0;

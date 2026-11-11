@@ -57,6 +57,16 @@ test("every SQL statement is built from bound parameters; only vetted identifier
   assert.deepStrictEqual(offenders, [], "raw SQL outside server/models");
 });
 
+test("delete says whether it deleted (it used to answer false for a row it had just removed)", async () => {
+  const { leadTimesDB, materialsDB } = h.models;
+  const row = leadTimesDB.insert({ slug: "delete-me", name: "Delete me", multiplier: 1, active: false });
+  assert.strictEqual(leadTimesDB.delete(row.id), true, "a row that was there");
+  assert.strictEqual(leadTimesDB.getById(row.id), null);
+  assert.strictEqual(leadTimesDB.delete(row.id), false, "a row that is not");
+  assert.strictEqual(leadTimesDB.delete("no-such-id"), false);
+  assert.strictEqual(materialsDB.delete(null), false);
+});
+
 test("a table or column name can never come from data", () => {
   const { SqliteDB } = require("../models/SqliteDB");
   for (const name of ["users; DROP TABLE users", "quotes--", "nope", "", "QUOTES", "quotes q", null, undefined, "__proto__", "constructor"]) {
@@ -163,6 +173,13 @@ test("quote pricing: a body cannot set the price, the status or the owner, and o
 test("admin records: only the listed fields, only in their types — a blank multiplier can no longer null out the price", async () => {
   admin = await h.admin();
   const { leadTimesDB, finishesDB, materialsDB } = h.models;
+  // Deleting through the admin route answers that it worked (it used to answer 404 after deleting), and a second try is a 404.
+  const made = await h.post("/api/admin/materials", { name: "Scrap test material", slug: "scrap-test-material", process: "cnc" }, admin);
+  assert.strictEqual(made.status, 201, made.text);
+  const del = await h.del(`/api/admin/materials/${made.body.id}`, admin);
+  assert.deepStrictEqual([del.status, del.body], [200, { success: true }]);
+  assert.strictEqual(materialsDB.getById(made.body.id), null);
+  assert.strictEqual((await h.del(`/api/admin/materials/${made.body.id}`, admin)).status, 404);
   const lt = leadTimesDB.getAll().find((x) => x.slug === "expedited");
   for (const multiplier of [null, "abc", 0, 0.5, -1, 1e9, [], {}, "", true]) {
     const r = await h.put(`/api/admin/lead-times/${lt.id}`, { multiplier }, admin);
