@@ -10,9 +10,44 @@ import SecurityTab from '../components/admin/SecurityTab';
 import { useAuth } from '../utils/authContext';
 import '../styles/admin.css';
 
+/**
+ * Two-step sign-in is required for the admin account. Until it is switched on
+ * this is the only admin screen there is: the server answers every other admin
+ * request with 403 `two-factor-enrolment-required`, so nothing else is loaded
+ * or shown. It stays up until the recovery codes have been saved.
+ */
+function EnrolmentGate({ onDone }) {
+  const { user, logout } = useAuth();
+  const enrolled = Boolean(user?.twoFactorEnabled);
+  return (
+    <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 32px 48px' }} data-testid="enrolment-gate">
+      {!enrolled && (
+        <div className="admin-banner" role="alert" data-testid="twofactor-banner">
+          <span>
+            <b>Set up two-step sign-in to open the admin pages.</b>{' '}
+            The admin account can change prices, see every customer's files and download the database, so it takes a password
+            and a code from your phone. Nothing else in the admin area opens until this is done. It takes two minutes.
+          </span>
+          <button type="button" className="btn btn-ghost" onClick={logout}>Sign out</button>
+        </div>
+      )}
+      <SecurityTab enrolment onCodesSaved={onDone} />
+    </div>
+  );
+}
+
 export default function AdminPanel() {
+  const { user } = useAuth();
+  // Held open through the "save your recovery codes" step, which comes after the account is already enrolled.
+  const [gate, setGate] = useState(() => Boolean(user && !user.twoFactorEnabled));
+  useEffect(() => { if (user && !user.twoFactorEnabled) setGate(true); }, [user]);
+  if (gate) return <EnrolmentGate onDone={() => setGate(false)} />;
+  return <AdminConsole />;
+}
+
+function AdminConsole() {
   const [tab, setTab] = useState('orders');
-  const { user, refresh } = useAuth();
+  const { refresh } = useAuth();
   const [materials, setMaterials] = useState([]);
   const [finishes, setFinishes] = useState([]);
   const [leadTimes, setLeadTimes] = useState([]);
@@ -95,17 +130,6 @@ export default function AdminPanel() {
 
   return (
     <div style={{ maxWidth: 1320, margin: '0 auto', padding: '28px 32px 48px' }}>
-      {/* Until two-step sign-in is on, every admin page says so. */}
-      {user && !user.twoFactorEnabled && (
-        <div className="admin-banner" role="alert" data-testid="twofactor-banner">
-          <span>
-            <b>Two-step sign-in is off for the admin account.</b>{' '}
-            Right now one password stands between anyone on the internet and your prices, your customers' files and the database.
-            Setting it up takes two minutes and a phone.
-          </span>
-          {tab !== 'security' && <button type="button" className="btn btn-primary" onClick={() => setTab('security')}>Set it up now</button>}
-        </div>
-      )}
       {/* Stats bar */}
       <div className="grid-4" style={{ marginBottom: 32 }}>
         {[

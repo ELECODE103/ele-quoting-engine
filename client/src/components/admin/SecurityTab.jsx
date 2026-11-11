@@ -60,7 +60,7 @@ function RecoveryCodes({ codes, onDone }) {
  * On:       when it was switched on and how many recovery codes are left; make
  *           new recovery codes; switch it off (password + a code).
  */
-export default function SecurityTab({ onChanged }) {
+export default function SecurityTab({ onChanged, enrolment = false, onCodesSaved }) {
   const { login, refresh } = useAuth();
   const [status, setStatus] = useState(null);
   const [password, setPassword] = useState('');
@@ -99,7 +99,7 @@ export default function SecurityTab({ onChanged }) {
 
   if (!status) return <div className="card" style={{ padding: 24 }}>{error ? <span role="alert" style={{ color: 'var(--error-text)' }}>{error}</span> : 'Loading…'}</div>;
 
-  if (codes) return <RecoveryCodes codes={codes} onDone={() => setCodes(null)} />;
+  if (codes) return <RecoveryCodes codes={codes} onDone={() => { setCodes(null); onCodesSaved?.(); }} />;
 
   return (
     <div style={{ display: 'grid', gap: 20, maxWidth: 720 }} data-testid="security-tab">
@@ -114,7 +114,12 @@ export default function SecurityTab({ onChanged }) {
           (Google Authenticator, Microsoft Authenticator, 1Password, Authy).
         </p>
 
-        {status.enabled && (
+        {status.enabled && enrolment && (
+          <div style={{ marginTop: 14 }}>
+            <button type="button" className="btn btn-primary" onClick={() => onCodesSaved?.()}>Open the admin pages</button>
+          </div>
+        )}
+        {status.enabled && !enrolment && (
           <div style={{ marginTop: 14, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             On since {formatDate(status.enabledAt)}. Recovery codes left: <b data-testid="codes-left">{status.recoveryCodesLeft}</b> of 10.
             {status.recoveryCodesLeft <= 3 && <span style={{ color: 'var(--warn-text)' }}> Make new ones before they run out.</span>}
@@ -187,7 +192,7 @@ export default function SecurityTab({ onChanged }) {
               </span>
             </div>
             <button type="submit" className="btn btn-danger" disabled={busy}>Switch it off</button>
-            <span className="field-hint">After this, the admin account is protected by the password alone.</span>
+            <span className="field-hint">Two-step sign-in is required for the admin pages: after switching it off you are taken straight back to setting it up (on a new phone, say), and nothing else opens until you have.</span>
           </form>
         )}
 
@@ -198,7 +203,7 @@ export default function SecurityTab({ onChanged }) {
         <h2 className="display" style={{ fontSize: 16, marginBottom: 8 }}>If you are locked out</h2>
         <ul style={{ margin: '0 0 0 18px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
           <li>Phone lost, recovery codes to hand: sign in with a recovery code, then switch two-step sign-in off and set it up again on the new phone.</li>
-          <li>Phone and codes both lost: set the hosting variable <code>ADMIN_RECOVERY=reset-2fa</code>, restart the service, sign in with your password, set this up again, then remove the variable.</li>
+          <li>Phone and codes both lost: set the hosting variable <code>ADMIN_RECOVERY=reset-2fa</code>, restart the service, sign in with your password, set this up again (the admin pages stay closed until you do), then remove the variable.</li>
           <li>Password forgotten: use "Forgot your password?" on the sign-in page. Two-step sign-in stays on.</li>
           <li>Admin sessions last 4 hours, then ask you to sign in again.</li>
         </ul>

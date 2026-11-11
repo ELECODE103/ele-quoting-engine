@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { api, setCsrfToken, setSessionEndedHandler } from './api';
+import { api, setCsrfToken, setSessionEndedHandler, setEnrolmentRequiredHandler } from './api';
 import { setAccountVerified } from './security';
 
 export const AuthContext = createContext(null);
@@ -40,12 +40,18 @@ export function AuthProvider({ children }) {
     // The token used to be kept in localStorage. Remove any left over from an earlier visit.
     try { localStorage.removeItem('authToken'); } catch { /* private mode */ }
     setSessionEndedHandler(() => apply(null));
+    // An admin request was refused because two-step sign-in is not on: read the account again
+    // (the admin page then shows the enrolment screen and nothing else) and go there.
+    setEnrolmentRequiredHandler(() => {
+      api.getSession().then(apply).catch(() => {});
+      if (typeof window !== 'undefined' && window.location.pathname !== '/admin') window.location.assign('/admin');
+    });
     let alive = true;
     api.getSession()
       .then((s) => { if (alive) apply(s); })
       .catch(() => { if (alive) apply(null); })
       .finally(() => { if (alive) setIsLoading(false); });
-    return () => { alive = false; setSessionEndedHandler(null); };
+    return () => { alive = false; setSessionEndedHandler(null); setEnrolmentRequiredHandler(null); };
   }, [apply]);
 
   /** After a successful sign-in or registration: `session` is the server's answer. */

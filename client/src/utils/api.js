@@ -26,9 +26,14 @@ function baseHeaders(method = 'GET') {
   return headers;
 }
 
+// Told when the server refuses an admin request because two-step sign-in is not switched on yet.
+let onEnrolmentRequired = null;
+export function setEnrolmentRequiredHandler(fn) { onEnrolmentRequired = fn; }
+
 async function failure(res, fallback) {
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && data.code === 'session-ended' && onSessionEnded) onSessionEnded();
+  if (res.status === 403 && data.code === 'two-factor-enrolment-required' && onEnrolmentRequired) onEnrolmentRequired();
   return Object.assign(new Error(data.error || fallback || `Request failed: ${res.status}`), { status: res.status, code: data.code, data });
 }
 
