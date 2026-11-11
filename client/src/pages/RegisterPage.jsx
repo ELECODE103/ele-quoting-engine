@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../utils/authContext';
-import { api, setAuthToken } from '../utils/api';
+import { api } from '../utils/api';
 import Wordmark from '../components/Wordmark';
 import brand from '../brand';
 import { destinationAfterAuth, nextFrom, authPath } from '../utils/returnTo';
+import useFormGuard from '../utils/useFormGuard';
+
+export const PASSWORD_HINT = 'At least 10 characters, with an upper-case letter, a lower-case letter and a number. Not a common password.';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -14,6 +17,7 @@ export default function RegisterPage() {
   const returnTo = destinationAfterAuth(location);
   const toCheckout = returnTo.startsWith('/checkout');
   const { login } = useAuth();
+  const guard = useFormGuard('register');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,13 +33,9 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const result = await api.register(name, email, password, company);
-      if (result.token) {
-        setAuthToken(result.token);
-        const decoded = JSON.parse(atob(result.token.split('.')[1]));
-        login(result.token, decoded);
-        navigate(returnTo, { replace: true });
-      }
+      const result = await guard.submit((headers, extra) => api.register({ name, email, password, company, ...extra }, headers));
+      login(result);
+      navigate(returnTo, { replace: true });
     } catch (err) {
       setError(err.message || `We couldn't create the account. Try again, or call ${brand.phone}.`);
     } finally {
@@ -44,12 +44,12 @@ export default function RegisterPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-      <div style={{ width: '100%', maxWidth: 400 }}>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+    <div className="auth-shell">
+      <div className="auth-card" style={{ maxWidth: 400 }}>
+        <div className="auth-head">
           <div style={{ marginBottom: 24 }}><Wordmark size={18} /></div>
           <h1 className="display" style={{ fontSize: 28, marginBottom: 8 }}>Create an account</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>
+          <p>
             {toCheckout
               ? 'Create an account to finish checkout. Your quote is saved and you go straight back to it.'
               : 'Needed to check out and track orders. Pricing a part doesn\'t need one.'}
@@ -57,6 +57,7 @@ export default function RegisterPage() {
         </div>
 
         <form onSubmit={handleSubmit}>
+          {guard.honeypot}
           <div style={{ marginBottom: 16 }}>
             <label className="field-label" htmlFor="reg-name">Name</label>
             <input
@@ -80,7 +81,11 @@ export default function RegisterPage() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
+              aria-describedby="reg-email-help"
             />
+            <div id="reg-email-help" style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>
+              We send one email to confirm this address. You confirm it before you pay; quoting works straight away.
+            </div>
           </div>
 
           <div style={{ marginBottom: 16 }}>
@@ -95,7 +100,7 @@ export default function RegisterPage() {
             />
           </div>
 
-          <div style={{ marginBottom: 24 }}>
+          <div style={{ marginBottom: 16 }}>
             <label className="field-label" htmlFor="reg-password">Password</label>
             <input
               id="reg-password"
@@ -104,17 +109,17 @@ export default function RegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
-              minLength={8}
+              minLength={10}
+              maxLength={72}
               required
+              aria-describedby="reg-password-help"
             />
-            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>At least 8 characters, with an upper-case letter, a lower-case letter and a number.</div>
+            <div id="reg-password-help" style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>{PASSWORD_HINT}</div>
           </div>
 
-          {error && (
-            <div role="alert" style={{ background: 'var(--error-bg)', border: '1px solid var(--error)', borderRadius: 'var(--radius-md)', padding: 12, marginBottom: 16, color: 'var(--error-text)', fontSize: 12 }}>
-              {error}
-            </div>
-          )}
+          <div style={{ marginBottom: 16 }}>{guard.widget}</div>
+
+          {error && <div role="alert" className="auth-error">{error}</div>}
 
           <button
             type="submit"
@@ -126,9 +131,9 @@ export default function RegisterPage() {
           </button>
         </form>
 
-        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.8 }}>
+        <div className="auth-foot" style={{ marginTop: 0 }}>
           Already have one?{' '}
-          <Link to={authPath('/login', nextFrom(location))} style={{ color: 'var(--accent)' }}>Sign in</Link>
+          <Link to={authPath('/login', nextFrom(location))}>Sign in</Link>
           <br />
           <Link to="/quote" style={{ color: 'var(--text-muted)' }}>Back to the quote</Link>
         </div>

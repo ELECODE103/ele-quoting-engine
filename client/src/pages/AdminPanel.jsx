@@ -6,10 +6,13 @@ import RfqQueue from '../components/RfqQueue';
 import PricingConsole from '../components/admin/PricingConsole';
 import MaterialsEditor from '../components/admin/MaterialsEditor';
 import CalibrationTab from '../components/admin/CalibrationTab';
+import SecurityTab from '../components/admin/SecurityTab';
+import { useAuth } from '../utils/authContext';
 import '../styles/admin.css';
 
 export default function AdminPanel() {
   const [tab, setTab] = useState('orders');
+  const { user, refresh } = useAuth();
   const [materials, setMaterials] = useState([]);
   const [finishes, setFinishes] = useState([]);
   const [leadTimes, setLeadTimes] = useState([]);
@@ -87,10 +90,22 @@ export default function AdminPanel() {
     { key: 'pricing', label: 'Pricing' },
     { key: 'calibration', label: 'Calibration' },
     { key: 'quotes', label: 'Quotes' },
+    { key: 'security', label: 'Security' },
   ];
 
   return (
     <div style={{ maxWidth: 1320, margin: '0 auto', padding: '28px 32px 48px' }}>
+      {/* Until two-step sign-in is on, every admin page says so. */}
+      {user && !user.twoFactorEnabled && (
+        <div className="admin-banner" role="alert" data-testid="twofactor-banner">
+          <span>
+            <b>Two-step sign-in is off for the admin account.</b>{' '}
+            Right now one password stands between anyone on the internet and your prices, your customers' files and the database.
+            Setting it up takes two minutes and a phone.
+          </span>
+          {tab !== 'security' && <button type="button" className="btn btn-primary" onClick={() => setTab('security')}>Set it up now</button>}
+        </div>
+      )}
       {/* Stats bar */}
       <div className="grid-4" style={{ marginBottom: 32 }}>
         {[
@@ -411,6 +426,9 @@ export default function AdminPanel() {
 
       {/* ─── RFQ TAB ─── */}
       {tab === 'rfqs' && <RfqQueue />}
+
+      {/* ─── SECURITY TAB ─── */}
+      {tab === 'security' && <SecurityTab onChanged={refresh} />}
 
       {/* ─── QUOTES TAB ─── */}
       {tab === 'quotes' && (

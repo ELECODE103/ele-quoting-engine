@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, getAuthToken } from '../utils/api';
+import { api } from '../utils/api';
 import { formatCurrency, formatDate, orderStatusLabel } from '../utils/format';
 import { PROCESS_LABELS } from '../brand';
 
@@ -91,6 +91,15 @@ export default function RfqQueue() {
                 <td style={{ padding: '10px 14px' }}>
                   <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.contactName}{r.company ? ` · ${r.company}` : ''}</div>
                   <div style={{ color: 'var(--text-dim)' }}><a href={`mailto:${r.email}`}>{r.email}</a>{r.phone ? ` · ${r.phone}` : ''}</div>
+                  {/* How the sender was checked. "none" is null on requests from before the check existed. */}
+                  {r.senderCheck === 'none' && (
+                    <div style={{ marginTop: 4 }}>
+                      <span className="tag tag-warn" title="Did not pass the bot check and was not a signed-in account with a confirmed email. No confirmation was emailed to this address, and a send-the-part request was not given the ship-to address.">Unverified sender</span>
+                    </div>
+                  )}
+                  {r.senderCheck && r.senderCheck !== 'none' && r.buyerEmailed === false && (
+                    <div style={{ marginTop: 4, color: 'var(--text-dim)' }}>No confirmation email was sent</div>
+                  )}
                 </td>
                 <td style={{ padding: '10px 14px' }}>
                   {PROCESS_LABELS[r.process] || r.process || (r.requestType === 'part' ? 'Part shipped in' : '—')}
@@ -254,12 +263,8 @@ export default function RfqQueue() {
 }
 
 async function downloadDrawing(r) {
-  const headers = {};
-  const token = getAuthToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(api.rfqDrawingUrl(r.id), { headers });
-  if (!res.ok) { alert('Could not download drawing'); return; }
-  const blob = await res.blob();
+  let blob;
+  try { blob = await api.fetchRfqDrawing(r.id); } catch { alert('Could not download drawing'); return; }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = r.drawingFileName || 'drawing'; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);

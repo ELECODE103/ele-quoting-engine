@@ -3,6 +3,8 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import { formatCurrency, formatShipDate, formatDate } from '../utils/format';
 import { ok, PAPERWORK_LABEL } from '../facts';
+import { useAuth } from '../utils/authContext';
+import VerifyEmailNotice from '../components/security/VerifyEmailNotice';
 
 export default function CheckoutPage() {
   const { quoteId } = useParams();
@@ -20,6 +22,9 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
 
   const wasCancelled = searchParams.get('cancelled') === 'true';
+  // Paying needs a confirmed email address (when confirmation emails can be sent at all).
+  const { user, verificationEnforced, refresh } = useAuth();
+  const mustConfirm = Boolean(user && !user.emailVerified && verificationEnforced);
 
   useEffect(() => {
     api.getQuoteById(quoteId)
@@ -49,7 +54,8 @@ export default function CheckoutPage() {
         setError('Could not create payment session');
       }
     } catch (err) {
-      setError(err.message || 'Failed to start checkout');
+      if (err.code === 'email-unverified') { await refresh(); setError(''); }
+      else setError(err.message || 'Failed to start checkout');
     } finally {
       setLoading(false);
     }
@@ -81,6 +87,8 @@ export default function CheckoutPage() {
             <a href={`/quote?quote=${quoteId}`} style={{ color: 'inherit', fontWeight: 600 }}>Reopen the quote</a> to get today's price. Your parts are still there.
           </div>
         )}
+
+        <VerifyEmailNotice reason="before you pay" />
 
         <div className="checkout-grid">
           {/* Left: Shipping Form */}
@@ -180,10 +188,16 @@ export default function CheckoutPage() {
                 type="submit"
                 className="btn btn-primary btn-lg"
                 style={{ width: '100%', justifyContent: 'center' }}
-                disabled={loading || !quoteData || quoteData.expired}
+                disabled={loading || !quoteData || quoteData.expired || mustConfirm}
+                aria-describedby={mustConfirm ? 'pay-needs-email' : undefined}
               >
                 {loading ? 'Redirecting to payment...' : 'Pay & Place Order'}
               </button>
+              {mustConfirm && (
+                <div id="pay-needs-email" style={{ textAlign: 'center', marginTop: 8, fontSize: 12, color: 'var(--warn-text)' }}>
+                  The pay button switches on once your email address is confirmed (see the top of this page). Your address details stay as typed.
+                </div>
+              )}
 
               <div style={{ textAlign: 'center', marginTop: 12, fontSize: 11, color: 'var(--text-muted)' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ verticalAlign: 'middle', marginRight: 4 }}>

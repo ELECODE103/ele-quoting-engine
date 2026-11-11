@@ -6,6 +6,8 @@ import { useAuth } from '../utils/authContext';
 import { formatCurrency } from '../utils/format';
 import brand, { PROCESS_LABELS } from '../brand';
 import { fact, when, PAPERWORK_HELP } from '../facts';
+import useFormGuard from '../utils/useFormGuard';
+import VerifyEmailNotice from '../components/security/VerifyEmailNotice';
 
 const within = when('quote-turnaround', (v) => ` within ${v}`);
 const UPLOAD_EXT = ['.pdf', '.dxf', '.dwg', '.png', '.jpg', '.jpeg']; // what POST /api/rfq accepts
@@ -28,6 +30,13 @@ const PART_QUOTE_TIME = fact('part-quote-time');
  * tells the server to answer with a reference and the address to ship the part
  * to. That address is shown only on the confirmation screen, from the response.
  *
+ * The form is bot-checked (utils/useFormGuard): a hidden honeypot field, a
+ * form token that proves the form was open for a few seconds, and Cloudflare
+ * Turnstile when the server has keys. The server answers with what it did:
+ * `confirmationEmail` (was the buyer emailed?) and, in part mode, `shipTo` or
+ * `shipToPending` (the address is only given to a sender who passed the
+ * check). The confirmation screens below say exactly that, no more.
+ *
  * Two checkboxes ride as their own fields, because the owner prices both into
  * the firm quote: `paperwork` (a first-article inspection report and a
  * certificate of conformance; off unless ticked, or already chosen on the
@@ -38,6 +47,7 @@ export default function RfqPage() {
   const { quoteId } = useParams();
   const location = useLocation();
   const { user } = useAuth();
+  const guard = useFormGuard('rfq');
   const [quote, setQuote] = useState(null);
   const [quoteMissing, setQuoteMissing] = useState(false);
   const [materialNames, setMaterialNames] = useState({});
@@ -119,13 +129,14 @@ export default function RfqPage() {
         ]
         : [form.lives && `Where the part lives: ${form.lives}`, form.notes];
       const { machine, material, soon, lives, ...fields } = form;
-      const res = await api.submitRfq({
+      const res = await guard.submit((headers, trap) => api.submitRfq({
         ...fields,
         ...(part ? { requestType: 'part', returnPart, tolerance: '', finishNotes: '', dueDate: '' } : {}),
         paperwork,
         notes: extra.filter(Boolean).join('\n').slice(0, 2000),
         quoteId: quote?.quoteId || quote?.id || quoteId || '',
-      }, part ? null : drawing);
+        ...trap,
+      }, part ? null : drawing, headers));
       setSent(res);
       window.scrollTo(0, 0);
     } catch (err) {
@@ -136,6 +147,14 @@ export default function RfqPage() {
 
   if (sent) {
     const reference = sent.reference || String(sent.rfqId || '').slice(0, 8).toUpperCase();
+    // What the server did about email. Older answers have no flag: read as "sent".
+    const emailed = sent.confirmationEmail !== false;
+    const unverified = sent.senderVerified === false;
+    const whyNoEmail = sent.needsEmailVerification
+      ? null // the notice below says it
+      : unverified
+        ? 'We did not send an automatic confirmation email this time: our spam check could not confirm the request came from a person at that address. A person here reads it all the same.'
+        : 'We did not send another confirmation email: we limit how many go to one address in a day. Your request is in.';
     // Part mode: the next step is the buyer's. The address comes from the server response only.
     if (part) {
       return (
@@ -143,11 +162,19 @@ export default function RfqPage() {
           <section className="section">
             <div className="pub-wrap" style={{ maxWidth: 680 }}>
               <div className="eyebrow" style={{ marginBottom: 14 }}>Request received</div>
-              <h1 className="display" style={{ marginBottom: 16 }}>Now send us the part.</h1>
-              <p className="lede" style={{ marginBottom: 20 }}>
-                Write the reference on the box and ship the part to the address below, at your cost. We measure it and send a price
-                to <b>{form.email}</b>.{PART_QUOTE_TIME ? ` ${PART_QUOTE_TIME}` : ''}
-              </p>
+              <h1 className="display" style={{ marginBottom: 16 }}>{sent.shipTo ? 'Now send us the part.' : 'We have your request.'}</h1>
+              {sent.shipTo ? (
+                <p className="lede" style={{ marginBottom: 20 }}>
+                  Write the reference on the box and ship the part to the address below, at your cost. We measure it and send a price
+                  to <b>{form.email}</b>.{PART_QUOTE_TIME ? ` ${PART_QUOTE_TIME}` : ''}
+                </p>
+              ) : (
+                <p className="lede" style={{ marginBottom: 20 }}>
+                  Keep the reference below. A person here reads the request first, then replies to <b>{form.email}</b> with the
+                  address to ship the part to. Do not send anything yet.
+                </p>
+              )}
+              <VerifyEmailNotice reason="to get our emails about this request" />
               <div className="plain-box" style={{ marginBottom: 20 }}>
                 <dl className="ship-part">
                   <div>
@@ -162,12 +189,13 @@ export default function RfqPage() {
                           {sent.shipTo.name}{(sent.shipTo.lines || []).map((l) => <span key={l}><br />{l}</span>)}
                         </dd>
                       )
-                      : <dd style={{ margin: '2px 0 0' }}>The address is in the confirmation email on its way to {form.email}.</dd>}
+                      : <dd style={{ margin: '2px 0 0' }}>It comes in our reply to {form.email}, once a person here has read the request. In a hurry? Call <a href={brand.phoneHref}>{brand.phone}</a> with the reference.</dd>}
                   </div>
                 </dl>
               </div>
               <p className="body-copy" style={{ marginBottom: 20 }}>
-                The same reference and address are in the confirmation email.{' '}
+                {sent.shipTo && emailed ? 'The same reference and address are in the confirmation email. ' : ''}
+                {!emailed && whyNoEmail ? `${whyNoEmail} ` : ''}
                 {(sent.returnPart ?? returnPart)
                   ? 'You asked for the original back: we send it back with your finished parts, and the price we quote includes that return shipping.'
                   : 'You did not ask for the original back, so we keep it with the job. Changed your mind? Reply to that email before you order.'}{' '}
@@ -193,9 +221,12 @@ export default function RfqPage() {
               The engineer who will run the job reads it and replies to <b>{form.email}</b>{within}. If the print needs
               a conversation first, that is the reply you will get.
             </p>
+            <VerifyEmailNotice reason="to get our emails about this request" />
             <p className="body-copy" style={{ marginBottom: 20 }}>
               {paperwork ? 'You asked for a first-article inspection report and a certificate of conformance: the price we quote will include them, and the quote will say so. ' : ''}
-              A confirmation email is on its way. More files? Reply to it and attach them.{' '}
+              {emailed
+                ? 'A confirmation email is on its way. More files? Reply to it and attach them. '
+                : `${whyNoEmail ? `${whyNoEmail} ` : ''}More files? Email them to ${brand.email} with the reference below. `}
               In a hurry, call <a href={brand.phoneHref}>{brand.phone}</a> and give the reference below.
             </p>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 28 }}>Reference: {reference}</p>
@@ -294,7 +325,8 @@ export default function RfqPage() {
               </p>
             </div>
 
-            <form id="request" className="card" style={{ padding: 24 }} onSubmit={submit} noValidate aria-label={part ? 'Send-the-part request' : 'Firm quote request'}>
+            <form id="request" className="card" style={{ padding: 24, position: 'relative' }} onSubmit={submit} noValidate aria-label={part ? 'Send-the-part request' : 'Firm quote request'}>
+              {guard.honeypot}
               {!quote && (
                 <div className="mode-toggle" role="group" aria-label="What you have">
                   <button type="button" aria-pressed={!part} onClick={() => setMode('drawing')}>I have a drawing or a quantity</button>
@@ -351,6 +383,7 @@ export default function RfqPage() {
                   </span>
                 </label>
               </div>
+              {guard.widget}
               {fileError && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{fileError}</div>}
               {error && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{error}</div>}
               <button className="btn btn-primary btn-lg" type="submit" disabled={busy} style={{ width: '100%', justifyContent: 'center', marginTop: 18 }}>

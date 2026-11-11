@@ -30,6 +30,9 @@ const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 const OrderTrackingPage = lazy(() => import('./pages/OrderTrackingPage'));
 const JobTravelerPage = lazy(() => import('./pages/JobTravelerPage'));
 const FirmQuotePage = lazy(() => import('./pages/FirmQuotePage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
 
 function Spinner() {
   return (
@@ -88,6 +91,9 @@ export default function App() {
       {/* App, client-rendered, noindex */}
       <Route path="/login" element={<Suspense fallback={<Spinner />}><LoginPage /></Suspense>} />
       <Route path="/register" element={<Suspense fallback={<Spinner />}><RegisterPage /></Suspense>} />
+      <Route path="/forgot-password" element={<Suspense fallback={<Spinner />}><ForgotPasswordPage /></Suspense>} />
+      <Route path="/reset-password" element={<Suspense fallback={<Spinner />}><ResetPasswordPage /></Suspense>} />
+      <Route path="/verify-email" element={<Suspense fallback={<Spinner />}><VerifyEmailPage /></Suspense>} />
       <Route path="/firm-quote/:token" element={<Suspense fallback={<Spinner />}><FirmQuotePage /></Suspense>} />
       <Route path="/quote" element={<AppShell><QuoteBuilder /></AppShell>} />
       <Route path="/admin" element={<AppShell><Protected adminOnly><AdminPanel /></Protected></AppShell>} />

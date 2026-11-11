@@ -573,7 +573,7 @@ router.get("/2fa", authenticate, requireAdmin, (req, res) => {
 
 // POST /api/auth/2fa/setup   { password }
 // Makes a new secret on the server and shows it once: the setup key and a QR
-// code drawn here (no outside service). Nothing is switched on until a code
+// code computed here (no outside service). Nothing is switched on until a code
 // from the app is confirmed. Asking again makes a new secret; the old pending
 // one is thrown away, never shown again.
 router.post("/2fa/setup", twoFactorLimiter, authenticate, requireAdmin, async (req, res) => {
@@ -584,9 +584,12 @@ router.post("/2fa/setup", twoFactorLimiter, authenticate, requireAdmin, async (r
     const secret = totp.generateSecret();
     usersDB.update(u.id, { totpPendingEnc: secretBox.seal("totp", secret, u.id) });
     const otpauthUri = totp.otpauthUri({ secret, account: u.email, issuer: brand.name });
-    const qrSvg = await require("qrcode").toString(otpauthUri, { type: "svg", margin: 2, errorCorrectionLevel: "M" });
+    // The QR code is worked out here and sent as a grid of cells for the page to draw:
+    // no image service sees the secret, and no markup or data: URI crosses the wire.
+    const modules = require("qrcode").create(otpauthUri, { errorCorrectionLevel: "M" }).modules;
+    const qr = { size: modules.size, cells: Array.from(modules.data, (cell) => (cell ? "1" : "0")).join("") };
     res.set("Cache-Control", "no-store");
-    res.json({ setupKey: secret.replace(/(.{4})/g, "$1 ").trim(), otpauthUri, qrSvg });
+    res.json({ setupKey: secret.replace(/(.{4})/g, "$1 ").trim(), otpauthUri, qr });
   } catch (err) {
     console.error("2FA setup error:", err.message);
     res.status(500).json({ error: "Could not start the setup. Try again." });

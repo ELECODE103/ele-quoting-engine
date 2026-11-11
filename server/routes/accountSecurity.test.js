@@ -586,7 +586,7 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
     }
   });
 
-  test("setup: needs the password, makes the secret on the server, shows the key and a locally drawn QR code once, and stores only ciphertext", async () => {
+  test("setup: needs the password, makes the secret on the server, shows the key and a locally computed QR code once, and stores only ciphertext", async () => {
     loginGuard.resetForTests();
     owner = await h.login("owner@shop.test", ownerPw);
     assert.deepStrictEqual((await h.get("/api/auth/2fa", owner)).body, { enabled: false, enabledAt: null, recoveryCodesLeft: 0, setupStarted: false });
@@ -599,7 +599,9 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
     secretsSeen.push(raw, setupKey);
     assert.ok(/^[A-Z2-7]{32}$/.test(raw), "a 160-bit base32 key");
     assert.ok(r.body.otpauthUri.startsWith("otpauth://totp/Straightedge:owner%40shop.test?secret=" + raw));
-    assert.ok(r.body.qrSvg.startsWith("<svg") && !/https?:\/\/(?!www\.w3\.org)/.test(r.body.qrSvg), "an inline SVG, no outside image service");
+    // The QR code is a grid of cells computed on the server: no outside image service, no markup.
+    assert.ok(r.body.qr.size >= 21 && r.body.qr.cells.length === r.body.qr.size ** 2 && /^[01]+$/.test(r.body.qr.cells));
+    assert.ok(!/https?:\/\//.test(JSON.stringify(r.body).replace(r.body.otpauthUri, "")), "nothing in the answer points at another site");
     assert.strictEqual(r.headers.get("cache-control"), "no-store");
     ownerRow = byEmail("owner@shop.test");
     assert.ok(ownerRow.totpPendingEnc && !ownerRow.totpSecretEnc && !ownerRow.totpEnabledAt);

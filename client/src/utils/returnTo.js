@@ -14,7 +14,7 @@ export function safeNext(value) {
   if (!value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\')) return null;
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f\\]/.test(value)) return null;
-  if (/^\/(login|register)(\/|\?|#|$)/.test(value)) return null; // never bounce back to the auth pages
+  if (/^\/(login|register|forgot-password|reset-password|verify-email)(\/|\?|#|$)/.test(value)) return null; // never bounce back to the auth pages
   return value;
 }
 

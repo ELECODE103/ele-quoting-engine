@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
+import HumanGate from '../components/security/HumanGate';
 import { formatCurrency, formatDim } from '../utils/format';
 import ThreeViewer from '../components/ThreeViewer';
 import DxfPreview from '../components/DxfPreview';
@@ -207,6 +208,7 @@ export default function QuoteBuilder() {
 
       const newParts = result.parts.map((p) => ({
         partId: p.partId,
+        editKey: p.editKey, // lets this browser, and only this one, set a DXF's units
         fileName: p.fileName,
         geometry: p.geometry,
         dfm: p.dfm,
@@ -294,7 +296,7 @@ export default function QuoteBuilder() {
   async function handleUnitsChange(partId, units) {
     setUnitsBusy(true);
     try {
-      const p = await api.setPartUnits(partId, units);
+      const p = await api.setPartUnits(partId, units, parts.find((x) => x.partId === partId)?.editKey);
       updatePart(partId, { geometry: p.geometry, dfm: p.dfm, dfmAll: p.dfmAll });
       setUploadErrors([]);
     } catch (err) {
@@ -311,6 +313,8 @@ export default function QuoteBuilder() {
 
   return (
     <div className={parts.length > 0 ? 'qb-grid' : ''} style={{ display: 'grid', gridTemplateColumns: parts.length > 0 ? undefined : '1fr', minHeight: 'calc(100vh - 53px)' }}>
+      {/* The one-time bot check before the first upload (renders nothing until it is needed). */}
+      <HumanGate />
 
       {/* ═══ LEFT SIDEBAR: Parts List ═══ */}
       {parts.length > 0 && (
