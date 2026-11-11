@@ -109,21 +109,68 @@ test("tracking links for the carriers the admin can pick; none for an unknown ca
   assert.strictEqual(templates.trackingUrl("UPS", ""), "");
 });
 
-test("without keys the mailer is a logged no-op that never prints the body", async () => {
+test("without keys the mailer is a logged no-op: the log names the template and counts the recipients, nothing else", async () => {
   delete process.env.EMAIL_API_KEY; delete process.env.EMAIL_FROM; delete process.env.EMAIL_OUTBOX_DIR;
   delete require.cache[require.resolve("../services/mailer")];
   const mailer = require("../services/mailer");
   const logs = [];
   const realLog = console.log; console.log = (...a) => logs.push(a.join(" "));
   const realFetch = global.fetch; let fetched = 0; global.fetch = async () => { fetched++; return { ok: true }; };
+  const quoted = samples["rfq-quoted"]();
   let result;
-  try { result = await mailer.send({ to: "a@b.test", ...samples["rfq-quoted"]() }); }
-  finally { console.log = realLog; global.fetch = realFetch; }
+  try {
+    result = await mailer.send({ to: "dana.buyer@customer.test", ...quoted });
+    await mailer.send({ to: ["one@shop.test", "two@shop.test"], replyTo: "dana.buyer@customer.test", ...samples["rfq-received-shop"]() });
+    await mailer.send({ to: "dana.buyer@customer.test", subject: "A hand-built message", text: "body text with a link https://shop.test/reset-password#token=abc" });
+  } finally { console.log = realLog; global.fetch = realFetch; }
   assert.strictEqual(result, false);
   assert.strictEqual(fetched, 0, "nothing leaves the machine");
-  assert.strictEqual(logs.length, 1);
-  assert.ok(logs[0].includes("a@b.test") && logs[0].includes("not sent"));
-  assert.ok(!logs[0].includes("firm-quote"), "the signed link is not written to the log");
+  assert.deepStrictEqual(logs, [
+    "[mailer] (not configured, not sent) template rfqQuoted, 1 recipient",
+    "[mailer] (not configured, not sent) template rfqReceivedShop, 2 recipients",
+    "[mailer] (not configured, not sent) template unnamed, 1 recipient",
+  ]);
+  const all = logs.join("\n");
+  assert.ok(!/@/.test(all), "no address in the log, the customer's or the shop's");
+  assert.ok(!all.includes(quoted.subject) && !all.includes("firm-quote") && !all.includes("token="), "no subject, no body, no signed link");
+});
+
+test("every template names itself, and a template name is all the log may take from a message", () => {
+  for (const [name, m] of all) assert.ok(/^[A-Za-z][A-Za-z0-9]{2,40}$/.test(m.template), `${name} carries its template name (${m.template})`);
+  assert.strictEqual(templates.rfqReceivedBuyer({ rfq: { id: "12345678-aaaa", contactName: "Dana" }, part: { reference: "12345678", shipTo: { name: "Shop", lines: ["1 Test St", "Town, IL 60000"] } } }).template, "partRequestBuyer");
+  assert.strictEqual(templates.verifyEmail({ verifyUrl: "https://shop.test/verify-email#token=x" }).template, "verifyEmail");
+});
+
+test("EMAIL_OUTBOX_DIR writes messages to disk only together with the explicit test switch", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "se-outbox-"));
+  const keep = { hooks: process.env.SE_TEST_HOOKS, env: process.env.NODE_ENV };
+  const mailer = require("../services/mailer");
+  const realLog = console.log; console.log = () => {};
+  try {
+    process.env.EMAIL_OUTBOX_DIR = dir;
+    for (const env of ["production", "test", undefined]) {
+      if (env === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = env;
+      delete process.env.SE_TEST_HOOKS;
+      await mailer.send({ to: "a@b.test", ...samples["account-verify-email"]() });
+      assert.deepStrictEqual(fs.readdirSync(dir), [], `nothing written without the switch (NODE_ENV=${env})`);
+    }
+    process.env.SE_TEST_HOOKS = "true"; // only the exact value counts
+    await mailer.send({ to: "a@b.test", ...samples["account-verify-email"]() });
+    assert.deepStrictEqual(fs.readdirSync(dir), []);
+    process.env.SE_TEST_HOOKS = "1";
+    await mailer.send({ to: "a@b.test", ...samples["account-verify-email"]() });
+    assert.strictEqual(fs.readdirSync(dir).length, 1);
+    const warnings = require("../security/testHooks").startupWarnings().join("\n");
+    assert.ok(/SE_TEST_HOOKS=1/.test(warnings) && /Never set this on the live site/.test(warnings));
+    delete process.env.SE_TEST_HOOKS;
+    assert.ok(/EMAIL_OUTBOX_DIR is set but ignored/.test(require("../security/testHooks").startupWarnings().join("\n")));
+  } finally {
+    console.log = realLog;
+    delete process.env.EMAIL_OUTBOX_DIR;
+    if (keep.hooks === undefined) delete process.env.SE_TEST_HOOKS; else process.env.SE_TEST_HOOKS = keep.hooks;
+    if (keep.env === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = keep.env;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("with keys it posts subject, text and HTML to Resend", async () => {
@@ -145,13 +192,19 @@ test("with keys it posts subject, text and HTML to Resend", async () => {
 test("a failed send returns false instead of throwing", async () => {
   process.env.EMAIL_API_KEY = "re_test_key"; process.env.EMAIL_FROM = "x@example.test";
   const mailer = require("../services/mailer");
-  const realFetch = global.fetch; const realErr = console.error; console.error = () => {};
+  const errors = [];
+  const realFetch = global.fetch; const realErr = console.error; console.error = (...a) => errors.push(a.join(" "));
   try {
-    global.fetch = async () => ({ ok: false, status: 422, text: async () => "bad" });
+    // The provider's answer repeats the address it choked on: none of it may reach the log.
+    global.fetch = async () => ({ ok: false, status: 422, json: async () => ({ name: "validation_error", message: "Invalid `to` field: a@b.test" }), text: async () => "Invalid `to` field: a@b.test" });
     assert.strictEqual(await mailer.send({ to: "a@b.test", subject: "s", text: "t" }), false);
-    global.fetch = async () => { throw new Error("network down"); };
-    assert.strictEqual(await mailer.send({ to: "a@b.test", subject: "s", text: "t" }), false);
+    global.fetch = async () => { throw new Error("network down while sending to a@b.test"); };
+    assert.strictEqual(await mailer.send({ to: "a@b.test", ...samples["account-verify-email"]() }), false);
   } finally { global.fetch = realFetch; console.error = realErr; delete process.env.EMAIL_API_KEY; delete process.env.EMAIL_FROM; }
+  assert.strictEqual(errors.length, 2);
+  assert.ok(/send failed 422 \(validation_error\): template unnamed, 1 recipient/.test(errors[0]), errors[0]);
+  assert.ok(/send error \(template verifyEmail\)/.test(errors[1]), errors[1]);
+  assert.ok(!errors.join("\n").includes("a@b.test"), "a failed send does not put the recipient in the log");
 });
 
 test("shop notifications go to RFQ_NOTIFY_TO, then ADMIN_EMAIL, then the brand address", () => {

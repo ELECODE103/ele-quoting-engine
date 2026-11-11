@@ -7,7 +7,10 @@
  * The raw body middleware is applied in server/index.js BEFORE express.json().
  *
  * SECURITY:
- * - In production, webhook signature verification is REQUIRED
+ * - Signature verification is REQUIRED. An unsigned event is refused unless the
+ *   explicit test switch is set (SE_TEST_HOOKS=1, security/testHooks.js) — and
+ *   in production it is refused even then. NODE_ENV being unset is not a reason
+ *   to accept one: a server started without `npm start` has no NODE_ENV.
  * - Payment amount (before promo discounts) is verified against stored order total
  * - Idempotent: only updates orders still in pending_payment status
  * - On payment: order confirmation to the customer, new-order notice to the shop
@@ -38,13 +41,14 @@ router.post("/", async (req, res) => {
       console.error("Webhook signature verification failed:", err.message);
       return res.status(400).json({ error: "Invalid signature" });
     }
-  } else if (process.env.NODE_ENV === "production") {
-    // CRITICAL: In production, NEVER accept unsigned webhooks
-    console.error("SECURITY: Webhook received without STRIPE_WEBHOOK_SECRET configured in production");
-    return res.status(500).json({ error: "Webhook secret not configured" });
+  } else if (!require("../security/testHooks").unsignedWebhooksAllowed()) {
+    // No secret, no way to tell Stripe from anyone else: refuse. (Orders are still
+    // settled when the buyer returns to the order page, which asks Stripe directly.)
+    console.error("SECURITY: Stripe webhook refused — STRIPE_WEBHOOK_SECRET is not configured, so the event cannot be verified");
+    return res.status(503).json({ error: "Webhook secret not configured" });
   } else {
-    // Development only: parse raw body (no signature check)
-    console.warn("WARNING: Processing webhook without signature verification (dev mode only)");
+    // Test switch only: parse the raw body with no signature check.
+    console.warn("WARNING: Processing a Stripe webhook without signature verification (SE_TEST_HOOKS test switch)");
     try {
       event = JSON.parse(req.body.toString());
     } catch (err) {

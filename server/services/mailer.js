@@ -11,10 +11,14 @@
  *   EMAIL_FROM        e.g. "Straightedge <quotes@straightedgemfg.com>" (domain must be verified in Resend)
  *   RFQ_NOTIFY_TO     where shop notifications go (new RFQs, new orders, accepted quotes)
  *   ADMIN_EMAIL       fallback for RFQ_NOTIFY_TO; then brand.email
- *   EMAIL_OUTBOX_DIR  dev/test only: also write every message to this folder as JSON
+ *   EMAIL_OUTBOX_DIR  tests only: also write every message to this folder as JSON.
+ *                     Honoured only together with the explicit test switch
+ *                     (SE_TEST_HOOKS=1, see security/testHooks.js); ignored otherwise.
  *
- * The no-op log line carries the recipient and subject only — message bodies
- * can hold signed links, which don't belong in logs.
+ * Nothing about a message reaches the log except which template it was and
+ * how many recipients it had: no address (customers' addresses do not belong
+ * in a deploy log), no subject (some carry a reference or an amount) and no
+ * body (bodies hold signed links).
  */
 const fs = require("fs");
 const path = require("path");
@@ -27,7 +31,7 @@ function configured() {
 let outboxSeq = 0;
 function writeOutbox(message) {
   const dir = process.env.EMAIL_OUTBOX_DIR;
-  if (!dir) return;
+  if (!dir || !require("../security/testHooks").enabled()) return;
   try {
     fs.mkdirSync(dir, { recursive: true });
     const name = `${Date.now()}-${String(++outboxSeq).padStart(4, "0")}.json`;
@@ -55,8 +59,15 @@ function cleanSubject(value) {
   return String(value || "").replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
 }
 
+/** The template a message came from (templates.js stamps it), as a short safe label for the log. */
+function templateLabel(message) {
+  const t = message && message.template;
+  return typeof t === "string" && /^[A-Za-z][A-Za-z0-9]{0,40}$/.test(t) ? t : "unnamed";
+}
+
 async function send(message) {
   const { text, html } = message || {};
+  const label = templateLabel(message);
   // Recipients and the subject are cleaned here, at the last step before the
   // wire, whatever the caller did: a typed address or name can never add a
   // header or a second recipient.
@@ -69,12 +80,12 @@ async function send(message) {
   const rawReply = message && message.replyTo;
   const replyTo = cleanAddress(Array.isArray(rawReply) ? rawReply[0] : rawReply);
   if (list.length === 0 || !subject) {
-    if (message && (message.to || message.subject)) console.error("[mailer] refused a message with an unusable recipient or subject");
+    if (message && (message.to || message.subject)) console.error(`[mailer] refused a message with an unusable recipient or subject (template ${label})`);
     return false;
   }
   writeOutbox({ to, subject, text: text || "", html: html || "", replyTo: replyTo || null });
   if (!configured()) {
-    console.log(`[mailer] (not configured, not sent) To: ${list.join(", ")} | ${subject}`);
+    console.log(`[mailer] (not configured, not sent) template ${label}, ${list.length} recipient${list.length === 1 ? "" : "s"}`);
     return false;
   }
   try {
@@ -94,13 +105,15 @@ async function send(message) {
       }),
     });
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error(`[mailer] send failed ${res.status}: ${body.slice(0, 300)}`);
+      // The provider's error body can repeat the recipient; log its error name only.
+      const body = await res.json().catch(() => null);
+      const name = body && typeof body.name === "string" && /^[a-z_]{1,60}$/i.test(body.name) ? ` (${body.name})` : "";
+      console.error(`[mailer] send failed ${res.status}${name}: template ${label}, ${list.length} recipient${list.length === 1 ? "" : "s"}`);
       return false;
     }
     return true;
   } catch (err) {
-    console.error("[mailer] send error:", err.message);
+    console.error(`[mailer] send error (template ${label}):`, err.name || "Error");
     return false;
   }
 }

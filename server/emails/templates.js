@@ -232,7 +232,7 @@ const DRAWING_NOTE = "We review drawings before cutting; we'll contact you befor
 // ─── RFQ ───────────────────────────────────────────────────────
 
 function rfqReceivedBuyer({ rfq, part }) {
-  if (part) return partRequestBuyer({ rfq, part });
+  if (part) return { ...partRequestBuyer({ rfq, part }), template: "partRequestBuyer" };
   const n = (rfq.parts || []).length;
   return layout({
     subject: `${brand.name}: we have your quote request`,
@@ -598,12 +598,25 @@ function twoFactorChanged({ change }) {
   });
 }
 
-module.exports = {
+// Every message carries the name of its template (`template`), which is all
+// the mailer writes to the log about it.
+const MESSAGES = {
   verifyEmail, passwordResetRequested, passwordChanged, accountLocked, twoFactorChanged,
+  rfqReceivedBuyer, partRequestBuyer, rfqReceivedShop, rfqQuoted, rfqAcceptedShop,
+  orderConfirmation, newOrderShop, orderShipped,
+};
+const named = {};
+for (const [name, build] of Object.entries(MESSAGES)) {
+  named[name] = (...args) => {
+    const message = build(...args);
+    return { ...message, template: message.template || name };
+  };
+}
+
+module.exports = {
+  ...named,
   esc, safeHref, greeting,
   layout, trackingUrl, shortId, money, DRAWING_NOTE,
   PAPERWORK_LABEL, PAPERWORK_SHORT, PAPERWORK_INCLUDED, PAPERWORK_NOT_INCLUDED, RETURN_INCLUDED, RETURN_NOT_INCLUDED, RETURN_REMINDER, PAPERWORK_REMINDER,
   chargeRows, quoteCovers, isPartRequest,
-  rfqReceivedBuyer, partRequestBuyer, rfqReceivedShop, rfqQuoted, rfqAcceptedShop,
-  orderConfirmation, newOrderShop, orderShipped,
 };
