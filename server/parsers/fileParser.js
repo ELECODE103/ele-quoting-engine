@@ -426,13 +426,24 @@ async function parse3MF(buffer) {
     throw new Error("Invalid 3MF file: could not open as ZIP archive. The file may be corrupt.");
   }
 
-  // 2. Find the 3D model file
-  const modelEntry = zip.getEntry("3D/3dmodel.model");
+  // 2. Find the 3D model file. adm-zip reads the archive's directory here and
+  //    throws on a malformed one (a repeated entry name, a bad CRC): answer in
+  //    our words, not the library's.
+  let modelEntry, modelXml;
+  try {
+    modelEntry = zip.getEntry("3D/3dmodel.model");
+  } catch (zipErr) {
+    throw new Error("Invalid 3MF file: the archive is malformed. Re-export it from your CAD program or slicer and upload again.");
+  }
   if (!modelEntry) {
     throw new Error("Invalid 3MF file: missing 3D/3dmodel.model. This may not be a valid 3MF archive.");
   }
 
-  const modelXml = zip.readAsText(modelEntry);
+  try {
+    modelXml = zip.readAsText(modelEntry);
+  } catch (zipErr) {
+    throw new Error("Invalid 3MF file: the model inside the archive could not be read. The file may be corrupt.");
+  }
   if (!modelXml || modelXml.length === 0) {
     throw new Error("Invalid 3MF file: the model file is empty.");
   }

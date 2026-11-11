@@ -3,7 +3,7 @@
  * Exposes the exact same interface with JSON column auto-serialization.
  */
 const { getDatabase, saveToDisk } = require("./database");
-const { v4: uuidv4 } = require("uuid");
+const { randomUUID: uuidv4 } = require("crypto"); // RFC 4122 v4, same format the uuid package produced
 
 // Mapping of JS field names → SQLite JSON column names per table
 const JSON_COLUMNS = {
