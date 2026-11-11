@@ -70,9 +70,9 @@ app.use("/api/upload", uploadLimiter);
 require("./security/rateLimits").install(app);
 
 // CORS — allow dev and production origins
+// The dev-server origins are for development only: in production the list is the site itself.
 const allowedOrigins = [
-  "http://localhost:3001",
-  "http://localhost:3000",
+  ...(process.env.NODE_ENV === "production" ? [] : ["http://localhost:3001", "http://localhost:3000"]),
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
@@ -164,7 +164,8 @@ app.use((err, req, res, next) => {
   const status = err.status || 500;
 
   // Log with request context (no stack traces in production responses)
-  console.error(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} → ${status}`);
+  // The URL is logged without its query string and with tokens removed: a firm-quote link is a credential.
+  console.error(`[${new Date().toISOString()}] ${req.method} ${require("./security/redact").redactUrl(req.originalUrl)} → ${status}`);
   if (status === 500) console.error(err.stack);
 
   if (err.code === "LIMIT_FILE_SIZE") {

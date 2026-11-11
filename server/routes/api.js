@@ -149,6 +149,41 @@ const FINISH_FIELDS = ["name", "slug", "process", "costPerSqMm", "costFlat", "mi
 // Pricing rules are whitelisted and range-checked by the rule schema (config/ruleSchema.js) in services/pricingAdmin.js.
 const LEAD_TIME_FIELDS = ["name", "slug", "days", "multiplier", "active", "description"];
 
+/**
+ * Check the whitelisted fields of a small admin record against a type spec:
+ *   { field: ["string", maxLength] | ["slug"] | ["boolean"] | ["number", min, max] }
+ * Strings are sanitized, numbers must be finite and in range (an empty field
+ * from the admin form arrives as NaN → null and is refused, not stored).
+ * Returns { ok, error, values }.
+ */
+function validateTyped(safe, spec) {
+  const values = {};
+  for (const [key, value] of Object.entries(safe)) {
+    const rule = spec[key];
+    if (!rule) continue;
+    const [type, a, b] = rule;
+    if (type === "boolean") {
+      values[key] = value === true || value === 1 || value === "true";
+    } else if (type === "number") {
+      const n = typeof value === "number" ? value : (typeof value === "string" && value.trim() !== "" ? Number(value) : NaN);
+      if (!Number.isFinite(n) || n < a || n > b) return { ok: false, error: `${key} must be a number between ${a} and ${b}` };
+      values[key] = n;
+    } else if (type === "slug") {
+      if (!isValidSlug(value)) return { ok: false, error: `${key} may only contain lowercase letters, digits and dashes` };
+      values[key] = value;
+    } else {
+      if (typeof value !== "string" && typeof value !== "number") return { ok: false, error: `${key} must be text` };
+      const text = sanitizeString(String(value), a || 200);
+      if (!text && key === "name") return { ok: false, error: "name cannot be empty" };
+      values[key] = text;
+    }
+  }
+  return { ok: true, values };
+}
+const FINISH_SPEC = { name: ["string", 120], slug: ["slug"], process: ["string", 40], costPerSqMm: ["number", 0, 1000], costFlat: ["number", 0, 100000], minCost: ["number", 0, 100000], active: ["boolean"], description: ["string", 1000], category: ["string", 80] };
+// A lead-time multiplier below 1 would be a discount for rushing, and null breaks the price: 1–10 only.
+const LEAD_TIME_SPEC = { name: ["string", 120], slug: ["slug"], days: ["string", 80], multiplier: ["number", 1, 10], active: ["boolean"], description: ["string", 1000] };
+
 /** Pick only allowed fields from an object */
 function whitelist(body, allowedFields) {
   const cleaned = {};
@@ -332,6 +367,11 @@ router.post("/parts/:partId/units", async (req, res) => {
     const part = isValidUUID(req.params.partId) ? partsDB.getById(req.params.partId) : null;
     if (!part) return res.status(404).json({ error: "Part not found" });
     if (!dxf.is2D(part.geometry)) return res.status(400).json({ error: "Units can only be chosen for a DXF. STEP, IGES and 3MF carry their own units; STL is read as millimetres." });
+    // The shop builds from the stored geometry of an ordered part. Once a part is on an order
+    // its units are settled: changing them here would change the size on the traveler.
+    if (orderItemsDB.getAll().some((it) => it.partId === part.id)) {
+      return res.status(409).json({ error: "This drawing is already on an order, so its units can't be changed here. Upload the file again to quote it in other units.", code: "part-on-order" });
+    }
     const safeName = path.basename(part.storedName || "");
     const filePath = path.join(uploadDir, safeName);
     if (!safeName || !fs.existsSync(filePath)) return res.status(410).json({ error: "The uploaded file is no longer on our server. Upload it again." });
@@ -376,6 +416,36 @@ router.post("/parts/:partId/units", async (req, res) => {
  */
 const QUOTE_VALID_DAYS = 30;
 const CONFIG_FIELDS = ["partId", "materialSlug", "grade", "thicknessMm", "finishSlug", "quantity", "process", "subProcess", "layerHeight", "infill"];
+// Every line is priced and DFM-checked on the main thread, so a quote is capped.
+// The builder adds parts ten at a time; a job of more lines than this is a firm quote.
+const MAX_QUOTE_LINES = 100;
+const MAX_QUANTITY = 1000000;
+
+/**
+ * A part configuration from a request body, reduced to the known fields in the
+ * shapes pricing expects: short strings, plain numbers. Returns null when it
+ * is not an object or a field has the wrong kind of value (an array where a
+ * slug should be, say) — the request is then refused, not guessed at.
+ */
+function cleanConfig(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out = {};
+  for (const key of ["partId", "materialSlug", "grade", "finishSlug", "process", "subProcess"]) {
+    const v = raw[key];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "string" || v.length > 120) return null;
+    out[key] = v;
+  }
+  for (const key of ["thicknessMm", "quantity", "layerHeight", "infill"]) {
+    const v = raw[key];
+    if (v === undefined || v === null || v === "") continue;
+    const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+    if (!Number.isFinite(n)) return null;
+    out[key] = n;
+  }
+  if (out.quantity !== undefined) out.quantity = Math.min(MAX_QUANTITY, out.quantity);
+  return out;
+}
 
 function quoteError(status, message, extra = {}) {
   return Object.assign(new Error(message), { status, expose: true, extra });
@@ -510,7 +580,14 @@ function quoteEditableBy(quote, user) {
  * updated; otherwise a row is inserted (under `quoteId` if it is unused).
  * Every re-price restarts the 30-day price hold.
  */
-function saveQuote({ parts: partConfigs, leadTimeSlug = "standard", quoteId, process: builderProcess, notes, paperwork }, user) {
+function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, process: builderProcess, notes, paperwork }, user) {
+  if (!Array.isArray(rawConfigs) || rawConfigs.length === 0) throw quoteError(400, "No parts configured");
+  if (rawConfigs.length > MAX_QUOTE_LINES) {
+    throw quoteError(400, `An instant quote holds up to ${MAX_QUOTE_LINES} lines. For a larger job, send us the files for a firm quote.`, { code: "too-many-lines", offerRfq: true });
+  }
+  const partConfigs = rawConfigs.map(cleanConfig);
+  if (partConfigs.some((c) => !c || !c.partId)) throw quoteError(400, "The quote request is not in the expected format.");
+  if (typeof leadTimeSlug !== "string") throw quoteError(400, "Invalid lead time");
   // The only thing the client says about the paperwork is yes or no. The fee is
   // worked out here from the rate card and the number of lines; any amount sent
   // with the request is ignored.
@@ -820,7 +897,7 @@ function validateMaterial(body) {
 }
 
 router.put("/admin/materials/:id", authenticate, requireAdmin, (req, res) => {
-  const v = validateMaterial(req.body);
+  const v = validateMaterial(req.body || {});
   if (!v.ok) return res.status(400).json({ error: v.error });
   const updated = materialsDB.update(req.params.id, v.values);
   if (!updated) return res.status(404).json({ error: "Material not found" });
@@ -828,7 +905,7 @@ router.put("/admin/materials/:id", authenticate, requireAdmin, (req, res) => {
 });
 
 router.post("/admin/materials", authenticate, requireAdmin, (req, res) => {
-  const v = validateMaterial(req.body);
+  const v = validateMaterial(req.body || {});
   if (!v.ok) return res.status(400).json({ error: v.error });
   if (!v.values.name || !v.values.slug) return res.status(400).json({ error: "name and slug are required" });
   const material = materialsDB.insert({ active: false, ...v.values });
@@ -865,15 +942,18 @@ router.get("/admin/finishes", authenticate, requireAdmin, (req, res) => {
   res.json(finishesDB.getAll());
 });
 router.put("/admin/finishes/:id", authenticate, requireAdmin, (req, res) => {
-  const safe = whitelist(req.body, FINISH_FIELDS);
-  const updated = finishesDB.update(req.params.id, safe);
+  const v = validateTyped(whitelist(req.body || {}, FINISH_FIELDS), FINISH_SPEC);
+  if (!v.ok) return res.status(400).json({ error: v.error });
+  const updated = finishesDB.update(req.params.id, v.values);
   if (!updated) return res.status(404).json({ error: "Finish not found" });
   res.json(updated);
 });
 
 router.post("/admin/finishes", authenticate, requireAdmin, (req, res) => {
-  const safe = whitelist(req.body, FINISH_FIELDS);
-  const finish = finishesDB.insert(safe);
+  const v = validateTyped(whitelist(req.body || {}, FINISH_FIELDS), FINISH_SPEC);
+  if (!v.ok) return res.status(400).json({ error: v.error });
+  if (!v.values.name || !v.values.slug) return res.status(400).json({ error: "name and slug are required" });
+  const finish = finishesDB.insert(v.values);
   res.status(201).json(finish);
 });
 
@@ -995,8 +1075,9 @@ router.get("/admin/lead-times", authenticate, requireAdmin, (req, res) => {
 });
 
 router.put("/admin/lead-times/:id", authenticate, requireAdmin, (req, res) => {
-  const safe = whitelist(req.body, LEAD_TIME_FIELDS);
-  const updated = leadTimesDB.update(req.params.id, safe);
+  const v = validateTyped(whitelist(req.body || {}, LEAD_TIME_FIELDS), LEAD_TIME_SPEC);
+  if (!v.ok) return res.status(400).json({ error: v.error });
+  const updated = leadTimesDB.update(req.params.id, v.values);
   if (!updated) return res.status(404).json({ error: "Lead time not found" });
   res.json(updated);
 });
