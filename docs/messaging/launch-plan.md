@@ -1,5 +1,8 @@
 # Straightedge 30-day launch plan
 
+> **2026-11-11.** The post, email and directory drafts further down this file are superseded. The current, ready-to-paste versions are in `docs/messaging/launch/`, rewritten to the owner decisions recorded at the top of `messaging-framework.md`: nothing about certification or missing equipment, nothing about the size of the shop, "milled and routed", and replacement parts quoted from the physical part. Post 6 is now "what comes with the order". Use this file for the calendar only; do not paste from it.
+
+
 Twenty minutes a day, one person, no ad budget. Channel reasoning is in `research.md` section 6. Every draft below is written to the voice rules in `messaging-framework.md`. Items in `[CONFIRM: …]` map to questions in `claims-audit.md` section C; fill them or cut the sentence before posting.
 
 ## What to expect

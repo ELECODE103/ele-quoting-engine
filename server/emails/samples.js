@@ -45,11 +45,26 @@ const rfq = {
   quoteNote: "Price covers 1,000 pcs in natural Delrin, first-article inspection included.",
   validUntil: "2026-12-09T18:00:00.000Z",
 };
+// A replacement part with no drawing: the buyer ships the worn part in.
+const partRfq = {
+  id: "5d21c7aa-9f04-4b7e-8a11-2e6f0c3b9d10",
+  contactName: "Sam Maintenance",
+  email: "sam@example.com",
+  company: "Plant Co",
+  phone: "262-555-0117",
+  quantities: "2 now, 6 a year",
+  notes: "NO DRAWING. The customer is sending the part.\nWhat it is and does: guides cartons into the sealer; rides on a stainless rail. Worn on the leading edge.\nMachine it is from: case sealer, line 3\nMaterial, if known: white, waxy\nHow soon: next shutdown",
+  parts: [],
+};
+const shipFrom = require("../config/shipFrom.json");
+const part = { reference: templates.shortId(partRfq.id), shipTo: { name: require("../../shared/brand.json").name, lines: [shipFrom.address, `${shipFrom.city}, ${shipFrom.state} ${shipFrom.zip}`] } };
 const acceptUrl = `${base}/firm-quote/eyJhbGciOiJIUzI1NiJ9.sample.signature`;
 
 module.exports = {
   "rfq-received-buyer": () => templates.rfqReceivedBuyer({ rfq }),
   "rfq-received-shop": () => templates.rfqReceivedShop({ rfq, adminUrl: `${base}/admin` }),
+  "part-request-buyer": () => templates.rfqReceivedBuyer({ rfq: partRfq, part }),
+  "part-request-shop": () => templates.rfqReceivedShop({ rfq: partRfq, adminUrl: `${base}/admin`, part }),
   "rfq-quoted": () => templates.rfqQuoted({ rfq, acceptUrl, shipBy: "2026-12-02" }),
   "rfq-accepted-shop-po": () => templates.rfqAcceptedShop({ rfq, order: { ...order, total: 6850, paymentMethod: "po", poNumber: "PO-77812" }, adminUrl: `${base}/admin` }),
   "rfq-accepted-shop-card": () => templates.rfqAcceptedShop({ rfq, order: { ...order, total: 6850 }, adminUrl: `${base}/admin` }),

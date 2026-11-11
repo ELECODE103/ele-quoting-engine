@@ -5,6 +5,11 @@ import Wordmark from './Wordmark';
 import brand from '../brand';
 import { ok, fact, when } from '../facts';
 
+// Engineer-led, in the owner's approved words; no statement of shop size anywhere on the site.
+const ENGINEER_LED = fact('engineer-led') || 'Call and you reach the engineer running your job.';
+// Footer quality line: what is done on a production order, in the owner's words.
+const FOOT_QUALITY = when('fai-coc', (v) => v, 'Customer names and part numbers are never published.');
+
 /**
  * Shell for the public pages: nav + footer.
  *
@@ -33,7 +38,7 @@ export default function PublicLayout({ children }) {
             <div>
               <Wordmark size={15} showDescriptor={false} />
               <p style={{ marginTop: 12, maxWidth: 420, lineHeight: 1.6 }}>
-                Plastics machine shop in {brand.city}, {brand.region}. One person quotes the job, cuts it and answers the phone.
+                Plastics machine shop in {brand.city}, {brand.region}. {ENGINEER_LED}
                 {when('legal-name', (v) => ` ${v}`)}{when(['legal-name', 'parent-company'], `, a ${brand.parentName} company`)}{when('legal-name', '.')}
               </p>
               <p style={{ marginTop: 10 }}>
@@ -61,7 +66,7 @@ export default function PublicLayout({ children }) {
           </div>
           <div style={{ marginTop: 28, paddingTop: 16, borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
             <span>&copy; {new Date().getFullYear()} {fact('legal-name') || brand.name}. {brand.city}, {brand.state}.</span>
-            <span>Not ISO 9001 certified. {when('paperwork-packet', 'NDA on request.', 'Customer names and part numbers are never published.')}</span>
+            <span>{FOOT_QUALITY}{when('paperwork-packet', ' NDA on request.')}</span>
           </div>
         </div>
       </footer>

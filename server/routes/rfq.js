@@ -7,7 +7,10 @@
  * from the engine is kept with the request so the admin sees what the customer
  * saw.
  *
- *   POST /api/rfq                          create (multipart: optional drawing PDF/DXF/DWG)
+ *   POST /api/rfq                          create (multipart: optional drawing PDF/DXF/DWG).
+ *                                          requestType=part (a worn part, no drawing): the buyer
+ *                                          ships the part in; the response and the confirmation
+ *                                          email carry a reference and the ship-to address.
  *   GET  /api/rfq/:id                      read (owner, admin, or anonymous-by-id)
  *   GET  /api/rfq/admin/list               admin queue, newest first
  *   PUT  /api/rfq/admin/:id                admin: status / quoted price + lead time / notes.
@@ -32,8 +35,20 @@ const shipBy = require("../services/shipBy");
 const stripeClient = require("../services/stripeClient");
 const orderEvents = require("../services/orderEvents");
 const brand = require("../../shared/brand.json");
+const shopFacts = require("../shopFacts");
+// Where a buyer ships a worn part. Server-side only: it is given out after a
+// request is sent (response + email), never on a public page.
+const shipFrom = require("../config/shipFrom.json");
 
 const router = express.Router();
+
+/** Reference + address a buyer needs to ship a part in for measuring. */
+function partShipTo(rfqId) {
+  return {
+    reference: templates.shortId(rfqId),
+    shipTo: { name: shopFacts.businessName(brand), lines: [shipFrom.address, `${shipFrom.city}, ${shipFrom.state} ${shipFrom.zip}`] },
+  };
+}
 
 const drawingDir = path.join(__dirname, "..", "..", "data", "rfq-drawings");
 if (!fs.existsSync(drawingDir)) fs.mkdirSync(drawingDir, { recursive: true });
@@ -106,6 +121,8 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
 
     const parts = quote ? snapshotParts(quote) : [];
     const process = parts[0]?.process || sanitizeString(b.process || "", 40);
+    // "Send us the part": no drawing and no file; the worn part is shipped in and measured.
+    const sendPart = !quote && String(b.requestType || "") === "part";
 
     const rfq = rfqsDB.insert({
       quoteId: quote?.id || null,
@@ -131,10 +148,11 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
     if (quote) quotesDB.update(quote.id, { status: "rfq" });
 
     // Notify the shop and acknowledge the buyer. Both best-effort.
-    mailer.send({ to: mailer.shopNotifyAddress(), replyTo: email, ...templates.rfqReceivedShop({ rfq, adminUrl: `${orderEvents.baseUrl(req)}/admin` }) });
-    mailer.send({ to: email, replyTo: mailer.shopNotifyAddress(), ...templates.rfqReceivedBuyer({ rfq }) });
+    const part = sendPart ? partShipTo(rfq.id) : null;
+    mailer.send({ to: mailer.shopNotifyAddress(), replyTo: email, ...templates.rfqReceivedShop({ rfq, adminUrl: `${orderEvents.baseUrl(req)}/admin`, part }) });
+    mailer.send({ to: email, replyTo: mailer.shopNotifyAddress(), ...templates.rfqReceivedBuyer({ rfq, part }) });
 
-    res.status(201).json({ rfqId: rfq.id, status: rfq.status, turnaroundHours: brand.quoteTurnaroundHours });
+    res.status(201).json({ rfqId: rfq.id, status: rfq.status, turnaroundHours: brand.quoteTurnaroundHours, ...(part || {}) });
   } catch (err) {
     console.error("RFQ create error:", err);
     res.status(500).json({ error: "Could not submit the request. Please try again or call us." });

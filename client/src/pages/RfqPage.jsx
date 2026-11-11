@@ -10,15 +10,20 @@ import { when } from '../facts';
 const within = when('quote-turnaround', (v) => ` within ${v}`);
 const UPLOAD_EXT = ['.pdf', '.dxf', '.dwg', '.png', '.jpg', '.jpeg']; // what POST /api/rfq accepts
 const MAX_MB = 25;
+// Said only once the owner has answered (shared/shop-facts.json).
+const PART_RETURN = when('part-return');
+const PART_QUOTE_TIME = when('part-quote-time');
 
 /**
  * Firm-quote request. Three ways in:
  *   /rfq/:quoteId   from the quote builder, parts pre-filled
  *   /rfq            a drawing and a quantity
- *   /rfq?nocad=1    a worn part and a phone photo, no drawing ("photo" mode)
- * Both modes post to the same endpoint. The photo-mode fields (machine,
- * material, how soon, what it does) are folded into the notes so the server
- * needs no change.
+ *   /rfq?nocad=1    a worn part and no drawing ("part" mode): the buyer sends
+ *                   the physical part, so this mode has no file upload
+ * Both modes post to the same endpoint. The part-mode fields (machine,
+ * material, how soon, what it does) are folded into the notes; requestType=part
+ * tells the server to answer with a reference and the address to ship the part
+ * to. That address is shown only on the confirmation screen, from the response.
  */
 export default function RfqPage() {
   const { quoteId } = useParams();
@@ -28,12 +33,12 @@ export default function RfqPage() {
   const [quoteMissing, setQuoteMissing] = useState(false);
   const [materialNames, setMaterialNames] = useState({});
   // Always starts in drawing mode so the prerendered page and the first client
-  // render match; the effect below switches to photo mode for ?nocad=1.
+  // render match; the effect below switches to part mode for ?nocad=1.
   const [mode, setMode] = useState('drawing');
   const [form, setForm] = useState({
     contactName: '', email: '', company: '', phone: '',
     quantities: '', tolerance: '', finishNotes: '', dueDate: '', notes: '', lives: '',
-    machine: '', material: '', soon: '', size: '',
+    machine: '', material: '', soon: '',
   });
   const [drawing, setDrawing] = useState(null);
   const [fileError, setFileError] = useState('');
@@ -43,7 +48,7 @@ export default function RfqPage() {
 
   useEffect(() => {
     if (quoteId || !/[?&]nocad=1/.test(location.search)) return undefined;
-    setMode('photo');
+    setMode('part');
     // On a phone the form sits below the intro; bring it into view.
     const t = setTimeout(() => { if (window.innerWidth < 769) document.getElementById('request')?.scrollIntoView(); }, 120);
     return () => clearTimeout(t);
@@ -70,15 +75,15 @@ export default function RfqPage() {
   }, [quoteId]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const photo = mode === 'photo';
+  const part = mode === 'part';
 
   function pickFile(e) {
     const f = e.target.files?.[0] || null;
     setFileError('');
     if (f) {
       const ext = (f.name.match(/\.[^.]+$/) || [''])[0].toLowerCase();
-      if (!UPLOAD_EXT.includes(ext)) { setFileError(`That file type (${ext || 'unknown'}) will not upload. Use a JPG, PNG or PDF, or email it to ${brand.email}.`); e.target.value = ''; return setDrawing(null); }
-      if (f.size > MAX_MB * 1024 * 1024) { setFileError(`That file is over ${MAX_MB} MB. Send a smaller photo, or email it to ${brand.email}.`); e.target.value = ''; return setDrawing(null); }
+      if (!UPLOAD_EXT.includes(ext)) { setFileError(`That file type (${ext || 'unknown'}) will not upload. Use a PDF, DXF, DWG, JPG or PNG, or email it to ${brand.email}.`); e.target.value = ''; return setDrawing(null); }
+      if (f.size > MAX_MB * 1024 * 1024) { setFileError(`That file is over ${MAX_MB} MB. Send a smaller file, or email it to ${brand.email}.`); e.target.value = ''; return setDrawing(null); }
     }
     setDrawing(f);
   }
@@ -88,27 +93,26 @@ export default function RfqPage() {
     setError('');
     if (!form.contactName.trim()) return setError('Add your name so we know who to send it to.');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setError('Add a working email so the quote has somewhere to go.');
-    if (photo && !drawing && !form.notes.trim() && !form.size.trim()) return setError('Attach a photo, or describe the part and its size, so there is something to quote.');
+    if (part && !form.notes.trim()) return setError('Say what the part is and what it does, so we know what is coming.');
     setBusy(true);
     try {
       // Extra fields ride in the notes: the endpoint stores and emails `notes` as written.
-      const extra = photo
+      const extra = part
         ? [
-          'NO DRAWING. Photo request.',
+          'NO DRAWING. The customer is sending the part.',
+          form.notes && `What it is and does: ${form.notes}`,
           form.machine && `Machine it is from: ${form.machine}`,
           form.material && `Material, if known: ${form.material}`,
-          form.size && `Rough size: ${form.size}`,
           form.soon && `How soon: ${form.soon}`,
-          form.lives && `Where the part lives: ${form.lives}`,
-          form.notes && `What it does: ${form.notes}`,
         ]
         : [form.lives && `Where the part lives: ${form.lives}`, form.notes];
-      const { machine, material, soon, size, lives, ...fields } = form;
+      const { machine, material, soon, lives, ...fields } = form;
       const res = await api.submitRfq({
         ...fields,
+        ...(part ? { requestType: 'part', tolerance: '', finishNotes: '', dueDate: '' } : {}),
         notes: extra.filter(Boolean).join('\n').slice(0, 2000),
         quoteId: quote?.quoteId || quote?.id || quoteId || '',
-      }, drawing);
+      }, part ? null : drawing);
       setSent(res);
       window.scrollTo(0, 0);
     } catch (err) {
@@ -118,6 +122,51 @@ export default function RfqPage() {
   }
 
   if (sent) {
+    const reference = sent.reference || String(sent.rfqId || '').slice(0, 8).toUpperCase();
+    // Part mode: the next step is the buyer's. The address comes from the server response only.
+    if (part) {
+      return (
+        <PublicLayout>
+          <section className="section">
+            <div className="pub-wrap" style={{ maxWidth: 680 }}>
+              <div className="eyebrow" style={{ marginBottom: 14 }}>Request received</div>
+              <h1 className="display" style={{ marginBottom: 16 }}>Now send us the part.</h1>
+              <p className="lede" style={{ marginBottom: 20 }}>
+                Write the reference on the box and ship the part to the address below. We measure it and send a price
+                to <b>{form.email}</b>.{PART_QUOTE_TIME ? ` ${PART_QUOTE_TIME}` : ''}
+              </p>
+              <div className="plain-box" style={{ marginBottom: 20 }}>
+                <dl className="ship-part">
+                  <div>
+                    <dt className="field-label">Reference to write on the box</dt>
+                    <dd style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, letterSpacing: 1, color: 'var(--text-primary)', margin: '2px 0 14px' }}>{reference}</dd>
+                  </div>
+                  <div>
+                    <dt className="field-label">Ship the part to</dt>
+                    {sent.shipTo
+                      ? (
+                        <dd style={{ margin: '2px 0 0', fontSize: 16, lineHeight: 1.5, color: 'var(--text-primary)' }}>
+                          {sent.shipTo.name}{(sent.shipTo.lines || []).map((l) => <span key={l}><br />{l}</span>)}
+                        </dd>
+                      )
+                      : <dd style={{ margin: '2px 0 0' }}>The address is in the confirmation email on its way to {form.email}.</dd>}
+                  </div>
+                </dl>
+              </div>
+              <p className="body-copy" style={{ marginBottom: 20 }}>
+                The same reference and address are in the confirmation email.{' '}
+                {PART_RETURN || 'Need the original back? Reply to that email and say so.'}{' '}
+                Nothing is ordered and nothing is charged until you say so. Questions: <a href={brand.phoneHref}>{brand.phone}</a>.
+              </p>
+              <div className="cta-row">
+                <Link to="/replacement-parts" className="btn btn-primary">How replacement parts work</Link>
+                <Link to="/" className="btn btn-ghost">Back to the site</Link>
+              </div>
+            </div>
+          </section>
+        </PublicLayout>
+      );
+    }
     return (
       <PublicLayout>
         <section className="section">
@@ -125,14 +174,14 @@ export default function RfqPage() {
             <div className="eyebrow" style={{ marginBottom: 14 }}>Request received</div>
             <h1 className="display" style={{ marginBottom: 16 }}>It's in the queue.</h1>
             <p className="lede" style={{ marginBottom: 20 }}>
-              The person who will cut the part reads it and replies to <b>{form.email}</b>{within}. If the {photo ? 'photo' : 'print'} needs
+              The engineer who will run the job reads it and replies to <b>{form.email}</b>{within}. If the print needs
               a conversation first, that is the reply you will get.
             </p>
             <p className="body-copy" style={{ marginBottom: 20 }}>
-              A confirmation email is on its way. {photo ? 'More photos? Reply to it and attach them.' : 'More files? Reply to it and attach them.'}{' '}
+              A confirmation email is on its way. More files? Reply to it and attach them.{' '}
               In a hurry, call <a href={brand.phoneHref}>{brand.phone}</a> and give the reference below.
             </p>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 28 }}>Reference: {String(sent.rfqId || '').slice(0, 8).toUpperCase()}</p>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 28 }}>Reference: {reference}</p>
             <div className="cta-row">
               <Link to="/quote" className="btn btn-primary">Quote another part</Link>
               <Link to="/" className="btn btn-ghost">Back to the site</Link>
@@ -151,22 +200,29 @@ export default function RfqPage() {
         <div className="pub-wrap">
           <div className="hero-grid" style={{ alignItems: 'start', gap: 48 }}>
             <div>
-              <div className="eyebrow" style={{ marginBottom: 14 }}>Firm quote</div>
-              <h1 className="display" style={{ fontSize: 36, marginBottom: 14 }}>Tell us what matters. We'll price the rest.</h1>
-              <p className="lede" style={{ marginBottom: 20 }}>
-                A firm quote comes from the person who will cut the part{within}{when('quote-valid', (v) => ` and holds for ${v}`)}.
-                The more you give us, the sharper the number: a drawing, the quantities you would actually buy, the two
-                dimensions that have to be right.
-              </p>
+              <div className="eyebrow" style={{ marginBottom: 14 }}>{part ? 'Replacement part, no drawing' : 'Firm quote'}</div>
+              <h1 className="display" style={{ fontSize: 36, marginBottom: 14 }}>{part ? 'Tell us about the part. Then send it to us.' : 'Tell us what matters. We\'ll price the rest.'}</h1>
+              {part ? (
+                <p className="lede" style={{ marginBottom: 20 }}>
+                  No drawing needed, and no photo. Tell us about the part, then send it to us. We measure it and send you a price.
+                </p>
+              ) : (
+                <p className="lede" style={{ marginBottom: 20 }}>
+                  A firm quote comes back{within}, from the engineer who will run the job{when('quote-valid', (v) => `, and holds for ${v}`)}.
+                  The more you give us, the sharper the number: a drawing, the quantities you would actually buy, the two
+                  dimensions that have to be right.
+                </p>
+              )}
 
               {!quote && (
                 <div className="plain-box" style={{ marginBottom: 20 }}>
                   <h2 className="display h3-like" style={{ marginBottom: 6 }}>No drawing?</h2>
                   <p className="body-copy">
-                    Attach a photo of the part with a tape measure in it and say what the part does. That is enough to start.{' '}
-                    {photo
+                    Send us the part. Tell us what it is and what it does; when the request goes in you get a reference
+                    and the address to ship it to.{' '}
+                    {part
                       ? 'The form is set up for that now.'
-                      : <button type="button" className="linklike-inline" onClick={() => setMode('photo')}>Switch the form to a photo request</button>}
+                      : <button type="button" className="linklike-inline" onClick={() => setMode('part')}>Switch the form to a send-the-part request</button>}
                   </p>
                 </div>
               )}
@@ -201,45 +257,53 @@ export default function RfqPage() {
               )}
 
               <h2 className="display h3-like" style={{ marginBottom: 8 }}>What happens next</h2>
-              <ul className="checklist" style={{ marginBottom: 20 }}>
-                <li>You get a confirmation email with a reference number.</li>
-                <li>The person who will cut the part reads the request and replies{within}, with a price or with a question.</li>
-                <li>Nothing is ordered and nothing is charged until you say so.</li>
-              </ul>
+              {part ? (
+                <ul className="checklist" style={{ marginBottom: 20 }}>
+                  <li>You get a reference and the address to ship the part to, on the next screen and by email.</li>
+                  <li>Write the reference on the box and send the part. {PART_RETURN || 'Tell us in the request if you need the original back.'}</li>
+                  <li>We measure it and send you a price.{PART_QUOTE_TIME ? ` ${PART_QUOTE_TIME}` : ''} Nothing is ordered and nothing is charged until you say so.</li>
+                </ul>
+              ) : (
+                <ul className="checklist" style={{ marginBottom: 20 }}>
+                  <li>You get a confirmation email with a reference number.</li>
+                  <li>The engineer who will run the job reads the request and replies{within}, with a price or with a question.</li>
+                  <li>Nothing is ordered and nothing is charged until you say so.</li>
+                </ul>
+              )}
 
               <p className="body-copy">
-                Prefer the phone? <a href={brand.phoneHref}>{brand.phone}</a> rings the shop. Prints and photos by email to{' '}
+                Prefer the phone? <a href={brand.phoneHref}>{brand.phone}</a> rings the shop. Prints by email to{' '}
                 <a href={`mailto:${brand.email}`}>{brand.email}</a>.
               </p>
             </div>
 
-            <form id="request" className="card" style={{ padding: 24 }} onSubmit={submit} noValidate aria-label={photo ? 'Photo quote request' : 'Firm quote request'}>
+            <form id="request" className="card" style={{ padding: 24 }} onSubmit={submit} noValidate aria-label={part ? 'Send-the-part request' : 'Firm quote request'}>
               {!quote && (
                 <div className="mode-toggle" role="group" aria-label="What you have">
-                  <button type="button" aria-pressed={!photo} onClick={() => setMode('drawing')}>I have a drawing or a quantity</button>
-                  <button type="button" aria-pressed={photo} onClick={() => setMode('photo')}>I have a worn part, no drawing</button>
+                  <button type="button" aria-pressed={!part} onClick={() => setMode('drawing')}>I have a drawing or a quantity</button>
+                  <button type="button" aria-pressed={part} onClick={() => setMode('part')}>I have a worn part, no drawing</button>
                 </div>
               )}
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>Name and email are required. Everything else helps the number.</p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
+                {part ? 'Name, email and what the part is are required. No file to attach: the part itself is what we work from.' : 'Name and email are required. Everything else helps the number.'}
+              </p>
               <div className="rfq-grid">
                 <label><span className="field-label">Name <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span><input className="input" value={form.contactName} onChange={set('contactName')} autoComplete="name" required aria-required="true" /></label>
                 <label><span className="field-label">Email <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span><input className="input" type="email" value={form.email} onChange={set('email')} autoComplete="email" required aria-required="true" /></label>
                 <label><span className="field-label">Company</span><input className="input" value={form.company} onChange={set('company')} autoComplete="organization" /></label>
                 <label><span className="field-label">Phone</span><input className="input" value={form.phone} onChange={set('phone')} autoComplete="tel" /></label>
 
-                {photo ? (
+                {part ? (
                   <>
                     <label className="full">
-                      <span className="field-label">Photo or sketch (JPG, PNG or PDF)</span>
-                      <input className="input" type="file" accept=".jpg,.jpeg,.png,.pdf" onChange={pickFile} />
-                      <span className="field-hint">Lay a tape measure or a ruler next to the part. One file here, up to {MAX_MB} MB; reply to the confirmation email with more.</span>
+                      <span className="field-label">What the part is and what it does <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span>
+                      <textarea className="input" rows={3} placeholder="e.g. carton guide on the sealer infeed; rides on a stainless rail. Worn on the leading edge." value={form.notes} onChange={set('notes')} required aria-required="true" />
+                      <span className="field-hint">{PART_RETURN || 'Need the original part back? Say so here.'}</span>
                     </label>
                     <label className="full"><span className="field-label">What machine is it from?</span><input className="input" placeholder="Make and model if you have it, or what the machine does" value={form.machine} onChange={set('machine')} /></label>
-                    <label><span className="field-label">Material, if known</span><input className="input" placeholder="e.g. white, waxy, floats in water" value={form.material} onChange={set('material')} /></label>
-                    <label><span className="field-label">Rough size</span><input className="input" placeholder={'e.g. 14" long × 2" × 3/4"'} value={form.size} onChange={set('size')} /></label>
+                    <label className="full"><span className="field-label">Material, if known</span><input className="input" placeholder="e.g. white, waxy, floats in water" value={form.material} onChange={set('material')} /></label>
                     <label><span className="field-label">How many</span><input className="input" placeholder="e.g. 2 now, 6 a year" value={form.quantities} onChange={set('quantities')} /></label>
                     <label><span className="field-label">How soon</span><input className="input" placeholder="e.g. line is down / next shutdown" value={form.soon} onChange={set('soon')} /></label>
-                    <label className="full"><span className="field-label">What it does and what it runs against</span><textarea className="input" rows={3} placeholder="e.g. guides cartons into the sealer; rides on a stainless rail. Worn on the leading edge." value={form.notes} onChange={set('notes')} /></label>
                   </>
                 ) : (
                   <>
@@ -260,7 +324,7 @@ export default function RfqPage() {
               {fileError && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{fileError}</div>}
               {error && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{error}</div>}
               <button className="btn btn-primary btn-lg" type="submit" disabled={busy} style={{ width: '100%', justifyContent: 'center', marginTop: 18 }}>
-                {busy ? 'Sending…' : photo ? 'Send the photo for a quote' : 'Send for a firm quote'}
+                {busy ? 'Sending…' : part ? 'Send the request' : 'Send for a firm quote'}
               </button>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 10, textAlign: 'center' }}>
                 Customer names and part numbers are never published.{when('paperwork-packet', ' NDA on request.')}

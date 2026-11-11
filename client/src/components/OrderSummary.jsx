@@ -149,7 +149,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
             Request a firm quote →
           </button>
           <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-dim)', marginTop: 8 }}>
-            From the person who will cut the part{when('quote-turnaround', (v) => `, within ${v}`)}.
+            From the engineer who will run the job{when('quote-turnaround', (v) => `, within ${v}`)}.
           </div>
         </>
       ) : (

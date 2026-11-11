@@ -7,7 +7,7 @@
 // resolved by facts.lines(): it shows when the fact is confirmed in
 // shared/shop-facts.json, otherwise `or` shows, otherwise nothing.
 import brand from '../../../shared/brand.json';
-import { lines, ok, when, toleranceRows, MILLING } from '../facts';
+import { lines, ok, when, toleranceRows, MILLING, SLA_RESINS } from '../facts';
 
 const LIMIT = brand.rfqQuantityThreshold;
 const hasTolTable = toleranceRows().length > 0;
@@ -65,6 +65,7 @@ export const SERVICES = {
         'Heavy aluminum production. A metal shop will serve you better.',
         'A tolerance the material will not hold. Plastic expands five to ten times as much as steel for the same temperature change, so tell us where the part lives.',
         { needs: 'clean-down', text: (v) => `Metal and plastic share machines here. ${v}` },
+        { needs: 'finishes-sent-out', text: (v) => `Finishes: ${v} A part with a sent-out finish ships on the standard lead time.` },
       ]),
     },
     chips: ['Delrin / acetal', 'UHMW', 'HDPE', 'Nylon 6/6 & cast', 'PEEK', 'Ultem (PEI)', 'PTFE', 'Polycarbonate', 'Acrylic', 'PVC', 'Polypropylene', 'G-10 / FR-4', 'Phenolic', '6061-T6', 'Brass 360'],
@@ -131,7 +132,7 @@ export const SERVICES = {
     eyebrow: '3D printing, FDM and SLA',
     h1: 'Print the prototype. Machine the part.',
     lede: 'Printing is how you get a fit check in your hands before any plastic is cut, a fixture to hold the production part, or ten of something that does not justify a program.'
-      + when('nothing-outsourced', ' Same shop, same person, so the print and the machined part agree.'),
+      + when('nothing-outsourced', ' Same shop, so the print and the machined part agree.'),
     phoneNote: `Print it or machine it? ${brand.phone} rings the shop.`,
     next: 'The button opens the quote tool. Drop in an STL or STEP file, pick 3D printing, and the check tells you whether it fits the build volume.',
     hero: 'fdm-print',
@@ -142,11 +143,13 @@ export const SERVICES = {
         'A fit check for a replacement part, tried on the machine before the real material is cut.',
         'Low-volume end-use parts in PETG, ABS, nylon and TPU, where printed is good enough.',
         'Fine-detail parts in SLA resin: small housings, snap fits, cosmetic models.',
+        { needs: 'sla-resins', text: 'A resin picked for the job: Tough 1500 or Tough 2000 for a part that flexes or takes a knock, Rigid 10K for stiffness, ESD for electronics work, Clear when you need to see through it.' },
       ]),
       block('Machines and limits', [
         { needs: 'fdm-printers', text: (v) => `FDM: ${v}.` },
         { needs: 'sla-printer', text: (v) => `SLA: ${v}.` },
         'FDM layer heights of 0.1, 0.2 and 0.3 mm, chosen in the quote tool.',
+        { needs: 'sla-resins', text: (v) => `SLA resins: ${v.resins}. Layers of ${v.layers}.` },
         'The build-volume check in the quote tool tells you whether the part fits before you pay.',
         { needs: 'print-accuracy' },
         { needs: 'print-finishing' },
@@ -157,7 +160,8 @@ export const SERVICES = {
         'A printed part is weakest between layers. If the load pulls the layers apart, machine it.',
       ]),
     ]),
-    chips: ['PLA', 'PETG', 'ABS', 'Nylon (PA12)', 'Carbon fiber nylon', 'TPU', 'Standard resin', 'Tough resin', 'Flexible resin'],
+    chips: ['PLA', 'PETG', 'ABS', 'Nylon (PA12)', 'Carbon fiber nylon', 'TPU',
+      ...(SLA_RESINS.length ? SLA_RESINS.map((r) => `${r} resin`) : ['Standard resin', 'Tough resin'])],
     gallery: ['phenolic-prototype', 'fdm-print', 'acetal-clamps'],
     related: [{ to: '/machining', label: 'Ready for production? CNC machining' }, { to: '/routing', label: 'Flat parts: CNC routing' }],
   },

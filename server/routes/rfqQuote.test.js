@@ -318,5 +318,40 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
     assert.ok(/isn't accepted/.test(bad.body.error));
   });
 
+  test("a send-the-part request answers with a reference and the ship-to address, and emails both to the buyer", async () => {
+    const shipFrom = require("../config/shipFrom.json");
+    h.sent.length = 0;
+    const r = await h.form("/api/rfq", { requestType: "part", contactName: "Sam Maint", email: "sam@plant.test", quantities: "2 now", notes: "NO DRAWING. The customer is sending the part.\nWhat it is and does: UHMW carton guide, worn on the leading edge" });
+    assert.strictEqual(r.status, 201, r.text);
+    assert.strictEqual(r.body.reference, String(r.body.rfqId).slice(0, 8).toUpperCase(), "the reference is the short request id");
+    assert.deepStrictEqual(r.body.shipTo.lines, [shipFrom.address, `${shipFrom.city}, ${shipFrom.state} ${shipFrom.zip}`]);
+    assert.ok(r.body.shipTo.name, "addressed to the business");
+    const buyer = h.sent.find((m) => m.to === "sam@plant.test");
+    assert.ok(buyer, "buyer email sent");
+    for (const body of [buyer.text, buyer.html]) {
+      assert.ok(body.includes(r.body.reference), "reference in the email");
+      assert.ok(body.includes(shipFrom.address) && body.includes(shipFrom.zip), "ship-to address in the email");
+    }
+    assert.ok(!/photo/i.test(buyer.text), "the buyer is asked for the part, not a photo");
+    const shop = h.sent.find((m) => m.to === "owner@shop.test");
+    assert.ok(shop && shop.text.includes(r.body.reference) && /ship the part/i.test(shop.text), "the shop is told a part is on its way");
+    assert.ok(rfqsDB.getById(r.body.rfqId).notes.startsWith("NO DRAWING."), "the request details stay in the notes");
+  });
+
+  test("an ordinary firm-quote request never carries the ship-to address", async () => {
+    const shipFrom = require("../config/shipFrom.json");
+    h.sent.length = 0;
+    const plain = await h.form("/api/rfq", { contactName: "Pat Purchasing", email: "pat@oem.test", quantities: "250 / 500" });
+    assert.strictEqual(plain.status, 201, plain.text);
+    assert.strictEqual(plain.body.shipTo, undefined);
+    assert.strictEqual(plain.body.reference, undefined);
+    assert.ok(h.sent.every((m) => !m.text.includes(shipFrom.address) && !m.html.includes(shipFrom.address)), "no street address in the emails");
+    // From the quote tool the request is about the uploaded parts, whatever the form says.
+    const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 500)], leadTimeSlug: "standard" });
+    const gated = await h.form("/api/rfq", { requestType: "part", quoteId: q.body.quoteId, contactName: "Pat Purchasing", email: "pat@oem.test" });
+    assert.strictEqual(gated.status, 201, gated.text);
+    assert.strictEqual(gated.body.shipTo, undefined);
+  });
+
   await run(h.stop);
 })();
