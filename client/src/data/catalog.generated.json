@@ -1009,19 +1009,41 @@
       "color": "#1F2937"
     },
     {
-      "slug": "sla-standard",
-      "name": "Standard Resin",
+      "slug": "sla-grey",
+      "name": "Formlabs Grey Resin",
       "category": "SLA",
       "process": "3d-printing",
       "subProcess": "sla",
       "grades": [],
       "stockForms": [],
       "thicknesses": [],
-      "color": "#D1D5DB"
+      "color": "#9CA3AF"
     },
     {
-      "slug": "sla-tough",
-      "name": "Tough Resin (ABS-like)",
+      "slug": "sla-white",
+      "name": "Formlabs White Resin",
+      "category": "SLA",
+      "process": "3d-printing",
+      "subProcess": "sla",
+      "grades": [],
+      "stockForms": [],
+      "thicknesses": [],
+      "color": "#F5F5F4"
+    },
+    {
+      "slug": "sla-clear",
+      "name": "Formlabs Clear Resin",
+      "category": "SLA",
+      "process": "3d-printing",
+      "subProcess": "sla",
+      "grades": [],
+      "stockForms": [],
+      "thicknesses": [],
+      "color": "#DBEAFE"
+    },
+    {
+      "slug": "sla-tough-1500",
+      "name": "Formlabs Tough 1500 Resin",
       "category": "SLA",
       "process": "3d-printing",
       "subProcess": "sla",
@@ -1031,26 +1053,48 @@
       "color": "#6B7280"
     },
     {
-      "slug": "sla-flexible",
-      "name": "Flexible Resin",
+      "slug": "sla-tough-2000",
+      "name": "Formlabs Tough 2000 Resin",
       "category": "SLA",
       "process": "3d-printing",
       "subProcess": "sla",
       "grades": [],
       "stockForms": [],
       "thicknesses": [],
-      "color": "#FBBF24"
+      "color": "#4B5563"
     },
     {
-      "slug": "sla-dental",
-      "name": "Dental / Biocompatible Resin",
+      "slug": "sla-rigid-10k",
+      "name": "Formlabs Rigid 10K Resin",
       "category": "SLA",
       "process": "3d-printing",
       "subProcess": "sla",
       "grades": [],
       "stockForms": [],
       "thicknesses": [],
-      "color": "#F0FDF4"
+      "color": "#F8FAFC"
+    },
+    {
+      "slug": "sla-high-temp",
+      "name": "Formlabs High Temp Resin",
+      "category": "SLA",
+      "process": "3d-printing",
+      "subProcess": "sla",
+      "grades": [],
+      "stockForms": [],
+      "thicknesses": [],
+      "color": "#FCD34D"
+    },
+    {
+      "slug": "sla-esd",
+      "name": "Formlabs ESD Resin",
+      "category": "SLA",
+      "process": "3d-printing",
+      "subProcess": "sla",
+      "grades": [],
+      "stockForms": [],
+      "thicknesses": [],
+      "color": "#1F2937"
     },
     {
       "slug": "sls-nylon-pa12",

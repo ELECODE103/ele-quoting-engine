@@ -3,7 +3,7 @@ import PublicLayout from '../components/PublicLayout';
 import ShopPhoto from '../components/ShopPhoto';
 import Photo from '../components/Photo';
 import brand from '../brand';
-import { ok, fact, when, lines, MACHINED } from '../facts';
+import { ok, fact, when, lines, MACHINED, HOLDS } from '../facts';
 import { shopPhoto } from '../data/shopPhotos';
 
 const LIMIT = brand.rfqQuantityThreshold;
@@ -17,7 +17,7 @@ const STATS = [
   ['Price now', `to ${LIMIT} pieces, by card`],
   when('tol-acetal', (t) => [t.standard, 'standard on acetal'], ['No account', 'needed to see a price']),
   when('router-bed', (b) => [b, 'router bed'], ['59" × 96"', 'largest flat part priced online']),
-  ['One person', 'quotes it, cuts it, answers the phone'],
+  ['Engineer-led', 'the engineer answers the phone'],
 ];
 
 const DOORS = [
@@ -33,8 +33,8 @@ const DOORS = [
   },
   {
     h: 'I have a worn part and no drawing',
-    p: 'You do not need a drawing to ask. Send a photo with a tape measure in it and say what machine it came off.',
-    to: '/replacement-parts', cta: 'No CAD? Send a photo',
+    p: 'You do not need a drawing. Tell us what the part is and what machine it came off, then send us the part. We measure it and send you a price.',
+    to: '/replacement-parts', cta: 'No CAD? Send us the part',
   },
 ];
 
@@ -44,9 +44,10 @@ const STEPS = [
     + when('file-retention', (v) => `deleted after ${v} unless you order.`, 'purged on a schedule if you do not order.')],
   ['02', 'Price and DFM', 'Pick process, material, finish and quantity. The price updates as you go, with a manufacturability check against the limits printed on this site.'],
   ['03', 'Check out, or get a firm quote', `Up to ${LIMIT} pieces: check out with a card. More than that, an oversize part or anything the check fails: a firm quote from a person${within}.`],
-  when('fai-coc',
-    (v) => ['04', 'First article, then ship', `A first-article inspection report and a certificate of conformance come with ${v}.`],
-    ['04', 'Made, then shipped', `Your order page shows where the job stands. Questions go to ${brand.phone}, which rings the person making the part.`]),
+  // Inspection paperwork is an option on the quote, never a default (owner, 2026-11-11).
+  ok('fai-coc')
+    ? ['04', 'Made, then shipped', 'Need a first-article inspection report and a certificate of conformance? Tick the box on your quote and they ship with the parts; the price shows before you pay. Your order page shows where the job stands.']
+    : ['04', 'Made, then shipped', `Your order page shows where the job stands. Questions go to ${brand.phone}, which rings the shop.`],
 ];
 
 const MOVES = lines([
@@ -72,15 +73,15 @@ export default function LandingPage() {
               </h1>
               <p className="lede" style={{ maxWidth: 530, marginBottom: 28 }}>
                 {MACHINED.charAt(0).toUpperCase() + MACHINED.slice(1)} from Delrin, UHMW, HDPE, nylon and PEEK.
-                Upload a STEP file and see the price; no account, no call. Over {LIMIT} pieces, or no CAD at all,
-                the person who will cut the part quotes it{within}.
+                Upload a STEP file and see the price; no account, no call. Over {LIMIT} pieces,
+                the engineer who will run your job quotes it{within}. No CAD at all? Send us the part.
               </p>
               <div className="cta-row">
                 <Link className="btn btn-primary btn-lg" to="/quote">Get an instant quote</Link>
-                <Link className="btn btn-outline btn-lg" to="/replacement-parts">No CAD? Send a photo</Link>
+                <Link className="btn btn-outline btn-lg" to="/replacement-parts">No CAD? Send us the part</Link>
               </div>
               <p className="next-note">
-                Or call <a href={brand.phoneHref}>{brand.phone}</a>. It rings the person who runs the machines.
+                Or call <a href={brand.phoneHref}>{brand.phone}</a>. It rings the shop, not a call center.
               </p>
               <div className="chips" style={{ marginTop: 20 }}>
                 {['.step', '.stp', '.stl', '.iges', '.3mf', '.dxf'].map((f) => <span key={f} className="chip" style={{ fontFamily: 'var(--font-mono)' }}>{f}</span>)}
@@ -215,7 +216,9 @@ export default function LandingPage() {
               <h2 className="display" style={{ marginBottom: 18 }}>{ok('practice-rest') ? 'Plastics move. We measure for it.' : 'Plastics move. Buy the part with that in mind.'}</h2>
               <ul className="checklist" style={{ marginBottom: 20 }}>{MOVES.map((m) => <li key={m}>{m}</li>)}</ul>
               <p className="body-copy" style={{ marginBottom: 24 }}>
-                This shop is not ISO 9001 certified. If your supplier approval requires the certificate, it is better you know that now.
+                {HOLDS
+                  ? <>Standard tolerance here is {HOLDS}. The <Link to="/machining">machining page</Link> has the table, with what moves each plastic.</>
+                  : 'Call out the two or three dimensions that have to be right. Those are the ones that get measured.'}
               </p>
               <Link to="/quality" className="btn btn-outline">What gets checked, and how</Link>
             </div>
@@ -247,7 +250,7 @@ export default function LandingPage() {
         <div className="pub-wrap" style={{ textAlign: 'center' }}>
           <h2 className="display" style={{ color: '#F8FAFC', marginBottom: 12 }}>Have a print? Send it.</h2>
           <p style={{ color: '#CBD5E1', fontSize: 16, maxWidth: 540, margin: '0 auto 28px', lineHeight: 1.6 }}>
-            No print? <Link to="/replacement-parts" style={{ color: '#fff' }}>Send a photo.</Link> Either way you are talking to the person who runs the machine.
+            No print? <Link to="/replacement-parts" style={{ color: '#fff' }}>Send us the part.</Link> Either way you reach the engineer running your job.
           </p>
           <div className="cta-row" style={{ justifyContent: 'center' }}>
             <Link className="btn btn-primary btn-lg btn-on-dark" to="/quote">Get an instant quote</Link>

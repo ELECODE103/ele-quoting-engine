@@ -4,7 +4,7 @@ import PublicLayout from '../components/PublicLayout';
 import { api } from '../utils/api';
 import brand from '../brand';
 import { catalog, pageSlugForCatalogSlug } from '../data/materials';
-import { when, gradeLabel, materialVisible, toleranceFor, toleranceRows } from '../facts';
+import { when, gradeLabel, materialVisible, toleranceFor, toleranceRows, SLA_RESINS } from '../facts';
 
 const SHOW_TOL = toleranceRows().length > 0;
 const PLASTIC_COUNT = catalog.cnc.filter((m) => !/aluminum|6061|brass/i.test(`${m.slug} ${m.name}`)).length;
@@ -30,6 +30,18 @@ const NOTES = [
   { match: ['brass'], use: 'Fittings, bushings, electrical contacts.', why: 'Free-machining, corrosion-resistant, conductive.', watch: 'Heavy and not cheap.' },
 ];
 
+// 3D printing chips. FDM materials come from the catalog. SLA resins are the
+// owner's stated list (shop-facts `sla-resins`) once confirmed, so the page
+// names the resins actually printed and not a generic catalog entry.
+function printingChips(list) {
+  const visible = list.filter(materialVisible);
+  if (SLA_RESINS.length === 0) return visible;
+  return [
+    ...visible.filter((m) => m.subProcess !== 'sla'),
+    ...SLA_RESINS.map((r) => ({ slug: `sla-resin-${r.toLowerCase().replace(/\s+/g, '-')}`, name: `${r} resin (SLA)`, color: '#c9ccd1' })),
+  ];
+}
+
 function noteFor(m) {
   const hay = `${m.slug} ${m.name}`.toLowerCase();
   return NOTES.find((n) => n.match.some((k) => hay.includes(k)));
@@ -41,12 +53,12 @@ export default function MaterialsPage() {
   // admin edits.
   const [cnc, setCnc] = useState(catalog.cnc);
   const [routing, setRouting] = useState(catalog.routing);
-  const [printing, setPrinting] = useState(catalog.printing.filter(materialVisible));
+  const [printing, setPrinting] = useState(printingChips(catalog.printing));
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     Promise.all([api.getMaterials('cnc'), api.getMaterials('routing'), api.getMaterials('3d-printing')])
-      .then(([a, b, c]) => { setCnc(a); setRouting(b); setPrinting(c.filter(materialVisible)); })
+      .then(([a, b, c]) => { setCnc(a); setRouting(b); setPrinting(printingChips(c)); })
       .catch(() => setLoadError(true));
   }, []);
 
@@ -110,6 +122,11 @@ export default function MaterialsPage() {
           </div>
 
           <h2 className="display h2-sm" style={{ marginTop: 48 }}>3D printing materials</h2>
+          {when('sla-resins', (v) => (
+            <p className="body-copy" style={{ fontSize: 15, marginBottom: 14, maxWidth: 760 }}>
+              FDM filaments, and SLA in {v.resins} resins at {v.layers} layers.
+            </p>
+          ), null)}
           <div className="chips">
             {printing.map((m) => (
               <span key={m.slug} className="chip" style={{ fontSize: 13, padding: '6px 12px' }}>

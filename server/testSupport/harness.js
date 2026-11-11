@@ -38,7 +38,8 @@ async function start() {
           if (stripe.failNext) { stripe.failNext = false; throw new Error("stripe unavailable"); }
           const id = `cs_test_${stripe.created.length + 1}`;
           stripe.created.push(args);
-          const amount = args.line_items[0].price_data.unit_amount;
+          // What Stripe would charge: every line (the order, plus the inspection paperwork when it was ordered).
+          const amount = args.line_items.reduce((sum, li) => sum + li.price_data.unit_amount * (li.quantity || 1), 0);
           stripe.sessions[id] = { id, url: `https://checkout.stripe.test/${id}`, payment_status: "unpaid", amount_total: amount, amount_subtotal: amount, metadata: args.metadata };
           return stripe.sessions[id];
         },

@@ -20,7 +20,8 @@ const { validateFileContent } = require("../middleware/fileValidator");
 const fileCrypto = require("../services/fileCrypto");
 const dxf = require("../geometry/dxf");
 
-const shopFacts = require("../shopFacts"); // hides catalog options the owner has not confirmed
+const shopFacts = require("../shopFacts");
+const { offeredLayerHeight } = require("../services/layerHeight"); // hides catalog options the owner has not confirmed
 const router = express.Router();
 
 // ─── FILE UPLOAD CONFIG ──────────────────────────────────────
@@ -265,9 +266,10 @@ function rushMultiplier(leadTime) {
 /**
  * Price a set of configured parts. Shared by the quote builder (POST /quote)
  * and reorder. Throws quoteError(400) for a bad lead time, part or material.
+ * `paperwork` adds the first-article report + certificate of conformance fee as its own line.
  * @returns {{ quote, gate, dfmByPartId, leadTime }}
  */
-function priceQuote(partConfigs, leadTimeSlug = "standard") {
+function priceQuote(partConfigs, leadTimeSlug = "standard", { paperwork = false } = {}) {
   const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === leadTimeSlug);
   // A lead time the shop has not confirmed it offers cannot be bought, even by a hand-built request.
   if (!leadTime || !leadTime.active || !shopFacts.leadTimeListed(leadTime)) {
@@ -327,7 +329,7 @@ function priceQuote(partConfigs, leadTimeSlug = "standard") {
       subProcess: config.subProcess || '',
       // Pass through only when actually provided — `|| 0` made an unset infill
       // look like an intentional 0% (the engine then under-costed FDM material).
-      layerHeight: config.layerHeight != null ? Number(config.layerHeight) : undefined,
+      layerHeight: offeredLayerHeight(material, config.layerHeight),
       infill: config.infill != null ? Number(config.infill) : undefined,
     });
 
@@ -347,6 +349,7 @@ function priceQuote(partConfigs, leadTimeSlug = "standard") {
   const quote = pricingEngine.calculateOrderQuote({
     parts: pricingParts,
     leadTimeMultiplier,
+    paperwork: paperwork === true,
   });
 
   // Instant checkout or RFQ? Stored with the quote so checkout can enforce it.
@@ -367,6 +370,11 @@ function leadTimeOptions(subtotal, finishSlugs = []) {
   }));
 }
 
+/** The paperwork checkbox as sent by the builder (JSON true) or a form ("true", "1", "on"). */
+function wantsPaperwork(v) {
+  return v === true || v === 1 || v === "true" || v === "1" || v === "on";
+}
+
 /** May this requester re-price (update in place) this stored quote? */
 function quoteEditableBy(quote, user) {
   return quote.status === "draft" && (!quote.userId || quote.userId === user?.userId);
@@ -378,8 +386,11 @@ function quoteEditableBy(quote, user) {
  * updated; otherwise a row is inserted (under `quoteId` if it is unused).
  * Every re-price restarts the 30-day price hold.
  */
-function saveQuote({ parts: partConfigs, leadTimeSlug = "standard", quoteId, process: builderProcess, notes }, user) {
-  const priced = priceQuote(partConfigs, leadTimeSlug);
+function saveQuote({ parts: partConfigs, leadTimeSlug = "standard", quoteId, process: builderProcess, notes, paperwork }, user) {
+  // The only thing the client says about the paperwork is yes or no. The fee is
+  // worked out here from the rate card and the number of lines; any amount sent
+  // with the request is ignored.
+  const priced = priceQuote(partConfigs, leadTimeSlug, { paperwork: wantsPaperwork(paperwork) });
   const config = {
     process: sanitizeString(String(builderProcess || partConfigs[0]?.process || ""), 40),
     parts: partConfigs.map((c) => whitelist(c, CONFIG_FIELDS)),
@@ -446,6 +457,9 @@ function quoteView(quote) {
   const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === quote.leadTimeSlug);
   return {
     ...safe,
+    // Quotes saved before the paperwork option existed have neither column.
+    paperwork: Boolean(quote.paperwork),
+    paperworkFee: Number(quote.paperworkFee) || 0,
     leadTimeName: leadTime?.name || "",
     shipBy: leadTime ? shipBy.shipByDate(leadTime) : null,
     expired: Boolean(quote.expiresAt && new Date(quote.expiresAt) < new Date()),
@@ -503,6 +517,7 @@ router.get("/quote/:id/session", optionalAuth, (req, res) => {
     status: quote.status,
     process: quote.config?.process || parts[0]?.process || "",
     leadTimeSlug: quote.leadTimeSlug || "standard",
+    paperwork: Boolean(quote.paperwork),
     notes: quote.notes || "",
     drawingFileName: quote.drawingFileName || "",
     parts,
@@ -984,4 +999,5 @@ router.get("/parts/:partId/download", authenticate, requireAdmin, (req, res) => 
 module.exports = router;
 module.exports.loadPricingRules = loadPricingRules;
 module.exports.saveQuote = saveQuote;
+module.exports.wantsPaperwork = wantsPaperwork;
 module.exports.QUOTE_VALID_DAYS = QUOTE_VALID_DAYS;

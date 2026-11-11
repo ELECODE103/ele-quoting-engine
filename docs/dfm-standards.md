@@ -8,7 +8,7 @@ The design-for-manufacturability rules behind the instant quote, with the indust
 | Manual lathes | Ø250 × 600 mm between centres | plastics, brass, aluminum |
 | Techno router | 59" × 96" bed (1499 × 2438 mm), 12" Z, 12-tool ATC | stock 48" × 96"; tools 1/16", 1/8", 1/4", 3/8" |
 | FDM printers | up to 12 × 12 × 24" (305 × 305 × 610 mm) | PLA, ABS, PETG, nylon, TPU, CF-nylon |
-| Formlabs SLA | ~6 × 6 × 7" (152 × 152 × 178 mm) | standard, tough, … resins |
+| Formlabs SLA | Form 4: 200 × 125 × 210 mm; Form 3: 145 × 145 × 185 mm (Formlabs published build volumes; a part passes if it fits either, any orientation) | Formlabs Grey, White, Clear, Tough 1500, Tough 2000, Rigid 10K, High Temp, ESD |
 
 Materials: acetal/Delrin, UHMW, HDPE, nylon, PEEK, Ultem, PTFE, polycarbonate, acrylic, PVC, PP, G-10, phenolic, 6061, brass.
 
@@ -164,7 +164,7 @@ On any other process a DXF yields a single FAIL `dxf-2d-file` that points the cu
 | `print-mesh-integrity` | manifold / watertight | | | | FAIL / WARN major | shop |
 | `print-min-wall` | `walls.minThickness` | 0.8 supported / 1.0 free-standing | 0.5 / 1.0 (Formlabs floor 0.2) | 0.7 | WARN minor below; ≤ 0.05 FAIL | Hubs-3DP, UZH-FDM, Formlabs |
 | `print-thin-area` | `walls.thinAreaFraction` | > 20% | | | WARN minor | shop |
-| `print-build-volume` | extents, any orientation | 610 × 305 × 305 | 178 × 152 × 152 (hint: fits FDM?) | 300³ | FAIL | shop |
+| `print-build-volume` | extents, any orientation | 610 × 305 × 305 | Form 4 210 × 200 × 125 or Form 3 185 × 145 × 145, either one (message names the printer; hint: fits FDM?) | 300³ | FAIL | shop / Formlabs |
 | `print-overhang` | `overhang.areaFraction45`, `supportVolumeEstimate` | > 40% of area → WARN major; support vol > 30% of part → major cost | same | INFO (self-supporting) | WARN | Hubs-FDM (45°), Formlabs |
 | `print-bridge-length` | `bridging.maxSpan` | > 10 mm WARN minor (sag visible > 5) | > 21 mm (Formlabs 29 mm for 5 × 3 beam) | n/a | WARN | Hubs-3DP, Hubs-FDM, Formlabs |
 | `print-min-hole` | `holes[].diameter` | < 2.0; vertical holes print undersize → drill | < 0.5 | < 1.5 | WARN minor | Hubs-3DP, Hubs-FDM, Formlabs |

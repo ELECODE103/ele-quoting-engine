@@ -199,6 +199,7 @@ async function start() {
   console.log("Initializing database...");
   await dbReady;
   seedDatabase();
+  if (require("./models").USE_SQLITE) console.log(`  Database file: ${(require("./models/database").fileSize() / 1e6).toFixed(1)} MB`);
   apiRoutes.loadPricingRules();
 
   // Periodically purge old uploaded customer files (proprietary CAD shouldn't
@@ -206,6 +207,24 @@ async function start() {
   // Files behind an order or an open firm-quote request are kept whatever their age.
   const { startRetentionSweep, neededUploads } = require("./services/fileRetention");
   startRetentionSweep(path.join(__dirname, "..", "data", "uploads"), { keep: () => neededUploads(require("./models")) });
+
+  // The rows that go with those files: abandoned uploads and lapsed draft
+  // quotes leave the database too, so the file (rewritten on every save) stays
+  // small. Runs at startup and every six hours.
+  const { sweepRows } = require("./services/rowRetention");
+  const sweepDatabase = () => {
+    try {
+      const r = sweepRows(require("./models"));
+      if (r.quotes || r.parts) console.log(`Row retention: removed ${r.parts} abandoned part(s) and ${r.quotes} lapsed draft quote(s); database ${(r.bytesBefore / 1e6).toFixed(1)} MB → ${(r.bytesAfter / 1e6).toFixed(1)} MB`);
+    } catch (err) {
+      console.error("Row retention sweep error:", err.message);
+    }
+  };
+  if (require("./models").USE_SQLITE) {
+    sweepDatabase();
+    const rowTimer = setInterval(sweepDatabase, 6 * 60 * 60 * 1000);
+    if (rowTimer.unref) rowTimer.unref();
+  }
 
   // Say at startup what is switched off, so a missing setting is found in the
   // deploy log and not by a customer.

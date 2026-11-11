@@ -65,6 +65,11 @@ const RULES = [
     ["standard", "expedited", "rush", "same-day"], { standard: 1.0, expedited: 1.35, rush: 1.85, "same-day": 2.5 }, 1, 5),
   money("shippingBaseRate", "shop", "Shipping base", "Flat shipping charge per order before weight.", "$", 12, 0, 500),
   money("shippingPerKg", "shop", "Shipping per kg", "Added to shipping for every kilogram of parts.", "$/kg", 2.5, 0, 100),
+  // Inspection paperwork the customer asks for (owner, 2026-11-11): an option on the quote, charged at
+  // face value. No margin is added, the lead-time multiplier does not scale it and quantity breaks do not
+  // discount it (services/pricingEngine.js: paperworkCharge).
+  money("paperworkFeePerPart", "shop", "First-article report, per part number", "Charged when the customer ticks the inspection-paperwork box: this many dollars for each part number on the order (each line, not each piece), for measuring the first piece against the drawing and writing the report. Added to the total as it stands: no margin on top, no rush multiplier, no quantity discount. Starting value, not a costed one: set it to what the measuring and writing is worth to you.", "$/part no.", 45, 0, 2000),
+  money("paperworkFeePerOrder", "shop", "Certificate of conformance, per order", "Charged once per order when the customer ticks the inspection-paperwork box, for filling in and signing the certificate of conformance. Added to the total as it stands: no margin on top, no rush multiplier, no quantity discount. Starting value, not a costed one: set it to what the certificate is worth to you.", "$/order", 15, 0, 2000),
 
   // ─── Materials (shared stock rules; per-material fields are on the Materials page) ──
   num("stockPaddingMm", "materials", "Stock padding", "Extra material on each side of the part when the blank is sawn from bar or plate.", "mm", 3.0, 0, 25),
@@ -346,6 +351,7 @@ function describeSchema() {
 const SIMPLE_KEYS = new Set([
   "cncMachineRatePerHour", "latheRatePerHour", "routerMachineRatePerHour", "laborRatePerHour",
   "marginPercent", "minimumPartPrice", "routerMinimumPartPrice", "minimumOrderTotal",
+  "paperworkFeePerPart", "paperworkFeePerOrder",
   "cncSetupMinutesFirst", "routerSetupMinutes", "fdmMachineRatePerHour",
   "rfqQuantityThreshold", "bigTicketLineTotal",
 ]);

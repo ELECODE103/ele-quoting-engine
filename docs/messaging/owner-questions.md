@@ -8,6 +8,31 @@ Proposed values came from the old site copy and from notes of earlier working se
 
 Ordered by how much launch copy each answer unlocks.
 
+## Answered on 2026-11-11 (recorded in `shared/shop-facts.json`)
+
+| id | Your answer | What it changed |
+|---|---|---|
+| `fai-coc`, `lot-traceability` | "A first-article inspection report and a signed certificate of conformance come with your order when you ask for them." "Material traceable to the lot." (Revised 2026-11-11 on reviewing draft PR #3: both are an option the customer ticks on the quote or the firm-quote form, with a fee; this replaces "with every production order".) | The Quality page is built on it; home step 4, About, the food-contact page and the launch kit use it; the quote tool and the firm-quote form carry the checkbox, and the fee is two rules in the pricing console (per part number, per order). Every statement about what the shop is not certified to or does not own is gone |
+| `part-return` | "Make sure that me paying to ship the part back is included in the client's cost." (2026-11-11) | The send-the-part form has a box, ticked to start with: "Send my original part back with the order." The customer ships the part in at their cost; the original goes back with the finished parts; the price quoted includes that return shipping, and the shop email and admin view remind you to price it in |
+| `sla-printer` | A Formlabs Form 4 and a Form 3 (2026-11-11) | The 3D printing page names both; the quote tool's size check passes a part that fits either printer |
+| `engineer-led` | "Your quote and your parts are handled by the engineer who answers the phone." | Replaces every statement of shop size. The site speaks as "we" |
+| `sla-resins` | Formlabs Grey, White, Clear, Tough 1500, Tough 2000, Rigid 10K, High Temp and ESD, at 0.1 mm or 0.05 mm layers | 3D printing page and the materials page |
+| `dental-resin` | Not in the resin list | Stays hidden |
+| `replacement-from-part` | Replacement parts are quoted from the physical part, not a photo | Home door and buttons, the replacement-parts page, the request form, its confirmation and emails |
+
+## New questions from those answers
+
+These are the only things the new replacement-parts flow does not say yet. Each has an empty `value` in `shared/shop-facts.json`; write the sentence you want printed, set `confirmed` to true.
+
+| id | Question | Until you answer, the site says |
+|---|---|---|
+| `part-quote-time` | How soon after the part arrives do you send the price? | Nothing about timing: "We measure it and send you a price." |
+| `visits-welcome` | Can a customer drop the part off instead of shipping it? (Same flag as before.) | Nothing about drop-off |
+| `no-cad-drawing` | After you measure the part, does the customer get a drawing back, and is there a charge? (Same flag as before.) | "You get a price before anything is cut." |
+| `engineer-title`, `owner-name` | Your name on About, and "mechanical engineer" as a stated title? | "The engineer", no name |
+
+Questions 2, 4 and 8 below were written before these answers; where they mention sending a photo, texting a photo or working alone, read them with the decisions above.
+
 ---
 
 ## 1. The photos (do this first: they are on the site now)
@@ -54,14 +79,14 @@ Unlocks: "within 24 hours" in about a dozen places (home hero and steps, firm-qu
 ## 5. The machines, from the nameplates (`mill-tormach`, `mill-bridgeport`, `fourth-axis`, `threads-inserts`, `router-model`, `router-bed`, `router-spindle`, `router-workholding`, `router-thickness`, `router-aluminum`, `fdm-printers`, `sla-printer`, `print-accuracy`, `print-finishing`)
 
 - Router: the old site said Techno HD-II, 5 hp, 12-position changer, vacuum table. Earlier notes say Techno RG 5996, 4 hp, tool changer, screws and clamps to a spoilboard. Read the plate.
-- Printers: the old site listed a Raise3D N2 Plus, three Creality K2 Plus and a ~6" Formlabs. Earlier notes say one K2 Plus and a Formlabs Form 4 (200 × 125 × 210 mm). List what is in the building.
+- Printers: SLA is answered (2026-11-11): a Formlabs Form 4 and a Form 3. FDM is still open: the old site listed a Raise3D N2 Plus and three Creality K2 Plus; earlier notes say one K2 Plus. List what is in the building.
 - Mills: Tormach PCNC 1100 and a CNC Bridgeport; which carries the 4th axis.
 
 Unlocks: the "Machines and limits" lists on all three service pages (today they state only what the quote tool enforces), the router-bed home stat, posts 1 and 4.
 
 ## 6. Paperwork with the order (`fai-coc`, `material-certs`, `traveler`, `corrective-action`, `written-procedures`)
 
-Which orders get a first-article report and a certificate of conformance, and is there a charge? Can you pass a material cert through? Does every job get a traveler? Do written procedures exist today?
+First-article report and certificate of conformance: answered 2026-11-11. Any order, when the customer ticks the box, for a fee (pricing console: per part number and per order; the starting values are placeholders for you to set). Still open: Can you pass a material cert through? Does every job get a traveler? Do written procedures exist today?
 
 Unlocks: "Paperwork with the order" on Quality (today it says "ask and the quote will state it"), the second half of the ISO paragraph, home step 4, post 6.
 
@@ -119,7 +144,7 @@ These were on the old site with nothing behind them, so they are hidden from buy
 
 | id | Hidden now |
 |---|---|
-| `lead-same-day` | "Same Day, ships today (order by 10am)" at checkout. The audit says a one-person shop cannot promise it. |
+| `lead-same-day` | "Same Day, ships today (order by 10am)" at checkout. The audit says not to promise it. |
 | `lead-rush` | "Priority Rush, 1-2 business days" at checkout. |
 | `sls-offered` | Four SLS materials (no SLS machine is listed). If you sell them, they are made elsewhere and the site has to say so. |
 | `dental-resin` | "Dental / Biocompatible Resin". |

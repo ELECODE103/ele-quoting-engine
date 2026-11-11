@@ -138,7 +138,7 @@ const STATIC = {
   },
   '/replacement-parts': {
     fullTitle: `Replacement plastic parts, no drawing needed | ${brand.name}`,
-    description: `Worn guide, wear strip or bushing and no drawing? Send a photo with a tape measure in it, or call ${brand.phone}. Replacement plastic parts machined in ${brand.city}, Illinois.`,
+    description: `Worn guide, wear strip or bushing and no drawing? Send us the part: we measure it and send a price. Start with a short request or call ${brand.phone}. Machined in ${brand.city}, Illinois.`,
     priority: 0.8,
     sources: ['client/src/pages/ReplacementPartsPage.jsx', 'shared/shop-facts.json'],
     jsonLd: page('/replacement-parts', 'Replacement parts'),
@@ -159,21 +159,22 @@ const STATIC = {
   },
   '/quality': {
     fullTitle: `Quality: what gets checked and how | ${brand.name}`,
-    description: `Not ISO 9001 certified, no CMM, one person. What ${brand.name} measures on a machined plastic part, how, and what happens when a part is wrong.`,
+    // Inspection paperwork is on request (owner, 2026-11-11): the description says it can be added, not that it comes.
+    description: `What ${brand.name} checks on a machined plastic part, and what happens when one is wrong.${when('fai-coc', ' A first-article inspection report and a certificate of conformance can be added to any order.')}`,
     priority: 0.7,
     sources: ['client/src/pages/QualityPage.jsx', 'shared/shop-facts.json'],
     jsonLd: page('/quality', 'Quality'),
   },
   '/about': {
-    fullTitle: `About ${brand.name}, a one-person plastics machine shop`,
-    description: `${brand.name} is a one-person plastics machine shop in ${brand.city}, Illinois. The person who quotes your part cuts it and answers the phone.`,
+    fullTitle: `About ${brand.name}, an engineer-led plastics machine shop`,
+    description: `${brand.name} is an engineer-led plastics machine shop in ${brand.city}, Illinois. ${fact('engineer-led') || 'Call and you reach the engineer running your job.'}`,
     priority: 0.6,
     sources: ['client/src/pages/AboutPage.jsx', 'shared/brand.json', 'shared/shop-facts.json'],
     jsonLd: (m) => graph([...businessGraph(), { ...webPage('/about', m.title, m.description), '@type': 'AboutPage' }, crumbs('About', '/about')]),
   },
   '/rfq': {
     fullTitle: `Request a firm quote for machined plastic parts | ${brand.name}`,
-    description: `Send a drawing and a quantity, or a photo of a worn part with a tape measure in it. The person who will cut the part prices it${within}.`,
+    description: `Send a drawing and a quantity, and the engineer who will run the job prices it${within}. No drawing? Tell us about the worn part, then send it in to be measured.`,
     priority: 0.5,
     sources: ['client/src/pages/RfqPage.jsx'],
     jsonLd: page('/rfq', 'Request a firm quote'),

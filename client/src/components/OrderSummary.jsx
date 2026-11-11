@@ -3,7 +3,7 @@ import { formatCurrency, formatWeight, formatShipDate, formatDate } from '../uti
 import { authPath } from '../utils/returnTo';
 import { useAuth } from '../utils/authContext';
 import brand, { PROCESS_LABELS } from '../brand';
-import { when, SENT_OUT_FINISHES } from '../facts';
+import { when, SENT_OUT_FINISHES, PAPERWORK_LABEL, PAPERWORK_HELP } from '../facts';
 
 const PROCESS_SHORT = { '3d-printing': '3D print', cnc: 'CNC', routing: 'Routing', sheetmetal: 'Sheet metal' };
 
@@ -12,7 +12,7 @@ const PROCESS_SHORT = { '3d-printing': '3D print', cnc: 'CNC', routing: 'Routing
  * matters — checkout when the quote gate allows it, "request a firm quote"
  * when it doesn't. A firm-quote link is always available either way.
  */
-export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLeadTimeChange, partsConfig, materials = [], quoteError, quoteLoading }) {
+export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLeadTimeChange, paperwork = false, onPaperworkChange, partsConfig, materials = [], quoteError, quoteLoading }) {
   const sentOutFinish = (partsConfig || []).some((p) => SENT_OUT_FINISHES.has(p.finishSlug));
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
@@ -104,6 +104,30 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
         </div>
       </fieldset>
 
+      {/* Inspection paperwork: an option the customer asks for, off by default. The fee comes
+          priced from the server with each quote (it is admin-editable), never from this file. */}
+      {onPaperworkChange && (
+        <fieldset style={{ marginBottom: 16, border: 'none', padding: 0, minWidth: 0 }}>
+          <legend className="field-label">Inspection paperwork</legend>
+          <label className={`lead-option${paperwork ? ' on' : ''}`} style={{ marginTop: 6, alignItems: 'flex-start' }}>
+            <input
+              type="checkbox"
+              name="paperwork"
+              checked={paperwork}
+              onChange={(e) => onPaperworkChange(e.target.checked)}
+              style={{ marginTop: 2, flexShrink: 0, accentColor: 'var(--accent)' }}
+            />
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1 }}>
+              {PAPERWORK_LABEL}
+              <span style={{ display: 'block', color: 'var(--text-dim)', marginTop: 2 }}>{PAPERWORK_HELP}</span>
+            </span>
+            {quote.paperworkOffer && (
+              <span style={{ fontSize: 10, color: 'var(--warn-text)', whiteSpace: 'nowrap' }} data-testid="paperwork-price">+{formatCurrency(quote.paperworkOffer.fee)}</span>
+            )}
+          </label>
+        </fieldset>
+      )}
+
       {/* Line items */}
       <div style={{ flex: 1, overflowY: 'auto', marginTop: 8 }}>
         <span className="field-label">Parts</span>
@@ -124,6 +148,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
       <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 16, marginTop: 16 }}>
         <Row label="Subtotal" value={formatCurrency(quote.subtotal)} />
         {quote.leadTimeSurcharge > 0 && <Row label={`${leadTimes.find((lt) => lt.slug === selectedLeadTime)?.name || 'Faster'} lead time`} value={`+${formatCurrency(quote.leadTimeSurcharge)}`} color="var(--warn-text)" />}
+        {quote.paperwork && <Row label="Inspection paperwork" value={`+${formatCurrency(quote.paperworkFee)}`} />}
         <Row label="Shipping estimate" value={formatCurrency(quote.shippingEstimate)} />
         {quote.nestingApplied && <Row label="Multi-part savings" value="Applied" color="var(--success-text)" />}
         <Row label="Ship weight" value={formatWeight(quote.totalWeight)} muted />
@@ -149,7 +174,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
             Request a firm quote →
           </button>
           <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-dim)', marginTop: 8 }}>
-            From the person who will cut the part{when('quote-turnaround', (v) => `, within ${v}`)}.
+            From the engineer who will run the job{when('quote-turnaround', (v) => `, within ${v}`)}.
           </div>
         </>
       ) : (

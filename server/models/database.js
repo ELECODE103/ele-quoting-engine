@@ -296,6 +296,21 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       'ALTER TABLE rfqs ADD COLUMN accepted_via TEXT',
       'ALTER TABLE rfqs ADD COLUMN po_number TEXT',
       'ALTER TABLE rfqs ADD COLUMN order_id TEXT',
+      // Inspection paperwork as an option the customer asks for (owner, 2026-11-11):
+      // a first-article report per part number and a certificate of conformance
+      // per order, with the fee as its own line on the quote and on the order.
+      'ALTER TABLE quotes ADD COLUMN paperwork INTEGER DEFAULT 0',
+      'ALTER TABLE quotes ADD COLUMN paperwork_fee REAL DEFAULT 0',
+      'ALTER TABLE orders ADD COLUMN paperwork INTEGER DEFAULT 0',
+      'ALTER TABLE orders ADD COLUMN paperwork_fee REAL DEFAULT 0',
+      // Firm-quote requests: the same paperwork checkbox (the owner prices it in),
+      // whether the request is a worn part being shipped in, and whether the
+      // customer wants that part back with the order (return shipping is priced in).
+      'ALTER TABLE rfqs ADD COLUMN paperwork INTEGER DEFAULT 0',
+      'ALTER TABLE rfqs ADD COLUMN request_type TEXT',
+      'ALTER TABLE rfqs ADD COLUMN return_part INTEGER DEFAULT 0',
+      // Orders taken from a firm quote for a shipped-in part: the original goes back in the box.
+      'ALTER TABLE orders ADD COLUMN return_part INTEGER DEFAULT 0',
     ];
     for (const sql of migrations) {
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }
@@ -309,15 +324,49 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
   }
 })();
 
+// Every write exports the whole database and rewrites the file, so a burst of
+// writes (seeding, a sweep) is grouped: inside batch() saves are held back and
+// one save happens when the outermost batch ends.
+let batchDepth = 0;
+let dirty = false;
+
 function saveToDisk() {
   if (!dbInstance) return;
-  const data = dbInstance.export();
-  const buffer = Buffer.from(data);
-  fs.writeFileSync(DB_PATH, buffer);
+  if (batchDepth > 0) { dirty = true; return; }
+  const buffer = Buffer.from(dbInstance.export());
+  // Write beside the file and rename, so a crash mid-write cannot leave a
+  // half-written database behind.
+  const tmp = `${DB_PATH}.tmp`;
+  fs.writeFileSync(tmp, buffer);
+  fs.renameSync(tmp, DB_PATH);
+  dirty = false;
+}
+
+/** Run `fn` with saves held back; write once at the end (even if `fn` throws). */
+function batch(fn) {
+  batchDepth++;
+  try {
+    return fn();
+  } finally {
+    batchDepth--;
+    if (batchDepth === 0 && dirty) saveToDisk();
+  }
+}
+
+/** Give back the space of deleted rows (the file only shrinks after this). */
+function compact() {
+  if (!dbInstance) return;
+  dbInstance.run("VACUUM");
+  saveToDisk();
+}
+
+/** Size of the database file on disk, in bytes (0 if it has not been written). */
+function fileSize() {
+  try { return fs.statSync(DB_PATH).size; } catch (_) { return 0; }
 }
 
 function getDatabase() {
   return dbInstance;
 }
 
-module.exports = { getDatabase, saveToDisk, ready, DB_PATH };
+module.exports = { getDatabase, saveToDisk, batch, compact, fileSize, ready, DB_PATH };

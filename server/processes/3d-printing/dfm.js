@@ -1,8 +1,9 @@
 /**
- * 3D printing DFM — FDM (up to 12 × 12 × 24") and Formlabs SLA (~6 × 6 × 7") in-house; SLS
+ * 3D printing DFM — FDM (up to 12 × 12 × 24") and Formlabs SLA (a Form 4 and a Form 3; a part
+ * passes the size check when it fits either one) in-house; SLS
  * rules kept for the outsourced option. Signature: run(geometry, options) → { checks, summary }
  *   options.subProcess "fdm" | "sla" | "sls"
- *   options.materialSlug / materialName / material (fdm-abs, sla-standard, …)
+ *   options.materialSlug / materialName / material (fdm-abs, sla-grey, …)
  *
  * Rules consume `features` (server/geometry/SCHEMA.md) via the feature adapter. Only a part
  * that cannot be printed FAILS: bigger than the build volume in every orientation, a
@@ -13,6 +14,20 @@
 const { summarizeChecks } = require("../shared");
 const { check, COST, mm, dia, ratio, num, materialProfile, isLegacy, meshIntegrity } = require("../dfmKit");
 const { getFeatures, extents } = require("../featureAdapter");
+
+// The shop's two SLA printers (owner, 2026-11-11: "a Formlabs Form 4 and a Form 3"). Build volumes
+// as Formlabs publishes them, W × D × H:
+//   Form 4  200 × 125 × 210 mm  — https://formlabs.com/eu/compare/3d-printers/ ("20.0 × 12.5 × 21.0 cm"), read 2026-11-11
+//   Form 3  145 × 145 × 185 mm  — Formlabs Form 3 brochure / tech specs ("14.5 × 14.5 × 18.5 cm, 5.7 × 5.7 × 7.3 in"), read 2026-11-11
+// Each envelope is stored sorted long → short, because the check allows any orientation: the
+// part's longest side goes along the printer's longest axis, and so on. These are the makers'
+// nominal volumes with no allowance for supports or the raft, the same as the FDM and SLS rows.
+const SLA_PRINTERS = [
+  { name: "Form 4", volume: [200, 125, 210], build: [210, 200, 125] },
+  { name: "Form 3", volume: [145, 145, 185], build: [185, 145, 145] },
+];
+const fitsEnvelope = (dims, build) => dims.every((d, i) => d <= build[i]);
+const volumeText = (pr) => `${pr.name} (${pr.volume.join(" × ")} mm)`;
 
 const P = {
   fdm: {
@@ -26,7 +41,8 @@ const P = {
     supportHeavy: 0.4, supportVolMajor: 0.3,
   },
   sla: {
-    build: [178, 152, 152],          // ~7 × 6 × 6"
+    build: SLA_PRINTERS[0].build,    // the larger printer; the size check below tries every printer in `printers`
+    printers: SLA_PRINTERS,
     wall: { supported: 0.5, unsupported: 1.0 },   // Hubs (Formlabs 0.2 mm floor on supported walls)
     overhang: 10, bridge: 21, bridgeVisible: 21,  // Formlabs: ≥10° from level unsupported; Hubs bridge 21 mm
     unsupportedOverhang: 5.0,                     // Formlabs 5 mm max unsupported overhang length
@@ -95,14 +111,29 @@ function run(geometry, options = {}) {
       detail: `${(thinFrac * 100).toFixed(0)}% of the surface sits on sections under 1 mm. Expect a flexible, easily cracked part; thicken or orient the thin faces vertically` }));
   }
 
-  // 2. Build volume (any orientation)
+  // 2. Build volume (any orientation). SLA has two printers: the part passes if it fits either
+  //    one, and the message names the printer (and so the limit) that applied.
   const dims = [long, mid, thin];
-  const fitsVolume = dims.every((d, i) => d <= p.build[i]);
-  const fitsOther = subProcess === "sla" && dims.every((d, i) => d <= P.fdm.build[i]);
-  checks.push(check({ id: "print-build-volume", label: "Build Platform Fit", severity: fitsVolume ? "pass" : "fail", cost: fitsVolume ? COST.NONE : COST.MAJOR, confidence: conf.extents, measured: dims, threshold: p.build,
-    detail: fitsVolume
-      ? `Part (${long.toFixed(0)} × ${mid.toFixed(0)} × ${thin.toFixed(0)} mm) fits the ${PROC} build volume (${p.build.join(" × ")} mm) in at least one orientation`
-      : `Part (${long.toFixed(0)} × ${mid.toFixed(0)} × ${thin.toFixed(0)} mm) exceeds the ${PROC} build volume (${p.build.join(" × ")} mm) in every orientation. ${fitsOther ? "It fits the FDM printer — switch process, or " : ""}Split it with a joint (dowel or tongue) or send an RFQ` }));
+  const size = `${long.toFixed(0)} × ${mid.toFixed(0)} × ${thin.toFixed(0)} mm`;
+  if (p.printers) {
+    const fits = p.printers.filter((pr) => fitsEnvelope(dims, pr.build));
+    const fitsVolume = fits.length > 0;
+    const fitsOther = dims.every((d, i) => d <= P.fdm.build[i]);
+    const others = p.printers.filter((pr) => !fits.includes(pr));
+    checks.push(check({ id: "print-build-volume", label: "Build Platform Fit", severity: fitsVolume ? "pass" : "fail", cost: fitsVolume ? COST.NONE : COST.MAJOR, confidence: conf.extents, measured: dims,
+      threshold: fitsVolume ? fits[0].build : p.build,
+      detail: fitsVolume
+        ? (fits.length === p.printers.length
+          ? `Part (${size}) fits both ${PROC} printers, the ${fits.map(volumeText).join(" and the ")}, in at least one orientation`
+          : `Part (${size}) fits the ${volumeText(fits[0])} in at least one orientation. It is too large for the ${others.map(volumeText).join(" and the ")}, so it runs on the ${fits[0].name}`)
+        : `Part (${size}) exceeds both ${PROC} build volumes, the ${p.printers.map(volumeText).join(" and the ")}, in every orientation. ${fitsOther ? "It fits the FDM printer — switch process, or " : ""}Split it with a joint (dowel or tongue) or send an RFQ` }));
+  } else {
+    const fitsVolume = fitsEnvelope(dims, p.build);
+    checks.push(check({ id: "print-build-volume", label: "Build Platform Fit", severity: fitsVolume ? "pass" : "fail", cost: fitsVolume ? COST.NONE : COST.MAJOR, confidence: conf.extents, measured: dims, threshold: p.build,
+      detail: fitsVolume
+        ? `Part (${size}) fits the ${PROC} build volume (${p.build.join(" × ")} mm) in at least one orientation`
+        : `Part (${size}) exceeds the ${PROC} build volume (${p.build.join(" × ")} mm) in every orientation. Split it with a joint (dowel or tongue) or send an RFQ` }));
+  }
 
   // 3. Overhangs and support
   const frac = num(f.overhang.areaFraction45);
@@ -251,4 +282,4 @@ function run(geometry, options = {}) {
   return { checks, summary: summarizeChecks(checks) };
 }
 
-module.exports = { run, THRESHOLDS: P };
+module.exports = { run, THRESHOLDS: P, SLA_PRINTERS };

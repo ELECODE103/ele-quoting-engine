@@ -417,6 +417,9 @@ select.input option {
 .pub-nav-links .linklike { font-size: 13px; font-weight: 500; color: var(--text-muted); padding: 8px 12px; border-radius: 8px; background: none; border: none; cursor: pointer; font-family: var(--font-body); text-align: left; }
 .pub-nav-links .linklike:hover { color: var(--accent); background: var(--accent-bg); }
 .pub-nav-links .nav-cta { margin-left: 8px; }
+/* The quote button is the one primary action in the header: the nav-link rule above must not flatten it. */
+.pub-nav-links a.nav-cta { background: var(--accent); color: #fff; padding: 9px 16px; font-weight: 600; box-shadow: var(--shadow-sm); }
+.pub-nav-links a.nav-cta:hover { background: var(--accent-dark); color: #fff; }
 .pub-nav-toggle { display: none; font-size: 16px; line-height: 1; padding: 8px 12px; }
 .br-wide { display: inline; }
 .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); }
@@ -492,6 +495,12 @@ h3.display { font-family: var(--font-display); font-size: 20px; letter-spacing: 
 .price-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); font-weight: 600; }
 .rfq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
 .rfq-grid .full { grid-column: 1 / -1; }
+/* A checkbox with its label and one line of help, in the firm-quote form. */
+.check-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border-primary); border-radius: 6px; cursor: pointer; }
+.check-row:focus-within { box-shadow: 0 0 0 3px var(--accent-glow); }
+.check-row input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; width: 16px; height: 16px; accent-color: var(--accent); }
+.check-row .check-label { display: block; font-size: 14px; font-weight: 600; color: var(--text-primary); line-height: 1.4; }
+.check-row .field-hint { display: block; margin-top: 2px; }
 
 @media (max-width: 1024px) {
   .pub-nav-links { display: none; }

@@ -116,6 +116,20 @@ per lot printSetupMinutes (hand-work rate);  floors fdm/sla/slsMinimumPartPrice
 
 `subtotal = material + machine + hand work + tooling + setup/qty + finish` → quantity discount (`volumeDiscounts`, on the whole base) → multi-part nesting savings on the material share (`nestingEfficiencyBonus`) → margin (`price = cost ÷ (1 − marginPercent)`) → per-process floor. Every line item's `meta.costBuildup` lists each step as `{ step, minutes, dollars, basis }`; the dollars sum to the subtotal (tests check this), so the admin order view and the RFQ queue can show why.
 
+### 2.6 Order roll-up and the inspection-paperwork option
+
+`calculateOrderQuote` (server/services/pricingEngine.js) settles each line to the cent, then:
+
+```
+subtotal          = Σ line totals
+lead-time fee     = subtotal × (rush multiplier − 1)
+shipping          = shippingBaseRate + weight × shippingPerKg
+paperwork fee     = paperworkFeePerPart × lines + paperworkFeePerOrder      only when the customer ticks the box
+order total       = max(subtotal + lead-time fee + shipping, minimumOrderTotal) + paperwork fee
+```
+
+The total is the sum of those amounts each rounded to the cent, so the figures printed on the quote, checkout, order, emails and documents add up to the printed total exactly. The paperwork fee (owner, 2026-11-11: a first-article inspection report per part number and a certificate of conformance per order, asked for by the customer) is added last: margin is not applied to it, the lead-time multiplier does not scale it, quantity breaks do not discount it and the order minimum does not absorb it. On a firm quote (RFQ) there is no separate fee: the owner prices it into the quoted total and the quote states that it is included.
+
 ## 3. Rule defaults and why
 
 Rates, setup minutes and handling constants are calibration choices tuned against the shop's own time estimates in `tools/vet-quotes/parts/manifest.json`; cutting-physics numbers come from the skill:
@@ -156,6 +170,8 @@ Full rate card (every rule, its default, unit and range; the admin page renders 
 | `rushMultipliers` | Rush multipliers | standard 1, expedited 1.35, rush 1.85, same-day 2.5 | × | per entry 1–5 | Price multiplier per lead-time option; 1.35 means 35% more for expedited. |
 | `shippingBaseRate` | Shipping base | 12 | $ | 0–500 | Flat shipping charge per order before weight. |
 | `shippingPerKg` | Shipping per kg | 2.5 | $/kg | 0–100 | Added to shipping for every kilogram of parts. |
+| `paperworkFeePerPart` | First-article report, per part number | 45 | $/part no. | 0–2000 | Charged when the customer ticks the inspection-paperwork box: per part number on the order (each line, not each piece). Face value: no margin, no rush multiplier, no quantity discount. Starting value, to be set by the owner. |
+| `paperworkFeePerOrder` | Certificate of conformance, per order | 15 | $/order | 0–2000 | Charged once per order when the box is ticked. Face value, as above. Starting value, to be set by the owner. |
 
 #### Materials
 

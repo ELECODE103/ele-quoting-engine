@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import { formatCurrency, formatShipDate, formatDate } from '../utils/format';
-import { ok } from '../facts';
+import { ok, PAPERWORK_LABEL } from '../facts';
 
 export default function CheckoutPage() {
   const { quoteId } = useParams();
@@ -231,6 +231,13 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
+                {quoteData?.paperwork && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{PAPERWORK_LABEL}</span>
+                    <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>{formatCurrency(quoteData.paperworkFee)}</span>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Shipping</span>
                   <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>{quoteData ? formatCurrency(quoteData.shippingEstimate) : '...'}</span>
@@ -253,6 +260,11 @@ export default function CheckoutPage() {
                   {quoteData.expiresAt && !quoteData.expired && (
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Price held until {formatDate(quoteData.expiresAt)}.</div>
                   )}
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                    {quoteData.paperwork
+                      ? 'Inspection paperwork ordered: the first-article report and the signed certificate of conformance ship with the parts.'
+                      : <>No first-article report or certificate of conformance on this order. Need them? <a href={`/quote?quote=${quoteId}`} style={{ color: 'inherit', fontWeight: 600 }}>Go back and tick the box</a>.</>}
+                  </div>
                   {quoteData.drawingFileName && (
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
                       Drawing attached: {quoteData.drawingFileName}. We review drawings before cutting; we'll contact you before work starts if anything changes the price.

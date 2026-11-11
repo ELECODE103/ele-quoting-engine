@@ -4,33 +4,49 @@ import ShopPhoto from '../components/ShopPhoto';
 import brand from '../brand';
 import { ok, when, lines } from '../facts';
 
-const visits = ok('visits-welcome');
+// Replacement parts are quoted from the physical part, not from a photo
+// (owner, 2026-11-11). The ship-to street address is never on this page: it
+// comes back from the server after a request is sent, and in the email.
+// The customer ships the part in at their cost; the original goes back with the
+// finished parts, and the quoted price covers that return shipping (owner,
+// 2026-11-11, part-return). Drop-off and how soon a price follows are still the
+// owner's to state (visits-welcome, part-quote-time).
+const REQUEST = '/rfq?nocad=1';
+const RETURN_NOTE = when('part-return', (v) => v, 'Tell us in the request if you need the original back.');
 
 const STEPS = [
-  ['Send a photo' + (visits ? ', or bring the part in' : ''),
-    'Lay a tape measure next to the worn part and take a picture with your phone. Say what machine it came off and what it runs against.'
-    + when('phone-texts', ` You can text it to ${brand.phone}.`)
-    + (visits ? ` Or drop the part off in ${brand.city}; call ahead.` : '')],
+  ['Tell us about the part',
+    'A short request: what the part is and what it does, the machine it came off, the material if you know it, how many you need and how soon. No drawing and no photo.'],
+  ['Send us the part',
+    'When the request goes in you get a reference and the address to ship to, on the screen and by email. Write the reference on the box.'
+    + when('visits-welcome', ` Or drop the part off in ${brand.city}; call ahead.`)
+    + ` ${RETURN_NOTE}`],
   when('no-cad-drawing',
-    (v) => ['It gets measured and drawn', `${v} Where the part is worn, I ask what it runs against and draw it the way it started out.`],
-    ['A person looks at it', 'The person who would make the part looks at the photo and tells you whether it can be made from that, or what else is needed: one more dimension, a second photo, or the part itself.']),
+    (v) => ['We measure it and draw it', `${v} Where the part is worn, we ask what it runs against and draw it the way it started out.`],
+    ['We measure it and send a price', 'The part is measured in the shop. Where it is worn, we ask what it runs against, so the new one is made the way the old one started out.'
+      + when('part-quote-time', (v) => ` ${v}`) + ' You get a price before anything is cut.']),
   ['Try the fit first, if the fit matters', 'A 3D printed copy can come first, so you can try it on the machine before the real material is cut.'],
-  ['Then it is machined', 'Usually from UHMW or acetal, which is what most guides, wear strips and bushings are made of. You get a price before anything is cut.'],
+  ['Then it is machined', 'Usually from UHMW or acetal, which is what most guides, wear strips and bushings are made of.'],
 ];
 
 const SEND = lines([
-  'A photo with a tape measure or a ruler in it. Two angles if the part is not flat.',
+  'What the part is and what it does.',
   'The machine it came off: make and model if you have it.',
   'What it rides on or runs against, and where it is worn.',
   'The material, if you know it. If not, say what it looks and feels like.',
   'How many you need now, and how soon.',
+  ok('part-return')
+    ? 'Whether you want the original back. The box is ticked to start with; untick it if you do not.'
+    : 'Whether you need the original back.',
 ]);
 
-const LIMITS = lines([
-  'A photo does not show a worn dimension. Expect a question or two back before a price.',
-  'Some parts cannot be made from a photo. If I need the part in hand, or a dimension you have to take off the machine, I will say so.',
-  'Seemingly identical machines do not always take identical parts. Measure the one that is on your machine.',
-  { needs: 'site-visits', text: 'If the part cannot leave the machine, I can come and look at it.' },
+const WHY = lines([
+  'A photo does not show a worn dimension, a bore or how thick the part is. The part does.',
+  'With the part on the bench, the features that have to fit get measured, not estimated from a picture.',
+  'Seemingly identical machines do not always take identical parts. Send the one that came off your machine.',
+  'More than one worn copy? Send the least worn.',
+  `Line cannot run without it? Call ${brand.phone} before you pull the part.`,
+  { needs: 'site-visits', text: 'If the part cannot leave the machine, we can come and look at it.' },
   { needs: 'min-order', text: (v) => `Minimum order: ${v}.` },
 ]);
 
@@ -43,19 +59,19 @@ export default function ReplacementPartsPage() {
             <div>
               <div className="eyebrow" style={{ marginBottom: 14 }}>Replacement parts</div>
               <h1 className="display" style={{ marginBottom: 18 }}>
-                Worn plastic part, no drawing? {visits ? 'Bring it in.' : 'Send a photo.'}
+                Worn plastic part, no drawing? Send us the part.
               </h1>
               <p className="lede" style={{ marginBottom: 26, maxWidth: 540 }}>
                 A guide, wear strip or bushing is worn out. The builder quotes weeks, stopped making it, or is not around anymore.
-                You have the part in your hand and no drawing. You do not need one to ask.
+                You have the part in your hand and no drawing. You do not need one. We work from the part itself.
               </p>
               <div className="cta-row">
-                <a className="btn btn-primary btn-lg" href={brand.phoneHref}>Call {brand.phone}</a>
-                <Link className="btn btn-outline btn-lg" to="/rfq?nocad=1">Send a photo</Link>
+                <Link className="btn btn-primary btn-lg" to={REQUEST}>Send us the part</Link>
+                <a className="btn btn-outline btn-lg" href={brand.phoneHref}>Call {brand.phone}</a>
               </div>
               <p className="next-note">
-                The call rings the person who would make the part. The photo form takes one picture and a few short answers,
-                and the reply comes from the same person{when('quote-turnaround', (v) => ` within ${v}`)}.
+                The button opens a short request. Send it and you get a reference to write on the box and the address to ship to.
+                We measure the part and send you a price.{when('part-quote-time', (v) => ` ${v}`)} The call rings the shop.
                 {when('drive-times', (v) => ` ${v}`)}
               </p>
             </div>
@@ -85,16 +101,16 @@ export default function ReplacementPartsPage() {
         <div className="pub-wrap">
           <div className="grid-2" style={{ gap: 40, alignItems: 'start' }}>
             <div>
-              <h2 className="display h2-sm">What to send</h2>
+              <h2 className="display h2-sm">What to put in the request</h2>
               <ul className="checklist">{SEND.map((t) => <li key={t}>{t}</li>)}</ul>
             </div>
             <div>
-              <h2 className="display h2-sm">What a photo will not tell me</h2>
-              <ul className="checklist">{LIMITS.map((t) => <li key={t}>{t}</li>)}</ul>
+              <h2 className="display h2-sm">Why the part, and not a photo</h2>
+              <ul className="checklist">{WHY.map((t) => <li key={t}>{t}</li>)}</ul>
             </div>
           </div>
           <div className="cta-row" style={{ marginTop: 40 }}>
-            <Link className="btn btn-primary btn-lg" to="/rfq?nocad=1">Send a photo</Link>
+            <Link className="btn btn-primary btn-lg" to={REQUEST}>Send us the part</Link>
             <a className="btn btn-outline btn-lg" href={brand.phoneHref}>{brand.phone}</a>
           </div>
           <p className="next-note">

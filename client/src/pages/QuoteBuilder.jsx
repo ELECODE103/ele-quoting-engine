@@ -51,6 +51,7 @@ export default function QuoteBuilder() {
   const [parts, setParts] = useState([]);          // { partId, fileName, geometry, dfm, meshPreview, materialSlug, grade, thicknessMm, finishSlug, quantity, process, subProcess, layerHeight, infill }
   const [activePart, setActivePart] = useState(null);
   const [selectedLeadTime, setSelectedLeadTime] = useState('standard');
+  const [paperwork, setPaperwork] = useState(false); // first-article report + certificate of conformance: off unless the buyer ticks it
   const [selectedProcess, setSelectedProcess] = useState(linkedProcess);
   // Material slug to preselect on upload; cleared when the buyer switches process.
   const [preferredMaterial, setPreferredMaterial] = useState(linkedMaterial);
@@ -103,6 +104,7 @@ export default function QuoteBuilder() {
           storeQuoteId(saved.quoteId);
           setSelectedProcess(process);
           if (lts.some((lt) => lt.slug === saved.leadTimeSlug)) setSelectedLeadTime(saved.leadTimeSlug);
+          setPaperwork(Boolean(saved.paperwork));
           setNotes(saved.notes || '');
           setDrawingName(saved.drawingFileName || '');
           setParts(saved.parts.map((p) => ({ quantity: 1, infill: 0.2, ...p, process: p.process || process })));
@@ -146,7 +148,7 @@ export default function QuoteBuilder() {
       // One quote per session: the same id is sent with every refresh so the
       // server updates that quote instead of saving a new draft each time. If
       // that quote has since been ordered, the server answers with a new id.
-      const q = await api.getQuote(configs, selectedLeadTime, { quoteId: sessionQuoteId(), process: selectedProcess, notes });
+      const q = await api.getQuote(configs, selectedLeadTime, { quoteId: sessionQuoteId(), process: selectedProcess, notes, paperwork });
       storeQuoteId(q.quoteId);
       setQuote(q);
       setDrawingName(q.drawingFileName || '');
@@ -156,7 +158,7 @@ export default function QuoteBuilder() {
       setQuoteError(err?.message || `We couldn't price this setup. Change the material or quantity and try again, or call ${brand.phone}.`);
     }
     setQuoteLoading(false);
-  }, [parts, selectedLeadTime, selectedProcess, notes]);
+  }, [parts, selectedLeadTime, selectedProcess, notes, paperwork]);
 
   async function attachDrawing(file) {
     if (!file || !quote?.quoteId) return;
@@ -711,6 +713,8 @@ export default function QuoteBuilder() {
           leadTimes={leadTimes}
           selectedLeadTime={selectedLeadTime}
           onLeadTimeChange={setSelectedLeadTime}
+          paperwork={paperwork}
+          onPaperworkChange={setPaperwork}
           partsConfig={parts}
           materials={materials}
           quoteError={quoteError}

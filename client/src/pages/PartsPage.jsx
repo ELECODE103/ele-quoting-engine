@@ -72,7 +72,7 @@ export default function PartsPage() {
 
           <div className="cta-row" style={{ marginTop: 40 }}>
             <Link className="btn btn-primary btn-lg" to="/quote">Get an instant quote</Link>
-            <Link className="btn btn-outline btn-lg" to="/replacement-parts">No CAD? Send a photo</Link>
+            <Link className="btn btn-outline btn-lg" to="/replacement-parts">No CAD? Send us the part</Link>
           </div>
           <p className="next-note">
             "Price one" opens the quote tool with that material already picked; upload a STEP or STL and the price shows in a few seconds.

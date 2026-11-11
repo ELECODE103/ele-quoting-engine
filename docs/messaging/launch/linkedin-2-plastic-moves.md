@@ -6,7 +6,7 @@ No photo needed. No shop claims in this one; the numbers are from a published pa
 
 A 30-inch HDPE panel that fits its steel frame at 72 °F is about 0.056" longer at 100 °F. The steel frame grew 0.005". The panel has nowhere to go, so it buckles.
 
-That example is from a Curbell Plastics paper on tolerances, and I think about it whenever a print comes in with ±0.005" on a two-foot polyethylene part.
+That example is from a Curbell Plastics paper on tolerances, and it comes to mind whenever a print comes in with ±0.005" on a two-foot polyethylene part.
 
 Plastic isn't soft aluminum.
 
@@ -19,7 +19,7 @@ Put the tight tolerance on the one feature that needs it.
 Pick acetal when a dimension matters and UHMW when wear matters.
 Let the parts sit before anyone measures them.
 
-If you've got a plastic part that keeps coming in wrong, send me the print. Sometimes the problem is the material or the tolerance, not the shop that cut it.
+If you've got a plastic part that keeps coming in wrong, send us the print. Sometimes the problem is the material or the tolerance, not the shop that cut it.
 
 ## Source, if someone asks
 

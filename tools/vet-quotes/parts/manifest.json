@@ -1036,11 +1036,11 @@
     },
     {
      "process": "3d-printing",
-     "materialSlug": "sla-standard",
+     "materialSlug": "sla-grey",
      "subProcess": "sla",
      "thicknessMm": null,
      "finishSlug": null,
-     "label": "3d-printing:sla-standard"
+     "label": "3d-printing:sla-grey"
     },
     {
      "process": "3d-printing",

@@ -87,6 +87,30 @@ test("order confirmation PDF", async () => {
   assert.ok(text.includes("ORDER CONFIRMATION") && text.includes("$726.00") && text.includes("1 Test Way"));
 });
 
+test("inspection paperwork: its own line on the quote and the order confirmation when ordered, and said to be absent when not", async () => {
+  const flat = (t) => t.replace(/\s+/g, " ");
+  const q = flat(assertPdf(await docs.buildQuotePdf({ quote: { ...quote, paperwork: true, paperworkFee: 105, orderTotal: 831 }, customer }), "Q-5A3C9E10"));
+  assert.ok(/Inspection paperwork \$105\.00/.test(q) && q.includes("$831.00"), "quote: line and total");
+  assert.ok(/not ordered, so not in this price/.test(flat(assertPdf(await docs.buildQuotePdf({ quote, customer }), "Q-5A3C9E10"))), "quote without it says so");
+  const oc = flat(assertPdf(await docs.buildOrderConfirmationPdf({ order: { ...order, paperwork: true, paperworkFee: 105, total: 831 }, items, customer }), "SO-7B1D4F22"));
+  assert.ok(/Inspection paperwork \$105\.00/.test(oc) && oc.includes("$831.00"), "order confirmation: line and total");
+  assert.ok(/certificate of conformance: not ordered/.test(flat(assertPdf(await docs.buildOrderConfirmationPdf({ order, items, customer }), "SO-7B1D4F22"))));
+  const ps = assertPdf(await docs.buildPackingSlipPdf({ order: { ...order, paperwork: true, paperworkFee: 105, returnPart: true }, items, customer }), "PS-7B1D4F22");
+  assert.ok(/First-article inspection report \(ordered\): 2 part numbers/.test(ps) && /Certificate of conformance \(ordered\)/.test(ps) && /original part, returned/.test(ps));
+  assert.ok(!ps.includes("$"), "still no prices on the packing slip");
+});
+
+test("RFQ response PDF states whether the price includes the paperwork and the return of a shipped-in part", async () => {
+  const flat = (t) => t.replace(/\s+/g, " ");
+  const base = { id: "9c2e6a33-aaaa-4bbb-8ccc-000000000003", contactName: "R. Requester", email: "r@example.com", quotedTotal: 412, quotedAt: "2026-11-09T15:00:00Z", parts: [] };
+  const yes = flat(assertPdf(await docs.buildQuotePdf({ rfq: { ...base, paperwork: true, requestType: "part", returnPart: true } }), "RFQ-9C2E6A33"));
+  assert.ok(/This price includes a first-article inspection report and a signed certificate of conformance/.test(yes));
+  assert.ok(/This price includes shipping your original part back to you/.test(yes));
+  const no = flat(assertPdf(await docs.buildQuotePdf({ rfq: base }), "RFQ-9C2E6A33"));
+  assert.ok(/were not requested, so this price does not include them/.test(no));
+  assert.ok(!/original part/.test(no), "nothing about a return on an ordinary request");
+});
+
 test("packing slip PDF shows quantities and no prices", async () => {
   const text = assertPdf(await docs.buildPackingSlipPdf({ order, items, customer }), "PS-7B1D4F22");
   assert.ok(text.includes("PACKING SLIP") && text.includes("TEST-001.step"));

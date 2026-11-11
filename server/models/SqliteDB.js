@@ -100,7 +100,13 @@ const FIELD_TO_COLUMN = {
   quoteSentAt: "quote_sent_at",
   acceptedAt: "accepted_at",
   acceptedVia: "accepted_via",
+  paperworkFee: "paperwork_fee",
+  requestType: "request_type",
+  returnPart: "return_part",
 };
+
+// 0/1 columns that read back as booleans (SQLite has no boolean type).
+const BOOLEAN_COLUMNS = new Set(["active", "paperwork", "return_part"]);
 
 // Reverse mapping for deserialization
 const COLUMN_TO_FIELD = {};
@@ -210,8 +216,8 @@ class SqliteDB {
 
       // Map snake_case back to camelCase
       const fieldName = COLUMN_TO_FIELD[col] || col;
-      // Convert 'active' integer back to boolean
-      if (col === "active") {
+      // Convert 0/1 flag columns back to booleans (NULL on a row written before the column existed reads as false)
+      if (BOOLEAN_COLUMNS.has(col)) {
         result[fieldName] = value === 1 || value === true;
       } else {
         result[fieldName] = value;

@@ -184,6 +184,7 @@ export default function AdminPanel() {
                         >
                           {String(o.id).slice(0, 8)}
                         </a>
+                        {o.paperwork && <div style={{ marginTop: 4 }}><span className="tag tag-warn" title="The customer ordered a first-article inspection report and a certificate of conformance">FAI + CoC</span></div>}
                       </td>
                       <td style={{ padding: '10px 14px' }}>{o.shippingName || '—'}</td>
                       <td style={{ padding: '10px 14px' }}>{o.itemCount}</td>
@@ -422,7 +423,7 @@ export default function AdminPanel() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}>
-                  {['Date', 'Parts', 'Units', 'Lead Time', 'Subtotal', 'Total'].map((h) => (
+                  {['Date', 'Parts', 'Units', 'Lead Time', 'Subtotal', 'FAI + CoC', 'Total'].map((h) => (
                     <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                       {h}
                     </th>
@@ -435,12 +436,15 @@ export default function AdminPanel() {
                     <td style={{ padding: '10px 14px', color: 'var(--text-dim)' }}>
                       {new Date(q.createdAt).toLocaleString()}
                     </td>
-                    <td style={{ padding: '10px 14px' }}>{q.partCount}</td>
-                    <td style={{ padding: '10px 14px' }}>{q.totalUnits}</td>
+                    <td style={{ padding: '10px 14px' }}>{q.partCount ?? (q.lineItems || []).length}</td>
+                    <td style={{ padding: '10px 14px' }}>{q.totalUnits ?? (q.lineItems || []).reduce((n, li) => n + (Number(li.quantity) || 0), 0)}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <span className="tag tag-info">{q.leadTimeSlug}</span>
                     </td>
                     <td style={{ padding: '10px 14px' }}>{formatCurrency(q.subtotal)}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      {q.paperwork ? <span className="tag tag-warn">{formatCurrency(q.paperworkFee || 0)}</span> : <span style={{ color: 'var(--text-dim)' }}>—</span>}
+                    </td>
                     <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--accent)' }}>
                       {formatCurrency(q.orderTotal)}
                     </td>

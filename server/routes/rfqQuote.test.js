@@ -30,7 +30,7 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
   }
   async function quoted(rfqId, body = {}) {
     h.sent.length = 0;
-    const r = await h.put(`/api/rfq/admin/${rfqId}`, { status: "quoted", quotedTotal: 4250, quotedLeadDays: 15, quoteNote: "Price covers 1,000 pcs in natural Delrin, FAI included.", partQuantities: { [partId]: 1000 }, ...body }, owner);
+    const r = await h.put(`/api/rfq/admin/${rfqId}`, { status: "quoted", quotedTotal: 4250, quotedLeadDays: 15, quoteNote: "Price covers 1,000 pcs in natural Delrin, bagged 10 per.", partQuantities: { [partId]: 1000 }, ...body }, owner);
     assert.strictEqual(r.status, 200, r.text);
     return { res: r.body, mail: h.sent[0], token: tokenFrom(h.sent[0]) };
   }
@@ -270,7 +270,7 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
     assert.strictEqual((await h.get(`/api/rfq/quote/${second.token}`)).body.quotedTotal, 3900);
     // Saving the same quote again without changes doesn't re-email the customer.
     h.sent.length = 0;
-    await h.put(`/api/rfq/admin/${id}`, { status: "quoted", quotedTotal: 3900, quotedLeadDays: 15, quoteNote: "Price covers 1,000 pcs in natural Delrin, FAI included." }, owner);
+    await h.put(`/api/rfq/admin/${id}`, { status: "quoted", quotedTotal: 3900, quotedLeadDays: 15, quoteNote: "Price covers 1,000 pcs in natural Delrin, bagged 10 per." }, owner);
     assert.strictEqual(h.sent.length, 0);
     await h.put(`/api/rfq/admin/${id}`, { status: "quoted", resend: true }, owner);
     assert.strictEqual(h.sent.length, 1, "explicit resend does");
@@ -316,6 +316,199 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
     const bad = await h.form("/api/rfq", { contactName: "Sam Maint", email: "sam@plant.test" }, { drawing: { name: "setup.exe", data: Buffer.from("MZ") } });
     assert.strictEqual(bad.status, 400);
     assert.ok(/isn't accepted/.test(bad.body.error));
+  });
+
+  test("a send-the-part request answers with a reference and the ship-to address, and emails both to the buyer", async () => {
+    const shipFrom = require("../config/shipFrom.json");
+    h.sent.length = 0;
+    const r = await h.form("/api/rfq", { requestType: "part", contactName: "Sam Maint", email: "sam@plant.test", quantities: "2 now", notes: "NO DRAWING. The customer is sending the part.\nWhat it is and does: UHMW carton guide, worn on the leading edge" });
+    assert.strictEqual(r.status, 201, r.text);
+    assert.strictEqual(r.body.reference, String(r.body.rfqId).slice(0, 8).toUpperCase(), "the reference is the short request id");
+    assert.deepStrictEqual(r.body.shipTo.lines, [shipFrom.address, `${shipFrom.city}, ${shipFrom.state} ${shipFrom.zip}`]);
+    assert.ok(r.body.shipTo.name, "addressed to the business");
+    const buyer = h.sent.find((m) => m.to === "sam@plant.test");
+    assert.ok(buyer, "buyer email sent");
+    for (const body of [buyer.text, buyer.html]) {
+      assert.ok(body.includes(r.body.reference), "reference in the email");
+      assert.ok(body.includes(shipFrom.address) && body.includes(shipFrom.zip), "ship-to address in the email");
+    }
+    assert.ok(!/photo/i.test(buyer.text), "the buyer is asked for the part, not a photo");
+    const shop = h.sent.find((m) => m.to === "owner@shop.test");
+    assert.ok(shop && shop.text.includes(r.body.reference) && /ship the part/i.test(shop.text), "the shop is told a part is on its way");
+    assert.ok(rfqsDB.getById(r.body.rfqId).notes.startsWith("NO DRAWING."), "the request details stay in the notes");
+  });
+
+  test("an ordinary firm-quote request never carries the ship-to address", async () => {
+    const shipFrom = require("../config/shipFrom.json");
+    h.sent.length = 0;
+    const plain = await h.form("/api/rfq", { contactName: "Pat Purchasing", email: "pat@oem.test", quantities: "250 / 500" });
+    assert.strictEqual(plain.status, 201, plain.text);
+    assert.strictEqual(plain.body.shipTo, undefined);
+    assert.strictEqual(plain.body.reference, undefined);
+    assert.ok(h.sent.every((m) => !m.text.includes(shipFrom.address) && !m.html.includes(shipFrom.address)), "no street address in the emails");
+    // From the quote tool the request is about the uploaded parts, whatever the form says.
+    const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 500)], leadTimeSlug: "standard" });
+    const gated = await h.form("/api/rfq", { requestType: "part", quoteId: q.body.quoteId, contactName: "Pat Purchasing", email: "pat@oem.test" });
+    assert.strictEqual(gated.status, 201, gated.text);
+    assert.strictEqual(gated.body.shipTo, undefined);
+  });
+
+  // ─── Owner decisions, 2026-11-11: paperwork on request; the original part goes back ───
+  const { pdfText } = require("../testSupport/pdfText");
+  const documents = require("../services/documents");
+  const flat = (t) => t.replace(/\s+/g, " ");
+
+  test("firm-quote form: the paperwork box is stored, the shop is told to price it in, and the admin queue shows it", async () => {
+    h.sent.length = 0;
+    const r = await h.form("/api/rfq", { contactName: "Pat Purchasing", email: "pat@oem.test", quantities: "250 / 500", paperwork: "true" });
+    assert.strictEqual(r.status, 201, r.text);
+    assert.strictEqual(r.body.paperwork, true);
+    const rfq = rfqsDB.getById(r.body.rfqId);
+    assert.strictEqual(rfq.paperwork, true, "a real column, not a line in the notes");
+    assert.strictEqual(rfq.returnPart, false);
+    const shop = h.sent.find((m) => m.to === "owner@shop.test");
+    assert.ok(shop.text.includes("Customer asked for a first-article inspection report and a certificate of conformance — include them in the price."));
+    assert.ok(shop.text.includes("FAI + CoC: YES — price it in"));
+    const buyer = h.sent.find((m) => m.to === "pat@oem.test");
+    assert.ok(/You asked for a first-article inspection report and a certificate of conformance/.test(buyer.text));
+    const row = (await h.get("/api/rfq/admin/list", owner)).body.find((x) => x.id === r.body.rfqId);
+    assert.strictEqual(row.paperwork, true);
+  });
+
+  test("a request without the box: nothing is assumed, and the shop email says it was not requested", async () => {
+    h.sent.length = 0;
+    const r = await h.form("/api/rfq", { contactName: "Pat Purchasing", email: "pat@oem.test", quantities: "250", paperwork: "false" });
+    assert.strictEqual(rfqsDB.getById(r.body.rfqId).paperwork, false);
+    const shop = h.sent.find((m) => m.to === "owner@shop.test");
+    assert.ok(shop.text.includes("FAI + CoC: Not requested"));
+    assert.ok(!/include them in the price/.test(shop.text));
+    const none = await h.form("/api/rfq", { contactName: "Pat Purchasing", email: "pat@oem.test" });
+    assert.strictEqual(rfqsDB.getById(none.body.rfqId).paperwork, false, "a post that does not mention it is a no");
+  });
+
+  test("the firm quote says whether the price includes the paperwork: email, quote page and PDF agree", async () => {
+    const yes = await h.form("/api/rfq", { contactName: "Pat Purchasing", email: "pat@oem.test", quantities: "250", paperwork: "true" });
+    const q = await quoted(yes.body.rfqId, { partQuantities: undefined, quotedTotal: 900, quotedLeadDays: 10 });
+    const included = "This price includes a first-article inspection report and a signed certificate of conformance, shipped with the parts.";
+    assert.ok(q.mail.text.includes(included) && q.mail.html.includes("first-article inspection report and a signed certificate of conformance"));
+    assert.ok(q.mail.text.includes("Inspection paperwork: First-article report and certificate of conformance: included"));
+    const page = await h.get(`/api/rfq/quote/${q.token}`);
+    assert.strictEqual(page.body.paperwork, true);
+    assert.deepStrictEqual(page.body.covers, [included]);
+    const pdf = flat(pdfText(await documents.buildQuotePdf({ rfq: rfqsDB.getById(yes.body.rfqId) })));
+    assert.ok(pdf.includes(included), "RFQ response PDF states it");
+
+    const no = await h.form("/api/rfq", { contactName: "Pat Purchasing", email: "pat@oem.test", quantities: "250" });
+    const q2 = await quoted(no.body.rfqId, { partQuantities: undefined, quotedTotal: 800, quotedLeadDays: 10 });
+    assert.ok(/were not requested, so this price does not include them/.test(q2.mail.text));
+    assert.ok(q2.mail.text.includes("Inspection paperwork: Not requested, not included"));
+    const page2 = await h.get(`/api/rfq/quote/${q2.token}`);
+    assert.strictEqual(page2.body.paperwork, false);
+    assert.strictEqual(page2.body.covers.length, 1);
+    const pdf2 = flat(pdfText(await documents.buildQuotePdf({ rfq: rfqsDB.getById(no.body.rfqId) })));
+    assert.ok(/were not requested, so this price does not include them/.test(pdf2));
+    assert.ok(!/return/i.test(q2.mail.text.split("Review and accept")[0]), "nothing about returning a part on an ordinary request");
+
+    // Accepted: the order is flagged for the shop, with no separate amount (it is inside the quoted price).
+    h.sent.length = 0;
+    const a = await h.post(`/api/rfq/quote/${q.token}/accept`, { method: "po", poNumber: "PO-FAI-1", ...SHIP });
+    assert.strictEqual(a.status, 201, a.text);
+    const order = ordersDB.getById(rfqsDB.getById(yes.body.rfqId).orderId);
+    assert.strictEqual(order.paperwork, true);
+    assert.strictEqual(order.paperworkFee, 0);
+    assert.strictEqual(order.total, 900);
+    assert.strictEqual(order.subtotal, 900, "the quoted total is the whole order: nothing is added on top");
+    const toShop = h.sent.find((m) => m.to === "owner@shop.test");
+    assert.ok(/FAI \+ CoC ORDERED/.test(toShop.text));
+    const toBuyer = h.sent.find((m) => m.to === "pat@oem.test");
+    assert.ok(toBuyer.text.includes("First-article inspection report and certificate of conformance (included in the quoted price)"));
+    const items = orderItemsDB.query((i) => i.orderId === order.id);
+    const oc = flat(pdfText(await documents.buildOrderConfirmationPdf({ order, items })));
+    assert.ok(/Inspection paperwork Included/.test(oc) && /ordered, included in the quoted price/.test(oc));
+    assert.ok(/First-article inspection report \(ordered\)/.test(pdfText(await documents.buildPackingSlipPdf({ order, items }))));
+    assert.strictEqual((await h.get(`/api/orders/${order.id}`, owner)).body.paperwork, true, "the admin drawer gets the flag");
+  });
+
+  test("from the quote tool: a box ticked on the online quote carries into the request unless the form says otherwise", async () => {
+    const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 500)], leadTimeSlug: "standard", paperwork: true });
+    assert.strictEqual(q.body.paperwork, true);
+    const carried = await h.form("/api/rfq", { quoteId: q.body.quoteId, contactName: "Pat Purchasing", email: "pat@oem.test" });
+    assert.strictEqual(rfqsDB.getById(carried.body.rfqId).paperwork, true);
+    assert.ok(Math.abs(rfqsDB.getById(carried.body.rfqId).budgetTotal - q.body.orderTotal) < 0.005, "the budgetary total the owner sees includes the fee the buyer saw");
+    const q2 = await h.post("/api/quote", { parts: [h.cncConfig(partId, 500)], leadTimeSlug: "standard", paperwork: true });
+    const unticked = await h.form("/api/rfq", { quoteId: q2.body.quoteId, contactName: "Pat Purchasing", email: "pat@oem.test", paperwork: "false" });
+    assert.strictEqual(rfqsDB.getById(unticked.body.rfqId).paperwork, false, "the form's own answer wins");
+  });
+
+  test("send-the-part request with the return box ticked: stored, and the shop is reminded to price the return shipping in", async () => {
+    h.sent.length = 0;
+    const r = await h.form("/api/rfq", { requestType: "part", returnPart: "true", contactName: "Sam Maint", email: "sam@plant.test", quantities: "2 now", notes: "NO DRAWING. The customer is sending the part.\nWhat it is and does: UHMW carton guide" });
+    assert.strictEqual(r.status, 201, r.text);
+    assert.strictEqual(r.body.returnPart, true);
+    const rfq = rfqsDB.getById(r.body.rfqId);
+    assert.strictEqual(rfq.requestType, "part");
+    assert.strictEqual(rfq.returnPart, true);
+    const shop = h.sent.find((m) => m.to === "owner@shop.test");
+    for (const body of [shop.text, shop.html]) assert.ok(body.includes("Customer wants the original back — include return shipping in the price."), "the reminder, in both bodies");
+    assert.ok(shop.text.includes("Original part back: YES — price in the return shipping"));
+    const buyer = h.sent.find((m) => m.to === "sam@plant.test");
+    assert.ok(/Shipping the part to us is at your cost/.test(buyer.text));
+    assert.ok(/we send it back with the finished parts, and the price we quote includes that return shipping/.test(buyer.text));
+    assert.ok(!/within \d|business day/i.test(buyer.text.split("--")[0]), "no promise about how soon the price follows (part-quote-time is unconfirmed)");
+    assert.ok(!/drop/i.test(buyer.text), "nothing about drop-off");
+    const row = (await h.get("/api/rfq/admin/list", owner)).body.find((x) => x.id === r.body.rfqId);
+    assert.strictEqual(row.returnPart, true);
+    assert.strictEqual(row.requestType, "part");
+
+    // Quoted → the customer is told the price includes the return; then accepted → the order says to send it back.
+    const q = await quoted(r.body.rfqId, { partQuantities: undefined, quotedTotal: 412, quotedLeadDays: 8, quoteNote: "2 pcs in natural UHMW." });
+    const returns = "This price includes shipping your original part back to you with the finished parts.";
+    assert.ok(q.mail.text.includes(returns) && q.mail.html.includes("shipping your original part back"));
+    assert.ok(q.mail.text.includes("Original part: Returned with your order: return shipping included"));
+    const page = await h.get(`/api/rfq/quote/${q.token}`);
+    assert.strictEqual(page.body.returnPart, true);
+    assert.ok(page.body.covers.includes(returns));
+    assert.ok(flat(pdfText(await documents.buildQuotePdf({ rfq: rfqsDB.getById(r.body.rfqId) }))).includes(returns), "the PDF says so too");
+    h.sent.length = 0;
+    const a = await h.post(`/api/rfq/quote/${q.token}/accept`, { method: "po", poNumber: "PO-PART-1", ...SHIP });
+    assert.strictEqual(a.status, 201, a.text);
+    const order = ordersDB.getById(rfqsDB.getById(r.body.rfqId).orderId);
+    assert.strictEqual(order.returnPart, true);
+    assert.strictEqual(order.total, 412, "no separate return-shipping charge: it is in the quoted price");
+    assert.ok(/RETURN THE ORIGINAL/.test(h.sent.find((m) => m.to === "owner@shop.test").text));
+    assert.ok(/Your original part comes back in the box/.test(h.sent.find((m) => m.to === "sam@plant.test").text));
+    const items = orderItemsDB.query((i) => i.orderId === order.id);
+    assert.ok(/Customer's original part, returned/.test(pdfText(await documents.buildPackingSlipPdf({ order, items }))), "the packer is told to put it in the box");
+  });
+
+  test("send-the-part request with the box unticked: no reminder, and the quote says the part is not coming back", async () => {
+    h.sent.length = 0;
+    const r = await h.form("/api/rfq", { requestType: "part", returnPart: "false", contactName: "Sam Maint", email: "sam@plant.test", notes: "NO DRAWING. Keep the old one." });
+    assert.strictEqual(r.body.returnPart, false);
+    assert.strictEqual(rfqsDB.getById(r.body.rfqId).returnPart, false);
+    const shop = h.sent.find((m) => m.to === "owner@shop.test");
+    assert.ok(!shop.text.includes("Customer wants the original back"));
+    assert.ok(shop.text.includes("Original part back: No"));
+    assert.ok(/You did not ask for the original back/.test(h.sent.find((m) => m.to === "sam@plant.test").text));
+    const q = await quoted(r.body.rfqId, { partQuantities: undefined, quotedTotal: 380, quotedLeadDays: 8 });
+    assert.ok(/does not include returning it/.test(q.mail.text));
+    // The owner can change what the price covers before sending (the customer phoned to add both):
+    // the re-sent quote states the new facts, and the old link is retired.
+    const q3 = await quoted(r.body.rfqId, { partQuantities: undefined, quotedTotal: 460, quotedLeadDays: 8, paperwork: true, returnPart: true });
+    assert.strictEqual(q3.res.quoteSent, true);
+    assert.strictEqual(rfqsDB.getById(r.body.rfqId).paperwork, true);
+    assert.strictEqual(rfqsDB.getById(r.body.rfqId).returnPart, true);
+    assert.ok(/This price includes a first-article inspection report/.test(q3.mail.text) && /includes shipping your original part back/.test(q3.mail.text));
+    assert.strictEqual((await h.get(`/api/rfq/quote/${q.token}`)).status, 410, "the earlier link is superseded");
+    // A change to what the price covers alone is a revision: it re-sends.
+    const q4 = await quoted(r.body.rfqId, { partQuantities: undefined, quotedTotal: 460, quotedLeadDays: 8, paperwork: false });
+    assert.strictEqual(q4.res.quoteSent, true);
+    assert.ok(/does not include them/.test(q4.mail.text));
+    assert.strictEqual((await h.put(`/api/rfq/admin/${r.body.rfqId}`, { paperwork: true }, undefined)).status, 401, "only the owner can change it");
+    // The box means something only on a part request.
+    const drawing = await h.form("/api/rfq", { returnPart: "true", contactName: "Pat Purchasing", email: "pat@oem.test" });
+    assert.strictEqual(rfqsDB.getById(drawing.body.rfqId).returnPart, false);
+    assert.strictEqual(drawing.body.returnPart, undefined);
   });
 
   await run(h.stop);

@@ -31,9 +31,20 @@ const MATERIAL_GUIDANCE = [
   { match: ['brass'], text: 'Free-machining, corrosion-resistant, conductive. Fittings, bushings, contacts.' },
 ];
 
+// What a layer height means depends on the material's own range: the default
+// is "standard", anything finer is slower, anything coarser is faster.
+function layerNote(lh, mat) {
+  const std = Number(mat?.defaultLayerHeight);
+  if (!Number.isFinite(std) || (mat?.layerHeights || []).length < 2) return '';
+  if (lh === std) return ' — standard';
+  return lh < std ? ' — finer detail, slower' : ' — draft, faster';
+}
+
 function getGuidance(mat) {
   if (!mat) return null;
   // Match whole words in the slug + name only ("pla" must not hit "plastic" or "plate").
+  // SLA resins carry their own one-line description in the catalog (editable in Admin → Materials).
+  if (mat.subProcess === 'sla' && mat.description) return mat.description;
   const hay = `${mat.slug || ''} ${mat.name || ''}`.toLowerCase().replace(/[-/_()]/g, ' ');
   const words = new Set(hay.split(/\s+/));
   const hit = MATERIAL_GUIDANCE.find((g) => g.match.some((k) => words.has(k) || (k.includes(' ') && hay.includes(k))));
@@ -161,7 +172,7 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
             <span className="field-label">Layer height</span>
             <select className="input" value={part.layerHeight || currentMat.defaultLayerHeight} onChange={(e) => onChange({ layerHeight: parseFloat(e.target.value) })}>
               {currentMat.layerHeights.map((lh) => (
-                <option key={lh} value={lh}>{lh} mm{lh <= 0.1 ? ' — fine detail, slower' : lh >= 0.3 ? ' — draft, fastest' : ' — standard'}</option>
+                <option key={lh} value={lh}>{lh} mm{layerNote(lh, currentMat)}</option>
               ))}
             </select>
           </label>

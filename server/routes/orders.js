@@ -129,10 +129,21 @@ router.post("/checkout-session", authenticate, async (req, res) => {
     }
 
     // What the total is made of, so the order page, emails and documents can show it.
-    const partsSubtotal = Number(quote.subtotal) || 0;
-    const leadTimeSurcharge = Math.max(0, Number(quote.leadTimeSurcharge) || 0);
-    const shippingCost = Math.max(0, Number(quote.shippingEstimate) || 0);
-    const itemized = partsSubtotal > 0 && Math.abs(partsSubtotal + leadTimeSurcharge + shippingCost - orderTotal) < 0.01;
+    // Each in whole cents, as the customer saw them on the quote.
+    const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
+    const partsSubtotal = cents(quote.subtotal);
+    const leadTimeSurcharge = Math.max(0, cents(quote.leadTimeSurcharge));
+    const shippingCost = Math.max(0, cents(quote.shippingEstimate));
+    // Inspection paperwork (first-article report + certificate of conformance) rides on the
+    // stored quote, which the server priced: the request body cannot switch it on or change
+    // the fee. A quote saved before the option existed has neither column and reads as "no".
+    const paperwork = Boolean(quote.paperwork);
+    const paperworkFee = paperwork ? Math.max(0, Number(quote.paperworkFee) || 0) : 0;
+    if (paperworkFee > orderTotal + 0.005) {
+      return res.status(409).json({ error: "This quote's total does not add up. Reopen the quote to get today's price.", code: "quote-inconsistent" });
+    }
+    // (0.02: a quote priced before amounts were settled to the cent can sit a cent or so off its rounded parts.)
+    const itemized = partsSubtotal > 0 && Math.abs(partsSubtotal + leadTimeSurcharge + shippingCost + paperworkFee - orderTotal) < 0.02;
 
     // Create the order with pending_payment status
     const order = ordersDB.insert({
@@ -143,9 +154,13 @@ router.post("/checkout-session", authenticate, async (req, res) => {
       shippingMethod: "standard",
       // When the parts, the lead-time fee and shipping add up to the total they are
       // stored separately; otherwise (order minimum applied, older quote) one line.
+      // The paperwork fee is its own line either way, so subtotal + lead-time fee +
+      // paperwork + shipping always equals the total.
       shippingCost: itemized ? shippingCost : 0,
       leadTimeSurcharge: itemized ? leadTimeSurcharge : 0,
-      subtotal: itemized ? partsSubtotal : orderTotal,
+      subtotal: itemized ? partsSubtotal : Math.round((orderTotal - paperworkFee) * 100) / 100,
+      paperwork,
+      paperworkFee,
       tax: 0,
       total: orderTotal,
       notes: "",
@@ -268,7 +283,10 @@ router.post("/", authenticate, requireAdmin, (req, res) => {
       shippingCountry: sanitizeString(shippingCountry || "US", 5),
       shippingMethod: sanitizeString(shippingMethod || "standard", 50),
       shippingCost: cleanShippingCost,
-      subtotal: quote.orderTotal || quote.subtotal || 0,
+      // The quote's total with the paperwork fee taken out, so the fee stays its own line.
+      subtotal: Math.round(((quote.orderTotal || quote.subtotal || 0) - (quote.paperwork ? Number(quote.paperworkFee) || 0 : 0)) * 100) / 100,
+      paperwork: Boolean(quote.paperwork),
+      paperworkFee: quote.paperwork ? Number(quote.paperworkFee) || 0 : 0,
       tax: 0,
       total: (quote.orderTotal || quote.subtotal || 0) + cleanShippingCost,      notes: sanitizeString(notes || "", 2000),
     });
@@ -473,7 +491,8 @@ router.post("/:id/reorder", authenticate, (req, res) => {
       });
     }
     const { saveQuote } = require("./api");
-    const input = { parts: configs, process: configs[0].process };
+    // The reorder keeps the paperwork choice (re-priced at today's fee, like everything else).
+    const input = { parts: configs, process: configs[0].process, paperwork: Boolean(order.paperwork) };
     let result;
     try {
       result = saveQuote({ ...input, leadTimeSlug: order.leadTimeSlug || "standard" }, req.user);
