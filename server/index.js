@@ -18,12 +18,24 @@ if (process.env.NODE_ENV === "production") {
   }
 }
 
+// A file-encryption key that is set but unusable (too short, a placeholder) is a
+// misconfiguration, not a preference: stop the deploy rather than "encrypt" with it.
+{
+  const keyProblem = require("./services/fileCrypto").configProblem();
+  if (keyProblem) {
+    console.error(`${process.env.NODE_ENV === "production" ? "FATAL" : "WARNING"}: ${keyProblem}`);
+    if (process.env.NODE_ENV === "production") process.exit(1);
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ─── Trust proxy (required behind Railway/load balancer) ─────────
 if (process.env.NODE_ENV === "production") {
-  app.set("trust proxy", 1);
+  // Hops whose X-Forwarded-For entry is believed: Railway's edge is one. Behind a second proxy
+  // (Cloudflare in front of Railway) set TRUST_PROXY_HOPS=2, or every visitor shares one rate limit.
+  app.set("trust proxy", require("./security/limits").limits.trustProxyHops);
 }
 
 // ─── Security Middleware ────────────────────────────────────────
@@ -64,9 +76,11 @@ app.use(helmet({
 // Rate limiting — generous for normal use, blocks abuse
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,   // 15 minutes
-  max: 200,                     // per IP
+  max: require("./security/limits").limits.rateApiPer15Min, // per client (default 200)
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: require("./security/clientKey").clientKey,   // IPv6 clients are keyed by /64
+  skip: require("./security/rateLimits").skipGeneral,        // health check; quote pricing has its own limiter
   message: { error: "Too many requests, please try again later." },
 });
 app.use("/api", apiLimiter);
@@ -74,10 +88,17 @@ app.use("/api", apiLimiter);
 // Stricter limit on file uploads
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 50,
+  max: require("./security/limits").limits.rateUploadPer15Min, // default 50
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: require("./security/clientKey").clientKey,
   message: { error: "Upload limit reached. Please try again later." },
 });
 app.use("/api/upload", uploadLimiter);
+
+// Limiters for the other expensive routes: quote pricing, quote session reads,
+// DXF unit changes, drawing uploads, PDFs, backups (server/security/rateLimits.js).
+require("./security/rateLimits").install(app);
 
 // CORS — allow dev and production origins
 const allowedOrigins = [
@@ -111,8 +132,11 @@ app.use(require("compression")());
 const stripeWebhook = require("./routes/stripeWebhook");
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhook);
 
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+// Request bodies: 1 MB of JSON is far more than any route here sends (the largest is a quote
+// configuration of a few KB; files go through multer, not through these parsers). A route that
+// ever needs more must raise the limit for itself, not here. JSON_BODY_LIMIT_KB overrides.
+app.use(express.json({ limit: require("./security/limits").limits.jsonBodyBytes }));
+app.use(express.urlencoded({ extended: false, limit: 100 * 1024, parameterLimit: 100 }));
 
 // ─── Health Check (no version exposure) ──────────────────────────
 app.get("/api/health", (req, res) => {
@@ -139,12 +163,16 @@ app.use("/api/orders", orderRoutes);
 // them is capped per IP well above what a buyer sends and well below a flood.
 const rfqCreateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 20,
+  max: require("./security/limits").limits.rateRfqPerHour, // default 20
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: require("./security/clientKey").clientKey,
   message: { error: `Too many requests from this address. Call ${require("../shared/brand.json").phone} and we'll take it by phone.` },
 });
 app.post("/api/rfq", rfqCreateLimiter);
+// An attachment is written to disk before the route sees it: hold the storage ceiling and the
+// client's daily upload budget first (the RFQ form sends at most one 25 MB file).
+app.post("/api/rfq", require("./security/uploadGuards").admit({ chargeDeclared: true, maxRequestBytes: () => 26 * 1024 * 1024 }));
 const rfqRoutes = require("./routes/rfq");
 app.use("/api/rfq", rfqRoutes);
 
@@ -171,11 +199,11 @@ app.use((err, req, res, next) => {
   if (status === 500) console.error(err.stack);
 
   if (err.code === "LIMIT_FILE_SIZE") {
-    return res.status(413).json({ error: "File too large. Maximum size is 100MB." });
+    return res.status(413).json({ error: `File too large. Maximum size is ${Math.round(require("./security/limits").limits.uploadMaxFileBytes / 1048576)} MB.` });
   }
   // Other upload refusals (multer): too many files, a field we don't read.
   if (err.name === "MulterError") {
-    return res.status(400).json({ error: err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE" ? "Upload up to 20 part files at a time." : "That upload couldn't be read. Try again." });
+    return res.status(400).json({ error: err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE" ? `Upload up to ${require("./security/limits").limits.uploadMaxFiles} part files at a time.` : "That upload couldn't be read. Try again." });
   }
   // A body express could not parse, or one that is too big.
   if (err.type === "entity.parse.failed") return res.status(400).json({ error: "The request body isn't valid JSON." });
@@ -206,7 +234,11 @@ async function start() {
   // linger). Window via UPLOAD_RETENTION_HOURS (default 7 days).
   // Files behind an order or an open firm-quote request are kept whatever their age.
   const { startRetentionSweep, neededUploads } = require("./services/fileRetention");
-  startRetentionSweep(path.join(__dirname, "..", "data", "uploads"), { keep: () => neededUploads(require("./models")) });
+  const uploadGuards = require("./security/uploadGuards");
+  startRetentionSweep(path.join(uploadGuards.DATA_DIR, "uploads"), { keep: () => neededUploads(require("./models")) });
+  // Drawings (instant-quote PDFs, RFQ attachments) no quote, order or request refers to any more.
+  require("./services/fileRetention").startDrawingSweep(uploadGuards.STORAGE_DIRS.slice(1), require("./models"), { onSwept: () => uploadGuards.storage.invalidate() });
+  uploadGuards.storage.hasRoom(0); // logs now if the upload folders are already near or over their ceiling
 
   // The rows that go with those files: abandoned uploads and lapsed draft
   // quotes leave the database too, so the file (rewritten on every save) stays
@@ -234,7 +266,11 @@ async function start() {
     if (!process.env.STRIPE_WEBHOOK_SECRET) console.warn("WARNING: STRIPE_WEBHOOK_SECRET not set — Stripe webhooks are refused; orders are marked paid only when the buyer returns to the order page.");
     if (!process.env.ADMIN_EMAIL) console.warn("WARNING: ADMIN_EMAIL not set — no account will be given the admin role.");
     if (!process.env.FRONTEND_URL) console.warn("WARNING: FRONTEND_URL not set — links in emails are built from the request's Host header.");
-    if (!process.env.NORD_FILE_ENC_KEY) console.warn("WARNING: NORD_FILE_ENC_KEY not set — uploaded CAD files are stored unencrypted.");
+    if (!process.env.NORD_FILE_ENC_KEY) {
+      console.warn("WARNING: NORD_FILE_ENC_KEY not set — customer files are stored UNENCRYPTED on the volume: CAD uploads (data/uploads), drawings attached to instant quotes (data/quote-drawings) and RFQ attachments (data/rfq-drawings). Anyone with access to the volume or a volume backup can read them. To turn encryption on, follow docs/security/file-encryption.md (the owner creates the key in Railway).");
+    } else {
+      console.log("File encryption: on — new CAD uploads, quote drawings and RFQ attachments are stored encrypted (AES-256-GCM).");
+    }
   }
 
   app.listen(PORT, () => {

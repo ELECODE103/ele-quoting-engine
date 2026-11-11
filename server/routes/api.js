@@ -3,7 +3,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { randomUUID: uuidv4 } = require("crypto"); // RFC 4122 v4, same format the uuid package produced
-const { parseFile } = require("../parsers/fileParser");
+const { pool: parsePool } = require("../parsers/parsePool");
 const { PricingEngine } = require("../services/pricingEngine");
 const quoteGate = require("../services/quoteGate");
 const { runDFMAnalysis, defaultProcessSlug } = require("../parsers/fileParser");
@@ -19,37 +19,107 @@ const shipBy = require("../services/shipBy");
 const { validateFileContent } = require("../middleware/fileValidator");
 const fileCrypto = require("../services/fileCrypto");
 const dxf = require("../geometry/dxf");
+const { limits } = require("../security/limits");
+const uploadGuards = require("../security/uploadGuards");
+const { clientKey } = require("../security/clientKey");
+const brand = require("../../shared/brand.json");
 
 const shopFacts = require("../shopFacts");
 const { offeredLayerHeight } = require("../services/layerHeight"); // hides catalog options the owner has not confirmed
 const router = express.Router();
 
 // ─── FILE UPLOAD CONFIG ──────────────────────────────────────
-const uploadDir = path.join(__dirname, "..", "..", "data", "uploads");
+// Where files land is decided here and nowhere else: a fixed folder and a
+// server-generated name (a random UUID plus an extension from the allow-list).
+// Nothing the client sends — file name, field name, path — is ever part of a
+// path on disk.
+const uploadDir = path.join(uploadGuards.DATA_DIR, "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+const CAD_EXTENSIONS = [".step", ".stp", ".stl", ".3mf", ".iges", ".igs", ".dxf"];
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
-    const id = uuidv4();
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${id}${ext}`);
+    // The fileFilter has already refused anything else; never trust that alone.
+    if (!CAD_EXTENSIONS.includes(ext)) return cb(new Error("unsupported extension"));
+    cb(null, `${uuidv4()}${ext}`);
   },
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+  // Size and count are admin-tunable (UPLOAD_MAX_FILE_MB, UPLOAD_MAX_FILES); the
+  // rest bounds the multipart parser itself: a handful of short text fields.
+  limits: {
+    fileSize: limits.uploadMaxFileBytes,
+    files: limits.uploadMaxFiles,
+    fields: 10,
+    fieldSize: 16 * 1024,
+    fieldNameSize: 100,
+    parts: limits.uploadMaxFiles + 10,
+    headerPairs: 50,
+  },
   fileFilter: (req, file, cb) => {
-    const allowed = [".step", ".stp", ".stl", ".3mf", ".iges", ".igs", ".dxf"];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(ext)) {
+    if (CAD_EXTENSIONS.includes(ext)) {
       cb(null, true);
     } else {
-      cb(Object.assign(new Error(`We can't read ${ext || "that kind of"} files here. Upload a STEP, STL, IGES or 3MF model, or a DXF for a flat routed part.`), { status: 400, expose: true }));
+      cb(Object.assign(new Error(`We can't read ${uploadGuards.safeFileName(ext, "that kind of").slice(0, 12) || "that kind of"} files here. Upload a STEP, STL, IGES or 3MF model, or a DXF for a flat routed part.`), { status: 400, expose: true }));
     }
   },
 });
+
+const mbOf = (bytes) => Math.round(bytes / (1024 * 1024));
+
+/**
+ * Receive the files of POST /upload. Upload refusals are answered here, in
+ * words, with the limits that are actually in force (multer removes anything
+ * it had already written when it refuses a request).
+ */
+function receiveCadFiles(req, res, next) {
+  upload.array("files", limits.uploadMaxFiles)(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: `That file is over ${mbOf(limits.uploadMaxFileBytes)} MB, the most the instant quote reads. Send it to us for a firm quote, or export it at a coarser resolution.`, code: "file-too-large", offerRfq: true });
+    }
+    if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE" || err.code === "LIMIT_PART_COUNT") {
+      return res.status(400).json({ error: `Upload up to ${limits.uploadMaxFiles} part files at a time.`, code: "too-many-files" });
+    }
+    if (err.expose === true && err.message) return res.status(err.status || 400).json({ error: err.message });
+    // Anything else at this stage is a body the multipart parser could not make sense of
+    // (a broken boundary, a malformed part header, a connection cut short): the sender's error, not ours.
+    return res.status(400).json({ error: "That upload couldn't be read. Try again." });
+  });
+}
+
+/** Delete a file we decided not to keep; never throws. Resolves once it is gone. */
+async function discard(filePath) {
+  if (!filePath) return;
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (err) {
+    if (err.code !== "ENOENT") console.error("Could not remove a refused upload:", err.code || err.message);
+  }
+}
+
+/** What the customer is told when a file could not be parsed. `code`/`offerRfq` let the client offer the firm-quote form. */
+function parseFailure(fileName, err) {
+  const out = { fileName };
+  // A parser running off the end of a truncated file throws a RangeError; say what to do, not where the buffer ended.
+  if (err instanceof RangeError || err.name === "RangeError" || /out of range/i.test(err.message || "")) {
+    out.error = "This file is damaged or incomplete. Re-export it from your CAD program and upload again.";
+  } else if (err.fromParser || err.expose) {
+    out.error = err.message; // written for the customer (parser, pool)
+  } else {
+    console.error("Upload: unexpected parse error:", err);
+    out.error = "This file could not be read. Re-export it from your CAD program and upload again.";
+  }
+  if (err.code && typeof err.code === "string" && /^[a-z0-9-]+$/.test(err.code)) out.code = err.code;
+  if (err.offerRfq) out.offerRfq = true;
+  return out;
+}
 
 const pricingEngine = new PricingEngine();
 const pricingAdmin = createPricingAdmin({ pricingDB, auditDB: pricingAuditDB });
@@ -141,16 +211,40 @@ function partPayload(part, parsed) {
  * process it is refused with a message that offers routing (code
  * "dxf-routing-only"). Send the field before the files.
  */
-router.post("/upload", upload.array("files", 20), validateFileContent, async (req, res) => {
+router.post(
+  "/upload",
+  // Before anything is written: room on disk, and this client's daily byte budget.
+  uploadGuards.admit({ addsRows: true, maxRequestBytes: () => limits.uploadMaxFiles * limits.uploadMaxFileBytes + 1024 * 1024 }),
+  receiveCadFiles,
+  (req, res, next) => {
+    // Everything received counts against the client's budget, kept or not.
+    uploadGuards.account(req, { received: (req.files || []).reduce((sum, f) => sum + (f.size || 0), 0) });
+    next();
+  },
+  validateFileContent,
+  async (req, res) => {
+  // Files this request has put on disk and not yet handed to a part record.
+  // Whatever is still in here when the request ends — an error, a busy server,
+  // a client that hung up — is deleted.
+  const pending = new Set((req.files || []).map((f) => f.path));
+  let current = null;
+  let gone = false;
+  res.on("close", () => {
+    if (res.writableEnded) return;
+    gone = true; // the client went away: stop working for it
+    if (current) current.cancel();
+  });
   try {
     const errors = [];
     for (const r of req.rejectedFiles || []) {
-      const isDxf = /\.dxf$/i.test(r.fileName || "");
+      const name = uploadGuards.safeFileName(r.fileName);
+      const isDxf = /\.dxf$/i.test(name);
       errors.push({
-        fileName: r.fileName,
+        fileName: name,
         error: isDxf
           ? "This does not look like a DXF file (a DWG renamed to .dxf will not work). Export the part outline as DXF from your CAD program and upload again."
           : "The file's contents do not match its extension. Re-export it from your CAD program and upload again.",
+        code: "content-mismatch",
       });
     }
     if (!req.files || req.files.length === 0) {
@@ -159,48 +253,67 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
     }
 
     const selectedProcess = typeof req.body?.process === "string" ? req.body.process.trim() : "";
+    const client = req.uploadClientKey || clientKey(req);
     const results = [];
+    let busy = null;
     for (const file of req.files) {
+      const fileName = uploadGuards.safeFileName(file.originalname);
+      if (gone) break;
+      if (busy) { errors.push({ fileName, error: busy.message, code: "busy" }); continue; }
       try {
         const isDxfFile = path.extname(file.originalname).toLowerCase() === ".dxf";
         if (isDxfFile && selectedProcess && selectedProcess !== "routing") {
-          fs.unlink(file.path, () => {});
-          errors.push({ fileName: file.originalname, error: DXF_ROUTING_ONLY, code: "dxf-routing-only", offerProcess: "routing" });
+          errors.push({ fileName, error: DXF_ROUTING_ONLY, code: "dxf-routing-only", offerProcess: "routing" });
           continue;
         }
-        const parsed = await parseFile(file.path);
+        // Parsed in a worker thread, under a time and memory budget (parsers/parsePool.js).
+        current = parsePool.run({ filePath: file.path, sizeBytes: file.size, client });
+        const parsed = await current;
+        current = null;
 
         // Encrypt the stored file at rest now that parsing is done (no-op unless
         // NORD_FILE_ENC_KEY is configured). Returns the path actually on disk.
-        const storedPath = fileCrypto.encryptFileInPlace(file.path);
+        const storedPath = await fileCrypto.encryptFile(file.path);
+        pending.delete(file.path);
+        pending.add(storedPath);
         const storedName = path.basename(storedPath);
 
         // Store part in DB
         const part = partsDB.insert({
-          fileName: file.originalname,
+          fileName,
           storedName: storedName,
           filePath: storedPath,
           fileSize: file.size,
           geometry: parsed.geometry,
           dfm: parsed.dfm,
         });
+        pending.delete(storedPath); // the part row owns the file now
+        uploadGuards.storage.add(file.size);
 
         results.push(partPayload(part, parsed));
       } catch (err) {
-        errors.push({
-          fileName: file.originalname,
-          // A parser running off the end of a truncated file throws a RangeError; say what to do, not where the buffer ended.
-          error: err instanceof RangeError || /out of range/i.test(err.message || "")
-            ? "This file is damaged or incomplete. Re-export it from your CAD program and upload again."
-            : err.message,
-        });
+        current = null;
+        if (err.code === "cancelled") break;
+        if (err.code === "busy") { busy = err; errors.push({ fileName, error: err.message, code: "busy" }); continue; }
+        errors.push(parseFailure(fileName, err));
       }
     }
 
+    if (gone) return;
+    // Refused files are off the disk before the answer goes out.
+    await Promise.all([...pending].map(discard));
+    pending.clear();
+    // Nothing got through because the parsers are saturated: say so with the status a client can act on.
+    if (busy && results.length === 0) {
+      res.set("Retry-After", String(busy.retryAfter || 60));
+      return res.status(503).json({ error: busy.message, code: "busy", retryAfterSeconds: busy.retryAfter || 60, parts: [], errors });
+    }
     res.json({ parts: results, errors });
   } catch (err) {
     console.error("Upload error:", err);
-    res.status(500).json({ error: "Upload failed. Please try again." });
+    if (!res.headersSent) res.status(500).json({ error: "Upload failed. Please try again." });
+  } finally {
+    for (const p of pending) discard(p);
   }
 });
 
@@ -216,19 +329,30 @@ router.post("/parts/:partId/units", async (req, res) => {
   try {
     const units = req.body?.units;
     if (units !== "mm" && units !== "in") return res.status(400).json({ error: 'units must be "mm" or "in"' });
-    const part = partsDB.getById(req.params.partId);
+    const part = isValidUUID(req.params.partId) ? partsDB.getById(req.params.partId) : null;
     if (!part) return res.status(404).json({ error: "Part not found" });
     if (!dxf.is2D(part.geometry)) return res.status(400).json({ error: "Units can only be chosen for a DXF. STEP, IGES and 3MF carry their own units; STL is read as millimetres." });
     const safeName = path.basename(part.storedName || "");
     const filePath = path.join(uploadDir, safeName);
     if (!safeName || !fs.existsSync(filePath)) return res.status(410).json({ error: "The uploaded file is no longer on our server. Upload it again." });
-    const buffer = fileCrypto.isEncryptedPath(safeName) ? fileCrypto.decryptToBuffer(filePath) : fs.readFileSync(filePath);
     let parsed;
     try {
-      parsed = await parseFile(filePath, { buffer, ext: ".dxf", units });
+      // Read again in a worker, like the upload. An encrypted file is decrypted in memory and handed over.
+      const encrypted = fileCrypto.isEncryptedPath(safeName);
+      const buffer = encrypted ? await fileCrypto.decryptFile(filePath) : undefined;
+      parsed = await parsePool.run({ filePath, options: { ext: ".dxf", units }, buffer, sizeBytes: part.fileSize || 0, client: clientKey(req) });
     } catch (err) {
+      if (err.name === "FileCryptoError") {
+        console.error(`Units: stored DXF could not be decrypted (${err.code})`);
+        return res.status(500).json({ error: "Could not change the units. Please upload the file again." });
+      }
+      if (err.code === "busy") {
+        res.set("Retry-After", String(err.retryAfter || 60));
+        return res.status(503).json({ error: err.message, code: "busy" });
+      }
       // e.g. two outlines that were one loop at the other scale's weld tolerance
-      return res.status(422).json({ error: err.message });
+      const failure = parseFailure(part.fileName, err);
+      return res.status(422).json({ error: failure.error, ...(failure.code ? { code: failure.code } : {}) });
     }
     const updated = partsDB.update(part.id, { geometry: parsed.geometry, dfm: parsed.dfm }) || { ...part, geometry: parsed.geometry };
     res.json(partPayload({ id: part.id, fileName: updated.fileName || part.fileName }, parsed));
@@ -527,48 +651,83 @@ router.get("/quote/:id/session", optionalAuth, (req, res) => {
 // ─── Drawing on the instant path ─────────────────────────────
 // An optional PDF the buyer attaches to a quote. It rides along to the order
 // and the admin view; it never changes the price.
-const quoteDrawingDir = path.join(__dirname, "..", "..", "data", "quote-drawings");
+const quoteDrawingDir = path.join(uploadGuards.DATA_DIR, "quote-drawings");
 if (!fs.existsSync(quoteDrawingDir)) fs.mkdirSync(quoteDrawingDir, { recursive: true });
 
 const drawingUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, quoteDrawingDir),
-    filename: (req, file, cb) => cb(null, `${uuidv4()}.pdf`),
+    filename: (req, file, cb) => cb(null, `${uuidv4()}.pdf`), // server-generated; nothing from the client
   }),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { fileSize: limits.drawingMaxBytes, files: 1, fields: 5, fieldSize: 4 * 1024, fieldNameSize: 100, parts: 8, headerPairs: 50 },
   fileFilter: (req, file, cb) => {
     if (path.extname(file.originalname).toLowerCase() === ".pdf") cb(null, true);
     else cb(Object.assign(new Error("The drawing must be a PDF"), { status: 400, expose: true }));
   },
 });
 
-router.post("/quote/:id/drawing", optionalAuth, (req, res) => {
-  const quote = readableQuote(req, res);
-  if (!quote) return;
-  if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed" });
-  drawingUpload.single("drawing")(req, res, (err) => {
-    if (err) return res.status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: err.code === "LIMIT_FILE_SIZE" ? "The drawing is over 25 MB" : err.message });
+/** Is this the stored drawing of any other quote, order or request? (A reorder or a firm-quote request carries the same file along.) */
+function drawingInUseElsewhere(drawingPath, exceptQuoteId) {
+  if (!drawingPath) return false;
+  const { rfqsDB } = require("../models");
+  return quotesDB.getAll().some((q) => q.id !== exceptQuoteId && q.drawingPath === drawingPath)
+    || ordersDB.getAll().some((o) => o.drawingPath === drawingPath)
+    || rfqsDB.getAll().some((r) => r.drawingPath === drawingPath);
+}
+
+router.post(
+  "/quote/:id/drawing",
+  optionalAuth,
+  (req, res, next) => {
+    // Who may attach is settled before a byte of the file is accepted.
+    const quote = readableQuote(req, res);
+    if (!quote) return;
+    if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed" });
+    req.quote = quote;
+    next();
+  },
+  uploadGuards.admit({ maxRequestBytes: () => limits.drawingMaxBytes + 64 * 1024 }),
+  (req, res) => {
+  const quote = req.quote;
+  drawingUpload.single("drawing")(req, res, async (err) => {
+    const drawingMb = mbOf(limits.drawingMaxBytes);
+    if (err) return res.status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: err.code === "LIMIT_FILE_SIZE" ? `The drawing is over ${drawingMb} MB` : (err.expose ? err.message : "That upload couldn't be read. Try again.") });
     if (!req.file) return res.status(400).json({ error: "No drawing attached" });
-    // Extension is not proof: a PDF starts with "%PDF".
-    const head = Buffer.alloc(4);
-    const fd = fs.openSync(req.file.path, "r");
-    fs.readSync(fd, head, 0, 4, 0);
-    fs.closeSync(fd);
-    if (head.toString("latin1") !== "%PDF") {
-      fs.unlink(req.file.path, () => {});
-      return res.status(400).json({ error: "That file isn't a PDF" });
+    let stored = req.file.path;
+    try {
+      uploadGuards.account(req, { received: req.file.size });
+      // Extension is not proof: a PDF starts with "%PDF-".
+      const head = Buffer.alloc(5);
+      const fd = await fs.promises.open(stored, "r");
+      try { await fd.read(head, 0, 5, 0); } finally { await fd.close(); }
+      if (head.toString("latin1") !== "%PDF-") {
+        await discard(stored);
+        return res.status(400).json({ error: "That file isn't a PDF" });
+      }
+      // Encrypted at rest like the CAD files (no-op unless NORD_FILE_ENC_KEY is set).
+      stored = await fileCrypto.encryptFile(stored);
+      const previous = quote.drawingPath;
+      const updated = quotesDB.update(quote.id, { drawingFileName: uploadGuards.safeFileName(req.file.originalname, "drawing.pdf"), drawingPath: stored });
+      uploadGuards.storage.add(req.file.size);
+      // The file this one replaces goes, unless an order, a request or another quote still points at it.
+      if (previous && previous !== stored && path.dirname(path.resolve(previous)) === path.resolve(quoteDrawingDir) && !drawingInUseElsewhere(previous, quote.id)) await discard(previous);
+      res.json({ drawingFileName: updated.drawingFileName });
+    } catch (e) {
+      console.error("Drawing upload error:", e.message);
+      await discard(stored);
+      if (!res.headersSent) res.status(500).json({ error: "Could not attach the drawing. Please try again." });
     }
-    // The previous file is left on disk: an earlier order may still point at it.
-    const updated = quotesDB.update(quote.id, { drawingFileName: sanitizeString(req.file.originalname, 255), drawingPath: req.file.path });
-    res.json({ drawingFileName: updated.drawingFileName });
   });
 });
 
-router.delete("/quote/:id/drawing", optionalAuth, (req, res) => {
+router.delete("/quote/:id/drawing", optionalAuth, async (req, res) => {
   const quote = readableQuote(req, res);
   if (!quote) return;
   if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed" });
+  const previous = quote.drawingPath;
   quotesDB.update(quote.id, { drawingFileName: "", drawingPath: "" });
+  // Removed means removed: the file goes too, unless something else still points at it.
+  if (previous && path.dirname(path.resolve(previous)) === path.resolve(quoteDrawingDir) && !drawingInUseElsewhere(previous, quote.id)) await discard(previous);
   res.json({ drawingFileName: "" });
 });
 
@@ -973,27 +1132,16 @@ router.get("/admin/backup/json", authenticate, requireAdmin, (req, res) => {
   }
 });
 
-router.get("/parts/:partId/download", authenticate, requireAdmin, (req, res) => {
-  const part = partsDB.getById(req.params.partId);
+router.get("/parts/:partId/download", authenticate, requireAdmin, async (req, res) => {
+  const part = isValidUUID(req.params.partId) ? partsDB.getById(req.params.partId) : null;
   if (!part) return res.status(404).json({ error: "Part not found" });
+  // The stored name is server-generated; basename() all the same, so a row can never point outside the folder.
   const safeName = path.basename(part.storedName || "");
   if (!safeName) return res.status(404).json({ error: "No file" });
   const filePath = path.join(uploadDir, safeName);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: "File missing on disk" });
-  // Encrypted-at-rest files are decrypted in memory for the download.
-  if (fileCrypto.isEncryptedPath(safeName)) {
-    try {
-      const buf = fileCrypto.decryptToBuffer(filePath);
-      const downloadName = part.fileName || safeName.replace(/\.enc$/, "");
-      res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"`);
-      res.setHeader("Content-Type", "application/octet-stream");
-      return res.send(buf);
-    } catch (err) {
-      console.error("Decrypt error:", err.message);
-      return res.status(500).json({ error: "Failed to read file" });
-    }
-  }
-  res.download(filePath, part.fileName || safeName);
+  // Encrypted-at-rest files are decrypted in memory; the name goes through Express's header encoder.
+  await fileCrypto.sendDownload(res, filePath, part.fileName || safeName.replace(/\.enc$/, ""));
 });
 
 module.exports = router;

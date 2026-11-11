@@ -79,4 +79,51 @@ function neededUploads({ ordersDB, orderItemsDB, rfqsDB, partsDB }) {
   return names;
 }
 
-module.exports = { startRetentionSweep, sweepOnce, neededUploads };
+/**
+ * File names (basenames) of every drawing a quote, an order or a firm-quote
+ * request still points at. Anything else in data/quote-drawings and
+ * data/rfq-drawings is an orphan: an attachment whose request was refused
+ * after the file was written, a drawing the buyer replaced or removed, or the
+ * drawing of a draft quote that lapsed and was deleted.
+ */
+function referencedDrawings({ quotesDB, ordersDB, rfqsDB }) {
+  const names = new Set();
+  for (const db of [quotesDB, ordersDB, rfqsDB]) {
+    for (const row of db.getAll()) if (row.drawingPath) names.add(path.basename(row.drawingPath));
+  }
+  return names;
+}
+
+/**
+ * Sweep the drawing folders: remove files no row refers to once they are older
+ * than `orphanHours` (default 24 — long enough that a file is never taken from
+ * under a request still being submitted). Referenced drawings are never
+ * removed here, whatever their age.
+ * @returns {number} files removed
+ */
+function sweepDrawings(dirs, models, opts = {}) {
+  const maxAgeMs = (opts.orphanHours || Number(process.env.DRAWING_ORPHAN_HOURS) || 24) * 60 * 60 * 1000;
+  const keep = referencedDrawings(models);
+  let removed = 0;
+  for (const dir of dirs) removed += sweepOnce(dir, maxAgeMs, keep);
+  return removed;
+}
+
+/** Run sweepDrawings at startup and every six hours. `onSwept` is told how many files went. */
+function startDrawingSweep(dirs, models, opts = {}) {
+  const run = () => {
+    try {
+      const removed = sweepDrawings(dirs, models, opts);
+      if (removed > 0) console.log(`File retention: removed ${removed} drawing file(s) no quote, order or request refers to`);
+      if (typeof opts.onSwept === "function") opts.onSwept(removed);
+    } catch (err) {
+      console.error("Drawing retention sweep error:", err.message);
+    }
+  };
+  run();
+  const timer = setInterval(run, opts.intervalMs || 6 * 60 * 60 * 1000);
+  if (timer.unref) timer.unref();
+  return timer;
+}
+
+module.exports = { startRetentionSweep, sweepOnce, neededUploads, referencedDrawings, sweepDrawings, startDrawingSweep };
