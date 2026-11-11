@@ -154,8 +154,15 @@ test("every other expensive route has a limiter: uploads, DXF units, quote sessi
 
   // RFQs: 3 per hour
   const rf = "203.0.113.24";
-  for (let i = 0; i < 3; i++) assert.strictEqual((await s.upload([], { url: "/api/rfq", ip: rf, fields: { contactName: "A Buyer", email: "buyer@example.com" } })).status, 201);
-  assert.strictEqual((await s.upload([], { url: "/api/rfq", ip: rf, fields: { contactName: "A Buyer", email: "buyer@example.com" } })).status, 429);
+  // (each a different request: the same one again inside half an hour is answered from the first, not stored twice)
+  for (let i = 0; i < 3; i++) assert.strictEqual((await s.rfq({ contactName: "A Buyer", email: "buyer@example.com", notes: `request ${i + 1}` }, [], { ip: rf })).status, 201);
+  const fourthRfq = await s.rfq({ contactName: "A Buyer", email: "buyer@example.com", notes: "request 4" }, [], { ip: rf });
+  assert.strictEqual(fourthRfq.status, 429);
+  assert.ok(/Too many requests from this address/.test(fourthRfq.body.error), "refused by the route limiter, before the form is read");
+  // The limiter counts what is sent, kept or not: a request without its form token is refused (400) and still uses the budget.
+  const rf2 = "203.0.113.25";
+  for (let i = 0; i < 3; i++) assert.strictEqual((await s.upload([], { url: "/api/rfq", ip: rf2, fields: { contactName: "A Buyer", email: "buyer@example.com" } })).status, 400);
+  assert.strictEqual((await s.upload([], { url: "/api/rfq", ip: rf2, fields: { contactName: "A Buyer", email: "buyer@example.com" } })).status, 429);
 });
 
 test("default limits leave room for a real quoting session: ten uploads, the catalog, and re-pricing as fast as the tool can ask", async () => {

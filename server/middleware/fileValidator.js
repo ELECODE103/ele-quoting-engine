@@ -170,4 +170,46 @@ function contentMatchesExtension(filePath, ext) {
   }
 }
 
-module.exports = { validateFileContent, contentMatchesExtension, MAGIC_BYTES };
+// ─── Attachments on a firm-quote request (drawings and photos) ───────────────
+// Stored for the shop to open, never parsed here. The extension decides which
+// check runs; a file whose first bytes are not what that extension promises (an
+// HTML page named .pdf, a script named .png) is refused, exactly as a CAD file is.
+const startsWith = (buffer, bytes, at = 0) => buffer.length >= at + bytes.length && bytes.every((b, i) => buffer[at + i] === b);
+const ascii = (text) => [...text].map((c) => c.charCodeAt(0));
+const isJpeg = (b) => startsWith(b, [0xff, 0xd8, 0xff]);
+// ISO base media file: a box size, then "ftyp" and a brand. HEIC/HEIF photos carry one of these brands.
+const HEIF_BRANDS = new Set(["heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1", "msf1", "heif"]);
+const isHeif = (b) => startsWith(b, ascii("ftyp"), 4) && HEIF_BRANDS.has(b.slice(8, 12).toString("latin1"));
+const ATTACHMENT_MAGIC = {
+  ".pdf": (b) => startsWith(b, ascii("%PDF-")),
+  ".png": (b) => startsWith(b, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  ".jpg": isJpeg,
+  ".jpeg": isJpeg,
+  ".webp": (b) => startsWith(b, ascii("RIFF")) && startsWith(b, ascii("WEBP"), 8),
+  ".heic": isHeif,
+  ".heif": isHeif,
+  ".dxf": (b, size) => MAGIC_BYTES[".dxf"].check(b, size),
+  // DWG: a six-character version tag — "AC1015", "AC1032", … (very old files: "AC1.50", "AC2.10", "MC0.0").
+  ".dwg": (b) => /^(AC10\d\d|AC1\.\d\d?|AC2\.\d\d|MC0\.0)/.test(b.slice(0, 6).toString("latin1")),
+};
+const ATTACHMENT_EXTENSIONS = Object.keys(ATTACHMENT_MAGIC);
+
+/** Does the stored attachment at `filePath` start the way a file with extension `ext` does? */
+function attachmentMatchesExtension(filePath, ext) {
+  const check = ATTACHMENT_MAGIC[String(ext || "").toLowerCase()];
+  if (!check) return false;
+  let fd;
+  try {
+    fd = fs.openSync(filePath, "r");
+    const buffer = Buffer.alloc(512);
+    const bytesRead = fs.readSync(fd, buffer, 0, 512, 0);
+    if (bytesRead < 4) return false;
+    return Boolean(check(buffer.slice(0, bytesRead), fs.fstatSync(fd).size));
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* already closed */ }
+  }
+}
+
+module.exports = { validateFileContent, contentMatchesExtension, MAGIC_BYTES, attachmentMatchesExtension, ATTACHMENT_MAGIC, ATTACHMENT_EXTENSIONS };

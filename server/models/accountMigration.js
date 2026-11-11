@@ -32,7 +32,19 @@ const RFQ_COLUMNS = [
   ["buyer_emailed", "INTEGER DEFAULT 0"],
 ];
 
+// Table names, column names and types are the only interpolated parts of these
+// statements and all of them are the constants above; they are still held to
+// an identifier shape here so that stays true if the lists are ever edited.
+const IDENTIFIER = /^[a-z_][a-z0-9_]{0,63}$/;
+const COLUMN_TYPES = new Set(["TEXT", "INTEGER", "INTEGER DEFAULT 0", "REAL"]);
+function vetted(table, name, type) {
+  if (!IDENTIFIER.test(table) || (name !== undefined && !IDENTIFIER.test(name)) || (type !== undefined && !COLUMN_TYPES.has(type))) {
+    throw new Error("accountMigration: not a plain identifier");
+  }
+}
+
 function columnsOf(db, table) {
+  vetted(table);
   const cols = new Set();
   const stmt = db.prepare(`PRAGMA table_info(${table})`);
   while (stmt.step()) cols.add(stmt.getAsObject().name);
@@ -45,6 +57,7 @@ function addMissing(db, table, columns) {
   const added = [];
   for (const [name, type] of columns) {
     if (have.has(name)) continue;
+    vetted(table, name, type);
     db.run(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
     added.push(name);
   }
@@ -52,8 +65,8 @@ function addMissing(db, table, columns) {
 }
 
 /** @returns {{users: string[], rfqs: string[], backfilled: number}} what this run changed */
-function apply(db) {
-  const users = addMissing(db, "users", USER_COLUMNS);
+function apply(db, lists = {}) {
+  const users = addMissing(db, "users", lists.users || USER_COLUMNS);
   let backfilled = 0;
   if (users.includes("email_verified_at")) {
     db.run("UPDATE users SET email_verified_at = COALESCE(created_at, ?) WHERE email_verified_at IS NULL", [new Date().toISOString()]);

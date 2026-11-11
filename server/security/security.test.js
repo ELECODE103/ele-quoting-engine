@@ -608,7 +608,7 @@ test("the migration is additive, idempotent, and marks pre-existing accounts ver
           CREATE TABLE rfqs (id TEXT PRIMARY KEY, quote_id TEXT, user_id TEXT, status TEXT DEFAULT 'new', contact_name TEXT, email TEXT, created_at TEXT, updated_at TEXT);`);
   db.run("INSERT INTO users (id, email, password_hash, role, created_at) VALUES ('u1', 'owner@shop.test', 'h1', 'admin', '2026-01-02T00:00:00Z'), ('u2', 'old@buyer.test', 'h2', 'customer', NULL)");
   db.run("INSERT INTO rfqs (id, email, status) VALUES ('r1', 'old@buyer.test', 'new')");
-  const migration = require("./accountMigration");
+  const migration = require("../models/accountMigration");
   const first = migration.apply(db);
   assert.strictEqual(first.backfilled, 2);
   assert.ok(first.users.includes("email_verified_at") && first.users.includes("token_version") && first.users.includes("totp_secret_enc"));

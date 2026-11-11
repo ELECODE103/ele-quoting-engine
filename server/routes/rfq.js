@@ -69,26 +69,55 @@ const drawingDir = path.join(require("../security/uploadGuards").DATA_DIR, "rfq-
 if (!fs.existsSync(drawingDir)) fs.mkdirSync(drawingDir, { recursive: true });
 
 // Phone photos arrive as HEIC or WebP as often as JPEG; they are stored for the shop to open, never parsed.
-const DRAWING_EXT = [".pdf", ".dxf", ".dwg", ".png", ".jpg", ".jpeg", ".heic", ".heif", ".webp"];
+// The list and the per-type content check live in middleware/fileValidator.js.
+const { attachmentMatchesExtension, ATTACHMENT_EXTENSIONS: DRAWING_EXT } = require("../middleware/fileValidator");
+const ATTACHMENT_TYPES = "Send a PDF, DXF, DWG, or a photo (JPG, PNG, HEIC).";
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, drawingDir),
-    filename: (req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
+    // The stored name is ours: a random id plus an extension from the allow-list. Nothing the client sent is in the path.
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (!DRAWING_EXT.includes(ext)) return cb(new Error("unsupported extension"));
+      cb(null, `${uuidv4()}${ext}`);
+    },
   }),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  // One file, and a form's worth of short text fields: the multipart parser itself is bounded.
+  limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 40, fieldSize: 64 * 1024, fieldNameSize: 100, parts: 45, headerPairs: 50 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (DRAWING_EXT.includes(ext)) cb(null, true);
-    else cb(Object.assign(new Error("That attachment type isn't accepted. Send a PDF, DXF, DWG, or a photo (JPG, PNG, HEIC)."), { status: 400, expose: true }));
+    else cb(Object.assign(new Error(`That attachment type isn't accepted. ${ATTACHMENT_TYPES}`), { status: 400, expose: true }));
   },
 });
 
-/** The one attachment, with upload errors answered in words (not a 500). */
+/** Remove a file this request put on disk; resolves once it is gone (never throws). */
+async function removeFile(filePath) {
+  if (!filePath) return;
+  try { await fs.promises.unlink(filePath); } catch (err) { if (err.code !== "ENOENT") console.error("RFQ: could not remove a refused attachment:", err.code || err.name); }
+}
+
+/**
+ * The one attachment, with upload errors answered in words (not a 500), and
+ * its contents checked against its extension before the route sees it: a file
+ * that is not what its name says is deleted and the request refused.
+ */
 function attachment(req, res, next) {
-  upload.single("drawing")(req, res, (err) => {
-    if (!err) return next();
-    if (err.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: `That file is over 25 MB. Send a smaller one, or email it to ${brand.email}.` });
-    res.status(400).json({ error: err.expose ? err.message : "We couldn't read that attachment. Try again, or send the request without it and reply to the confirmation email." });
+  upload.single("drawing")(req, res, async (err) => {
+    if (err) {
+      if (err.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: `That file is over 25 MB. Send a smaller one, or email it to ${brand.email}.` });
+      return res.status(400).json({ error: err.expose ? err.message : "We couldn't read that attachment. Try again, or send the request without it and reply to the confirmation email." });
+    }
+    if (req.file) {
+      // Every way out of this request that does not keep the file deletes it first (see the route).
+      req.attachmentPaths = new Set([req.file.path]);
+      const ext = path.extname(req.file.originalname).toLowerCase();
+      if (!attachmentMatchesExtension(req.file.path, ext)) {
+        await removeFile(req.file.path);
+        return res.status(400).json({ error: `That file isn't what its name says it is (${ext.slice(1).toUpperCase()}). ${ATTACHMENT_TYPES} Or send the request without it and email the file to ${brand.email}.`, code: "content-mismatch" });
+      }
+    }
+    next();
   });
 }
 
@@ -145,15 +174,24 @@ async function assessSender(req, email) {
 
 router.post("/", optionalAuth, attachment, async (req, res) => {
   let check = null;
-  const dropFile = () => { if (req.file) fs.unlink(req.file.path, () => {}); };
+  // A request that is refused, replayed or fails must not leave its attachment behind: every
+  // path below that does not store the request awaits this before it answers. It covers the
+  // file as multer wrote it and, once encrypted, the file under its stored name.
+  let kept = false;
+  const dropFile = async () => {
+    if (kept || !req.attachmentPaths) return;
+    await Promise.all([...req.attachmentPaths].map(removeFile));
+    req.attachmentPaths.clear();
+  };
   try {
     const b = req.body || {};
     const quoteId = sanitizeString(b.quoteId || "", 64);
-    const email = (typeof b.email === "string" ? b.email : "").trim().toLowerCase();
+    // Spaces around a pasted address are dropped; any other stray character (a line break, a NUL) is left for validation to refuse.
+    const email = (typeof b.email === "string" ? b.email : "").replace(/^[ \t]+|[ \t]+$/g, "").toLowerCase();
     const contactName = sanitizeString(b.contactName || "", 120).replace(/[\r\n]+/g, " ");
 
-    if (!contactName) { dropFile(); return res.status(400).json({ error: "Your name is required" }); }
-    if (!isValidEmail(email) || !mailer.cleanAddress(email)) { dropFile(); return res.status(400).json({ error: "A valid email is required" }); }
+    if (!contactName) { await dropFile(); return res.status(400).json({ error: "Your name is required" }); }
+    if (!isValidEmail(email) || !mailer.cleanAddress(email)) { await dropFile(); return res.status(400).json({ error: "A valid email is required" }); }
 
     const sendPart = !quoteId && String(b.requestType || "") === "part";
 
@@ -164,7 +202,7 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       dedupe: [contactName, quoteId, sendPart, String(b.notes || ""), String(b.quantities || ""), req.file ? req.file.originalname : "", req.file ? req.file.size : 0],
     });
     if (!check.ok) {
-      dropFile();
+      await dropFile();
       if (check.honeypot) {
         // A script filled the field no person sees. It gets an answer shaped like a success and nothing happens.
         return res.status(201).json({ rfqId: crypto.randomUUID(), status: "new", turnaroundHours: brand.quoteTurnaroundHours, paperwork: false, confirmationEmail: true });
@@ -173,7 +211,7 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
     }
     if (check.replay) {
       // The same request again inside half an hour (a double click, a retry): the first answer, no second request.
-      dropFile();
+      await dropFile();
       return res.status(201).json({ ...check.replay, duplicate: true });
     }
 
@@ -182,7 +220,7 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       quote = quotesDB.getById(quoteId);
       const hidden = quote && quote.userId && (!req.user || (req.user.userId !== quote.userId && req.user.role !== "admin"));
       if (!quote || hidden) {
-        dropFile();
+        await dropFile();
         botGuard.releaseForm(check);
         return res.status(404).json({ error: "Quote not found" });
       }
@@ -190,7 +228,7 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
 
     const sender = await assessSender(req, email);
     if (!sender.verified && sender.method === "failed") {
-      dropFile();
+      await dropFile();
       botGuard.releaseForm(check);
       return res.status(403).json({ error: botGuard.MESSAGES.humanRequired, code: "human-check-required" });
     }
@@ -209,6 +247,13 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
     const paperwork = ticked(b.paperwork) || (b.paperwork === undefined && Boolean(quote?.paperwork));
     const returnPart = sendPart && ticked(b.returnPart);
 
+    // Encrypted at rest when NORD_FILE_ENC_KEY is set; the stored path (….enc) is tracked so a failure after this still cleans up.
+    let drawingPath = "";
+    if (req.file) {
+      drawingPath = await require("../services/fileCrypto").encryptFile(req.file.path);
+      req.attachmentPaths.add(drawingPath);
+    }
+
     const rfq = rfqsDB.insert({
       quoteId: quote?.id || null,
       userId: req.user?.userId || quote?.userId || null,
@@ -223,8 +268,8 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       finishNotes: sanitizeString(b.finishNotes || "", 500),
       dueDate: sanitizeString(b.dueDate || "", 40),
       notes: sanitizeString(b.notes || "", 2000),
-      drawingFileName: req.file ? sanitizeString(req.file.originalname, 255) : "",
-      drawingPath: req.file ? await require("../services/fileCrypto").encryptFile(req.file.path) : "", // encrypted at rest when NORD_FILE_ENC_KEY is set
+      drawingFileName: req.file ? require("../security/uploadGuards").safeFileName(req.file.originalname, "attachment") : "",
+      drawingPath,
       budgetTotal: quote?.orderTotal || 0,
       reasons: quote?.gate?.reasons || [],
       parts,
@@ -236,6 +281,9 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       senderCheck: senderVerified ? sender.method : "none",
       buyerEmailed: buyerEmail,
     });
+
+    kept = true; // the request row owns the attachment now
+    if (req.file) require("../security/uploadGuards").storage.add(req.file.size);
 
     if (quote) quotesDB.update(quote.id, { status: "rfq" });
 
@@ -266,7 +314,7 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
     botGuard.recordForm(req, check, { email, response });
     res.status(201).json(response);
   } catch (err) {
-    dropFile();
+    await dropFile();
     botGuard.releaseForm(check);
     console.error("RFQ create error:", err.message);
     res.status(500).json({ error: "Could not submit the request. Please try again or call us." });

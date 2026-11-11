@@ -5,25 +5,49 @@
 
 // ─── Sanitisers ──────────────────────────────────────────────
 
-/** Strip HTML/script tags, JS protocol handlers, event handlers, and control chars */
+/**
+ * Text a person typed, kept as they typed it.
+ *
+ * What is removed: characters that are not text at all — control characters
+ * (NUL first of all; tab, line feed and carriage return stay) and the
+ * invisible bidirectional override characters that can make a line read
+ * differently from what it says. What is done besides: trim, and cut to
+ * `maxLength`.
+ *
+ * What is deliberately NOT done here: stripping things that look like markup.
+ * The earlier version deleted anything between "<" and ">" and anything shaped
+ * like `on…=`, which turned "5 < 10 > 3" into "5  3" and "tone = 5" into "t 5",
+ * and was never what kept a note from running as script. That is the job of
+ * the place a value is shown: React escapes every string it renders (there is
+ * no dangerouslySetInnerHTML in the client), the email templates escape every
+ * value they put into HTML (emails/templates.js `esc`, links through
+ * `safeHref`) and send the text part as text, and PDFKit draws strings as
+ * text. A value stored here is data, shown as data.
+ */
 function sanitizeString(val, maxLength = 500) {
   if (typeof val !== "string") return "";
   return val
-    .replace(/<script[\s\S]*?<\/script>/gi, "")  // strip script blocks
-    .replace(/<[^>]*>/g, "")                       // strip HTML tags
-    .replace(/[<>]/g, "")                          // remove stray angle brackets
-    .replace(/javascript\s*:/gi, "")               // block javascript: protocol
-    .replace(/on\w+\s*=/gi, "")                    // strip inline event handlers
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "") // remove control characters
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, "") // control characters (keeps \t \n \r)
+    .replace(/[\u202A-\u202E\u2066-\u2069]/g, "")                             // bidirectional overrides and isolates
     .trim()
     .slice(0, maxLength);
 }
 
-/** Validate email format (RFC 5322 simplified) */
+// Characters that never belong in an email address: control characters (a NUL
+// ends the text in SQLite, so "owner@shop.test\0.example" would be stored as
+// someone else's address), line and paragraph separators, and invisible
+// formatting characters (zero-width, bidirectional, byte-order mark).
+// eslint-disable-next-line no-control-regex
+const EMAIL_FORBIDDEN = /[\u0000-\u001F\u007F-\u009F\u00AD\u200B-\u200F\u2028-\u202E\u2060-\u2069\uFEFF]/;
+
+/** Validate email format (RFC 5322 simplified). The address is checked exactly as given: it is not trimmed here. */
 function isValidEmail(email) {
   if (typeof email !== "string") return false;
+  if (email.length === 0 || email.length > 254) return false;
+  if (EMAIL_FORBIDDEN.test(email)) return false;
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return re.test(email) && email.length <= 254;
+  return re.test(email);
 }
 
 /** Ensure value is a positive integer (for quantities, etc.) */

@@ -325,8 +325,8 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }
     }
 
-    // Account hardening (2026-11-11). Additive columns; see server/security/accountMigration.js.
-    require("../security/accountMigration").apply(dbInstance);
+    // Account hardening (2026-11-11). Additive columns; see ./accountMigration.js.
+    require("./accountMigration").apply(dbInstance);
 
     saveToDisk();
     readyResolve();

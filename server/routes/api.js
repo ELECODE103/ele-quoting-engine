@@ -362,8 +362,10 @@ router.post(
  * Set (or confirm) the drawing units of an uploaded DXF. The file is read
  * again at the chosen scale, so every tolerance, DFM check and location is
  * computed in real millimetres, and the stored part is replaced. Returns the
- * same payload as an upload. Like /upload and /quote this is open: a part is
- * addressed by its unguessable id.
+ * same payload as an upload. The gates in front of it (security/index.js) ask
+ * for the verified-human token when the bot check is on and for the part's
+ * edit key (X-Part-Key, handed to the uploader with the upload answer): the
+ * part id alone is not enough to change a part.
  */
 router.post("/parts/:partId/units", async (req, res) => {
   try {
@@ -374,8 +376,10 @@ router.post("/parts/:partId/units", async (req, res) => {
     if (!dxf.is2D(part.geometry)) return res.status(400).json({ error: "Units can only be chosen for a DXF. STEP, IGES and 3MF carry their own units; STL is read as millimetres." });
     // The shop builds from the stored geometry of an ordered part. Once a part is on an order
     // its units are settled: changing them here would change the size on the traveler.
+    // (The gate in security/index.js makes the same check, and covers firm-quote requests too, before
+    // this route is reached; it is repeated here so the route is safe wherever the router is mounted.)
     if (orderItemsDB.getAll().some((it) => it.partId === part.id)) {
-      return res.status(409).json({ error: "This drawing is already on an order, so its units can't be changed here. Upload the file again to quote it in other units.", code: "part-on-order" });
+      return res.status(409).json(require("../security").PART_LOCKED);
     }
     const safeName = path.basename(part.storedName || "");
     const filePath = path.join(uploadDir, safeName);

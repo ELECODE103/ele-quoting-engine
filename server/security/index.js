@@ -36,6 +36,9 @@ function addPartEditKeys(req, res, next) {
   next();
 }
 
+/** One answer, here and in the route itself (routes/api.js), once a part is on an order or a firm-quote request. */
+const PART_LOCKED = { error: "This part is on an order or a quote request, so its units can no longer be changed. Upload the file again for a new quote.", code: "part-locked" };
+
 /**
  * Changing a DXF's units re-reads the file and replaces the stored geometry,
  * so it is for the browser that uploaded the part (it holds the edit key) and
@@ -49,9 +52,7 @@ function partEditGate(req, res, next) {
   }
   const ordered = orderItemsDB.query((i) => i.partId === partId).length > 0
     || rfqsDB.query((r) => (r.parts || []).some((p) => p.partId === partId)).length > 0;
-  if (ordered) {
-    return res.status(409).json({ error: "This part is on an order or a quote request, so its units can no longer be changed. Upload the file again for a new quote.", code: "part-locked" });
-  }
+  if (ordered) return res.status(409).json(PART_LOCKED);
   next();
 }
 
@@ -129,4 +130,4 @@ function startupWarnings(log = console.warn) {
   return lines;
 }
 
-module.exports = { mount, startupWarnings, partEditGate, addPartEditKeys };
+module.exports = { mount, startupWarnings, partEditGate, addPartEditKeys, PART_LOCKED };

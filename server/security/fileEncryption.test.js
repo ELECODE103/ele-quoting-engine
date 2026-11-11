@@ -53,12 +53,16 @@ test("with a key: CAD uploads are stored encrypted and still price, re-read and 
   }
   state.cubeId = up.body.parts.find((p) => p.fileName === "cube.stl").partId;
   state.dxfId = up.body.parts.find((p) => p.fileName === "guard.dxf").partId;
+  // The uploader's browser holds an edit key for each part; changing a DXF's units needs it (X-Part-Key).
+  state.dxfKey = { "X-Part-Key": up.body.parts.find((p) => p.fileName === "guard.dxf").editKey };
+  assert.ok(/^[0-9a-f]{40}$/.test(state.dxfKey["X-Part-Key"]), "the upload answer carries the part's edit key");
+  assert.strictEqual((await s.post(`/api/parts/${state.dxfId}/units`, { units: "mm" }, { ip })).status, 404, "without the key the part is not found");
 
   // The DXF's units can still be changed: the stored file is decrypted in memory and read again in a worker.
   const before = up.body.parts.find((p) => p.fileName === "guard.dxf").geometry.boundingBox.width;
-  const mm = await s.post(`/api/parts/${state.dxfId}/units`, { units: "mm" }, { ip });
+  const mm = await s.post(`/api/parts/${state.dxfId}/units`, { units: "mm" }, { ip, headers: state.dxfKey });
   assert.strictEqual(mm.status, 200, mm.text);
-  const inch = await s.post(`/api/parts/${state.dxfId}/units`, { units: "in" }, { ip });
+  const inch = await s.post(`/api/parts/${state.dxfId}/units`, { units: "in" }, { ip, headers: state.dxfKey });
   assert.strictEqual(inch.status, 200, inch.text);
   assert.ok(Math.abs(inch.body.geometry.boundingBox.width / mm.body.geometry.boundingBox.width - 25.4) < 1e-6, "inch reading is 25.4× the millimetre reading");
   assert.ok(before > 0);
@@ -89,7 +93,7 @@ test("with a key: the drawing on an instant quote and the RFQ attachment are enc
   assert.ok(!containsAny(drawings[0].bytes, [Buffer.from("%PDF"), Buffer.from("PROPRIETARY-TITLE-BLOCK-7731")]), "the drawing is not readable on disk");
 
   for (const [name, data] of [["print.pdf", pdf], ["worn-part.png", photo]]) {
-    const r = await s.upload([{ field: "drawing", name, data }], { url: "/api/rfq", ip, fields: { contactName: "A Buyer", email: "buyer@example.com" } });
+    const r = await s.rfq({ contactName: "A Buyer", email: "buyer@example.com" }, [{ name, data }], { ip });
     assert.strictEqual(r.status, 201, r.text);
     state[name] = r.body.rfqId;
   }
@@ -124,7 +128,7 @@ test("key changed: old files are refused with a clear reason, nothing else break
   const mats = (await s.get("/api/materials?process=cnc", { ip })).body;
   assert.strictEqual((await s.post("/api/quote", { parts: [{ partId: state.cubeId, materialSlug: mats[0].slug, quantity: 3, process: "cnc", subProcess: "milling" }] }, { ip })).status, 200);
   // Re-reading the DXF does need it: a plain "upload it again", no detail.
-  const units = await s.post(`/api/parts/${state.dxfId}/units`, { units: "mm" }, { ip });
+  const units = await s.post(`/api/parts/${state.dxfId}/units`, { units: "mm" }, { ip, headers: state.dxfKey });
   assert.strictEqual(units.status, 500);
   assert.ok(/upload the file again/i.test(units.body.error) && !/key|decrypt|crypto/i.test(units.body.error), units.body.error);
   // New uploads work under the new key.

@@ -27,6 +27,21 @@ test("every SQL statement is built from bound parameters; only vetted identifier
   for (const sql of statements) {
     for (const m of sql.matchAll(/\$\{([^}]+)\}/g)) assert.ok(allowed.has(m[1].trim()), `statement interpolates ${m[1]}: ${sql}`);
   }
+  // The column migrations (server/models/accountMigration.js, partPayloadMigration.js) name tables and
+  // columns from their own constant lists, vetted against an identifier pattern before use.
+  for (const file of fs.readdirSync(path.join(root, "server", "models")).filter((f) => /Migration\.js$/.test(f))) {
+    const m = read(`server/models/${file}`);
+    const ddl = [...m.matchAll(/`((?:SELECT|INSERT|UPDATE|DELETE|PRAGMA|ALTER)[^`]*)`/g)].map((x) => x[1]);
+    for (const sql of ddl) {
+      for (const x of sql.matchAll(/\$\{([^}]+)\}/g)) assert.ok(["table", "name", "type"].includes(x[1].trim()), `${file} interpolates ${x[1]}: ${sql}`);
+    }
+    if (ddl.some((sql) => /\$\{/.test(sql))) assert.ok(/function vetted\(/.test(m) && /vetted\(table/.test(m), `${file} checks its identifiers before interpolating them`);
+  }
+  const ran = [];
+  const fakeDb = { prepare: () => ({ step: () => false, free() {} }), run: (sql) => ran.push(sql), getRowsModified: () => 0 };
+  assert.throws(() => require("../models/accountMigration").apply(fakeDb, { users: [["x; DROP TABLE users", "TEXT"]] }), /not a plain identifier/);
+  assert.throws(() => require("../models/accountMigration").apply(fakeDb, { users: [["fine_name", "TEXT; DROP TABLE users"]] }), /not a plain identifier/);
+  assert.deepStrictEqual(ran, [], "nothing was run for a name or type that is not a plain identifier");
   // values never appear in the text: every write uses placeholders
   assert.ok(/const placeholders = columns\.map\(\(\) => "\?"\)/.test(src) && /`\$\{col\} = \?`/.test(src));
   // nothing outside the model layer talks to the database handle
@@ -146,7 +161,7 @@ test("quote pricing: a body cannot set the price, the status or the owner, and o
 });
 
 test("admin records: only the listed fields, only in their types — a blank multiplier can no longer null out the price", async () => {
-  admin = await h.register("owner@shop.test");
+  admin = await h.admin();
   const { leadTimesDB, finishesDB, materialsDB } = h.models;
   const lt = leadTimesDB.getAll().find((x) => x.slug === "expedited");
   for (const multiplier of [null, "abc", 0, 0.5, -1, 1e9, [], {}, "", true]) {
@@ -168,7 +183,10 @@ test("admin records: only the listed fields, only in their types — a blank mul
   const toggled = await h.put(`/api/admin/finishes/${fin.id}`, { active: !fin.active, id: "other", name: "<b>Bold</b> finish" }, admin);
   assert.strictEqual(toggled.status, 200);
   assert.strictEqual(toggled.body.id, fin.id);
-  assert.strictEqual(toggled.body.name, "Bold finish", "markup stripped");
+  // Text is stored as typed (it is escaped where it is shown: textRoundTrip.test.js); only non-text characters go.
+  assert.strictEqual(toggled.body.name, "<b>Bold</b> finish");
+  const ctl = await h.put(`/api/admin/finishes/${fin.id}`, { name: "Bead\u0000 blast\u202E <ok>" }, admin);
+  assert.strictEqual(ctl.body.name, "Bead blast <ok>", "control and bidi-override characters removed, nothing else");
   await h.put(`/api/admin/finishes/${fin.id}`, { active: fin.active, name: fin.name }, admin);
 
   const mat = materialsDB.getAll()[0];
@@ -198,7 +216,7 @@ test("order status: the body sets status, tracking and notes — never the total
   assert.strictEqual(r.status, 200, r.text);
   const after = h.models.ordersDB.getById(order.id);
   assert.deepStrictEqual([after.status, after.total, after.userId, after.stripePaymentId || null], ["in_production", order.total, order.userId, order.stripePaymentId || null]);
-  assert.strictEqual(after.notes, "ok");
+  assert.strictEqual(after.notes, "<img src=x onerror=alert(1)>ok", "the note is stored as typed; it is data, and is escaped wherever it is shown");
   assert.strictEqual((await h.put(`/api/orders/${order.id}/status`, { status: "paid" }, buyer)).status, 403);
   assert.strictEqual((await h.put(`/api/orders/${order.id}/status`, { status: "free" }, admin)).status, 400);
 });
@@ -208,18 +226,40 @@ test("a DXF's units cannot be changed once the part is on an order (the shop bui
   const up = await h.form("/api/upload", { process: "routing" }, { files: { name: "guard.dxf", data: dxf } });
   assert.strictEqual(up.status, 200, up.text);
   const partId = up.body.parts[0].partId;
-  assert.strictEqual((await h.post(`/api/parts/${partId}/units`, { units: "in" })).status, 200, "before an order: allowed");
+  // The browser that uploaded the part holds its edit key; without it the part is not found.
+  const key = { "X-Human-Token": h.humanToken, "X-Part-Key": up.body.parts[0].editKey };
+  const units = (body, headers = key, id = partId) => h.raw("POST", `/api/parts/${id}/units`, { json: body, headers });
+  assert.strictEqual((await units({ units: "in" }, { "X-Human-Token": h.humanToken })).status, 404, "no edit key: not found");
+  assert.strictEqual((await units({ units: "in" }, { "X-Part-Key": up.body.parts[0].editKey })).status, 403, "no verified-human token while the bot check is on");
+  assert.strictEqual((await units({ units: "in" })).status, 200, "before an order: allowed");
   const mat = h.models.materialsDB.getAll().find((m) => m.process === "routing" && m.active && m.thicknesses?.length);
   const q = await h.post("/api/quote", { parts: [{ partId, materialSlug: mat.slug, thicknessMm: mat.thicknesses[0].mm, quantity: 1, process: "routing" }] }, buyer);
   assert.strictEqual(q.status, 200, q.text);
   const before = h.models.partsDB.getById(partId).geometry.boundingBox.width;
   h.models.orderItemsDB.insert({ orderId: h.models.ordersDB.getAll()[0].id, partId, fileName: "guard.dxf", quantity: 1 });
-  const r = await h.post(`/api/parts/${partId}/units`, { units: "mm" });
+  const r = await units({ units: "mm" });
   assert.strictEqual(r.status, 409, r.text);
-  assert.strictEqual(r.body.code, "part-on-order");
+  assert.strictEqual(r.body.code, "part-locked");
   assert.strictEqual(h.models.partsDB.getById(partId).geometry.boundingBox.width, before, "the stored geometry did not move");
-  assert.strictEqual((await h.post("/api/parts/not-a-uuid/units", { units: "mm" })).status, 404);
-  assert.strictEqual((await h.post(`/api/parts/${partId}/units`, { units: "furlongs" })).status, 400);
+  // The route itself refuses too, wherever it is mounted (the gate in security/index.js is not its only guard).
+  {
+    const express = require("express");
+    const bare = express();
+    bare.use(express.json());
+    bare.use("/api", require("../routes/api"));
+    const srv = await new Promise((resolve) => { const x = bare.listen(0, () => resolve(x)); });
+    try {
+      const res = await fetch(`http://127.0.0.1:${srv.address().port}/api/parts/${partId}/units`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ units: "mm" }) });
+      assert.strictEqual(res.status, 409);
+      assert.strictEqual((await res.json()).code, "part-locked");
+    } finally { await new Promise((resolve) => srv.close(resolve)); }
+  }
+  assert.strictEqual(h.models.partsDB.getById(partId).geometry.boundingBox.width, before);
+  assert.strictEqual((await units({ units: "mm" }, key, "not-a-uuid")).status, 404);
+  // A wrong unit on a part that can still be edited is a plain 400.
+  const up2 = await h.form("/api/upload", { process: "routing" }, { files: { name: "guard2.dxf", data: dxf } });
+  const p2 = up2.body.parts[0];
+  assert.strictEqual((await units({ units: "furlongs" }, { "X-Human-Token": h.humanToken, "X-Part-Key": p2.editKey }, p2.partId)).status, 400);
 });
 
 run(async () => {
