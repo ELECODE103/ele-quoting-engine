@@ -360,10 +360,12 @@ router.get("/", authenticate, (req, res) => {
       const items = orderItemsDB.query((i) => i.orderId === order.id);
       const enrichedItems = items.map((it) => {
         const part = it.partId ? partsDB.getById(it.partId) : null;
+        // The part's measurements, never its preview mesh: an order list has no 3D view.
+        const { meshData, ...geometry } = part?.geometry || {};
         return {
         ...it,
         storedName: part?.storedName || null,
-        geometry: part?.geometry || null,
+        geometry: part?.geometry ? geometry : null,
         dfm: part?.dfm || null,
       };
       });

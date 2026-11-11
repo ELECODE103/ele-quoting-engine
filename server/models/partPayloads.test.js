@@ -342,6 +342,19 @@ test("reopening a quote brings the 3D preview back from its file; if the file is
   // Other answers that carry a part's geometry no longer drag the mesh along.
   const view = await h.get(`/api/quote/${q.body.quoteId}`);
   assert.ok(view.text.length < 60000 && !/"positions":\[[-0-9.]/.test(view.text));
+  // An order's answers carry the part's measurements and never a mesh, large or small.
+  const buyer = await h.register("orders@buyer.test");
+  const cube = await upload("cube_20mm.stl", fs.readFileSync(path.join(partsDir, "cube_20mm.stl")));
+  assert.deepStrictEqual(filesOf(cube.partId), [], "a 12-triangle cube's mesh stays in its row");
+  const oq = await h.post("/api/quote", { parts: [up, cube].map((p) => ({ partId: p.partId, materialSlug: cnc.slug, quantity: 1, process: "cnc", subProcess: "milling" })) }, buyer);
+  const co = await h.post("/api/orders/checkout-session", { quoteId: oq.body.quoteId, shippingName: "A Buyer", shippingAddress: "1 Test St", shippingCity: "Elgin", shippingState: "IL", shippingZip: "60120" }, buyer);
+  assert.strictEqual(co.status, 200, co.text);
+  const list = await h.get("/api/orders", buyer);
+  assert.strictEqual(list.body[0].items.length, 2);
+  for (const it of list.body[0].items) {
+    assert.ok(it.geometry && it.geometry.boundingBox && !("meshData" in it.geometry), `${it.fileName}: geometry without a mesh`);
+  }
+  assert.ok(!/"positions"/.test(list.text) && list.text.length < 40000, `the order list is ${list.text.length} bytes`);
   fs.unlinkSync(path.join(payloadDir, `${up.partId}.mesh.json`));
   const quiet = console.error; console.error = () => {};
   let without;
