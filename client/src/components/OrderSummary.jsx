@@ -3,7 +3,7 @@ import { formatCurrency, formatWeight, formatShipDate, formatDate } from '../uti
 import { authPath } from '../utils/returnTo';
 import { useAuth } from '../utils/authContext';
 import brand, { PROCESS_LABELS } from '../brand';
-import { when } from '../facts';
+import { when, SENT_OUT_FINISHES } from '../facts';
 
 const PROCESS_SHORT = { '3d-printing': '3D print', cnc: 'CNC', routing: 'Routing', sheetmetal: 'Sheet metal' };
 
@@ -13,6 +13,7 @@ const PROCESS_SHORT = { '3d-printing': '3D print', cnc: 'CNC', routing: 'Routing
  * when it doesn't. A firm-quote link is always available either way.
  */
 export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLeadTimeChange, partsConfig, materials = [], quoteError, quoteLoading }) {
+  const sentOutFinish = (partsConfig || []).some((p) => SENT_OUT_FINISHES.has(p.finishSlug));
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -76,22 +77,27 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
             // the lead-time list's own date covers the moment before the first price.
             const opt = quote.leadTimeOptions?.find((o) => o.slug === lt.slug);
             const shipBy = opt?.shipBy || lt.shipBy;
+            // Anodize and powder coat go out to a finisher: those parts ship on Standard only.
+            const blocked = sentOutFinish && lt.slug !== 'standard';
             return (
-              <label key={lt.slug} className={`lead-option${on ? ' on' : ''}`}>
+              <label key={lt.slug} className={`lead-option${on ? ' on' : ''}`} style={blocked ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}>
                 <input
                   type="radio"
                   name="lead-time"
                   className="sr-only"
                   value={lt.slug}
                   checked={on}
+                  disabled={blocked}
                   onChange={() => onLeadTimeChange(lt.slug)}
                 />
                 <span className="lead-dot" aria-hidden="true" />
                 <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1 }}>
                   {lt.name}
-                  <span style={{ display: 'block', color: 'var(--text-dim)' }}>Ships by {formatShipDate(shipBy)}</span>
+                  <span style={{ display: 'block', color: 'var(--text-dim)' }}>
+                    {blocked ? 'Not available with anodize or powder coat (sent out to a finisher)' : `Ships by ${formatShipDate(shipBy)}`}
+                  </span>
                 </span>
-                {opt?.surcharge > 0 && <span style={{ fontSize: 10, color: 'var(--warn-text)', whiteSpace: 'nowrap' }}>+{formatCurrency(opt.surcharge)}</span>}
+                {!blocked && opt?.surcharge > 0 && <span style={{ fontSize: 10, color: 'var(--warn-text)', whiteSpace: 'nowrap' }}>+{formatCurrency(opt.surcharge)}</span>}
               </label>
             );
           })}

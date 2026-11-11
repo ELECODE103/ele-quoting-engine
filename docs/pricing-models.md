@@ -518,3 +518,12 @@ Model gaps that remain (not knobs): a legacy flat part with slots reads them as 
 | seal_ring_peek | cnc:cnc-ptfe | 1 | $117.77 | $49.09 | $58.64 | ×2.01 | ×0.84 |
 | seal_ring_peek | cnc:cnc-ptfe | 10 | $53.92 | $19.59 | $28.11 | ×1.92 | ×0.70 |
 | seal_ring_peek | cnc:cnc-ptfe | 25 | $47.64 | $16.95 | $26.07 | ×1.83 | ×0.65 |
+
+
+## Shop rates in force (owner, 2026-11-11)
+
+Seeded defaults: mill, lathe and router at **$110/h** cost rate with a **50 % margin**, so the customer is billed $220 per machine hour and material is marked up 2×. Hand work stays $65/h; printer rates are unchanged. Prices are about 1.6× the earlier $95/h, 30 % seed.
+
+The harness's shop-estimate midpoints were written at $95/h and 30 % margin, so `vs-shop-estimate` now warns on most CNC and routing rows (engine ÷ estimate ≈ 1.6). That is the rate change, not a model fault: 300 quotes, 0 sanity fails. Re-base the estimates when real job times are in.
+
+A database that already holds a saved rule set keeps its saved rates — defaults only seed a new database. Check Admin → Pricing after the first deploy.

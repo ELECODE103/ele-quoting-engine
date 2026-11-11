@@ -273,6 +273,10 @@ function priceQuote(partConfigs, leadTimeSlug = "standard") {
   if (!leadTime || !leadTime.active || !shopFacts.leadTimeListed(leadTime)) {
     throw quoteError(400, "Invalid lead time");
   }
+  // Anodize and powder coat go out to a finisher, so those parts ship on Standard only.
+  if (!shopFacts.leadTimeAllowsFinishes(leadTime, (partConfigs || []).map((c) => c && c.finishSlug))) {
+    throw quoteError(400, `Anodize and powder coat are sent out to a finisher, so a part with either one ships on the Standard lead time. Choose Standard, or a finish done here.`, { code: "finish-lead-time" });
+  }
 
   // Build pricing input
   const pricingParts = [];
@@ -352,12 +356,14 @@ function priceQuote(partConfigs, leadTimeSlug = "standard") {
 }
 
 /** Ship-by date and surcharge in dollars for every active lead time, for the option list. */
-function leadTimeOptions(subtotal) {
+function leadTimeOptions(subtotal, finishSlugs = []) {
   return leadTimesDB.getAll().filter((lt) => lt.active && shopFacts.leadTimeListed(lt)).map((lt) => ({
     slug: lt.slug,
     name: lt.name,
     shipBy: shipBy.shipByDate(lt),
     surcharge: Math.max(0, (subtotal || 0) * ((rushMultiplier(lt) || 1) - 1)),
+    // false when a sent-out finish (anodize, powder coat) rules this lead time out
+    available: shopFacts.leadTimeAllowsFinishes(lt, finishSlugs),
   }));
 }
 
@@ -422,7 +428,7 @@ router.post("/quote", optionalAuth, (req, res) => {
       notes: saved.notes || "",
       drawingFileName: saved.drawingFileName || "",
       shipBy: shipBy.shipByDate(leadTime),
-      leadTimeOptions: leadTimeOptions(quote.subtotal),
+      leadTimeOptions: leadTimeOptions(quote.subtotal, (req.body.parts || []).map((c) => c && c.finishSlug)),
       dfmByPartId: Object.fromEntries(
         Object.entries(dfmByPartId).map(([id, d]) => [id, { summary: d.summary, checks: d.checks }])
       ),

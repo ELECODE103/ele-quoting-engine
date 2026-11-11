@@ -8,7 +8,7 @@ import DFMPanel from '../components/DFMPanel';
 import PartConfigurator from '../components/PartConfigurator';
 import OrderSummary from '../components/OrderSummary';
 import ProcessPicker from '../components/ProcessPicker';
-import { when } from '../facts';
+import { when, SENT_OUT_FINISHES } from '../facts';
 import brand, { PROCESS_LABELS } from '../brand';
 import { sessionQuoteId, storedQuoteId, storeQuoteId } from '../utils/returnTo';
 
@@ -118,6 +118,13 @@ export default function QuoteBuilder() {
   }, []);
 
   // Auto-refresh quote when parts change
+  // Anodize and powder coat are sent out to a finisher, so a quote with either
+  // one ships on Standard: picking one while a faster lead time is selected
+  // moves the quote back to Standard (the picker explains why).
+  useEffect(() => {
+    if (selectedLeadTime !== 'standard' && parts.some((p) => SENT_OUT_FINISHES.has(p.finishSlug))) setSelectedLeadTime('standard');
+  }, [parts, selectedLeadTime]);
+
   const fetchQuote = useCallback(async () => {
     if (parts.length === 0) return;
     const todo = parts.map(dxfTodo).find(Boolean);

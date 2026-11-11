@@ -50,11 +50,11 @@ const map = (key, group, label, help, unit, keys, def, min, max) =>
 
 const RULES = [
   // ─── Shop ──────────────────────────────────────────────────────────────────
-  money("cncMachineRatePerHour", "shop", "Mill rate", "What an hour on the Tormach costs the customer, machine running or being set up.", "$/h", 95, 20, 500),
-  money("latheRatePerHour", "shop", "Lathe rate", "What an hour on the manual lathe costs the customer.", "$/h", 85, 20, 500),
-  money("routerMachineRatePerHour", "shop", "Router rate", "What an hour on the Techno router costs the customer.", "$/h", 95, 20, 500),
+  money("cncMachineRatePerHour", "shop", "Mill rate", "What an hour on the Tormach costs the customer, machine running or being set up.", "$/h", 110, 20, 500),
+  money("latheRatePerHour", "shop", "Lathe rate", "What an hour on the manual lathe costs the customer.", "$/h", 110, 20, 500),
+  money("routerMachineRatePerHour", "shop", "Router rate", "What an hour on the Techno router costs the customer.", "$/h", 110, 20, 500),
   money("laborRatePerHour", "shop", "Hand-work rate", "Rate for work done away from a machine: hand tapping, deburring, inspection, print post-processing.", "$/h", 65, 10, 300),
-  pct("marginPercent", "shop", "Margin", "Share of the final price that is profit; 0.30 means cost is 70% of the price.", 0.30, 0, 0.9),
+  pct("marginPercent", "shop", "Margin", "Share of the final price that is profit; 0.50 means cost is half of the price.", 0.50, 0, 0.9),
   money("minimumPartPrice", "shop", "Minimum CNC part price", "No machined part ever sells for less than this per piece.", "$", 5, 0, 1000),
   money("routerMinimumPartPrice", "shop", "Minimum routed part price", "No routed part ever sells for less than this per piece.", "$", 6, 0, 1000),
   money("fdmMinimumPartPrice", "shop", "Minimum FDM part price", "Floor per FDM piece; covers removing it from the bed and checking it.", "$", 8, 0, 1000),

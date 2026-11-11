@@ -285,7 +285,8 @@ test("turning: longer part → more $; a bore costs more than solid; a Ø12 spac
   assert.ok(long > short, `${long} > ${short}`);
   assert.ok(short > solid, `bored ${short} > solid ${solid}`);
   const spacer = turn({ boundingBox: { width: 12, height: 12, depth: 6 }, volume: (Math.PI / 4) * (144 - 42.25) * 6, surfaceArea: 500 }, { quantity: 25 });
-  assert.ok(spacer.perUnit.final < 12 && spacer.perUnit.final >= R.minimumPartPrice, `spacer ${spacer.perUnit.final}`);
+  // "cheap" at the shop's $110/h cost rate and 50% margin: well under $15 a piece in a batch of 25
+  assert.ok(spacer.perUnit.final < 15 && spacer.perUnit.final >= R.minimumPartPrice, `spacer ${spacer.perUnit.final}`);
 });
 
 test("turning: per-piece time is well under the old 15-minute floor for a small bushing, and non-increasing with qty", () => {

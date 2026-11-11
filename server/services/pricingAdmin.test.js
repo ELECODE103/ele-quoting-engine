@@ -159,7 +159,7 @@ test("save requires a note, validates, writes a diff and a snapshot", () => {
   assert.strictEqual(h[0].userEmail, "erik@example.com");
   assert.strictEqual(h[0].action, "save");
   assert.deepStrictEqual(h[0].changedKeys.sort(), ["marginPercent", "routerFeedMmPerMin"]);
-  assert.deepStrictEqual(h[0].diff.marginPercent, { from: 0.3, to: 0.35 });
+  assert.deepStrictEqual(h[0].diff.marginPercent, { from: schema.schemaDefaults().marginPercent, to: 0.35 });
 });
 
 test("an unchanged save writes nothing to the log", () => {
@@ -188,7 +188,7 @@ test("restore puts a previous snapshot back and logs it; reset returns to defaul
   const restored = admin.restore(first.audit.id, { user: { userId: "u1" } });
   assert.strictEqual(restored.ok, true);
   assert.strictEqual(admin.currentRules().cncMachineRatePerHour, 100);
-  assert.strictEqual(admin.currentRules().marginPercent, 0.3, "restore brings back the whole snapshot");
+  assert.strictEqual(admin.currentRules().marginPercent, schema.schemaDefaults().marginPercent, "restore brings back the whole snapshot");
   const h = admin.history();
   assert.strictEqual(h[0].action, "restore");
   assert.ok(/first/.test(h[0].note));

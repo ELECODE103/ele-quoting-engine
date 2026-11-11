@@ -31,6 +31,17 @@ function leadTimeListed(lt) {
   return true;
 }
 
+// Finishes done by an outside finisher (owner, 2026-11-10: anodize and powder
+// coat are sent out; bead blasting is done here). A part with one of these
+// ships on the Standard lead time only (owner, 2026-11-11). Keep in step with
+// SENT_OUT_FINISHES in client/src/facts.js.
+const SENT_OUT_FINISHES = new Set(["cnc-anodize-clear", "cnc-anodize-black", "cnc-anodize-color", "cnc-powder-coat"]);
+const finishSentOut = (slug) => SENT_OUT_FINISHES.has(slug);
+/** May a quote with these finish slugs be bought on this lead time? */
+function leadTimeAllowsFinishes(leadTime, finishSlugs = []) {
+  return !leadTime || leadTime.slug === "standard" || !finishSlugs.some(finishSentOut);
+}
+
 /** The fact's value run through `fn` when the owner has confirmed it, else `fallback` ("" by default). */
 function when(id, fn = (v) => v, fallback = "") {
   return ok(id) ? fn(data.facts[id].value) : fallback;
@@ -68,4 +79,4 @@ function businessName(brand) {
   return ok("legal-name") ? data.facts["legal-name"].value : brand.name;
 }
 
-module.exports = { ok, when, materialListed, finishListed, leadTimeListed, gradeLabel, businessName, standardTolerance };
+module.exports = { ok, when, materialListed, finishListed, leadTimeListed, SENT_OUT_FINISHES, finishSentOut, leadTimeAllowsFinishes, gradeLabel, businessName, standardTolerance };
