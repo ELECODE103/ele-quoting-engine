@@ -100,7 +100,7 @@ async function start(opts = {}) {
   api.loadPricingRules();
 
   const app = express();
-  app.set("trust proxy", true); // so each call can come from its own address (X-Forwarded-For)
+  app.set("trust proxy", 1); // one proxy hop, as in production: each call can come from its own address (X-Forwarded-For)
   app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), require("../routes/stripeWebhook"));
   app.use(express.json());
   require("../security").mount(app);
@@ -108,6 +108,7 @@ async function start(opts = {}) {
   app.use("/api/auth", require("../routes/auth"));
   app.use("/api/orders", require("../routes/orders"));
   app.use("/api/rfq", require("../routes/rfq"));
+  app.use("/api/pdf", require("../routes/pdf"));
   const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
 
@@ -208,12 +209,15 @@ async function start(opts = {}) {
     pay(sessionId, over = {}) { Object.assign(stripe.sessions[sessionId], { payment_status: "paid" }, over); },
     stop: () => new Promise((resolve) => server.close(() => { fs.rmSync(tmp, { recursive: true, force: true }); resolve(); })),
   };
-  // The quote tool's one-time check: trade a passed Turnstile token for a verified-human token.
-  if (turnstileOn) {
+  // The quote tool's one-time check: trade a passed Turnstile token for a verified-human token (good for an hour).
+  h.refreshHuman = async () => {
+    if (!turnstileOn) return "";
     const v = await raw("POST", "/api/human/verify", { json: { turnstileToken: "pass-quote" } });
     if (v.status !== 200 || !v.body.humanToken) throw new Error(`human verify failed: ${v.text}`);
     h.humanToken = v.body.humanToken;
-  }
+    return h.humanToken;
+  };
+  await h.refreshHuman();
   return h;
 }
 

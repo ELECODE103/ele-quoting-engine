@@ -168,10 +168,10 @@ router.post("/register", registerLimiter, async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
-    if (!isValidEmail(email) || !mailer.cleanAddress(email) || typeof password !== "string") {
+    const normalizedEmail = normalizeEmail(typeof email === "string" ? email : "");
+    if (!isValidEmail(normalizedEmail) || !mailer.cleanAddress(normalizedEmail) || typeof password !== "string") {
       return res.status(400).json({ error: "Please enter a valid email address" });
     }
-    const normalizedEmail = normalizeEmail(email);
 
     // Always-on form checks, then the bot check.
     check = botGuard.checkForm(req, { form: "register", email: normalizedEmail });

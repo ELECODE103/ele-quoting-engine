@@ -10,9 +10,9 @@
  *                                 key is ever compiled into the bundle.
  *   GET  /api/public/form-token   a token for one showing of a form
  *   POST /api/human/verify        Turnstile token → one-hour verified-human token
- *   gates in front of POST /api/upload, POST /api/quote and
- *   POST /api/parts/:partId/units (the routes themselves live in routes/api.js
- *   and are not touched)
+ *   gates in front of POST /api/upload, POST /api/quote,
+ *   POST /api/quote/:id/drawing and POST /api/parts/:partId/units (the routes
+ *   themselves live in routes/api.js and are not touched)
  */
 const express = require("express");
 const turnstile = require("./turnstile");
@@ -77,6 +77,8 @@ function mount(app) {
   router.post("/upload", quoteGate, addPartEditKeys);
   router.post("/quote", quoteGate);
   router.post("/parts/:partId/units", quoteGate, partEditGate);
+  // The optional drawing on a quote is a 25 MB file written to disk: same gate.
+  router.post("/quote/:id/drawing", quoteGate);
   router.get("/quote/:id/session", addPartEditKeys);
 
   app.use("/api", router);
