@@ -13,15 +13,25 @@
  *   C  the Turnstile script blocked (clear message, nothing sent)
  *   D  password reset, end to end
  *   E  sign-in pause after five wrong passwords, and unlocking by reset
- *   F  admin: two-step enrolment, sign-in with a code, sign-in with a recovery code
+ *   F  admin: two-step sign-in is required — the enrolment screen is the only admin
+ *      screen until it is on; then sign-in with a code, and with a recovery code
  *   G  a guest and a second customer refused on every account-scoped route
  *   H  a second server with NO Turnstile keys: request forms taken as
- *      unverified senders (no buyer email, no ship-to address)
+ *      unverified senders (no buyer email, no ship-to address), and the pages
+ *      say exactly that
+ *   I  a page on another site tries to act as a signed-in visitor, and a hostile
+ *      note is opened in the admin queue: nothing happens
+ *
+ * Every page runs under the server's real Content-Security-Policy (no bypass),
+ * and any violation fails the run.
  *
  * Outside calls are stubbed in the server process by stub-network.cjs
  * (Turnstile siteverify, Resend, Stripe) and, in the browser, Cloudflare's
- * widget script is replaced by a stand-in that issues test tokens. Every key,
- * password and code is made at run time. Emails are read from EMAIL_OUTBOX_DIR.
+ * widget script is replaced by a stand-in that issues test tokens (it is served
+ * for the real URL, so the policy's allowance for that host is what lets it
+ * run, and it opens a frame on that host as the real widget does). Every key,
+ * secret, password and code is made at run time. Emails are read from
+ * EMAIL_OUTBOX_DIR, which the server honours only with SE_TEST_HOOKS=1.
  */
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -77,10 +87,11 @@ async function startServer({ turnstile }) {
     NODE_ENV: 'production',
     PORT: String(PORT),
     USE_SQLITE: 'true',
-    JWT_SECRET: 'test',
+    JWT_SECRET: crypto.randomBytes(32).toString('hex'),
     STRIPE_SECRET_KEY: 'sk_test_dummy',
-    STRIPE_WEBHOOK_SECRET: 'whsec_test',
+    STRIPE_WEBHOOK_SECRET: `whsec_${crypto.randomBytes(16).toString('hex')}`,
     E2E_STUBS: '1',
+    SE_TEST_HOOKS: '1', // the outbox is written only with the explicit test switch
   };
   delete env.TURNSTILE_SITE_KEY; delete env.TURNSTILE_SECRET_KEY; delete env.ADMIN_RECOVERY;
   if (turnstile) {
@@ -91,7 +102,7 @@ async function startServer({ turnstile }) {
   const log = fs.createWriteStream(logFile);
   const child = spawn(process.execPath, ['-r', path.join(ROOT, 'scripts', 'e2e', 'stub-network.cjs'), path.join(ROOT, 'server', 'index.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.pipe(log); child.stderr.pipe(log);
-  server = { child, logFile, secrets: [env.TURNSTILE_SECRET_KEY].filter(Boolean) };
+  server = { child, logFile, secrets: [env.TURNSTILE_SECRET_KEY, env.JWT_SECRET, env.STRIPE_WEBHOOK_SECRET].filter(Boolean) };
   for (let i = 0; i < 80; i++) {
     try { const r = await fetch(`${BASE}/api/health`); if (r.ok) return server; } catch { /* not up yet */ }
     await sleep(250);
@@ -123,43 +134,34 @@ async function waitMail(to, re, { after = 0, timeout = 8000 } = {}) {
 const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#token=\\S+`)) || [])[0];
 
 // ─── Browser ──────────────────────────────────────────────────
-// Stand-in for Cloudflare's widget script: draws a box and hands out a token after a moment.
-const TURNSTILE_STUB = `
-(function () {
-  var n = 0, widgets = {};
-  function issue(id) {
-    var w = widgets[id]; if (!w) return;
-    w.el.innerHTML = '<div style="border:1px solid #d6d3cb;border-radius:6px;padding:14px 16px;font:14px sans-serif;background:#fafafa;display:flex;gap:10px;align-items:center;max-width:300px"><span style="width:22px;height:22px;border-radius:50%;border:3px solid #cbd5e1;border-top-color:#101C33;display:inline-block"></span>Verifying you are human… (test stand-in)</div>';
-    clearTimeout(w.timer);
-    w.timer = setTimeout(function () {
-      if (!widgets[id]) return;
-      w.el.innerHTML = '<div style="border:1px solid #d6d3cb;border-radius:6px;padding:14px 16px;font:14px sans-serif;background:#fafafa;display:flex;gap:10px;align-items:center;max-width:300px"><span style="color:#059669;font-size:20px">✓</span>Success! (test stand-in)</div>';
-      w.opts.callback('e2e-pass-' + (++n) + '-' + Date.now());
-    }, window.__turnstileDelay == null ? 350 : window.__turnstileDelay);
-  }
-  window.turnstile = {
-    render: function (el, opts) { var id = 'w' + (++n); widgets[id] = { el: el, opts: opts }; issue(id); return id; },
-    reset: function (id) { issue(id); },
-    remove: function (id) { var w = widgets[id]; if (w) { clearTimeout(w.timer); w.el.innerHTML = ''; delete widgets[id]; } },
-    getResponse: function () { return ''; }
-  };
-})();`;
+// Stand-in for Cloudflare's widget script (the sandbox cannot reach the real one): scripts/e2e/turnstile-standin.cjs
+const { routeStandIn } = require(path.join(ROOT, 'scripts', 'e2e', 'turnstile-standin.cjs'));
 
 let browser;
 let visitor = 0;
 const consoleProblems = [];
-async function newContext({ turnstileScript = 'stub', bypassCSP = true } = {}) {
-  // bypassCSP: this branch's CSP does not list challenges.cloudflare.com yet (the
-  // CSP change is on the other hardening branch). Scenario C runs without the bypass.
+const cspViolations = [];
+async function newContext({ turnstileScript = 'stub' } = {}) {
+  // No bypassCSP: every page runs under the policy the server sends.
   // Each browser context is its own visitor, with its own address (the server trusts one proxy hop in production).
-  const context = await browser.newContext({ viewport: { width: 1360, height: 900 }, bypassCSP, extraHTTPHeaders: { 'X-Forwarded-For': `203.0.113.${++visitor}` } });
+  const context = await browser.newContext({ viewport: { width: 1360, height: 900 }, extraHTTPHeaders: { 'X-Forwarded-For': `203.0.113.${++visitor}` } });
+  await context.exposeBinding('__cspReport', (source, v) => { cspViolations.push(v); });
+  await context.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', (e) => {
+      window.__cspReport({ page: location.pathname, directive: e.effectiveDirective, blocked: e.blockedURI, sample: e.sample || '' });
+    });
+  });
   if (turnstileScript === 'stub') {
-    await context.route('https://challenges.cloudflare.com/**', (route) => route.fulfill({ status: 200, contentType: 'application/javascript', body: TURNSTILE_STUB }));
+    await routeStandIn(context);
   } else if (turnstileScript === 'blocked') {
     await context.route('https://challenges.cloudflare.com/**', (route) => route.abort('blockedbyclient'));
   }
   context.on('page', (page) => {
-    page.on('console', (m) => { if (m.type() === 'error' && !/challenges\.cloudflare\.com|Failed to load resource/.test(m.text())) consoleProblems.push(`${page.url()} :: ${m.text()}`); });
+    page.on('console', (m) => {
+      if (page.__expected) return;
+      if (/Content Security Policy|Content-Security-Policy|violates the following/i.test(m.text())) { cspViolations.push({ page: page.url(), directive: 'console', blocked: m.text().slice(0, 200) }); return; }
+      if (m.type() === 'error' && !/challenges\.cloudflare\.com|Failed to load resource/.test(m.text())) consoleProblems.push(`${page.url()} :: ${m.text()}`);
+    });
     page.on('pageerror', (e) => consoleProblems.push(`${page.url()} :: pageerror ${e.message}`));
   });
   return context;
@@ -361,7 +363,7 @@ async function phaseWithKeys() {
 
   // ─── C ───────────────────────────────────────────────────────
   await step('C. The Turnstile script is blocked', async () => {
-    const ctx = await newContext({ turnstileScript: 'blocked', bypassCSP: false });
+    const ctx = await newContext({ turnstileScript: 'blocked' });
     const page = await ctx.newPage();
     await page.goto(`${BASE}/rfq`);
     const problem = page.getByRole('group', { name: 'Spam check' }).getByRole('alert');
@@ -543,13 +545,24 @@ async function phaseWithKeys() {
     await page.goto(linkIn(mail, 'verify-email'));
     await page.getByText('is confirmed').waitFor({ timeout: 10000 });
     await page.goto(`${BASE}/admin`);
+    const gate = page.getByTestId('enrolment-gate');
+    await gate.waitFor({ timeout: 15000 });
     const banner = page.getByTestId('twofactor-banner');
-    await banner.waitFor({ timeout: 15000 });
-    check('once its email is confirmed the account is the admin, and every admin page carries the two-step banner', (await apiFrom(page, 'GET', '/api/admin/stats')).status === 200 && /Two-step sign-in is off/.test(await banner.textContent()));
-    await sleep(700); // let the stat cards finish fading in
+    const session = await page.evaluate(() => fetch('/api/auth/session').then((r) => r.json()));
+    check('once its email is confirmed the account is the admin, and must set up two-step sign-in', session.user.role === 'admin' && session.user.twoFactorRequired === true && /Set up two-step sign-in to open the admin pages/.test(await banner.textContent()));
+    // The enrolment screen is the only admin screen: no tabs, no numbers, nothing loaded.
+    const gateText = await gate.textContent();
+    check('until then the admin page shows the enrolment screen and nothing else', await page.getByRole('button', { name: 'RFQs' }).count() === 0 && await page.getByRole('button', { name: 'Pricing' }).count() === 0 && !/Total Orders|Paid Revenue/.test(gateText) && await page.getByLabel('Your password, to start').count() === 1);
+    const shut = [];
+    for (const [method, url, body] of [['GET', '/api/admin/stats'], ['GET', '/api/admin/quotes'], ['GET', '/api/admin/parts'], ['GET', '/api/admin/materials'], ['GET', '/api/admin/pricing'], ['PUT', '/api/admin/pricing', { rules: {}, note: 'x' }], ['GET', '/api/admin/backup/db'], ['GET', '/api/admin/backup/json'], ['GET', '/api/rfq/admin/list'], ['GET', '/api/orders/admin/queue'], ['GET', '/api/pdf/fai']]) {
+      const r = await apiFrom(page, method, url, body);
+      if (r.status !== 403 || !/two-factor-enrolment-required/.test(r.text) || /SQLite format|%PDF/.test(r.text)) shut.push(`${method} ${url} → ${r.status}`);
+    }
+    check('every other admin route answers 403 two-factor-enrolment-required to the unenrolled admin', shut.length === 0, shut.join('; '));
+    check('the enrolment endpoints do answer', (await apiFrom(page, 'GET', '/api/auth/2fa')).status === 200);
+    await sleep(300);
     await shot(page, 'admin-2fa-banner', { fullPage: false });
 
-    await banner.getByRole('button', { name: 'Set it up now' }).click();
     await page.getByLabel('Your password, to start').fill(ownerPw);
     await page.getByRole('button', { name: 'Set up two-step sign-in' }).click();
     await page.getByTestId('twofactor-setup').waitFor({ timeout: 15000 });
@@ -568,7 +581,12 @@ async function phaseWithKeys() {
     const codes = await codesBox.locator('li').allTextContents();
     check('ten recovery codes are shown once', codes.length === 10 && new Set(codes).size === 10 && codes.every((c) => /^[A-Z2-9]{5}-[A-Z2-9]{5}$/.test(c)));
     await shot(page, 'admin-2fa-recovery-codes', { fullPage: false });
+    check('the admin pages stay closed until the codes are saved', await page.getByRole('button', { name: 'RFQs' }).count() === 0);
     await page.getByRole('button', { name: 'I have saved them' }).click();
+    // Enrolled: the admin pages open.
+    await page.getByRole('button', { name: 'Security' }).waitFor({ timeout: 15000 });
+    check('with two-step sign-in on, the admin pages open and the admin routes answer', await page.getByTestId('enrolment-gate').count() === 0 && (await apiFrom(page, 'GET', '/api/admin/stats')).status === 200 && /Total Orders/.test(await page.textContent('body')));
+    await page.getByRole('button', { name: 'Security' }).click();
     await page.getByTestId('twofactor-status').filter({ hasText: 'On' }).waitFor();
     check('the status reads On, 10 codes left, and the banner is gone', (await page.getByTestId('codes-left').textContent()) === '10' && await page.getByTestId('twofactor-banner').count() === 0);
     await shot(page, 'admin-2fa-on', { fullPage: false });
@@ -723,6 +741,80 @@ async function phaseWithKeys() {
     await bobCtx.close(); await guestCtx.close();
   });
 
+  // ─── I ───────────────────────────────────────────────────────
+  await step('I. Another site cannot act as a signed-in visitor; a hostile note cannot run in the admin pages', async () => {
+    const owner = state.ownerPage;
+    const dana = state.buyerPage;
+    const before = await dana.evaluate(() => fetch('/api/auth/profile').then((r) => r.json()));
+    const ordersBefore = (await apiFrom(dana, 'GET', '/api/orders')).text;
+    // A page on another site, open in Dana's browser while she is signed in: a second web server on
+    // this machine under another host name and port (to the browser, a different origin and a
+    // different site), serving a page of its own with no policy of ours.
+    const http = require('node:http');
+    const evilServer = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<!doctype html><title>Win a prize</title><h1>Win a prize</h1>'); });
+    await new Promise((resolve) => evilServer.listen(0, '127.0.0.1', resolve));
+    const evilOrigin = `http://127.0.0.1:${evilServer.address().port}`;
+    const evil = await state.buyerCtx.newPage();
+    evil.__expected = true; // what this page tries is supposed to fail: its console errors are the browser saying so
+    await evil.goto(`${evilOrigin}/win-a-prize`);
+    const attempts = await evil.evaluate(async (base) => {
+      const out = {};
+      const tryFetch = (name, url, init) => fetch(base + url, init).then((r) => { out[name] = `answered ${r.type} ${r.status}`; }, (e) => { out[name] = `blocked: ${e.name}`; });
+      // Needs a preflight (JSON, custom header): CORS grants this origin nothing.
+      await tryFetch('json put', '/api/auth/profile', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Pwned', company: 'Evil Inc' }) });
+      await tryFetch('json put with a guessed csrf token', '/api/auth/profile', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'guessed' }, body: '{"name":"Pwned"}' });
+      await tryFetch('read the session', '/api/auth/session', { credentials: 'include' });
+      // No preflight needed ("simple" requests): they are sent, but without the SameSite=Strict cookie.
+      await tryFetch('text/plain post', '/api/auth/logout-all', { method: 'POST', mode: 'no-cors', credentials: 'include', headers: { 'Content-Type': 'text/plain' }, body: '{}' });
+      await tryFetch('form post', '/api/orders/checkout-session', { method: 'POST', mode: 'no-cors', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'quoteId=x&shippingName=Evil' });
+      // And a real HTML form, submitted into a hidden frame.
+      await new Promise((resolve) => {
+        const frame = document.createElement('iframe'); frame.name = 'sink'; frame.style.display = 'none'; document.body.appendChild(frame);
+        const form = document.createElement('form'); form.method = 'POST'; form.action = `${base}/api/auth/logout-all`; form.target = 'sink';
+        document.body.appendChild(form); form.submit(); setTimeout(resolve, 800);
+      });
+      return out;
+    }, BASE);
+    check('requests that need a preflight are stopped by the browser: this origin is granted nothing', /^blocked/.test(attempts['json put']) && /^blocked/.test(attempts['json put with a guessed csrf token']), JSON.stringify(attempts));
+    check('the other site cannot read the session answer (and so not the CSRF token)', /^blocked/.test(attempts['read the session']), attempts['read the session']);
+    // These two were sent and answered (the browser shows only an opaque answer): the server was reachable
+    // from that page, so what follows is the cookie and CSRF rules holding, not the network refusing.
+    check('requests that need no preflight do reach the server from the other site', /^answered opaque/.test(attempts['text/plain post']) && /^answered opaque/.test(attempts['form post']), JSON.stringify(attempts));
+    const after = await dana.evaluate(() => fetch('/api/auth/profile').then((r) => r.json()));
+    const still = await apiFrom(dana, 'GET', '/api/orders');
+    check('after every attempt the account is unchanged, no order was made, and the visitor is still signed in', after.name === before.name && after.company === before.company && still.status === 200 && still.text === ordersBefore, `${after.name} / ${still.status}`);
+    await evil.close();
+    await new Promise((resolve) => evilServer.close(resolve));
+
+    // A request whose every field is markup, opened in the admin queue.
+    const ctx = await newContext();
+    const page = await ctx.newPage();
+    await page.goto(`${BASE}/rfq`);
+    const hostile = '<img src=x onerror="window.__xss=1"><script>window.__xss=2</script>';
+    await page.getByLabel(/^Name/).fill(`Mallory ${hostile}`);
+    await page.getByLabel(/^Email/).fill('mallory@buyer.test');
+    await page.getByLabel('Company').fill(`5 < 10 > 3 ${hostile}`);
+    await page.getByRole('textbox', { name: 'Anything else' }).fill(`tone = 5 and 5 < 10 > 3 ${hostile}`);
+    await page.getByRole('group', { name: 'Spam check' }).getByText('Check passed.').waitFor();
+    await page.getByRole('button', { name: 'Send for a firm quote' }).click();
+    await page.getByRole('heading', { name: "It's in the queue." }).waitFor({ timeout: 15000 });
+    await ctx.close();
+    await owner.goto(`${BASE}/admin`);
+    await owner.getByRole('button', { name: 'RFQs' }).click();
+    const row = owner.locator('tr', { hasText: 'Mallory' }).first();
+    await row.waitFor({ timeout: 15000 });
+    await row.getByRole('button', { name: 'Detail' }).click();
+    await owner.getByText('tone = 5 and 5 < 10 > 3', { exact: false }).first().waitFor({ timeout: 10000 });
+    await sleep(500);
+    const dom = await owner.evaluate(() => ({ xss: window.__xss, img: document.querySelectorAll('img[src="x"]').length, scripts: [...document.scripts].filter((x) => !x.src && x.type !== 'application/ld+json').length, text: document.querySelector('#root').innerText }));
+    check('the note is shown exactly as typed, as text', dom.text.includes('tone = 5 and 5 < 10 > 3 <img src=x onerror="window.__xss=1"><script>window.__xss=2</script>') && dom.text.includes('5 < 10 > 3 <img'), dom.text.slice(dom.text.indexOf('Mallory'), dom.text.indexOf('Mallory') + 200));
+    check('nothing from it became an element or ran', dom.xss === undefined && dom.img === 0 && dom.scripts === 0, JSON.stringify({ xss: dom.xss, img: dom.img, scripts: dom.scripts }));
+    const stored = JSON.parse(await owner.evaluate(() => fetch('/api/rfq/admin/list').then((r) => r.text()))).find((r) => r.email === 'mallory@buyer.test');
+    check('and it is stored unchanged', stored.notes === `tone = 5 and 5 < 10 > 3 ${hostile}` && stored.company === `5 < 10 > 3 ${hostile}`, stored.notes);
+    const shopMail = mailsTo(OWNER, /^RFQ:/).pop();
+    check('the shop email shows it escaped, and its subject carries none of it', shopMail.html.includes('&lt;img src=x onerror=&quot;window.__xss=1&quot;&gt;') && !/<img|<script/i.test(shopMail.html) && !/Mallory|img|script/.test(shopMail.subject), shopMail.subject);
+  });
+
   // Logs: no secrets.
   const text = log();
   const leaked = [...server.secrets, 'e2e-pass-', '#token='].filter((s) => text.includes(s));
@@ -741,6 +833,17 @@ async function phaseWithoutKeys() {
     const page = await ctx.newPage();
     const asked = [];
     page.on('request', (r) => { if (r.url().includes('challenges.cloudflare.com')) asked.push(r.url()); });
+    // What the pages say before anything is sent is true with or without the bot check.
+    const promises = /confirmation email|on the (next )?screen and by email|address to ship[^.?!]*(on the (next )?screen|by email)/i;
+    const pre = [];
+    for (const url of ['/replacement-parts', '/rfq', '/rfq?nocad=1']) {
+      await page.goto(`${BASE}${url}`);
+      await sleep(400);
+      const t = await page.locator('main').innerText();
+      if (promises.test(t)) pre.push(`${url}: ${t.match(promises)[0]}`);
+      if (url !== '/rfq' && !/we send you the address to ship/i.test(t)) pre.push(`${url}: does not say we send the address`);
+    }
+    check('before a request is sent no page promises a confirmation email or an address on the screen', pre.length === 0, pre.join('; '));
     await page.goto(`${BASE}/rfq?nocad=1`);
     await page.getByLabel(/^Name/).fill('Sam Maint');
     await page.getByLabel(/^Email/).fill('stranger@elsewhere.test');
@@ -750,6 +853,7 @@ async function phaseWithoutKeys() {
     const body = await page.textContent('body');
     const shipFrom = require(path.join(ROOT, 'server', 'config', 'shipFrom.json'));
     check('send-the-part form, no bot check: accepted, a reference is shown, the ship-to address is not', !body.includes(shipFrom.zip) && !body.includes(shipFrom.address) && /Reference to write on the box/.test(body) && /Do not send anything yet/.test(body));
+    check('…and the page says what happened: the address comes in our reply, and no confirmation email is claimed', /We read the request first, then reply to/.test(body) && /It comes in our reply to stranger@elsewhere\.test/.test(body) && /No automatic confirmation email goes out for this request/.test(body) && !/confirmation email is on its way|in the confirmation email|Reply to the confirmation email/.test(body), body.slice(0, 400));
     await shot(page, 'part-request-unverified', { fullPage: false });
     await sleep(600);
     const shop = mailsTo(OWNER, /^RFQ:/).pop();
@@ -763,7 +867,7 @@ async function phaseWithoutKeys() {
     await page.getByRole('button', { name: 'Send for a firm quote' }).click();
     await page.getByRole('heading', { name: "It's in the queue." }).waitFor({ timeout: 15000 });
     const text2 = await page.textContent('body');
-    check('firm-quote form, no bot check: accepted, and the page does not promise a confirmation email', !text2.includes('A confirmation email is on its way') && /did not send an automatic confirmation email/.test(text2));
+    check('firm-quote form, no bot check: accepted, and the page does not promise a confirmation email', !text2.includes('A confirmation email is on its way') && /No automatic confirmation email goes out for this request/.test(text2) && /Reference: [0-9A-F]{8}/.test(text2));
     await shot(page, 'rfq-sent-unverified', { fullPage: false });
     await sleep(600);
     const shop2 = mailsTo(OWNER, /^RFQ:/).pop();
@@ -789,6 +893,17 @@ async function phaseWithoutKeys() {
     await page.goto(linkIn(await waitMail(OWNER, /confirm your email/), 'verify-email'));
     await page.getByText('is confirmed').waitFor({ timeout: 10000 });
     await page.goto(`${BASE}/admin`);
+    // Two-step sign-in comes first here too: the queue opens only after enrolment.
+    await page.getByTestId('enrolment-gate').waitFor({ timeout: 15000 });
+    check('with no keys the owner still has to set up two-step sign-in before the queue opens', await page.getByRole('button', { name: 'RFQs' }).count() === 0);
+    await page.getByLabel('Your password, to start').fill(ownerPw);
+    await page.getByRole('button', { name: 'Set up two-step sign-in' }).click();
+    await page.getByTestId('twofactor-setup').waitFor({ timeout: 15000 });
+    const key = (await page.getByTestId('setup-key').textContent()).replace(/\s/g, '');
+    await page.getByLabel('6-digit code from the app').fill(totp.codeAt(key));
+    await page.getByRole('button', { name: 'Switch it on' }).click();
+    await page.getByTestId('recovery-codes').waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: 'I have saved them' }).click();
     await page.getByRole('button', { name: 'RFQs' }).click();
     await page.getByText('Unverified sender').first().waitFor({ timeout: 15000 });
     check('the admin RFQ queue marks both requests "Unverified sender"', await page.getByText('Unverified sender').count() === 2);
@@ -804,6 +919,7 @@ try {
   await phaseWithKeys();
   await phaseWithoutKeys();
   check('no page raised a console error or an uncaught exception (hydration included)', consoleProblems.length === 0, consoleProblems.slice(0, 6).join(' | '));
+  check('no Content-Security-Policy violation on any page of the run, under the real policy (no bypass)', cspViolations.length === 0, cspViolations.slice(0, 6).map((v) => `${v.page} ${v.directive} ${v.blocked}`).join(' | '));
 } catch (err) {
   check('run completed', false, err.stack || err.message);
 } finally {
