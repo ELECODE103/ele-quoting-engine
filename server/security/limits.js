@@ -35,8 +35,12 @@ const limits = {
   get uploadDailyBytesPerClient() { return envInt("UPLOAD_DAILY_MB_PER_IP", 500, 1, 100000) * MB; },
   /** Hard ceiling on everything stored under data/uploads, data/quote-drawings and data/rfq-drawings. */
   get storageMaxBytes() { return envInt("UPLOAD_DIR_MAX_MB", 2048, 10, 1000000) * MB; },
-  /** Database file size past which new uploads are refused (each adds a geometry row; every write rewrites the file). */
-  get databaseMaxBytes() { return envInt("DB_MAX_MB", 512, 16, 16384) * MB; },
+  /**
+   * Database file size past which new uploads are refused. Each upload adds a geometry row (up to
+   * ~3 MB for a dense mesh) and every write rewrites the whole file: measured, a write blocks the
+   * server for about 2 ms per MB of database (0.4 s at 200 MB) and memory runs at ~5× the file.
+   */
+  get databaseMaxBytes() { return envInt("DB_MAX_MB", 256, 16, 16384) * MB; },
   /** Share of the ceiling at which a warning is logged. */
   get storageWarnFraction() { return envInt("UPLOAD_DIR_WARN_PERCENT", 80, 10, 99) / 100; },
   /** Largest drawing (PDF) attached to an instant quote, bytes. */
@@ -56,11 +60,12 @@ const limits = {
   /** Parse jobs one client address may have running at once (the rest of its files wait their turn). */
   get parsePerClient() { return envInt("PARSE_PER_CLIENT", 1, 1, 16); },
   /**
-   * Whole-process memory (RSS) at which running parses are stopped, MB. WASM and
-   * typed-array memory is outside the V8 heap limit, so this is the backstop.
-   * 0 switches the watchdog off.
+   * Memory (RSS) all running parses together may add to the process before the
+   * longest-running one is stopped, MB. WASM and typed-array memory is outside
+   * the V8 heap limit, so this is the backstop. The service needs this much
+   * free above its idle footprint. 0 switches the watchdog off.
    */
-  get parseRssLimitMb() { return envInt("PARSE_RSS_LIMIT_MB", 1536, 0, 65536); },
+  get parseRssLimitMb() { return envInt("PARSE_RSS_LIMIT_MB", 1024, 0, 65536); },
 
   // ── Model size ceilings (bigger models go to a firm quote) ────
   /** Triangles in an STL or 3MF, or produced from a STEP/IGES. */

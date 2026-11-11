@@ -152,14 +152,14 @@ test("memory ceiling: a worker that outgrows its heap limit is stopped; the serv
   assert.ok(Math.abs((await make({}).run({ filePath: cube })).geometry.volume - 8000) < 1, "this process is alive and can still parse");
 });
 
-test("process memory watchdog: over PARSE_RSS_LIMIT_MB the longest-running parse is stopped", async () => {
+test("memory watchdog: when parsing has added more than PARSE_RSS_LIMIT_MB to the process, the longest-running parse is stopped", async () => {
   let rss = 100 * 1024 * 1024;
   const pool = make({ parseConcurrency: 2, parsePerClient: 2, parseRssLimitMb: 500, watchIntervalMs: 50, rssProbe: () => rss, testDelayMs: 1500 });
   const first = settle(pool.run({ filePath: cube }));
   await new Promise((r) => setTimeout(r, 100));
   const second = settle(pool.run({ filePath: cube }));
   await new Promise((r) => setTimeout(r, 100));
-  rss = 900 * 1024 * 1024; // WASM / typed-array memory the V8 heap limit does not see
+  rss = 900 * 1024 * 1024; // +800 MB of WASM / typed-array memory the V8 heap limit does not see
   const a = await first;
   assert.strictEqual(a.error && a.error.code, "parse-memory", "the oldest parse is the one stopped");
   rss = 100 * 1024 * 1024;

@@ -15,9 +15,10 @@
  *                         time, so one sender cannot occupy every worker
  *   - wall-clock timeout  PARSE_TIMEOUT_MS per file, then worker.terminate()
  *   - memory ceilings     V8 heap per worker (resourceLimits, PARSE_MAX_HEAP_MB)
- *                         and a whole-process RSS watchdog (PARSE_RSS_LIMIT_MB)
- *                         for WASM and typed-array memory, which V8's heap
- *                         limit does not count
+ *                         and a watchdog on the memory parsing adds to the
+ *                         process (PARSE_RSS_LIMIT_MB) for WASM and
+ *                         typed-array memory, which V8's heap limit does not
+ *                         count
  *
  * Workers are kept warm between small files (loading OpenCascade costs about a
  * second) and retired — terminated, memory handed back — after a large or slow
@@ -268,14 +269,21 @@ class ParsePool {
     if (this.running.has(entry)) this._finish(entry, err, undefined, { kill: true }); else this._settle(entry, err);
   }
 
-  /** While anything is running, check the whole process's memory twice a second. */
+  /**
+   * While anything is running, check the process's memory twice a second. What
+   * is limited is the growth since the parsers started work — the memory they
+   * added — so the size of the rest of the server (the in-memory database
+   * above all) neither eats into the parsers' budget nor hides their use.
+   */
   _watch() {
     if (this.watchdog) return;
     const limitMb = this._opt("parseRssLimitMb");
     if (!limitMb) return;
+    const rss = () => (this.opts.rssProbe ? this.opts.rssProbe() : process.memoryUsage().rss) / (1024 * 1024);
+    const baselineMb = rss();
     this.watchdog = setInterval(() => {
       if (this.running.size === 0) return this._unwatch();
-      const rssMb = (this.opts.rssProbe ? this.opts.rssProbe() : process.memoryUsage().rss) / (1024 * 1024);
+      const rssMb = rss() - baselineMb;
       if (rssMb <= limitMb) return;
       // Warm workers hold memory too: let them go first, then stop the parse
       // that has been running longest (it has had the most time to grow).
@@ -284,7 +292,7 @@ class ParsePool {
       for (const e of this.running) if (!oldest || e.startedAt < oldest.startedAt) oldest = e;
       if (!oldest) return;
       this.counters.outOfMemory++;
-      console.warn(`Parse pool: process memory ${Math.round(rssMb)} MB is over the ${limitMb} MB ceiling; stopped a parse (${path.extname(oldest.job.filePath || "") || "file"})`);
+      console.warn(`Parse pool: parsing has added ${Math.round(rssMb)} MB to the process, over the ${limitMb} MB ceiling (PARSE_RSS_LIMIT_MB); stopped a parse (${path.extname(oldest.job.filePath || "") || "file"})`);
       this._finish(oldest, this._memoryError(), undefined, { kill: true });
     }, this.opts.watchIntervalMs || 500);
     if (this.watchdog.unref) this.watchdog.unref();
