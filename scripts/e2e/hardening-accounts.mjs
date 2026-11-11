@@ -158,7 +158,6 @@ async function newContext({ turnstileScript = 'stub' } = {}) {
   }
   context.on('page', (page) => {
     page.on('console', (m) => {
-      if (page.__expected) return;
       if (/Content Security Policy|Content-Security-Policy|violates the following/i.test(m.text())) { cspViolations.push({ page: page.url(), directive: 'console', blocked: m.text().slice(0, 200) }); return; }
       if (m.type() === 'error' && !/challenges\.cloudflare\.com|Failed to load resource/.test(m.text())) consoleProblems.push(`${page.url()} :: ${m.text()}`);
     });
@@ -754,8 +753,29 @@ async function phaseWithKeys() {
     const evilServer = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<!doctype html><title>Win a prize</title><h1>Win a prize</h1>'); });
     await new Promise((resolve) => evilServer.listen(0, '127.0.0.1', resolve));
     const evilOrigin = `http://127.0.0.1:${evilServer.address().port}`;
-    const evil = await state.buyerCtx.newPage();
-    evil.__expected = true; // what this page tries is supposed to fail: its console errors are the browser saying so
+    // Dana's browser, as it is outside this harness: her cookies, and no test-only request header.
+    // (The other contexts send X-Forwarded-For on every request to give each visitor an address; on a
+    // cross-origin request that header alone forces a preflight, which would hide what is being tested.)
+    const evilCtx = await browser.newContext({ viewport: { width: 1360, height: 900 } });
+    await evilCtx.addCookies(await state.buyerCtx.cookies(BASE));
+    const own = await evilCtx.newPage();
+    await own.goto(`${BASE}/about`);
+    const signedIn = await own.evaluate(() => fetch('/api/auth/session').then((r) => r.json()));
+    check('in this browser Dana is signed in on our own site', signedIn.authenticated === true && signedIn.user.email === 'dana@buyer.test');
+    await own.close();
+    const evil = await evilCtx.newPage();
+    evil.on('console', () => {}); // what this page tries is supposed to fail: its console errors are the browser saying so
+    // What the browser did with each request that page made to our site: the ones it would not send
+    // past a refused preflight, the ones our server answered but whose answer was kept from the page
+    // (our Cross-Origin-Resource-Policy), and the one a plain HTML form got back.
+    const seen = [];
+    const note = async (r, outcome) => {
+      if (!r.url().startsWith(`${BASE}/api/`)) return;
+      const headers = await r.allHeaders().catch(() => ({}));
+      seen.push({ method: r.method(), path: r.url().slice(BASE.length), outcome, cookie: Boolean(headers.cookie) });
+    };
+    evil.on('requestfailed', (r) => note(r, (r.failure() || {}).errorText || 'failed'));
+    evil.on('response', (r) => note(r.request(), `answered ${r.status()}`));
     await evil.goto(`${evilOrigin}/win-a-prize`);
     const attempts = await evil.evaluate(async (base) => {
       const out = {};
@@ -777,13 +797,21 @@ async function phaseWithKeys() {
     }, BASE);
     check('requests that need a preflight are stopped by the browser: this origin is granted nothing', /^blocked/.test(attempts['json put']) && /^blocked/.test(attempts['json put with a guessed csrf token']), JSON.stringify(attempts));
     check('the other site cannot read the session answer (and so not the CSRF token)', /^blocked/.test(attempts['read the session']), attempts['read the session']);
-    // These two were sent and answered (the browser shows only an opaque answer): the server was reachable
-    // from that page, so what follows is the cookie and CSRF rules holding, not the network refusing.
-    check('requests that need no preflight do reach the server from the other site', /^answered opaque/.test(attempts['text/plain post']) && /^answered opaque/.test(attempts['form post']), JSON.stringify(attempts));
+    // Requests that need no preflight (a text/plain or form-encoded POST, an HTML form) are sent by the
+    // browser and do reach our server. They arrive without the session cookie (SameSite=Strict); the
+    // server refuses each one itself, and its answer is not shown to the other site.
+    await sleep(300);
+    const posts = seen.filter((r) => r.method === 'POST');
+    const answeredAndWithheld = posts.filter((r) => /ERR_BLOCKED_BY_RESPONSE\.NotSameOrigin/.test(r.outcome));
+    const formAnswer = posts.find((r) => /^answered/.test(r.outcome));
+    check('requests that need no preflight reach our server, which refuses them; the answers are kept from the other site', answeredAndWithheld.length === 2 && Boolean(formAnswer) && /^answered (401|415)$/.test(formAnswer.outcome), JSON.stringify(seen));
+    check('every request made in CORS mode failed in the browser: our server grants that origin nothing (the JSON writes never got past their preflight)', seen.filter((r) => r.method !== 'POST').length === 3 && seen.filter((r) => r.method !== 'POST').every((r) => /ERR_FAILED/.test(r.outcome)), JSON.stringify(seen.filter((r) => r.method !== 'POST')));
+    check('none of the requests from the other site carried the session cookie', seen.length >= 5 && seen.every((r) => !r.cookie), JSON.stringify(seen.map((r) => [r.method, r.path, r.cookie])));
+    check('the page itself saw none of the answers', Object.values(attempts).every((a) => /^blocked/.test(a)), JSON.stringify(attempts));
     const after = await dana.evaluate(() => fetch('/api/auth/profile').then((r) => r.json()));
     const still = await apiFrom(dana, 'GET', '/api/orders');
     check('after every attempt the account is unchanged, no order was made, and the visitor is still signed in', after.name === before.name && after.company === before.company && still.status === 200 && still.text === ordersBefore, `${after.name} / ${still.status}`);
-    await evil.close();
+    await evilCtx.close();
     await new Promise((resolve) => evilServer.close(resolve));
 
     // A request whose every field is markup, opened in the admin queue.
