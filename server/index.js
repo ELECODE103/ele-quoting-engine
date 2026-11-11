@@ -3,7 +3,6 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { ready: dbReady } = require("./models/database");
 const { seedDatabase } = require("./config/seed");
@@ -39,39 +38,9 @@ if (process.env.NODE_ENV === "production") {
 }
 
 // ─── Security Middleware ────────────────────────────────────────
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: [
-        "'self'",
-        "https://api.stripe.com",
-        "https://checkout.stripe.com",
-        "https://*.stripe.com",
-      ],
-      frameSrc: [
-        "'self'",
-        "https://checkout.stripe.com",
-        "https://js.stripe.com",
-        "https://*.stripe.com",
-      ],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      formAction: ["'self'", "https://checkout.stripe.com"],
-    },
-  },
-  crossOriginEmbedderPolicy: false,
-  // Strict transport security
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true,
-  },
-}));
+// Content-Security-Policy (no inline or eval script), frame-ancestors, Referrer-Policy,
+// Permissions-Policy, HSTS: all in server/security/headers.js, with the reason for each source.
+require("./security/headers").install(app, { distDir: path.join(__dirname, "..", "client", "dist") });
 
 // Rate limiting — generous for normal use, blocks abuse
 const apiLimiter = rateLimit({
