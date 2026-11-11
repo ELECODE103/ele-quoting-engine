@@ -13,6 +13,23 @@ const { resolveProcess, activeProcesses } = require("../processes/registry");
 const { analyzeGeometry, legacyFromFeatures } = require("../geometry");
 const dxf = require("../geometry/dxf");
 const { summarizeChecks } = require("../processes/shared");
+const { limits } = require("../security/limits");
+const { read3mfModel } = require("./zipGuard");
+
+/**
+ * A model too big for the instant quote. The message is for the customer and
+ * sends them to a firm quote; `code` lets the route and the client tell it
+ * from a damaged file.
+ */
+function modelTooLarge(count, { what = "triangles", atLeast = false } = {}) {
+  const max = what === "triangles" ? limits.meshMaxTriangles : limits.dxfMaxEntities;
+  const n = Number(count).toLocaleString("en-US");
+  return Object.assign(
+    new Error(`This model has ${atLeast ? "more than " : ""}${n} ${what}, more than the instant quote reads (${max.toLocaleString("en-US")}). Export it at a coarser resolution and upload again, or send it to us for a firm quote.`),
+    { code: "model-too-large", expose: true, offerRfq: true },
+  );
+}
+const DAMAGED = "This file is damaged or incomplete. Re-export it from your CAD program and upload again.";
 
 // ─── STL PARSER (Binary + ASCII) ──────────────────────────────
 function parseSTL(buffer) {
@@ -25,7 +42,12 @@ function parseSTL(buffer) {
 }
 
 function parseSTLBinary(buffer) {
+  // The header's triangle count is the uploader's claim: check it against the
+  // ceiling and against the bytes actually present before allocating anything.
+  if (buffer.length < 84) throw Object.assign(new Error(DAMAGED), { code: "file-damaged", expose: true });
   const triangleCount = buffer.readUInt32LE(80);
+  if (triangleCount > limits.meshMaxTriangles) throw modelTooLarge(triangleCount);
+  if (84 + triangleCount * 50 > buffer.length) throw Object.assign(new Error(DAMAGED), { code: "file-damaged", expose: true });
   const vertices = [];
   const normals = [];
 
@@ -58,10 +80,12 @@ function parseSTLAscii(text) {
   const facetRegex = /facet\s+normal\s+([\d.eE+-]+)\s+([\d.eE+-]+)\s+([\d.eE+-]+)/g;
   const vertexRegex = /vertex\s+([\d.eE+-]+)\s+([\d.eE+-]+)\s+([\d.eE+-]+)/g;
 
+  const maxTriangles = limits.meshMaxTriangles;
   let match;
   while ((match = facetRegex.exec(text)) !== null) {
     normals.push([parseFloat(match[1]), parseFloat(match[2]), parseFloat(match[3])]);
     triangleCount++;
+    if (triangleCount > maxTriangles) throw modelTooLarge(maxTriangles, { atLeast: true });
   }
 
   while ((match = vertexRegex.exec(text)) !== null) {
@@ -300,6 +324,13 @@ function downsampleVertices(vertices, maxTriangles) {
 
 // ─── Shared: extract meshes from occt-import-js result ───────
 function extractOcctMeshes(result) {
+  // Count before copying: a model the kernel tessellated past the ceiling goes to a firm quote.
+  let declared = 0;
+  for (const mesh of result.meshes) {
+    declared += mesh.index ? Math.floor(mesh.index.array.length / 3) : Math.floor(mesh.attributes.position.array.length / 9);
+  }
+  if (declared > limits.meshMaxTriangles) throw modelTooLarge(declared);
+
   const allVertices = [];
   const allNormals = [];
   const brepFaces = []; // global triangle ranges of the B-rep faces, for geometry recognition
@@ -415,43 +446,19 @@ async function parseSTEP(buffer) {
 
 // ─── 3MF PARSER ───────────────────────────────────────────────
 async function parse3MF(buffer) {
-  const AdmZip = require("adm-zip");
   const { XMLParser } = require("fast-xml-parser");
 
-  // 1. Extract ZIP archive
-  let zip;
-  try {
-    zip = new AdmZip(buffer);
-  } catch (zipErr) {
-    throw new Error("Invalid 3MF file: could not open as ZIP archive. The file may be corrupt.");
-  }
+  // 1–2. Open the archive and read 3D/3dmodel.model. zipGuard checks the entry
+  //      count, the declared sizes and the compression ratio before anything is
+  //      unpacked, and caps what the one entry may inflate to (ZIP bombs).
+  const modelXml = read3mfModel(buffer);
 
-  // 2. Find the 3D model file. adm-zip reads the archive's directory here and
-  //    throws on a malformed one (a repeated entry name, a bad CRC): answer in
-  //    our words, not the library's.
-  let modelEntry, modelXml;
-  try {
-    modelEntry = zip.getEntry("3D/3dmodel.model");
-  } catch (zipErr) {
-    throw new Error("Invalid 3MF file: the archive is malformed. Re-export it from your CAD program or slicer and upload again.");
-  }
-  if (!modelEntry) {
-    throw new Error("Invalid 3MF file: missing 3D/3dmodel.model. This may not be a valid 3MF archive.");
-  }
-
-  try {
-    modelXml = zip.readAsText(modelEntry);
-  } catch (zipErr) {
-    throw new Error("Invalid 3MF file: the model inside the archive could not be read. The file may be corrupt.");
-  }
-  if (!modelXml || modelXml.length === 0) {
-    throw new Error("Invalid 3MF file: the model file is empty.");
-  }
-
-  // Security: reject oversized XML to prevent XML bomb / DoS attacks
-  const MAX_MODEL_XML_SIZE = 50 * 1024 * 1024; // 50MB
-  if (modelXml.length > MAX_MODEL_XML_SIZE) {
-    throw new Error("3MF model XML exceeds maximum allowed size (50MB). The file may be malformed.");
+  // Count the triangles in the text before building an object tree from it: a
+  // mesh past the ceiling would cost gigabytes as parsed XML.
+  const triangleTag = /<(?:[A-Za-z0-9_.-]+:)?triangle[\s/>]/g;
+  let triangleTags = 0;
+  while (triangleTag.exec(modelXml) !== null) {
+    if (++triangleTags > limits.meshMaxTriangles) throw modelTooLarge(limits.meshMaxTriangles, { atLeast: true });
   }
 
   // 3. Parse XML
@@ -459,6 +466,12 @@ async function parse3MF(buffer) {
     ignoreAttributes: false,
     attributeNamePrefix: "@_",
     isArray: (name) => ["object", "vertex", "triangle", "component", "item"].includes(name),
+    // A 3MF model nests six levels deep (model/resources/object/mesh/vertices/vertex).
+    // Anything much deeper is not a model; refuse it rather than recurse.
+    maxNestedTags: limits.xmlMaxDepth,
+    // No entity expansion: mesh data is numbers, and expanding entities is how an
+    // XML bomb ("billion laughs") turns a small file into gigabytes.
+    processEntities: false,
   });
 
   let parsed;
@@ -496,7 +509,7 @@ async function parse3MF(buffer) {
   if (!Array.isArray(objects)) objects = [objects];
 
   // Build a map of objectId -> object for component resolution
-  const objectMap = {};
+  const objectMap = Object.create(null); // ids come from the file: no prototype to collide with
   for (const obj of objects) {
     const id = obj["@_id"];
     if (id) {
@@ -508,8 +521,11 @@ async function parse3MF(buffer) {
   const allNormals = [];
   let totalTriangles = 0;
 
-  // Security: limit total triangles to prevent memory exhaustion
-  const MAX_TRIANGLES = 5000000; // 5 million triangles max
+  // Security: limit total triangles to prevent memory exhaustion (components can
+  // instance one mesh many times, so this is counted as triangles are produced).
+  const MAX_TRIANGLES = limits.meshMaxTriangles;
+  // Components may reference each other in a loop; a real assembly is a few levels deep.
+  const MAX_COMPONENT_DEPTH = 16;
 
   // Helper function to apply 3MF affine transform to a vertex
   // transform is a space-separated string: "m00 m01 m02 m10 m11 m12 m20 m21 m22 m30 m31 m32"
@@ -535,9 +551,12 @@ async function parse3MF(buffer) {
   // Recursive function to resolve an object and extract its triangles
   // objectId: the ID of the object to resolve
   // parentTransform: optional transform from parent component reference
-  function resolveObject(objectId, parentTransform) {
+  function resolveObject(objectId, parentTransform, depth = 0) {
     const obj = objectMap[objectId];
     if (!obj) return; // Object not found
+    if (depth > MAX_COMPONENT_DEPTH) {
+      throw Object.assign(new Error("Invalid 3MF file: its components refer to each other in a loop. Re-export the part from your CAD program or slicer and upload again."), { code: "file-damaged", expose: true });
+    }
 
     // If object has inline mesh, extract triangles from it
     const mesh = obj.mesh || obj["model:mesh"];
@@ -587,9 +606,7 @@ async function parse3MF(buffer) {
             allNormals.push(n, n, n);
 
             totalTriangles++;
-            if (totalTriangles > MAX_TRIANGLES) {
-              throw new Error("3MF file exceeds maximum triangle count (5M). Please simplify the model or export as STL.");
-            }
+            if (totalTriangles > MAX_TRIANGLES) throw modelTooLarge(MAX_TRIANGLES, { atLeast: true });
           }
         }
       }
@@ -614,7 +631,7 @@ async function parse3MF(buffer) {
           } else if (parentTransform) {
             combinedTransform = parentTransform;
           }
-          resolveObject(refId, combinedTransform);
+          resolveObject(refId, combinedTransform, depth + 1);
         }
       }
     }

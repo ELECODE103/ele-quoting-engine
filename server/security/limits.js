@@ -35,6 +35,8 @@ const limits = {
   get uploadDailyBytesPerClient() { return envInt("UPLOAD_DAILY_MB_PER_IP", 500, 1, 100000) * MB; },
   /** Hard ceiling on everything stored under data/uploads, data/quote-drawings and data/rfq-drawings. */
   get storageMaxBytes() { return envInt("UPLOAD_DIR_MAX_MB", 2048, 10, 1000000) * MB; },
+  /** Database file size past which new uploads are refused (each adds a geometry row; every write rewrites the file). */
+  get databaseMaxBytes() { return envInt("DB_MAX_MB", 512, 16, 16384) * MB; },
   /** Share of the ceiling at which a warning is logged. */
   get storageWarnFraction() { return envInt("UPLOAD_DIR_WARN_PERCENT", 80, 10, 99) / 100; },
   /** Largest drawing (PDF) attached to an instant quote, bytes. */
@@ -63,10 +65,8 @@ const limits = {
   // ── Model size ceilings (bigger models go to a firm quote) ────
   /** Triangles in an STL or 3MF, or produced from a STEP/IGES. */
   get meshMaxTriangles() { return envInt("MESH_MAX_TRIANGLES", 500000, 1000, 20000000); },
-  /** Entities read from a DXF (lines, arcs, polylines, …). */
-  get dxfMaxEntities() { return envInt("DXF_MAX_ENTITIES", 20000, 100, 2000000); },
-  /** Vertices across all polylines and splines in a DXF. */
-  get dxfMaxVertices() { return envInt("DXF_MAX_VERTICES", 200000, 1000, 20000000); },
+  /** Entities read from a DXF (lines, arcs, polylines, …). The parser also stops at 120,000 curves and 5,000 contours. */
+  get dxfMaxEntities() { return envInt("DXF_MAX_ENTITIES", 100000, 100, 2000000); },
 
   // ── 3MF (a ZIP archive) ───────────────────────────────────────
   /** Entries allowed in the archive. */

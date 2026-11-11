@@ -23,7 +23,8 @@
  */
 
 const FLATTEN_TOL_MM = 0.005;   // chord error when a spline / ellipse becomes line segments
-const MAX_ENTITIES = 250000;
+// Entity ceiling: admin-tunable (DXF_MAX_ENTITIES, default 100,000). Read when used so a test can change it.
+const maxEntities = () => require("../../security/limits").limits.dxfMaxEntities;
 const MAX_CURVES = 120000;
 const MAX_INSERT_DEPTH = 8;
 
@@ -137,7 +138,7 @@ function readDxf(input) {
   }
 
   const entities = records(pairs, sections.ENTITIES[0], sections.ENTITIES[1]);
-  if (entities.length > MAX_ENTITIES) throw new Error(`This DXF has ${entities.length.toLocaleString()} entities — more than the instant quote reads. Send it to us as an RFQ, or simplify the drawing to the part outline.`);
+  if (entities.length > maxEntities()) throw Object.assign(new Error(`This DXF has ${entities.length.toLocaleString("en-US")} entities — more than the instant quote reads (${maxEntities().toLocaleString("en-US")}). Send it to us as an RFQ, or simplify the drawing to the part outline.`), { code: "model-too-large", expose: true, offerRfq: true });
   return { header, layers, blocks, entities };
 }
 
