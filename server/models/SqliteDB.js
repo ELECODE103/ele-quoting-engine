@@ -15,7 +15,8 @@ const JSON_COLUMNS = {
   parts: { geometry: "geometry_json", dfm: "dfm_json" },
   orders: {},
   order_items: { geometry: "geometry_json", dfm: "dfm_json", config: "config_json" },
-  users: {},
+  users: { recoveryCodes: "recovery_codes_json" },
+  revoked_sessions: {},
   processes: { subProcesses: "sub_processes_json" },
   rfqs: { reasons: "reasons_json", parts: "parts_json" },
   pricing_audit: { diff: "diff_json", rules: "rules_json" },
@@ -103,10 +104,24 @@ const FIELD_TO_COLUMN = {
   paperworkFee: "paperwork_fee",
   requestType: "request_type",
   returnPart: "return_part",
+  // Account hardening (2026-11-11)
+  emailVerifiedAt: "email_verified_at",
+  emailVerifyNonce: "email_verify_nonce",
+  tokenVersion: "token_version",
+  passwordChangedAt: "password_changed_at",
+  lockedUntil: "locked_until",
+  lockNotifiedAt: "lock_notified_at",
+  lastLoginAt: "last_login_at",
+  totpSecretEnc: "totp_secret_enc",
+  totpPendingEnc: "totp_pending_enc",
+  totpEnabledAt: "totp_enabled_at",
+  totpLastStep: "totp_last_step",
+  senderCheck: "sender_check",
+  buyerEmailed: "buyer_emailed",
 };
 
 // 0/1 columns that read back as booleans (SQLite has no boolean type).
-const BOOLEAN_COLUMNS = new Set(["active", "paperwork", "return_part"]);
+const BOOLEAN_COLUMNS = new Set(["active", "paperwork", "return_part", "buyer_emailed"]);
 
 // Reverse mapping for deserialization
 const COLUMN_TO_FIELD = {};

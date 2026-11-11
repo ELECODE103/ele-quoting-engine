@@ -204,6 +204,15 @@ const SCHEMA = `
     created_at TEXT,
     updated_at TEXT
   );
+
+  -- Sessions ended before their token expired (sign-out). A row lives until
+  -- the token it names would have expired anyway.
+  CREATE TABLE IF NOT EXISTS revoked_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    expires_at TEXT,
+    created_at TEXT
+  );
 `;
 
 // Singleton
@@ -315,6 +324,9 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
     for (const sql of migrations) {
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }
     }
+
+    // Account hardening (2026-11-11). Additive columns; see server/security/accountMigration.js.
+    require("../security/accountMigration").apply(dbInstance);
 
     saveToDisk();
     readyResolve();
