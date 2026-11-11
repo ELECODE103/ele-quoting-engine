@@ -8,5 +8,8 @@ Straightedge is a plastics machine shop in Wauconda, Illinois. We mill and route
 
 ## Add when confirmed
 
+- After "we measure it.": "We send the original back with your new parts." Confirmed 2026-11-11 (`part-return`); it fits if you drop the McHenry County mention or another clause to stay under 750 characters.
+- End of the description: "A first-article inspection report and a certificate of conformance are available on any order when you ask for them." Confirmed 2026-11-11 (`fai-coc`). Never "with every order", and no price (Google's guidelines, and the fee is set in the pricing console).
+
 - After "we measure it.": "Or drop it off; call ahead." [CONFIRM: visits-welcome]
 - After the plastics sentence: "Typical parts: wear strips, guides, bushings, rollers, spacers, trays and machine guards." Only part types you have made for your own direct customers. There is no flag for this one; it is your call when you paste.

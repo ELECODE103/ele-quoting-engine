@@ -131,6 +131,10 @@ export default function FirmQuotePage() {
                   </div>
                 ))}
                 {quote.quoteNote && <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 12, whiteSpace: 'pre-wrap' }}>{quote.quoteNote}</p>}
+                {/* What the price covers besides the parts: inspection paperwork (always stated) and, for a part that was shipped in, its return. */}
+                {(quote.covers || []).map((line) => (
+                  <p key={line} style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 10 }}>{line}</p>
+                ))}
                 <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 16px', marginTop: 14, fontSize: 13 }}>
                   <dt style={{ color: 'var(--text-dim)' }}>Price</dt>
                   <dd style={{ textAlign: 'right', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>{formatCurrency(quote.quotedTotal)}</dd>

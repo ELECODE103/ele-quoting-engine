@@ -3,7 +3,7 @@ import PublicLayout from '../components/PublicLayout';
 import ShopPhoto from '../components/ShopPhoto';
 import Photo from '../components/Photo';
 import brand from '../brand';
-import { ok, fact, when, lines, MACHINED, QUALITY_LINE, HOLDS } from '../facts';
+import { ok, fact, when, lines, MACHINED, HOLDS } from '../facts';
 import { shopPhoto } from '../data/shopPhotos';
 
 const LIMIT = brand.rfqQuantityThreshold;
@@ -44,8 +44,9 @@ const STEPS = [
     + when('file-retention', (v) => `deleted after ${v} unless you order.`, 'purged on a schedule if you do not order.')],
   ['02', 'Price and DFM', 'Pick process, material, finish and quantity. The price updates as you go, with a manufacturability check against the limits printed on this site.'],
   ['03', 'Check out, or get a firm quote', `Up to ${LIMIT} pieces: check out with a card. More than that, an oversize part or anything the check fails: a firm quote from a person${within}.`],
-  QUALITY_LINE
-    ? ['04', 'Inspected, then shipped', `${QUALITY_LINE} Your order page shows where the job stands.`]
+  // Inspection paperwork is an option on the quote, never a default (owner, 2026-11-11).
+  ok('fai-coc')
+    ? ['04', 'Made, then shipped', 'Need a first-article inspection report and a certificate of conformance? Tick the box on your quote and they ship with the parts; the price shows before you pay. Your order page shows where the job stands.']
     : ['04', 'Made, then shipped', `Your order page shows where the job stands. Questions go to ${brand.phone}, which rings the shop.`],
 ];
 

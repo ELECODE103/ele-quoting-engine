@@ -4,6 +4,7 @@ import { api } from '../utils/api';
 import { formatCurrency, formatShipDate, formatDate, orderStatusLabel } from '../utils/format';
 import { storeQuoteId } from '../utils/returnTo';
 import brand, { PROCESS_LABELS } from '../brand';
+import { PAPERWORK_LABEL } from '../facts';
 
 const TIMELINE = ['pending_payment', 'paid', 'received', 'in_production', 'quality_check', 'packing', 'shipped', 'delivered'];
 // A PO order skips card payment: it waits for the shop to confirm the PO instead.
@@ -170,18 +171,31 @@ export default function OrderTrackingPage() {
                   </div>
                 </div>
               ))}
-              {(order.leadTimeSurcharge > 0 || order.shippingCost > 0) && (
+              {(order.leadTimeSurcharge > 0 || order.shippingCost > 0 || order.paperwork) && (
                 <div style={{ fontSize: 13, paddingTop: 10 }}>
                   {[
+                    ['Parts', order.subtotal],
                     order.leadTimeSurcharge > 0 && [`${order.leadTimeName || 'Faster'} lead time`, order.leadTimeSurcharge],
+                    // On an order from a firm quote the paperwork is inside the quoted price.
+                    order.paperwork && [PAPERWORK_LABEL, order.paperworkFee > 0 ? order.paperworkFee : 'Included'],
                     order.shippingCost > 0 && ['Shipping', order.shippingCost],
                     ['Total', order.total],
                   ].filter(Boolean).map(([label, amount]) => (
-                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: label === 'Total' ? 'var(--text-primary)' : 'var(--text-muted)', fontWeight: label === 'Total' ? 700 : 400 }}>
-                      <span>{label}</span><span>{formatCurrency(amount)}</span>
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '3px 0', color: label === 'Total' ? 'var(--text-primary)' : 'var(--text-muted)', fontWeight: label === 'Total' ? 700 : 400 }}>
+                      <span>{label}</span><span style={{ whiteSpace: 'nowrap' }}>{typeof amount === 'number' ? formatCurrency(amount) : amount}</span>
                     </div>
                   ))}
                 </div>
+              )}
+              {order.paperwork && (
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
+                  <b>Inspection paperwork ordered.</b> The first piece of each part number is measured against your drawing; the report and a signed certificate of conformance ship with the parts.
+                </p>
+              )}
+              {order.returnPart && (
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+                  <b>Your original part</b> comes back in the box with the finished parts.
+                </p>
               )}
               {order.customerNotes && (
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, whiteSpace: 'pre-wrap' }}><b>{order.rfqId ? 'Quote notes' : 'Your notes'}:</b> {order.customerNotes}</p>

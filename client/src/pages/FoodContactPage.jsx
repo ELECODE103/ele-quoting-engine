@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom';
 import PublicLayout from '../components/PublicLayout';
 import brand from '../brand';
-import { when, lines, QUALITY_LINE } from '../facts';
+import { when, lines, QUALITY_LINE, PAPERWORK_HOW } from '../facts';
 
 const WITH_JOB = lines([
   { needs: 'food-docs', text: 'The stock maker\'s food-contact compliance statement for the exact grade and color.' },
   { needs: 'food-docs', text: 'The lot cert for the stock your parts were cut from.' },
-  { needs: ['food-docs', 'fai-coc', 'lot-traceability'], text: 'A certificate of conformance tying that lot to your order.' },
+  { needs: ['food-docs', 'fai-coc', 'lot-traceability'], text: 'A certificate of conformance tying that lot to your order, when you order the certificate: tick the box on your quote or on the firm-quote form.' },
   { needs: 'food-cleaning', text: (v) => `Metal is cut in this shop too. ${v}` },
 ]);
 
@@ -78,7 +78,7 @@ export default function FoodContactPage() {
                   It machines the grade you specify. Tell us the part touches food, name the grade or the regulation your
                   customer cites, and you will be told before you order what paperwork can be had for that stock.
                   If the statement you need cannot be had, you hear that then, not after the parts ship.
-                  {QUALITY_LINE ? ` From the shop: ${QUALITY_LINE.charAt(0).toLowerCase()}${QUALITY_LINE.slice(1)}` : ''}
+                  {QUALITY_LINE ? ` From the shop: ${QUALITY_LINE.charAt(0).toLowerCase()}${QUALITY_LINE.slice(1)} ${PAPERWORK_HOW}` : ''}
                 </p>
               )}
               <p className="body-copy" style={{ fontSize: 15, marginTop: 12 }}>

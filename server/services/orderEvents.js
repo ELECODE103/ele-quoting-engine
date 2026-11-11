@@ -46,6 +46,23 @@ function orderUrl(order, base) {
 // ─── Stripe boundary ───────────────────────────────────────────
 
 /**
+ * What the buyer sees on Stripe's page: the order, and the inspection paperwork
+ * as its own line when it was ordered with a fee. The lines always sum to
+ * order.total in cents, which is what settleFromSession checks the payment against.
+ */
+function stripeLineItems(order, { itemCount, description }) {
+  const totalCents = Math.round((order.total || 0) * 100);
+  const feeCents = order.paperwork ? Math.min(totalCents, Math.max(0, Math.round((Number(order.paperworkFee) || 0) * 100))) : 0;
+  const line = (name, text, cents) => ({
+    price_data: { currency: "usd", product_data: { name, description: text }, unit_amount: cents }, // Stripe uses cents
+    quantity: 1,
+  });
+  const lines = [line(`${brand.name} Order — ${itemCount} part${itemCount !== 1 ? "s" : ""}`, description || "Custom machined and printed parts", totalCents - feeCents)];
+  if (feeCents > 0) lines.push(line(templates.PAPERWORK_LABEL, "Ships with the parts", feeCents));
+  return lines;
+}
+
+/**
  * Create a Stripe Checkout session for an order's total and remember its id.
  * Throws if Stripe isn't configured or the API call fails.
  */
@@ -56,19 +73,7 @@ async function createCheckoutSession(order, { itemCount, description, successUrl
     payment_method_types: ["card"],
     mode: "payment",
     customer_email: customerEmail(order) || undefined,
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: `${brand.name} Order — ${itemCount} part${itemCount !== 1 ? "s" : ""}`,
-            description: description || "Custom machined and printed parts",
-          },
-          unit_amount: Math.round(order.total * 100), // Stripe uses cents
-        },
-        quantity: 1,
-      },
-    ],
+    line_items: stripeLineItems(order, { itemCount, description }),
     metadata: { orderId: order.id, ...metadata },
     success_url: successUrl,
     cancel_url: cancelUrl,
@@ -147,4 +152,4 @@ async function notifyStatusChange(before, after, { base } = {}) {
   return true;
 }
 
-module.exports = { baseUrl, itemsFor, customerEmail, orderUrl, createCheckoutSession, markPaid, settleFromSession, confirmPayment, notifyStatusChange };
+module.exports = { baseUrl, itemsFor, customerEmail, orderUrl, stripeLineItems, createCheckoutSession, markPaid, settleFromSession, confirmPayment, notifyStatusChange };

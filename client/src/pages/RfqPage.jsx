@@ -5,14 +5,17 @@ import { api } from '../utils/api';
 import { useAuth } from '../utils/authContext';
 import { formatCurrency } from '../utils/format';
 import brand, { PROCESS_LABELS } from '../brand';
-import { when } from '../facts';
+import { fact, when, PAPERWORK_HELP } from '../facts';
 
 const within = when('quote-turnaround', (v) => ` within ${v}`);
 const UPLOAD_EXT = ['.pdf', '.dxf', '.dwg', '.png', '.jpg', '.jpeg']; // what POST /api/rfq accepts
 const MAX_MB = 25;
 // Said only once the owner has answered (shared/shop-facts.json).
-const PART_RETURN = when('part-return');
-const PART_QUOTE_TIME = when('part-quote-time');
+// part-return (owner, 2026-11-11): the customer pays to ship the part in; the original goes back
+// with the finished parts and the quoted price covers that return shipping.
+// (fact() gives the confirmed sentence or null; when() with no second argument gives nothing.)
+const PART_RETURN = fact('part-return');
+const PART_QUOTE_TIME = fact('part-quote-time');
 
 /**
  * Firm-quote request. Three ways in:
@@ -24,6 +27,12 @@ const PART_QUOTE_TIME = when('part-quote-time');
  * material, how soon, what it does) are folded into the notes; requestType=part
  * tells the server to answer with a reference and the address to ship the part
  * to. That address is shown only on the confirmation screen, from the response.
+ *
+ * Two checkboxes ride as their own fields, because the owner prices both into
+ * the firm quote: `paperwork` (a first-article inspection report and a
+ * certificate of conformance; off unless ticked, or already chosen on the
+ * online quote) and, in part mode, `returnPart` (send the original back with
+ * the order; on to start with).
  */
 export default function RfqPage() {
   const { quoteId } = useParams();
@@ -40,6 +49,8 @@ export default function RfqPage() {
     quantities: '', tolerance: '', finishNotes: '', dueDate: '', notes: '', lives: '',
     machine: '', material: '', soon: '',
   });
+  const [paperwork, setPaperwork] = useState(false);
+  const [returnPart, setReturnPart] = useState(true);
   const [drawing, setDrawing] = useState(null);
   const [fileError, setFileError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -62,6 +73,7 @@ export default function RfqPage() {
     if (!quoteId) return;
     api.getQuoteById(quoteId).then((q) => {
       setQuote(q);
+      if (q.paperwork) setPaperwork(true); // already asked for on the online quote
       const qtys = (q.lineItems || []).map((li) => li.quantity);
       if (qtys.length) setForm((f) => ({ ...f, quantities: f.quantities || qtys.join(' / ') }));
       // Show material names, not slugs ("Delrin / Acetal (POM)", not "cnc-delrin").
@@ -109,7 +121,8 @@ export default function RfqPage() {
       const { machine, material, soon, lives, ...fields } = form;
       const res = await api.submitRfq({
         ...fields,
-        ...(part ? { requestType: 'part', tolerance: '', finishNotes: '', dueDate: '' } : {}),
+        ...(part ? { requestType: 'part', returnPart, tolerance: '', finishNotes: '', dueDate: '' } : {}),
+        paperwork,
         notes: extra.filter(Boolean).join('\n').slice(0, 2000),
         quoteId: quote?.quoteId || quote?.id || quoteId || '',
       }, part ? null : drawing);
@@ -132,7 +145,7 @@ export default function RfqPage() {
               <div className="eyebrow" style={{ marginBottom: 14 }}>Request received</div>
               <h1 className="display" style={{ marginBottom: 16 }}>Now send us the part.</h1>
               <p className="lede" style={{ marginBottom: 20 }}>
-                Write the reference on the box and ship the part to the address below. We measure it and send a price
+                Write the reference on the box and ship the part to the address below, at your cost. We measure it and send a price
                 to <b>{form.email}</b>.{PART_QUOTE_TIME ? ` ${PART_QUOTE_TIME}` : ''}
               </p>
               <div className="plain-box" style={{ marginBottom: 20 }}>
@@ -155,7 +168,10 @@ export default function RfqPage() {
               </div>
               <p className="body-copy" style={{ marginBottom: 20 }}>
                 The same reference and address are in the confirmation email.{' '}
-                {PART_RETURN || 'Need the original back? Reply to that email and say so.'}{' '}
+                {(sent.returnPart ?? returnPart)
+                  ? 'You asked for the original back: we send it back with your finished parts, and the price we quote includes that return shipping.'
+                  : 'You did not ask for the original back, so we keep it with the job. Changed your mind? Reply to that email before you order.'}{' '}
+                {paperwork ? 'You asked for a first-article inspection report and a certificate of conformance: the price we quote will include them. ' : ''}
                 Nothing is ordered and nothing is charged until you say so. Questions: <a href={brand.phoneHref}>{brand.phone}</a>.
               </p>
               <div className="cta-row">
@@ -178,6 +194,7 @@ export default function RfqPage() {
               a conversation first, that is the reply you will get.
             </p>
             <p className="body-copy" style={{ marginBottom: 20 }}>
+              {paperwork ? 'You asked for a first-article inspection report and a certificate of conformance: the price we quote will include them, and the quote will say so. ' : ''}
               A confirmation email is on its way. More files? Reply to it and attach them.{' '}
               In a hurry, call <a href={brand.phoneHref}>{brand.phone}</a> and give the reference below.
             </p>
@@ -260,7 +277,7 @@ export default function RfqPage() {
               {part ? (
                 <ul className="checklist" style={{ marginBottom: 20 }}>
                   <li>You get a reference and the address to ship the part to, on the next screen and by email.</li>
-                  <li>Write the reference on the box and send the part. {PART_RETURN || 'Tell us in the request if you need the original back.'}</li>
+                  <li>Write the reference on the box and send the part. {PART_RETURN ? `${PART_RETURN} Untick the box on the form if you do not need it back.` : 'Tell us in the request if you need the original back.'}</li>
                   <li>We measure it and send you a price.{PART_QUOTE_TIME ? ` ${PART_QUOTE_TIME}` : ''} Nothing is ordered and nothing is charged until you say so.</li>
                 </ul>
               ) : (
@@ -298,12 +315,18 @@ export default function RfqPage() {
                     <label className="full">
                       <span className="field-label">What the part is and what it does <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span>
                       <textarea className="input" rows={3} placeholder="e.g. carton guide on the sealer infeed; rides on a stainless rail. Worn on the leading edge." value={form.notes} onChange={set('notes')} required aria-required="true" />
-                      <span className="field-hint">{PART_RETURN || 'Need the original part back? Say so here.'}</span>
                     </label>
                     <label className="full"><span className="field-label">What machine is it from?</span><input className="input" placeholder="Make and model if you have it, or what the machine does" value={form.machine} onChange={set('machine')} /></label>
                     <label className="full"><span className="field-label">Material, if known</span><input className="input" placeholder="e.g. white, waxy, floats in water" value={form.material} onChange={set('material')} /></label>
                     <label><span className="field-label">How many</span><input className="input" placeholder="e.g. 2 now, 6 a year" value={form.quantities} onChange={set('quantities')} /></label>
                     <label><span className="field-label">How soon</span><input className="input" placeholder="e.g. line is down / next shutdown" value={form.soon} onChange={set('soon')} /></label>
+                    <label className="full check-row">
+                      <input type="checkbox" name="returnPart" checked={returnPart} onChange={(e) => setReturnPart(e.target.checked)} />
+                      <span>
+                        <span className="check-label">Send my original part back with the order.</span>
+                        <span className="field-hint">{PART_RETURN || 'Untick this if you do not need the original back.'}</span>
+                      </span>
+                    </label>
                   </>
                 ) : (
                   <>
@@ -320,6 +343,13 @@ export default function RfqPage() {
                     <label className="full"><span className="field-label">Anything else</span><textarea className="input" rows={4} placeholder="What the part does, what it mates with, what went wrong with the last supplier." value={form.notes} onChange={set('notes')} /></label>
                   </>
                 )}
+                <label className="full check-row">
+                  <input type="checkbox" name="paperwork" checked={paperwork} onChange={(e) => setPaperwork(e.target.checked)} />
+                  <span>
+                    <span className="check-label">I need a first-article inspection report and a certificate of conformance.</span>
+                    <span className="field-hint">{PAPERWORK_HELP} It adds to the price, and the quote says that it is included.</span>
+                  </span>
+                </label>
               </div>
               {fileError && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{fileError}</div>}
               {error && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{error}</div>}

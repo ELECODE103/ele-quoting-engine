@@ -45,6 +45,9 @@ export default function RfqQueue() {
         quotedTotal: Number(val('qt')) || 0,
         quotedLeadDays: val('ql') === '' ? null : Number(val('ql')),
         quoteNote: val('qn'),
+        // What the price covers besides the parts: stated to the customer as fact, so it is the owner's to confirm.
+        paperwork: Boolean(document.getElementById(`qp-${r.id}`)?.checked),
+        ...(r.requestType === 'part' ? { returnPart: Boolean(document.getElementById(`qr-${r.id}`)?.checked) } : {}),
         partQuantities,
         resend: true,
       });
@@ -89,7 +92,15 @@ export default function RfqQueue() {
                   <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.contactName}{r.company ? ` · ${r.company}` : ''}</div>
                   <div style={{ color: 'var(--text-dim)' }}><a href={`mailto:${r.email}`}>{r.email}</a>{r.phone ? ` · ${r.phone}` : ''}</div>
                 </td>
-                <td style={{ padding: '10px 14px' }}>{PROCESS_LABELS[r.process] || r.process || '—'}</td>
+                <td style={{ padding: '10px 14px' }}>
+                  {PROCESS_LABELS[r.process] || r.process || (r.requestType === 'part' ? 'Part shipped in' : '—')}
+                  {(r.paperwork || r.returnPart) && (
+                    <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {r.paperwork && <span className="tag tag-warn" title="The customer asked for a first-article inspection report and a certificate of conformance: price them in">FAI + CoC</span>}
+                      {r.returnPart && <span className="tag tag-warn" title="The customer wants the original part back: price the return shipping in">Return part</span>}
+                    </div>
+                  )}
+                </td>
                 <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>{r.quantities || (r.parts || []).map((p) => p.quantity).join(' / ') || '—'}</td>
                 <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>{r.budgetTotal ? formatCurrency(r.budgetTotal) : '—'}</td>
                 <td style={{ padding: '10px 14px' }}>
@@ -117,6 +128,14 @@ export default function RfqQueue() {
               isOpen && (
                 <tr key={r.id + '-d'} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td colSpan={8} style={{ padding: '14px 18px', background: 'var(--bg-secondary)' }}>
+                    {/* What the customer asked for besides the parts. Both have to be in the price. */}
+                    {(r.paperwork || r.returnPart) && (
+                      <div className="gate-box" role="status" style={{ marginBottom: 14, fontWeight: 600 }}>
+                        {r.returnPart && <div>Customer wants the original back — include return shipping in the price.</div>}
+                        {r.paperwork && <div>Customer asked for a first-article inspection report and a certificate of conformance — include them in the price.</div>}
+                        <div style={{ fontWeight: 400, marginTop: 4 }}>The quote email, the quote page and the PDF tell the customer the price includes {[r.paperwork && 'the inspection paperwork', r.returnPart && 'returning the original part'].filter(Boolean).join(' and ')}, unless you untick it below before sending.</div>
+                      </div>
+                    )}
                     <div className="grid-2" style={{ gap: 18, alignItems: 'start' }}>
                       <div>
                         <div className="field-label">Parts (what the buyer saw)</div>
@@ -149,6 +168,8 @@ export default function RfqQueue() {
                           <span style={{ color: 'var(--text-dim)' }}>Need by</span><span>{r.dueDate || '—'}</span>
                           <span style={{ color: 'var(--text-dim)' }}>Drawing</span>
                           <span>{r.drawingFileName ? <a href={api.rfqDrawingUrl(r.id)} onClick={(e) => { e.preventDefault(); downloadDrawing(r); }}>{r.drawingFileName}</a> : '—'}</span>
+                          <span style={{ color: 'var(--text-dim)' }}>FAI + CoC</span><span>{r.paperwork ? 'Yes — price it in' : 'Not requested'}</span>
+                          {r.requestType === 'part' && <><span style={{ color: 'var(--text-dim)' }}>Original part</span><span>{r.returnPart ? 'Send it back with the order — price in the return shipping' : 'Not wanted back'}</span></>}
                         </div>
                         {r.notes && <p style={{ marginTop: 10, whiteSpace: 'pre-wrap', color: 'var(--text-secondary)' }}>{r.notes}</p>}
                         {/* ─── The firm quote that goes to the customer ─── */}
@@ -180,13 +201,26 @@ export default function RfqQueue() {
                               </div>
                               <label style={{ display: 'block', marginTop: 8 }}>
                                 <span className="field-label">Note to the customer (what the price covers)</span>
-                                <textarea className="input" rows={2} defaultValue={r.quoteNote || ''} id={`qn-${r.id}`} placeholder="e.g. 1,000 pcs in natural Delrin, FAI included, freight to Rockford included." />
+                                <textarea className="input" rows={2} defaultValue={r.quoteNote || ''} id={`qn-${r.id}`} placeholder="e.g. 1,000 pcs in natural Delrin, freight to Rockford included." />
                               </label>
+                              <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+                                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: 'var(--text-secondary)' }}>
+                                  <input type="checkbox" id={`qp-${r.id}`} defaultChecked={Boolean(r.paperwork)} style={{ marginTop: 2 }} />
+                                  <span>This price includes a first-article inspection report and a certificate of conformance{r.paperwork ? ' (the customer asked for them)' : ' (not asked for)'}</span>
+                                </label>
+                                {r.requestType === 'part' && (
+                                  <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: 'var(--text-secondary)' }}>
+                                    <input type="checkbox" id={`qr-${r.id}`} defaultChecked={Boolean(r.returnPart)} style={{ marginTop: 2 }} />
+                                    <span>This price includes shipping the original part back{r.returnPart ? ' (the customer asked for it back)' : ' (not asked for)'}</span>
+                                  </label>
+                                )}
+                              </div>
                               <button className="btn btn-primary" style={{ marginTop: 10 }} disabled={busy} onClick={() => sendQuote(r)}>
                                 {r.status === 'quoted' ? 'Re-send quote (new link)' : r.status === 'expired' ? 'Refresh and re-send quote' : 'Send quote to customer'}
                               </button>
                               <div style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 6 }}>
                                 Emails {r.email} the price, lead time and a link to accept by card or PO. Good for 30 days.
+                                {' '}The email, the quote page and the PDF state what is ticked above, yes or no.
                               </div>
                             </>
                           )}

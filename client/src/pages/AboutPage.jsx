@@ -3,7 +3,7 @@ import PublicLayout from '../components/PublicLayout';
 import ShopPhoto from '../components/ShopPhoto';
 import brand from '../brand';
 import { KerfMark } from '../components/Wordmark';
-import { ok, fact, when, lines, QUALITY_LINE, HOLDS } from '../facts';
+import { ok, fact, when, lines, PAPERWORK_HOW, HOLDS } from '../facts';
 
 const LIMIT = brand.rfqQuantityThreshold;
 
@@ -24,7 +24,8 @@ const PAPERWORK = lines([
   { needs: 'net-terms' },
   { needs: 'sam-registered', text: 'Registered on SAM.gov.' },
   'A firm quote in writing for anything the quote tool sends to a person, with the price, the lead time and the date it holds until.',
-  QUALITY_LINE || null,
+  { needs: 'fai-coc', text: (v) => `${v} ${PAPERWORK_HOW}` },
+  { needs: 'lot-traceability' },
   'Customer names and part numbers are never published. That includes yours.',
 ]);
 
@@ -55,7 +56,7 @@ export default function AboutPage() {
               <p className="body-copy" style={{ fontSize: 15, marginBottom: 22 }}>
                 Dealing square also means saying no early. If a part does not belong in this shop, or we cannot make your date,
                 we say so before you order.{when('continuity-handover', ' Your program and setup notes are yours on request, so you are never locked to this shop.')}{' '}
-                <Link to="/quality">What gets checked, and what paper comes with the order</Link>.
+                <Link to="/quality">What gets checked, and what paper you can have with the order</Link>.
               </p>
               <div className="cta-row">
                 <a className="btn btn-primary btn-lg" href={brand.phoneHref}>Call {brand.phone}</a>

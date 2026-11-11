@@ -495,6 +495,12 @@ h3.display { font-family: var(--font-display); font-size: 20px; letter-spacing: 
 .price-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); font-weight: 600; }
 .rfq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
 .rfq-grid .full { grid-column: 1 / -1; }
+/* A checkbox with its label and one line of help, in the firm-quote form. */
+.check-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border-primary); border-radius: 6px; cursor: pointer; }
+.check-row:focus-within { box-shadow: 0 0 0 3px var(--accent-glow); }
+.check-row input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; width: 16px; height: 16px; accent-color: var(--accent); }
+.check-row .check-label { display: block; font-size: 14px; font-weight: 600; color: var(--text-primary); line-height: 1.4; }
+.check-row .field-hint { display: block; margin-top: 2px; }
 
 @media (max-width: 1024px) {
   .pub-nav-links { display: none; }

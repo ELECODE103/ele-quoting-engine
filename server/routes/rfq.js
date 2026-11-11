@@ -11,9 +11,15 @@
  *                                          requestType=part (a worn part, no drawing): the buyer
  *                                          ships the part in; the response and the confirmation
  *                                          email carry a reference and the ship-to address.
+ *                                          paperwork=true: a first-article report and a certificate
+ *                                          of conformance are wanted; returnPart=true (part requests):
+ *                                          the original goes back with the order. Both are stored so
+ *                                          the owner prices them in, and the firm quote says so.
  *   GET  /api/rfq/:id                      read (owner, admin, or anonymous-by-id)
  *   GET  /api/rfq/admin/list               admin queue, newest first
- *   PUT  /api/rfq/admin/:id                admin: status / quoted price + lead time / notes.
+ *   PUT  /api/rfq/admin/:id                admin: status / quoted price + lead time / notes /
+ *                                          whether the price includes the inspection paperwork
+ *                                          and the return of a shipped-in part.
  *                                          Marking it "quoted" emails the customer the firm
  *                                          quote with a signed accept link.
  *   GET  /api/rfq/quote/:token             customer: the firm quote behind an emailed link
@@ -123,6 +129,13 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
     const process = parts[0]?.process || sanitizeString(b.process || "", 40);
     // "Send us the part": no drawing and no file; the worn part is shipped in and measured.
     const sendPart = !quote && String(b.requestType || "") === "part";
+    // Checkboxes arrive as multipart text ("true" / "false"). The return box is on by default on
+    // the form, but a request that does not send it at all (an older client, a hand-built post)
+    // is not assumed to want anything back.
+    const ticked = (v) => v === true || v === "true" || v === "1" || v === "on";
+    // Inspection paperwork: asked for here, or already chosen on the online quote this request came from.
+    const paperwork = ticked(b.paperwork) || (b.paperwork === undefined && Boolean(quote?.paperwork));
+    const returnPart = sendPart && ticked(b.returnPart);
 
     const rfq = rfqsDB.insert({
       quoteId: quote?.id || null,
@@ -143,6 +156,10 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       budgetTotal: quote?.orderTotal || 0,
       reasons: quote?.gate?.reasons || [],
       parts,
+      requestType: sendPart ? "part" : "",
+      // The owner prices both of these into the firm quote; the quote then says so.
+      paperwork,
+      returnPart,
     });
 
     if (quote) quotesDB.update(quote.id, { status: "rfq" });
@@ -152,7 +169,7 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
     mailer.send({ to: mailer.shopNotifyAddress(), replyTo: email, ...templates.rfqReceivedShop({ rfq, adminUrl: `${orderEvents.baseUrl(req)}/admin`, part }) });
     mailer.send({ to: email, replyTo: mailer.shopNotifyAddress(), ...templates.rfqReceivedBuyer({ rfq, part }) });
 
-    res.status(201).json({ rfqId: rfq.id, status: rfq.status, turnaroundHours: brand.quoteTurnaroundHours, ...(part || {}) });
+    res.status(201).json({ rfqId: rfq.id, status: rfq.status, turnaroundHours: brand.quoteTurnaroundHours, paperwork: Boolean(rfq.paperwork), ...(part ? { ...part, returnPart: Boolean(rfq.returnPart) } : {}) });
   } catch (err) {
     console.error("RFQ create error:", err);
     res.status(500).json({ error: "Could not submit the request. Please try again or call us." });
@@ -211,6 +228,11 @@ router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
     updates.quotedLeadDays = n;
   }
   if (b.quoteNote !== undefined) updates.quoteNote = sanitizeString(b.quoteNote, 2000);
+  // What the price covers besides the parts. They start as the customer ticked them; the owner can
+  // change either before sending (a phone call added the paperwork, say), because the quote email,
+  // page and PDF state both as fact.
+  if (typeof b.paperwork === "boolean") updates.paperwork = b.paperwork;
+  if (typeof b.returnPart === "boolean" && rfq.requestType === "part") updates.returnPart = b.returnPart;
   if (b.notes !== undefined) updates.notes = sanitizeString(b.notes, 4000);
   // The quantity the firm price covers, per part (the buyer may have asked for several breaks).
   if (b.partQuantities && typeof b.partQuantities === "object") {
@@ -223,7 +245,8 @@ router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
   // Marking it quoted sends the firm quote. Re-sending (a revised price, or
   // `resend`) issues a new link and retires the old one.
   const next = { ...rfq, ...updates };
-  const revised = next.quotedTotal !== rfq.quotedTotal || next.quotedLeadDays !== rfq.quotedLeadDays || (next.quoteNote || "") !== (rfq.quoteNote || "");
+  const revised = next.quotedTotal !== rfq.quotedTotal || next.quotedLeadDays !== rfq.quotedLeadDays || (next.quoteNote || "") !== (rfq.quoteNote || "")
+    || Boolean(next.paperwork) !== Boolean(rfq.paperwork) || Boolean(next.returnPart) !== Boolean(rfq.returnPart);
   const sendQuote = b.status === "quoted" && (rfq.status !== "quoted" || b.resend === true || revised);
   if (sendQuote) {
     if (rfq.status === "accepted") return res.status(409).json({ error: "The customer already accepted this quote" });
@@ -296,6 +319,11 @@ function customerView(rfq) {
     shipBy: rfq.quotedLeadDays !== null && rfq.quotedLeadDays !== undefined ? shipBy.shipByDate(rfq.quotedLeadDays) : null,
     validUntil: rfq.validUntil,
     quoteNote: rfq.quoteNote || "",
+    // What the firm price covers besides the parts, in the same sentences as the email and the PDF.
+    paperwork: Boolean(rfq.paperwork),
+    partRequest: templates.isPartRequest(rfq),
+    returnPart: Boolean(rfq.returnPart),
+    covers: templates.quoteCovers(rfq),
     acceptedAt: rfq.acceptedAt || null,
     acceptedVia: rfq.acceptedVia || null,
     poNumber: rfq.poNumber || "",
@@ -398,6 +426,11 @@ router.post("/quote/:token/accept", async (req, res) => {
       shippingMethod: "standard",
       shippingCost: 0,
       subtotal: rfq.quotedTotal,
+      // Asked for on the request and priced into the firm quote: flagged on the order so the
+      // shop does it, with no separate amount (the quoted total already covers it).
+      paperwork: Boolean(rfq.paperwork),
+      paperworkFee: 0,
+      returnPart: Boolean(rfq.returnPart),
       tax: 0,
       total: rfq.quotedTotal,
       notes: "",

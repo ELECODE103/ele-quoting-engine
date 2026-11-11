@@ -296,6 +296,21 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       'ALTER TABLE rfqs ADD COLUMN accepted_via TEXT',
       'ALTER TABLE rfqs ADD COLUMN po_number TEXT',
       'ALTER TABLE rfqs ADD COLUMN order_id TEXT',
+      // Inspection paperwork as an option the customer asks for (owner, 2026-11-11):
+      // a first-article report per part number and a certificate of conformance
+      // per order, with the fee as its own line on the quote and on the order.
+      'ALTER TABLE quotes ADD COLUMN paperwork INTEGER DEFAULT 0',
+      'ALTER TABLE quotes ADD COLUMN paperwork_fee REAL DEFAULT 0',
+      'ALTER TABLE orders ADD COLUMN paperwork INTEGER DEFAULT 0',
+      'ALTER TABLE orders ADD COLUMN paperwork_fee REAL DEFAULT 0',
+      // Firm-quote requests: the same paperwork checkbox (the owner prices it in),
+      // whether the request is a worn part being shipped in, and whether the
+      // customer wants that part back with the order (return shipping is priced in).
+      'ALTER TABLE rfqs ADD COLUMN paperwork INTEGER DEFAULT 0',
+      'ALTER TABLE rfqs ADD COLUMN request_type TEXT',
+      'ALTER TABLE rfqs ADD COLUMN return_part INTEGER DEFAULT 0',
+      // Orders taken from a firm quote for a shipped-in part: the original goes back in the box.
+      'ALTER TABLE orders ADD COLUMN return_part INTEGER DEFAULT 0',
     ];
     for (const sql of migrations) {
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }

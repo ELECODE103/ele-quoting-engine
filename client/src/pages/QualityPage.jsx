@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import PublicLayout from '../components/PublicLayout';
 import ShopPhoto from '../components/ShopPhoto';
 import brand from '../brand';
-import { fact, when, lines, QUALITY_LINE } from '../facts';
+import { fact, when, lines, PAPERWORK_HOW } from '../facts';
 
 // The page says what is inspected and what is documented. Every practice is the
 // owner's (shared/shop-facts.json); the rest is how plastic behaves or what the
@@ -11,7 +11,7 @@ const TOOLS = ['insp-surface-plate', 'insp-height-gage', 'insp-gage-pins', 'insp
   .map((id) => fact(id)).filter(Boolean);
 
 const CHECKED = lines([
-  { needs: 'fai-coc', text: 'The first article. On a production order the first part is measured against your print.' },
+  { needs: 'fai-coc', text: 'The first article, when you order the report. The first piece of each part number is measured against your drawing, and the report ships with the parts.' },
   'The dimensions you call out. The firm-quote form has a field for the two or three that have to be right; those are the ones that get measured.',
   { needs: 'practice-rest', text: 'Parts sit before we measure them. Plastic relaxes after the cut, and a part measured warm off the machine reads differently the next morning.',
     or: 'Plastic relaxes after the cut, and a part measured warm off the machine reads differently the next morning. Ask when your parts were measured.' },
@@ -21,13 +21,19 @@ const CHECKED = lines([
   'If your receiving inspection needs a particular report or gage record, say so in the request. The quote states what comes with the job before you order.',
 ]);
 
+// Paperwork is asked for, not assumed (owner, 2026-11-11): each line says how to get it.
 const WITH_ORDER = lines([
-  { needs: 'fai-coc', text: 'A certificate of conformance. It lists each part with its revision, material and quantity, states that the parts were made and inspected to your drawing and purchase order, and is signed.' },
-  { needs: 'lot-traceability', text: 'The material lot, written on the certificate against each line, so a part can be traced back to the stock it was cut from.' },
+  { needs: 'fai-coc', text: 'A first-article inspection report, when you ask for it. The first piece of each part number is measured against your drawing and the measurements are written down.' },
+  { needs: 'fai-coc', text: 'A certificate of conformance, when you ask for it. It lists each part with its revision, material and quantity, states that the parts were made and inspected to your drawing and purchase order, and is signed.' },
+  { needs: ['fai-coc', 'lot-traceability'], text: 'When you order the certificate, the material lot is written on it against each line, so a part can be traced back to the stock it was cut from.' },
+  { needs: 'fai-coc', text: `How to ask: ${PAPERWORK_HOW.charAt(0).toLowerCase()}${PAPERWORK_HOW.slice(1)} Both add a fee, shown as its own line.` },
   { needs: 'material-certs', text: 'The stock maker\'s or distributor\'s material cert, passed through when you ask for it.' },
   { needs: 'traveler', text: 'A traveler on every job that ties the stock lot and the program revision to your order.' },
   { needs: 'continuity-handover', text: 'Your program and setup notes, on request. They are yours.' },
 ]);
+
+// The owner's sentence: both come with the order when the customer asks for them. '' until confirmed.
+const PAPERWORK = fact('fai-coc');
 
 const DIFFERENT = lines([
   'It expands five to ten times as much as steel for the same temperature change. A two-foot polyethylene part cannot hold the tolerance a two-foot steel part can.',
@@ -67,14 +73,15 @@ export default function QualityPage() {
               <div className="eyebrow" style={{ marginBottom: 14 }}>Quality</div>
               <h1 className="display" style={{ marginBottom: 18 }}>What's in the box besides the parts.</h1>
               <p className="lede" style={{ maxWidth: 540, marginBottom: 20 }}>
-                A buyer's real question is not "can you make it." It is what gets checked, what paper comes with the parts,
+                A buyer's real question is not "can you make it." It is what gets checked, what paper you can have with the parts,
                 and what happens when one is wrong. This page answers all three.
               </p>
               <div className="plain-box" style={{ maxWidth: 540 }}>
-                <h2 className="display h3-like" style={{ marginBottom: 8 }}>{QUALITY_LINE ? 'With every production order' : 'Say what your receiving inspection needs'}</h2>
+                <h2 className="display h3-like" style={{ marginBottom: 8 }}>{PAPERWORK ? 'Inspection paperwork when you need it' : 'Say what your receiving inspection needs'}</h2>
                 <p className="body-copy">
-                  {QUALITY_LINE
-                    || 'A first-article inspection, a certificate of conformance, a material cert: name what you need when you ask for the quote. The quote states which of them come with the job, before you order.'}
+                  {PAPERWORK
+                    ? <>{PAPERWORK.replace(/\.$/, '')}: tick the box on your quote. The price shows before you pay.{when('lot-traceability', (v) => ` ${v}`)}</>
+                    : 'A first-article inspection, a certificate of conformance, a material cert: name what you need when you ask for the quote. The quote states which of them come with the job, before you order.'}
                   {when('written-procedures', ' The procedures for inspection, traceability and corrective action are written down, and you can read them.')}
                 </p>
               </div>
@@ -107,7 +114,7 @@ export default function QualityPage() {
         <div className="pub-wrap">
           <div className="grid-2" style={{ gap: 40, alignItems: 'start' }}>
             <div>
-              <h2 className="display h2-sm">Paperwork with the order</h2>
+              <h2 className="display h2-sm">{PAPERWORK ? 'Paperwork, when you ask for it' : 'Paperwork with the order'}</h2>
               {WITH_ORDER.length > 0
                 ? <ul className="checklist">{WITH_ORDER.map((t) => <li key={t}>{t}</li>)}</ul>
                 : (

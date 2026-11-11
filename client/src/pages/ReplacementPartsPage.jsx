@@ -7,8 +7,10 @@ import { ok, when, lines } from '../facts';
 // Replacement parts are quoted from the physical part, not from a photo
 // (owner, 2026-11-11). The ship-to street address is never on this page: it
 // comes back from the server after a request is sent, and in the email.
-// Whether the original is returned, drop-off, and how soon a price follows
-// are the owner's to state (part-return, visits-welcome, part-quote-time).
+// The customer ships the part in at their cost; the original goes back with the
+// finished parts, and the quoted price covers that return shipping (owner,
+// 2026-11-11, part-return). Drop-off and how soon a price follows are still the
+// owner's to state (visits-welcome, part-quote-time).
 const REQUEST = '/rfq?nocad=1';
 const RETURN_NOTE = when('part-return', (v) => v, 'Tell us in the request if you need the original back.');
 
@@ -33,7 +35,9 @@ const SEND = lines([
   'What it rides on or runs against, and where it is worn.',
   'The material, if you know it. If not, say what it looks and feels like.',
   'How many you need now, and how soon.',
-  ok('part-return') ? null : 'Whether you need the original back.',
+  ok('part-return')
+    ? 'Whether you want the original back. The box is ticked to start with; untick it if you do not.'
+    : 'Whether you need the original back.',
 ]);
 
 const WHY = lines([

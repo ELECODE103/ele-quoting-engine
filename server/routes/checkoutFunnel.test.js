@@ -28,6 +28,11 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.body.quoteId, QUOTE_ID, "the session's quote id is kept");
     assert.ok(r.body.orderTotal > 0);
+    // Inspection paperwork is opt-in: an ordinary quote carries none, and says what it would cost.
+    assert.strictEqual(r.body.paperwork, false);
+    assert.strictEqual(r.body.paperworkFee, 0);
+    assert.ok(r.body.paperworkOffer.fee > 0);
+    assert.ok(Math.abs(r.body.subtotal + r.body.leadTimeSurcharge + r.body.paperworkFee + r.body.shippingEstimate - r.body.orderTotal) < 0.005, "subtotal + lead-time fee + paperwork + shipping = total");
   });
 
   test("re-pricing updates the same row instead of inserting drafts", async () => {
@@ -100,6 +105,7 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.strictEqual(p.partId, partId);
     assert.strictEqual(p.quantity, 7);
     assert.strictEqual(p.fileName, "cube_20mm.stl");
+    assert.strictEqual(r.body.paperwork, false, "the paperwork box comes back as the buyer left it");
     assert.ok(p.meshPreview.positions.length > 0, "preview mesh comes back");
     assert.ok(p.geometry.boundingBox && !p.geometry.meshData);
   });
@@ -128,6 +134,10 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     // What went to Stripe
     const args = h.stripe.created[0];
     assert.strictEqual(args.line_items[0].price_data.unit_amount, Math.round(order.total * 100));
+    assert.strictEqual(args.line_items.length, 1, "no paperwork ordered, so one Stripe line");
+    assert.strictEqual(order.paperwork, false);
+    assert.strictEqual(order.paperworkFee, 0);
+    assert.ok(Math.abs(order.subtotal + order.leadTimeSurcharge + order.paperworkFee + order.shippingCost - order.total) < 0.01, "order lines add up to the total");
     assert.strictEqual(args.success_url, `https://shop.test/orders/${orderId}?paid=true`);
     assert.strictEqual(args.metadata.orderId, orderId);
   });
@@ -187,6 +197,11 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.ok(toCustomer.html.includes("STRAIGHTEDGE"));
     assert.ok(/New order/i.test(toShop.subject));
     assert.ok(toShop.text.includes("dana@buyer.test"));
+    // Not ordered, so not claimed: no paperwork line to the customer, and the shop is told it was not ordered.
+    assert.ok(!/first-article|certificate of conformance/i.test(toCustomer.text));
+    assert.ok(toShop.text.includes("FAI + CoC: Not ordered"));
+    const priced = toCustomer.text.split("\n").filter((l) => /^\s+- /.test(l)).map((l) => Number((l.match(/\$([\d,]+\.\d{2})$/) || [])[1]?.replace(/,/g, ""))).filter(Number.isFinite);
+    assert.ok(Math.abs(priced.reduce((a, b) => a + b, 0) - order.total) < 0.01, "the email's lines add up to the total paid");
   });
 
   test("the webhook arriving afterwards is a no-op (no duplicate emails)", async () => {
@@ -209,6 +224,8 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.ok(r.body.items[0].materialName);
     assert.ok(!("notes" in r.body), "internal notes are not sent to the customer");
     assert.ok(!("drawingPath" in r.body));
+    assert.strictEqual(r.body.paperwork, false);
+    assert.ok(Math.abs(r.body.subtotal + r.body.leadTimeSurcharge + r.body.paperworkFee + r.body.shippingCost - r.body.total) < 0.01, "what the order page shows adds up");
   });
 
   test("a second order paid by webhook, with a promo code, is still a clean paid order", async () => {
@@ -409,6 +426,7 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     const order = ordersDB.getById(c.body.orderId);
     assert.ok(Math.abs(order.subtotal - q.body.subtotal) < 0.005, "subtotal is the parts");
     assert.ok(Math.abs(order.subtotal + order.leadTimeSurcharge + order.shippingCost - order.total) < 0.01, "the lines add up to the total");
+    assert.strictEqual(order.paperworkFee, 0, "and none of it is paperwork nobody asked for");
     const lines = orderItemsDB.query((i) => i.orderId === order.id).reduce((s, i) => s + i.lineTotal, 0);
     assert.ok(Math.abs(lines - order.subtotal) < 0.01, "line items add up to the subtotal");
     h.pay(`cs_test_${h.stripe.created.length}`);
@@ -418,6 +436,31 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.ok(/Expedited lead time/.test(mail.text) && /Shipping/.test(mail.text), "the email lists the fee and shipping");
     const pdf = await require("../services/documents").buildOrderConfirmationPdf({ order: ordersDB.getById(order.id), items: orderItemsDB.query((i) => i.orderId === order.id) });
     assert.ok(pdf.length > 2000);
+  });
+
+  test("the same order with the paperwork box ticked: one more line everywhere, and it still adds up", async () => {
+    const plain = await h.post("/api/quote", { parts: [h.cncConfig(partId, 5)], leadTimeSlug: "expedited" }, buyer);
+    const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 5)], leadTimeSlug: "expedited", paperwork: true }, buyer);
+    const fee = q.body.paperworkFee;
+    assert.ok(fee > 0 && q.body.paperwork === true);
+    assert.ok(Math.abs(q.body.orderTotal - plain.body.orderTotal - fee) < 0.005, "ticking the box adds the fee and nothing else");
+    assert.ok(Math.abs(q.body.leadTimeSurcharge - plain.body.leadTimeSurcharge) < 0.005, "the expedited surcharge is not charged on the paperwork");
+    const c = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, buyer);
+    const order = ordersDB.getById(c.body.orderId);
+    assert.strictEqual(order.paperwork, true);
+    assert.ok(Math.abs(order.subtotal + order.leadTimeSurcharge + order.paperworkFee + order.shippingCost - order.total) < 0.01, "subtotal + lead-time fee + paperwork + shipping = total");
+    const args = h.stripe.created[h.stripe.created.length - 1];
+    assert.strictEqual(args.line_items.reduce((s, li) => s + li.price_data.unit_amount, 0), Math.round(order.total * 100), "Stripe is asked for the whole total");
+    assert.strictEqual(args.line_items[1].price_data.unit_amount, Math.round(fee * 100));
+    h.pay(`cs_test_${h.stripe.created.length}`);
+    h.sent.length = 0;
+    const paid = await h.post(`/api/orders/${order.id}/confirm-payment`, {}, buyer);
+    assert.strictEqual(paid.body.status, "paid", "paying both lines settles the order");
+    const mail = h.sent.find((m) => m.to === "dana@buyer.test");
+    assert.ok(/First-article inspection report and certificate of conformance/.test(mail.text));
+    const view = await h.get(`/api/orders/${order.id}`, buyer);
+    assert.strictEqual(view.body.paperwork, true);
+    assert.strictEqual(view.body.paperworkFee, fee);
   });
 
   test("reorder brings the buyer's notes and drawing along", async () => {

@@ -151,6 +151,33 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
               </div>
             </div>
 
+            {/* What the customer paid for besides the parts: do it before this ships. */}
+            {order.paperwork && (
+              <div role="status" data-testid="paperwork-flag" style={{ marginBottom: 16, padding: '12px 14px', border: '2px solid #B45309', borderRadius: 6, background: '#FFFBEB', color: '#78350F', fontSize: 13, lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: 0.3 }}>FAI + CoC ordered{order.paperworkFee > 0 ? ` (${formatCurrency(order.paperworkFee)})` : ' (in the quoted price)'}</div>
+                Measure the first piece of each part number against the drawing and fill in the first-article report
+                ({order.items?.length || 0} part number{(order.items?.length || 0) === 1 ? '' : 's'}), then fill in and sign the
+                certificate of conformance with material and lot. Both go in the box.
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                  {(order.items || []).map((it, i) => (
+                    <button key={it.id || i} type="button" className="btn btn-primary" style={{ fontSize: 11, padding: '5px 10px' }}
+                      onClick={() => api.openPdf(`fai?orderId=${order.id}&line=${i + 1}`).catch((e) => alert(e.message))}>
+                      First-article form{(order.items || []).length > 1 ? `: line ${i + 1}` : ''}
+                    </button>
+                  ))}
+                  <button type="button" className="btn btn-primary" style={{ fontSize: 11, padding: '5px 10px' }}
+                    onClick={() => api.openPdf(`coc/${order.id}`).catch((e) => alert(e.message))}>
+                    Certificate of conformance
+                  </button>
+                </div>
+              </div>
+            )}
+            {order.returnPart && (
+              <div role="status" style={{ marginBottom: 16, padding: '10px 14px', border: '2px solid #B45309', borderRadius: 6, background: '#FFFBEB', color: '#78350F', fontSize: 13, fontWeight: 600 }}>
+                Return the customer's original part in the box with this order. The quoted price covers that shipping.
+              </div>
+            )}
+
             {/* Status timeline */}
             <div style={{ marginBottom: 24 }}>
               <div style={{ fontSize: 10, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
@@ -236,6 +263,20 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                   </div>
                 </div>
               ))}
+              {/* What the total is made of */}
+              <div style={{ fontSize: 12, paddingTop: 8, color: '#555' }}>
+                {[
+                  ['Parts', order.subtotal],
+                  order.leadTimeSurcharge > 0 && [`${order.leadTimeName || 'Faster'} lead time`, order.leadTimeSurcharge],
+                  order.paperwork && ['FAI + CoC', order.paperworkFee > 0 ? order.paperworkFee : 'in the quoted price'],
+                  order.shippingCost > 0 && ['Shipping', order.shippingCost],
+                  ['Total', order.total],
+                ].filter(Boolean).map(([label, amount]) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontWeight: label === 'Total' ? 700 : 400 }}>
+                    <span>{label}</span><span>{typeof amount === 'number' ? formatCurrency(amount) : amount}</span>
+                  </div>
+                ))}
+              </div>
             </Section>
 
             {/* What the buyer attached on the quote: notes + drawing (price unaffected) */}
@@ -310,6 +351,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                 {[
                   ['Order confirmation', `order-confirmation/${order.id}`],
                   ['Packing slip', `packing-slip/${order.id}`],
+                  // Always available; when the customer ordered them they are also the buttons in the banner at the top.
                   ['Certificate of conformance', `coc/${order.id}`],
                   ['First-article form', `fai?orderId=${order.id}&line=1`],
                   ['Traveler', `traveler/${order.id}`],

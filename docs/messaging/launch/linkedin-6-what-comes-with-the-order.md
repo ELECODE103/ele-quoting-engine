@@ -1,18 +1,18 @@
-# LinkedIn post 6: what comes with the order (day 29)
+# LinkedIn post 6: what you can have with the order (day 29)
 
 Photo: parts on the surface plate, or a certificate next to a boxed order, if cleared. No photo is fine.
 
-This post replaces "what the shop is not" (owner decisions, 2026-11-11): say what is done, and say nothing about certification, equipment or the size of the shop.
+This post replaces "what the shop is not" (owner decisions, 2026-11-11): say what is done, and say nothing about certification, equipment or the size of the shop. Inspection paperwork is an option the customer asks for, with a fee, not something that comes with every order (owner, 2026-11-11, later the same day). Do not print the dollar amount: it is set in the pricing console and the quote tool shows it.
 
 ## Paste this
 
-A month in. Here's what comes with a production order from Straightedge, besides the parts.
+A month in. Here's the paperwork you can have with an order from Straightedge, when your receiving inspection needs it.
 
-First-article inspection. The first part is measured against your print.
+A first-article inspection report. The first piece of each part number is measured against your drawing, and the report ships with the parts.
 
-A certificate of conformance. It lists each part, its revision, the material and the quantity, and it's signed.
+A certificate of conformance. It lists each part, its revision, the material and the quantity, and it's signed. The lot the stock came from is written on it.
 
-Material traceable to the lot. The lot the stock came from is on the certificate.
+You ask for them by ticking a box on the quote. The price shows before you pay. If you don't need them, you don't pay for them.
 
 And three things that come before the order.
 

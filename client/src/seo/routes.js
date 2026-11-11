@@ -159,7 +159,8 @@ const STATIC = {
   },
   '/quality': {
     fullTitle: `Quality: what gets checked and how | ${brand.name}`,
-    description: `${when('fai-coc', (v) => `${v} `)}What ${brand.name} checks on a machined plastic part, and what happens when one is wrong.`,
+    // Inspection paperwork is on request (owner, 2026-11-11): the description says it can be added, not that it comes.
+    description: `What ${brand.name} checks on a machined plastic part, and what happens when one is wrong.${when('fai-coc', ' A first-article inspection report and a certificate of conformance can be added to any order.')}`,
     priority: 0.7,
     sources: ['client/src/pages/QualityPage.jsx', 'shared/shop-facts.json'],
     jsonLd: page('/quality', 'Quality'),

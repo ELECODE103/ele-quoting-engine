@@ -182,13 +182,33 @@ function rfqPartRows(rfq) {
   }));
 }
 
-/** The lines between the parts and the total: lead-time fee and shipping, when the order carries them. */
+// Inspection paperwork is an option the customer asks for (owner, 2026-11-11), never a default.
+const PAPERWORK_LABEL = "First-article inspection report and certificate of conformance";
+const PAPERWORK_SHORT = "FAI + CoC";
+const PAPERWORK_INCLUDED = "This price includes a first-article inspection report and a signed certificate of conformance, shipped with the parts.";
+const PAPERWORK_NOT_INCLUDED = "A first-article inspection report and a certificate of conformance were not requested, so this price does not include them. Need them? Reply before you accept and we will add them to the price.";
+const RETURN_INCLUDED = "This price includes shipping your original part back to you with the finished parts.";
+const RETURN_NOT_INCLUDED = "You did not ask for the original part back, so this price does not include returning it. Want it back? Reply before you accept.";
+const RETURN_REMINDER = "Customer wants the original back — include return shipping in the price.";
+const PAPERWORK_REMINDER = "Customer asked for a first-article inspection report and a certificate of conformance — include them in the price.";
+/** Was this firm-quote request a worn part shipped in to be measured? */
+const isPartRequest = (rfq) => rfq.requestType === "part";
+
+/**
+ * The lines between the parts and the total: lead-time fee, inspection paperwork
+ * and shipping, when the order carries them. Parts + these lines = the total.
+ * On an order taken from a firm quote the paperwork has no amount of its own:
+ * it is inside the quoted price, and the line says so.
+ */
 function chargeRows(order) {
   const rows = [];
   const fee = Number(order.leadTimeSurcharge) || 0;
   const shipping = Number(order.shippingCost) || 0;
+  const paperworkFee = Number(order.paperworkFee) || 0;
   if (fee > 0.004) rows.push({ name: `${order.leadTimeName || "Faster"} lead time`, amount: fee });
+  if (order.paperwork) rows.push(paperworkFee > 0.004 ? { name: PAPERWORK_LABEL, amount: paperworkFee } : { name: PAPERWORK_LABEL, detail: order.rfqId ? "included in the quoted price" : "included", amount: null });
   if (shipping > 0.004) rows.push({ name: "Shipping", amount: shipping });
+  if (order.returnPart) rows.push({ name: "Your original part, returned with this order", detail: "return shipping included in the quoted price", amount: null });
   return rows;
 }
 
@@ -208,9 +228,10 @@ function rfqReceivedBuyer({ rfq, part }) {
       `Thanks. We have your request${n ? ` for ${n} part${n === 1 ? "" : "s"}` : ""}. A firm quote comes back${shopFacts.when("quote-turnaround", (v) => ` within ${v},`)} from the engineer who will run the job.`,
       // "before then" only means something when a turnaround is stated.
       `If anything on the print needs a conversation first, you'll hear from us ${shopFacts.ok("quote-turnaround") ? "before then" : "about that first"}.`,
+      ...(rfq.paperwork ? ["You asked for a first-article inspection report and a certificate of conformance. The price we quote will include them, and the quote will say so."] : []),
     ],
     items: rfqPartRows(rfq),
-    facts: [["Reference", shortId(rfq.id)]],
+    facts: [["Reference", shortId(rfq.id)], ["Inspection paperwork", rfq.paperwork ? "First-article report and certificate of conformance requested" : ""]],
   });
 }
 
@@ -218,23 +239,34 @@ function rfqReceivedBuyer({ rfq, part }) {
  * To the buyer of a replacement part with no drawing: the part is quoted from
  * the part itself, so this email carries the reference to write on the box and
  * the address to ship it to. `part` = { reference, shipTo: { name, lines } }.
- * Whether the original goes back, and how soon a price follows, are said only
- * once the owner has answered (shop-facts `part-return`, `part-quote-time`).
+ * The buyer pays to ship the part in; the original goes back with the finished
+ * parts when they ticked the box, and the quoted price covers that return
+ * (owner, 2026-11-11; shop-facts `part-return`). How soon a price follows is
+ * said only once the owner has answered (`part-quote-time`).
  */
 function partRequestBuyer({ rfq, part }) {
   const address = [part.shipTo.name, ...part.shipTo.lines].join(", ");
+  const back = rfq.returnPart
+    ? "You asked for the original back: we send it back with the finished parts, and the price we quote includes that return shipping."
+    : "You did not ask for the original back, so we keep it with the job. Changed your mind? Reply to this email before you order and the price will cover sending it back.";
   return layout({
     subject: `${brand.name}: send us the part (reference ${part.reference})`,
     preheader: `Write ${part.reference} on the box. The ship-to address is inside.`,
     heading: "Now send us the part",
     paragraphs: [
       greeting(rfq.contactName),
-      "Thanks. We have your request. The next step is yours: write the reference below on the box and ship the worn part to the address below.",
+      "Thanks. We have your request. The next step is yours: write the reference below on the box and ship the worn part to the address below. Shipping the part to us is at your cost.",
       `We measure the part and send you a price.${shopFacts.when("part-quote-time", (v) => ` ${v}`)} Nothing is ordered and nothing is charged until you say so.`,
     ],
-    facts: [["Reference (write it on the box)", part.reference], ["Ship the part to", address]],
+    facts: [
+      ["Reference (write it on the box)", part.reference],
+      ["Ship the part to", address],
+      ["Original part", rfq.returnPart ? "Returned with your order; return shipping is in the price we quote" : "Not being returned"],
+      ["Inspection paperwork", rfq.paperwork ? "First-article report and certificate of conformance requested" : ""],
+    ],
     after: [
-      shopFacts.when("part-return", (v) => v, "Need the original part back? Reply to this email and say so."),
+      back,
+      ...(rfq.paperwork ? ["You also asked for a first-article inspection report and a certificate of conformance. The price we quote will include them."] : []),
       `Questions, or a line that cannot run without the part? Call ${brand.phone}.`,
     ],
   });
@@ -250,7 +282,10 @@ function rfqReceivedShop({ rfq, adminUrl, part }) {
     heading: `New RFQ from ${rfq.contactName}`,
     paragraphs: [
       `${rfq.contactName} <${rfq.email}>${rfq.company ? " — " + rfq.company : ""}${rfq.phone ? " — " + rfq.phone : ""}`,
-      ...(part ? [`No drawing. The customer was told to write ${part.reference} on the box and ship the part to the shop. Measure it, then quote it from the RFQ queue.`] : []),
+      ...(part ? [`No drawing. The customer was told to write ${part.reference} on the box and ship the part to the shop at their cost. Measure it, then quote it from the RFQ queue.`] : []),
+      ...(part && rfq.returnPart ? [RETURN_REMINDER] : []),
+      ...(part && !rfq.returnPart ? ["Customer did not ask for the original back."] : []),
+      ...(rfq.paperwork ? [PAPERWORK_REMINDER] : []),
       ...(rfq.reasons || []).length ? [`Why it's an RFQ: ${rfq.reasons.map((r) => r.message).join("; ")}`] : [],
       ...(rfq.notes ? [`Notes: ${rfq.notes}`] : []),
     ],
@@ -260,6 +295,8 @@ function rfqReceivedShop({ rfq, adminUrl, part }) {
       ["Finish notes", rfq.finishNotes],
       ["Need by", rfq.dueDate],
       ["Drawing", rfq.drawingFileName || "none"],
+      ["FAI + CoC", rfq.paperwork ? "YES — price it in" : "Not requested"],
+      ["Original part back", part ? (rfq.returnPart ? "YES — price in the return shipping" : "No") : ""],
       ["Budgetary total shown", part ? "" : money(rfq.budgetTotal)],
       ["Reference", shortId(rfq.id)],
     ],
@@ -273,6 +310,19 @@ function rfqReceivedShop({ rfq, adminUrl, part }) {
   });
 }
 
+/**
+ * What a firm price covers besides the parts, in sentences: the inspection
+ * paperwork (always stated, yes or no) and, for a part that was shipped in,
+ * whether the original goes back. Used by the firm-quote email, the RFQ
+ * response PDF and the customer's quote page so the three cannot disagree.
+ */
+function quoteCovers(rfq) {
+  return [
+    rfq.paperwork ? PAPERWORK_INCLUDED : PAPERWORK_NOT_INCLUDED,
+    ...(isPartRequest(rfq) ? [rfq.returnPart ? RETURN_INCLUDED : RETURN_NOT_INCLUDED] : []),
+  ];
+}
+
 /** The firm quote, sent when the admin marks an RFQ quoted. */
 function rfqQuoted({ rfq, acceptUrl, shipBy }) {
   const days = rfq.quotedLeadDays;
@@ -284,10 +334,13 @@ function rfqQuoted({ rfq, acceptUrl, shipBy }) {
       greeting(rfq.contactName),
       "Here is the firm price for your parts. Review it and accept online: pay by card, or send a purchase order number.",
       ...(rfq.quoteNote ? [rfq.quoteNote] : []),
+      ...quoteCovers(rfq),
     ],
     items: rfqPartRows(rfq),
     facts: [
       ["Price", money(rfq.quotedTotal)],
+      ["Inspection paperwork", rfq.paperwork ? "First-article report and certificate of conformance: included" : "Not requested, not included"],
+      ["Original part", isPartRequest(rfq) ? (rfq.returnPart ? "Returned with your order: return shipping included" : "Not being returned") : ""],
       ["Lead time", days != null ? `${days} business day${days === 1 ? "" : "s"}${shipBy ? ` (ships by ${formatShipBy(shipBy)} if ordered today)` : ""}` : ""],
       ["Good until", longDate(rfq.validUntil)],
       ["Reference", shortId(rfq.id)],
@@ -313,9 +366,13 @@ function rfqAcceptedShop({ rfq, order, adminUrl }) {
       po
         ? "The customer accepted and gave a PO number. Nothing has been charged and no terms have been set up: confirm the PO with them before starting work."
         : "The customer accepted and was sent to card checkout. You'll get a separate email when the payment clears.",
+      ...(rfq.paperwork ? [`${PAPERWORK_SHORT} ORDERED: the quoted price includes a first-article inspection report and a certificate of conformance. Do both before this ships.`] : []),
+      ...(rfq.returnPart ? ["RETURN THE ORIGINAL: the customer's part goes back in the box with the finished parts. The quoted price includes that shipping."] : []),
     ],
     facts: [
       ["Quoted total", money(order.total)],
+      [PAPERWORK_SHORT, rfq.paperwork ? "ORDERED (in the quoted price)" : "Not ordered"],
+      ["Original part", isPartRequest(rfq) ? (rfq.returnPart ? "Return it with the order" : "Not being returned") : ""],
       ["PO number", po ? order.poNumber : ""],
       ["Ship to", shipTo(order)],
       ["Ships by", formatShipBy(order.shipBy)],
@@ -342,6 +399,8 @@ function orderConfirmation({ order, items, orderUrl }) {
         ? `Thanks. Your order is in under PO ${order.poNumber}. We'll confirm the PO with you and then start work.`
         : "Thanks. Your payment went through and your parts are in the queue.",
       ...(order.drawingFileName ? [DRAWING_NOTE] : []),
+      ...(order.paperwork ? ["You ordered the inspection paperwork: the first piece of each part number is measured against your drawing, and the report ships with the parts, with a signed certificate of conformance listing material and lot."] : []),
+      ...(order.returnPart ? ["Your original part comes back in the box with the finished parts."] : []),
     ],
     items: [...itemRows(items), ...chargeRows(order)],
     total: { label: po ? "Order total" : "Total paid", value: money(order.total) },
@@ -369,11 +428,14 @@ function newOrderShop({ order, items, adminUrl, warning }) {
       `${order.customerName || order.shippingName || "Customer"}${order.customerEmail ? ` <${order.customerEmail}>` : ""}`,
       ...(warning ? [warning] : []),
       ...(order.drawingFileName ? [`Drawing attached to the order: ${order.drawingFileName}. Review it before cutting.`] : []),
+      ...(order.paperwork ? [`${PAPERWORK_SHORT} ORDERED: measure the first piece of each part number against the drawing and write the first-article report, then fill in and sign the certificate of conformance with material and lot. Both ship with the parts.`] : []),
+      ...(order.returnPart ? ["RETURN THE ORIGINAL: the customer's part goes back in the box with the finished parts."] : []),
     ],
     items: [...itemRows(items), ...chargeRows(order)],
     total: { label: "Total", value: money(order.total) },
     facts: [
       ["Order", shortId(order.id)],
+      [PAPERWORK_SHORT, order.paperwork ? (Number(order.paperworkFee) > 0 ? `ORDERED (${money(order.paperworkFee)})` : "ORDERED (in the quoted price)") : "Not ordered"],
       ["Payment", po ? `PO ${order.poNumber} (not charged)` : "Card, paid"],
       ["Lead time", order.leadTimeName],
       ["Ships by", formatShipBy(order.shipBy)],
@@ -412,6 +474,8 @@ function orderShipped({ order, items, orderUrl }) {
 
 module.exports = {
   layout, trackingUrl, shortId, money, DRAWING_NOTE,
+  PAPERWORK_LABEL, PAPERWORK_SHORT, PAPERWORK_INCLUDED, PAPERWORK_NOT_INCLUDED, RETURN_INCLUDED, RETURN_NOT_INCLUDED, RETURN_REMINDER, PAPERWORK_REMINDER,
+  chargeRows, quoteCovers, isPartRequest,
   rfqReceivedBuyer, partRequestBuyer, rfqReceivedShop, rfqQuoted, rfqAcceptedShop,
   orderConfirmation, newOrderShop, orderShipped,
 };

@@ -25,6 +25,32 @@ const PRICE_METHOD_CALCULATORS = {
   calculatePrintPrice: require("../processes/3d-printing/pricing").calculate,
 };
 
+/**
+ * Inspection paperwork the customer asks for on the quote (owner, 2026-11-11):
+ * a first-article inspection report per part number and one certificate of
+ * conformance per order.
+ *
+ *   fee = paperworkFeePerPart × part numbers (quote lines, not pieces) + paperworkFeePerOrder
+ *
+ * Charged at face value: it is added after margin, after the lead-time
+ * surcharge and after the order minimum, so none of them scales or absorbs it,
+ * and quantity breaks never touch it.
+ *
+ * @returns {{ perPart:number, perOrder:number, parts:number, fee:number }} what the option costs for this many lines
+ */
+function paperworkCharge(lineCount, rules = {}) {
+  const dollars = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0; };
+  const parts = Math.max(0, Math.floor(Number(lineCount) || 0));
+  const perPart = dollars(rules.paperworkFeePerPart);
+  const perOrder = dollars(rules.paperworkFeePerOrder);
+  return { perPart, perOrder, parts, fee: parts > 0 ? Math.round((perPart * parts + perOrder) * 100) / 100 : 0 };
+}
+
+/** A dollar amount in whole cents (NaN and Infinity pass through for the sanity guard to catch). */
+function cents(n) {
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : n;
+}
+
 class PricingEngine {
   constructor(rules = null) {
     this.rules = rules || DEFAULT_PRICING_RULES;
@@ -75,8 +101,10 @@ class PricingEngine {
 
   /**
    * Calculate a full order quote (multiple parts).
+   * `paperwork: true` adds the inspection-paperwork fee (see paperworkCharge)
+   * as its own line; `paperworkOffer` says what the option costs either way.
    */
-  calculateOrderQuote({ parts, leadTimeMultiplier = 1.0 }) {
+  calculateOrderQuote({ parts, leadTimeMultiplier = 1.0, paperwork = false }) {
     const r = this.rules;
     const totalPartsInOrder = parts.length;
 
@@ -89,11 +117,15 @@ class PricingEngine {
         partId: part.partId,
         fileName: part.fileName,
         ...price,
+        // A model's line total can carry a fraction of a cent. The customer is shown, and
+        // charged, whole cents, so the line is settled to the cent here and the subtotal is
+        // the sum of those lines.
+        lineTotal: cents(price.lineTotal),
         quantityBreaks: this.quantityPriceBreaks({ ...part, totalPartsInOrder }),
       };
     });
 
-    const subtotal = lineItems.reduce((sum, li) => sum + li.lineTotal, 0);
+    const subtotal = cents(lineItems.reduce((sum, li) => sum + li.lineTotal, 0));
     const totalWeight = lineItems.reduce((sum, li) => sum + li.weight.total, 0);
 
     // Shipping estimate
@@ -102,11 +134,22 @@ class PricingEngine {
     // Lead time surcharge
     const leadTimeSurcharge = subtotal * (leadTimeMultiplier - 1);
 
-    // Order total
-    const orderTotal = Math.max(
-      subtotal + leadTimeSurcharge + shippingEstimate,
+    // Inspection paperwork, when asked for: its own line, at face value.
+    const paperworkOffer = paperworkCharge(lineItems.length, r);
+    const paperworkOn = paperwork === true;
+    const paperworkFee = paperworkOn ? paperworkOffer.fee : 0;
+
+    // Order total: the sum of the amounts as the customer sees them, each in
+    // whole cents, so the figures on the quote, the checkout page, the order,
+    // the emails and the documents add up to the total exactly (added first
+    // and rounded after, three printed figures could miss the printed total
+    // by a cent). The order minimum applies to the parts, the lead-time fee
+    // and shipping; the paperwork fee is added after it, so ticking the box
+    // always adds exactly the fee shown.
+    const orderTotal = cents(Math.max(
+      subtotal + cents(leadTimeSurcharge) + cents(shippingEstimate),
       r.minimumOrderTotal
-    );
+    ) + paperworkFee);
 
     // ─── SANITY GUARD ──────────────────────────
     // Never let a NaN/Infinity/negative price be persisted or reach checkout.
@@ -128,6 +171,9 @@ class PricingEngine {
       leadTimeMultiplier,
       leadTimeSurcharge,
       shippingEstimate,
+      paperwork: paperworkOn,
+      paperworkFee,
+      paperworkOffer,
       totalWeight,
       orderTotal,
       partCount: parts.length,
@@ -137,4 +183,4 @@ class PricingEngine {
   }
 }
 
-module.exports = { PricingEngine };
+module.exports = { PricingEngine, paperworkCharge };

@@ -1,6 +1,8 @@
 /**
  * Customer-facing documents as PDFs: quote / RFQ response, order confirmation, packing slip,
- * Certificate of Conformance, and a blank First Article Inspection report form.
+ * Certificate of Conformance, and a blank First Article Inspection report form. The last two are
+ * made for an order when the customer asked for them (order.paperwork); the quote, the order
+ * confirmation and the packing slip each say whether they were ordered.
  *
  * Built with PDFKit (already a dependency) and its built-in Helvetica, so nothing is fetched or
  * embedded and the files print the same on any black laser: one colour, hairline rules, no
@@ -25,6 +27,9 @@ const DIM = "#444444";                           // prints as a clean dark gray 
 const RULE = "#999999";
 const QUOTE_VALID_DAYS = 30;                     // the site says firm quotes hold for 30 days
 const PT_PER_MM = 72 / 25.4;
+// Inspection paperwork is an option the customer asks for (owner, 2026-11-11). The wording is the
+// emails' wording, so a document and the message it rides with cannot disagree.
+const { PAPERWORK_LABEL, quoteCovers } = require("../emails/templates");
 
 // ─── small helpers ──────────────────────────────────────────────────────────
 // Helvetica is WinAnsi-encoded: keep what it can print, replace what it cannot.
@@ -334,11 +339,19 @@ async function buildQuotePdf({ quote, customer, rfq, options = {} } = {}) {
     : [
       ["Subtotal", money(src.subtotal)],
       Number(src.leadTimeSurcharge) > 0 ? ["Expedite", money(src.leadTimeSurcharge)] : null,
+      src.paperwork ? ["Inspection paperwork", money(src.paperworkFee)] : null,
       Number.isFinite(Number(src.shippingEstimate)) ? ["Shipping (estimate)", money(src.shippingEstimate)] : null,
       ["Total", money(src.orderTotal ?? src.subtotal), true],
     ]);
   if (isRfq) {
     y = facts(doc, y, [["Quantities requested", rfq.quantities], ["Tolerance", rfq.tolerance], ["Finish", rfq.finishNotes], ["Needed by", rfq.dueDate]]);
+    // A firm price always says whether it covers the inspection paperwork and, for a part that
+    // was shipped in to be measured, whether the original goes back.
+    y = paragraph(doc, y, "This price covers", quoteCovers(rfq).join(" "));
+  } else {
+    y = paragraph(doc, y, "Inspection paperwork", src.paperwork
+      ? `${PAPERWORK_LABEL}: ordered. The first piece of each part number is measured against your drawing and the report ships with the parts, with a signed certificate of conformance listing material and lot.`
+      : `${PAPERWORK_LABEL}: not ordered, so not in this price. Both can be added to the quote before you order.`);
   }
   y = paragraph(doc, y, "Notes", options.notes || (isRfq ? rfq.quoteNote : ""));
   y = paragraph(doc, y, "Terms", options.terms || `Prices are in US dollars and hold for ${validDays} days from the date above. This quote covers the files, materials and quantities listed; a change to any of them is re-quoted. To order or ask a question: ${brand.email} or ${brand.phone}.`);
@@ -369,10 +382,15 @@ async function buildOrderConfirmationPdf({ order, items = [], customer, options 
   y = totals(doc, y, [
     ["Subtotal", money(order.subtotal)],
     Number(order.leadTimeSurcharge) > 0 ? [`${order.leadTimeName || "Faster"} lead time`, money(order.leadTimeSurcharge)] : null,
+    order.paperwork ? ["Inspection paperwork", Number(order.paperworkFee) > 0 ? money(order.paperworkFee) : "Included"] : null,
     Number(order.shippingCost) > 0 ? ["Shipping", money(order.shippingCost)] : null,
     Number(order.tax) > 0 ? ["Sales tax", money(order.tax)] : null,
     ["Order total", money(order.total), true],
   ]);
+  y = paragraph(doc, y, "Inspection paperwork", order.paperwork
+    ? `${PAPERWORK_LABEL}: ordered${Number(order.paperworkFee) > 0 ? "" : ", included in the quoted price"}. The first piece of each part number is measured against your drawing and the report ships with the parts, with a signed certificate of conformance listing material and lot.`
+    : `${PAPERWORK_LABEL}: not ordered.`);
+  if (order.returnPart) y = paragraph(doc, y, "Your original part", "Returned to you in the box with the finished parts. Return shipping is included in the quoted price.");
   // The buyer's own notes. `order.notes` is the shop's internal note and never prints on a customer document.
   // (On an order taken from a firm quote that field holds the note the quote carried.)
   y = paragraph(doc, y, order.rfqId ? "Quote notes" : "Your notes", order.customerNotes);
@@ -402,6 +420,18 @@ async function buildPackingSlipPdf({ order, items = [], customer, options = {} }
     { key: "n", label: "Line", w: 5 }, { key: "part", label: "Part / file", w: 30, bold: true }, { key: "desc", label: "Description", w: 35 },
     { key: "ord", label: "Ordered", w: 10, align: "right" }, { key: "ship", label: "Shipped", w: 10, align: "right" }, { key: "bo", label: "Back order", w: 13, align: "right" },
   ], rows, { rowPad: 7 });
+  // What is in the box besides the parts: only what was ordered. Tick boxes for the packer.
+  if (order.paperwork || order.returnPart) {
+    y = ensure(doc, y, 20 + (order.paperwork ? 30 : 0) + (order.returnPart ? 16 : 0));
+    label(doc, "Also in this shipment", PAGE.m, y, INNER);
+    y += 12;
+    if (order.paperwork) {
+      checkbox(doc, PAGE.m, y, `First-article inspection report (ordered): ${items.length} part number${items.length === 1 ? "" : "s"}`); y += 15;
+      checkbox(doc, PAGE.m, y, "Certificate of conformance (ordered), signed, with material and lot"); y += 15;
+    }
+    if (order.returnPart) { checkbox(doc, PAGE.m, y, "Customer's original part, returned"); y += 15; }
+    y += 4;
+  }
   y = signLines(doc, y + 6, [{ label: "Packed by" }, { label: "Checked by" }, { label: "Cartons", w: 0.5 }, { label: "Date", w: 0.7 }]);
   y = paragraph(doc, y, null, options.closing || `Count and inspect on receipt. If anything is short, damaged or not to print, tell us right away so we can put it right: ${brand.email} or ${brand.phone}.`);
   return finish(doc);

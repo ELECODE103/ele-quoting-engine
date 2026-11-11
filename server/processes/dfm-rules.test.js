@@ -403,6 +403,61 @@ test("build volume: 400 × 100 × 100 fits FDM (any orientation) but FAILS SLA w
   assert.ok(/FDM/.test(find(s, "print-build-volume").detail));
 });
 
+// The shop runs a Formlabs Form 4 (200 × 125 × 210 mm) and a Form 3 (145 × 145 × 185 mm). A part
+// passes the SLA size check when it fits either one in some orientation, and the message names
+// the printer whose limit applied.
+const slaBox = (w, h, d) => sla(block({ aabb: { w, h, d }, obb: { w, h, d } }));
+const fitDetail = (r) => find(r, "print-build-volume").detail;
+
+test("SLA build volume: 140 × 140 × 130 fits the Form 3 only, and the message says so", () => {
+  const r = slaBox(140, 140, 130);                     // 130 is over the Form 4's 125 mm side whichever way it is turned
+  assert.strictEqual(sev(r, "print-build-volume"), "pass");
+  assert.ok(/fits the Form 3 \(145 × 145 × 185 mm\)/.test(fitDetail(r)), fitDetail(r));
+  assert.ok(/too large for the Form 4 \(200 × 125 × 210 mm\)/.test(fitDetail(r)), fitDetail(r));
+  assert.deepStrictEqual(find(r, "print-build-volume").threshold, [185, 145, 145]);
+});
+
+test("SLA build volume: 195 × 120 × 200 fits the Form 4 only, and the message says so", () => {
+  const r = slaBox(195, 120, 200);
+  assert.strictEqual(sev(r, "print-build-volume"), "pass");
+  assert.ok(/fits the Form 4 \(200 × 125 × 210 mm\)/.test(fitDetail(r)), fitDetail(r));
+  assert.ok(/too large for the Form 3 \(145 × 145 × 185 mm\)/.test(fitDetail(r)), fitDetail(r));
+  assert.deepStrictEqual(find(r, "print-build-volume").threshold, [210, 200, 125]);
+  assert.strictEqual(r.summary.manufacturable, true);
+});
+
+test("SLA build volume: 210 × 150 × 130 fits neither printer and FAILS, naming both limits", () => {
+  const r = slaBox(210, 150, 130);
+  assert.strictEqual(sev(r, "print-build-volume"), "fail");
+  assert.strictEqual(r.summary.manufacturable, false);
+  assert.ok(/Form 4 \(200 × 125 × 210 mm\)/.test(fitDetail(r)) && /Form 3 \(145 × 145 × 185 mm\)/.test(fitDetail(r)), fitDetail(r));
+  assert.ok(/FDM/.test(fitDetail(r)), "it still offers the FDM printer when the part fits that");
+  assert.strictEqual(sev(slaBox(150, 150, 150), "print-build-volume"), "fail", "150 cube: over 125 on the Form 4 and over 145 on the Form 3");
+});
+
+test("SLA build volume is orientation-free: a part is turned to fit before it is refused", () => {
+  // 140 × 140 × 100 does not sit flat in the Form 4 (140 > 125 deep) but stands in it with the
+  // 100 mm side across the 125 mm depth, so it fits both printers.
+  const both = slaBox(140, 140, 100);
+  assert.strictEqual(sev(both, "print-build-volume"), "pass");
+  assert.ok(/fits both SLA printers/.test(fitDetail(both)), fitDetail(both));
+  // 210 × 150 × 100 is over the Form 4's 200 mm width lying down, but stands 210 tall in it:
+  // exactly Formlabs' stated height, so it passes at the limit. Nothing fits the Form 3.
+  const tall = slaBox(210, 150, 100);
+  assert.strictEqual(sev(tall, "print-build-volume"), "pass");
+  assert.ok(/fits the Form 4/.test(fitDetail(tall)) && /too large for the Form 3/.test(fitDetail(tall)), fitDetail(tall));
+  assert.strictEqual(sev(slaBox(211, 150, 100), "print-build-volume"), "fail", "one millimetre over the Form 4's height fits nothing");
+  // The same part given in a different axis order reads the same.
+  assert.strictEqual(fitDetail(slaBox(100, 140, 140)).replace(/Part \([^)]*\)/, ""), fitDetail(both).replace(/Part \([^)]*\)/, ""));
+});
+
+test("FDM and SLS size checks are unchanged by the second SLA printer", () => {
+  assert.strictEqual(sev(fdm(block({ aabb: { w: 300, h: 300, d: 600 }, obb: { w: 600, h: 300, d: 300 } })), "print-build-volume"), "pass");
+  assert.ok(/fits the FDM build volume \(610 × 305 × 305 mm\)/.test(fitDetail(fdm(block()))));
+  const sls = printing.run(block({ aabb: { w: 310, h: 100, d: 100 }, obb: { w: 310, h: 100, d: 100 } }), { subProcess: "sls" });
+  assert.strictEqual(sev(sls, "print-build-volume"), "fail");
+});
+
 test("overhang: 60% warns major on FDM/SLA, info on SLS; support volume 50% of part → major cost", () => {
   assert.strictEqual(cost(fdm(block({ overhang: { areaFraction45: 0.6 } })), "print-overhang"), "major");
   assert.strictEqual(sev(sla(block({ overhang: { areaFraction45: 0.6 } })), "print-overhang"), "warn");

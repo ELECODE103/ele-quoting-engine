@@ -112,8 +112,18 @@ export const MILLING = when('turning', 'milling and turning', 'milling');
 // Empty until the fact is confirmed, so a page falls back to what the catalog lists.
 export const SLA_RESINS = when('sla-resins', (v) => v.resins.replace(/^Formlabs\s+/, '').split(/,\s*|\s+and\s+/), []);
 
-// What is inspected and documented, in the owner's approved words (2026-11-11). '' until confirmed.
+// Inspection paperwork, in the owner's words (2026-11-11): a first-article inspection report and a
+// certificate of conformance are an option the customer asks for (a box on the quote, a box on the
+// firm-quote form) with a stated fee. They do not come with every order, and no page says they do.
+// No dollar amount in static copy: the fee is admin-editable and the quote tool shows the live number.
+// '' until confirmed.
 export const QUALITY_LINE = when(['fai-coc', 'lot-traceability'], (a, b) => `${a} ${b}`);
+/** How to ask for it, and that it is priced. Follows QUALITY_LINE or the fai-coc sentence. */
+export const PAPERWORK_HOW = 'Tick the box on your quote, or on the firm-quote form. The price shows before you pay.';
+/** The option's name wherever it is a checkbox or a line on a total. */
+export const PAPERWORK_LABEL = 'First-article inspection report and certificate of conformance';
+/** One line of help under the checkbox. */
+export const PAPERWORK_HELP = 'The first piece of each part number is measured against your drawing and the report ships with the parts, with a signed certificate of conformance listing material and lot.';
 
 // Finishes done by an outside finisher (owner, 2026-11-10: anodize and powder coat are sent out;
 // bead blasting is done in the shop). The quote tool says so next to each one.

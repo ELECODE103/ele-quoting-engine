@@ -7,8 +7,9 @@ import { ok, fact, when } from '../facts';
 
 // Engineer-led, in the owner's approved words; no statement of shop size anywhere on the site.
 const ENGINEER_LED = fact('engineer-led') || 'Call and you reach the engineer running your job.';
-// Footer quality line: what is done on a production order, in the owner's words.
-const FOOT_QUALITY = when('fai-coc', (v) => v, 'Customer names and part numbers are never published.');
+// Footer bar line: true on every page and of every order, whatever the customer asked for.
+// (Inspection paperwork is an option, so it is not said here: owner, 2026-11-11.)
+const FOOT_LINE = 'Customer names and part numbers are never published.';
 
 /**
  * Shell for the public pages: nav + footer.
@@ -66,7 +67,7 @@ export default function PublicLayout({ children }) {
           </div>
           <div style={{ marginTop: 28, paddingTop: 16, borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
             <span>&copy; {new Date().getFullYear()} {fact('legal-name') || brand.name}. {brand.city}, {brand.state}.</span>
-            <span>{FOOT_QUALITY}{when('paperwork-packet', ' NDA on request.')}</span>
+            <span>{FOOT_LINE}{when('paperwork-packet', ' NDA on request.')}</span>
           </div>
         </div>
       </footer>
