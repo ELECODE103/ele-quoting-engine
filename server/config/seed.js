@@ -10,6 +10,7 @@ const {
   usersDB,
 } = require("../models");
 const {
+  SEED_VERSION,
   DEFAULT_MATERIALS,
   DEFAULT_FINISHES,
   DEFAULT_LEAD_TIMES,
@@ -41,6 +42,18 @@ function seedDatabase() {
       for (const f of existingFins2) finishesDB.delete(f.id);
     }
 
+    // Seed-version upgrade: when the default catalogs change (SEED_VERSION bump),
+    // replace materials/finishes/processes on an existing database. Quotes,
+    // orders, parts and users are untouched; pricing rules are merged below.
+    const existingRules = pricingDB.getAll()[0];
+    const dbSeedVersion = existingRules?.rules?.seedVersion || 1;
+    if (materialsDB.getAll().length > 0 && dbSeedVersion < SEED_VERSION) {
+      console.log(`  Upgrading catalogs: seed v${dbSeedVersion} → v${SEED_VERSION} (materials, finishes, processes)...`);
+      for (const m of materialsDB.getAll()) materialsDB.delete(m.id);
+      for (const f of finishesDB.getAll()) finishesDB.delete(f.id);
+      for (const proc of processesDB.getAll()) processesDB.delete(proc.id);
+    }
+
     // Only seed if empty
     if (materialsDB.getAll().length === 0) {
       console.log("  Seeding materials...");
@@ -70,9 +83,25 @@ function seedDatabase() {
       }
     }
 
+    // Pricing rules are stored as one JSON blob under `rules` (the rules_json
+    // column). Merge in any keys the stored blob is missing (new process rates
+    // etc.) without overwriting values tuned in the admin panel.
     if (pricingDB.getAll().length === 0) {
       console.log("  Seeding pricing rules...");
-      pricingDB.insert({ name: "default", ...DEFAULT_PRICING_RULES });
+      pricingDB.insert({ rules: { ...DEFAULT_PRICING_RULES, seedVersion: SEED_VERSION } });
+    } else {
+      const stored = pricingDB.getAll()[0];
+      const current = (stored.rules && typeof stored.rules === "object") ? stored.rules : {};
+      let added = 0;
+      const merged = { ...current };
+      for (const [k, v] of Object.entries(DEFAULT_PRICING_RULES)) {
+        if (merged[k] === undefined || merged[k] === null) { merged[k] = v; added++; }
+      }
+      if (added > 0 || (current.seedVersion || 1) < SEED_VERSION) {
+        merged.seedVersion = SEED_VERSION;
+        pricingDB.update(stored.id, { rules: merged });
+        console.log(`  Pricing rules: added ${added} new key(s), seed v${SEED_VERSION}.`);
+      }
     }
 
     if (processesDB.getAll().length === 0) {

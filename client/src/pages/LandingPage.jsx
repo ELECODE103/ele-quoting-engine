@@ -1,474 +1,275 @@
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import PublicLayout from '../components/PublicLayout';
+import ShopPhoto from '../components/ShopPhoto';
+import Photo from '../components/Photo';
+import brand from '../brand';
+import { ok, fact, when, lines, MACHINED } from '../facts';
+import { shopPhoto } from '../data/shopPhotos';
+
+const LIMIT = brand.rfqQuantityThreshold;
+const GALLERY = ['tray-stack-router', 'acetal-clamps', 'fourth-axis', 'disc-stacks', 'uhmw-rack', 'brackets-inspection'];
+const captioned = GALLERY.some((id) => shopPhoto(id).cap);
+const within = when('quote-turnaround', (v) => ` within ${v}`);
+
+// Four facts, each one checkable. A stat that depends on the owner falls back
+// to one the software proves.
+const STATS = [
+  ['Price now', `to ${LIMIT} pieces, by card`],
+  when('tol-acetal', (t) => [t.standard, 'standard on acetal'], ['No account', 'needed to see a price']),
+  when('router-bed', (b) => [b, 'router bed'], ['59" × 96"', 'largest flat part priced online']),
+  ['One person', 'quotes it, cuts it, answers the phone'],
+];
+
+const DOORS = [
+  {
+    h: 'I have a CAD file',
+    p: `Upload a STEP or STL and the price is on the screen in a few seconds. Up to ${LIMIT} pieces you can pay by card.`,
+    to: '/quote', cta: 'Get an instant quote',
+  },
+  {
+    h: 'I have a drawing and a quantity',
+    p: `Over ${LIMIT} pieces, or a print with no model. Send the drawing and the quantities you would buy. A person prices it${within}.`,
+    to: '/rfq', cta: 'Request a firm quote',
+  },
+  {
+    h: 'I have a worn part and no drawing',
+    p: 'You do not need a drawing to ask. Send a photo with a tape measure in it and say what machine it came off.',
+    to: '/replacement-parts', cta: 'No CAD? Send a photo',
+  },
+];
+
+const STEPS = [
+  ['01', 'Upload', 'Drop in a STEP, STL, IGES or 3MF. No account is needed to see a price. '
+    + when('file-encryption', 'The file is encrypted at rest and ', 'The file is ')
+    + when('file-retention', (v) => `deleted after ${v} unless you order.`, 'purged on a schedule if you do not order.')],
+  ['02', 'Price and DFM', 'Pick process, material, finish and quantity. The price updates as you go, with a manufacturability check against the limits printed on this site.'],
+  ['03', 'Check out, or get a firm quote', `Up to ${LIMIT} pieces: check out with a card. More than that, an oversize part or anything the check fails: a firm quote from a person${within}.`],
+  when('fai-coc',
+    (v) => ['04', 'First article, then ship', `A first-article inspection report and a certificate of conformance come with ${v}.`],
+    ['04', 'Made, then shipped', `Your order page shows where the job stands. Questions go to ${brand.phone}, which rings the person making the part.`]),
+];
+
+const MOVES = lines([
+  'Plastic expands five to ten times as much as steel for the same temperature change. A long HDPE or UHMW part is a different length on a warm line than in a cold shop.',
+  'Nylon takes on water and grows, up to about 2% in length when saturated.',
+  'Most plastics relax after they are cut. A part measured warm off the machine can read differently the next morning.',
+  { needs: 'practice-rest' },
+  'So tell us where the part lives, and put the tight tolerance only on the feature that needs it.',
+]);
 
 export default function LandingPage() {
-  const navigate = useNavigate();
 
   return (
-    <div style={{ minHeight: '100vh', background: '#fff' }}>
-      {/* ─── Nav ─── */}
-      <nav style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '16px 40px', maxWidth: 1280, margin: '0 auto',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 8,
-            background: 'var(--accent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
-          </div>
-          <span style={{
-            fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700,
-            color: 'var(--text-primary)', letterSpacing: '-0.5px',
-          }}>
-            Nord MFG
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <button
-            className="btn btn-ghost"
-            onClick={() => navigate('/login')}
-            style={{ fontSize: 13 }}
-          >
-            Sign In
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => navigate('/quote')}
-            style={{ fontSize: 13 }}
-          >
-            Get Instant Quote
-          </button>
-        </div>
-      </nav>
-
+    <PublicLayout>
       {/* ─── Hero ─── */}
-      <section className="hero-grid" style={{
-        padding: '80px 40px 60px',
-        maxWidth: 1280, margin: '0 auto',
-      }}>
-        <div>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '6px 14px', borderRadius: 20,
-            background: 'var(--accent-light)', color: 'var(--accent)',
-            fontSize: 13, fontWeight: 600, marginBottom: 24,
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)' }} />
-            Now accepting orders
+      <section className="section" style={{ paddingTop: 56 }}>
+        <div className="pub-wrap">
+          <div className="hero-grid">
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 18 }}>Plastics machine shop</div>
+              <h1 className="display" style={{ marginBottom: 20 }}>
+                Machined plastic parts.<br className="br-wide" /> Price now, made in {brand.city}, Illinois.
+              </h1>
+              <p className="lede" style={{ maxWidth: 530, marginBottom: 28 }}>
+                {MACHINED.charAt(0).toUpperCase() + MACHINED.slice(1)} from Delrin, UHMW, HDPE, nylon and PEEK.
+                Upload a STEP file and see the price; no account, no call. Over {LIMIT} pieces, or no CAD at all,
+                the person who will cut the part quotes it{within}.
+              </p>
+              <div className="cta-row">
+                <Link className="btn btn-primary btn-lg" to="/quote">Get an instant quote</Link>
+                <Link className="btn btn-outline btn-lg" to="/replacement-parts">No CAD? Send a photo</Link>
+              </div>
+              <p className="next-note">
+                Or call <a href={brand.phoneHref}>{brand.phone}</a>. It rings the person who runs the machines.
+              </p>
+              <div className="chips" style={{ marginTop: 20 }}>
+                {['.step', '.stp', '.stl', '.iges', '.3mf', '.dxf'].map((f) => <span key={f} className="chip" style={{ fontFamily: 'var(--font-mono)' }}>{f}</span>)}
+              </div>
+            </div>
+            <ShopPhoto id="tray-stack-edge" loading="eager" style={{ aspectRatio: '4 / 5', maxHeight: 560 }} />
           </div>
+        </div>
+      </section>
 
-          <h1 style={{
-            fontFamily: 'var(--font-display)', fontSize: 48, fontWeight: 700,
-            color: 'var(--text-primary)', lineHeight: 1.15,
-            letterSpacing: '-1.5px', marginBottom: 20,
-          }}>
-            3D Printing,<br />Quoted Instantly
-          </h1>
-
-          <p style={{
-            fontSize: 18, color: 'var(--text-muted)', lineHeight: 1.7,
-            marginBottom: 36, maxWidth: 480,
-          }}>
-            Upload your STL or STEP file and get real pricing in seconds. FDM and resin printing with instant DFM analysis, no sales calls required.
-          </p>
-
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 40 }}>
-            <button
-              className="btn btn-primary btn-lg"
-              onClick={() => navigate('/quote')}
-            >
-              Start Your Quote
-            </button>
-            <button
-              className="btn btn-outline btn-lg"
-              onClick={() => {
-                document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-            >
-              How It Works
-            </button>
+      {/* ─── Facts ─── */}
+      <section className="section-tight section-alt">
+        <div className="pub-wrap">
+          <div className="stat-row stat-row-4">
+            {STATS.map(([b, s]) => <div key={b} className="stat"><b>{b}</b><span>{s}</span></div>)}
           </div>
+        </div>
+      </section>
 
-          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-            {['STL', 'STEP', '3MF', 'IGES'].map((f) => (
-              <span key={f} style={{
-                fontSize: 12, padding: '5px 12px', borderRadius: 6,
-                background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)',
-                color: 'var(--text-muted)', fontWeight: 500, fontFamily: 'var(--font-mono)',
-              }}>
-                .{f.toLowerCase()}
-              </span>
+      {/* ─── Three doors ─── */}
+      <section className="section">
+        <div className="pub-wrap">
+          <div style={{ maxWidth: 640, marginBottom: 32 }}>
+            <div className="eyebrow" style={{ marginBottom: 10 }}>Start here</div>
+            <h2 className="display">Three ways in. Pick the one that matches what is in your hand.</h2>
+          </div>
+          <div className="grid-3">
+            {DOORS.map((d) => (
+              <Link key={d.to} to={d.to} className="card door">
+                <h3 className="display">{d.h}</h3>
+                <p>{d.p}</p>
+                <span className="door-cta">{d.cta} →</span>
+              </Link>
             ))}
           </div>
         </div>
+      </section>
 
-        {/* Hero visual — Upload card mockup */}
-        <div style={{
-          background: 'var(--bg-secondary)', borderRadius: 20, padding: 40,
-          border: '1px solid var(--border-primary)',
-          boxShadow: 'var(--shadow-xl)',
-        }}>
-          <div style={{
-            border: '2px dashed var(--border-primary)', borderRadius: 16,
-            padding: '48px 32px', textAlign: 'center',
-            background: '#fff',
-          }}>
-            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 20, opacity: 0.8 }}>
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-            <div style={{
-              fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600,
-              color: 'var(--text-primary)', marginBottom: 8,
-            }}>
-              Upload Your Parts
-            </div>
-            <div style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-              Drag & drop your 3D files here<br />
-              Instant geometry analysis and pricing
-            </div>
+      {/* ─── Processes ─── */}
+      <section className="section section-alt">
+        <div className="pub-wrap">
+          <div style={{ maxWidth: 640, marginBottom: 36 }}>
+            <div className="eyebrow" style={{ marginBottom: 10 }}>What we do</div>
+            <h2 className="display">Three ways to make a plastic part. The quote tool prices all three.</h2>
           </div>
-
-          {/* Fake result preview */}
-          <div style={{
-            marginTop: 20, display: 'flex', justifyContent: 'space-between',
-            alignItems: 'center', padding: '14px 16px',
-            background: '#fff', borderRadius: 10,
-            border: '1px solid var(--border-primary)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: 8,
-                background: 'var(--accent-light)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 16,
-              }}>▲</div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>bracket-v2.stl</div>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>PLA+ FDM · 0.2mm layers</div>
-              </div>
-            </div>
-            <div style={{
-              fontSize: 18, fontWeight: 700, color: 'var(--accent)',
-              fontFamily: 'var(--font-display)',
-            }}>$4.80</div>
+          <div className="grid-3">
+            <ProcessCard
+              to="/machining"
+              photo="acetal-clamps"
+              title="CNC Machining"
+              sub={ok('turning') ? 'Milling and turning' : 'Milling'}
+              text={'Blocks, brackets, housings, wear pads and guides. '
+                + when(['mill-tormach', 'mill-bridgeport'], (a, b) => `${a} and a ${b}. `)
+                + 'Parts up to 18" × 9.5" × 12" price online. Plastics first; 6061 and brass for the part that mates with yours.'}
+              chips={['Delrin', 'UHMW', 'Nylon', 'PEEK', 'Ultem', 'PTFE', '6061']}
+            />
+            <ProcessCard
+              to="/routing"
+              photo="disc-stacks"
+              title="CNC Routing"
+              sub="Sheet and plate"
+              text={'Flat parts cut from 4\' × 8\' sheet, with pockets, holes and counterbores in the same setup. Usually the cheapest way to make a flat plastic part in quantity.'}
+              chips={['HDPE', 'UHMW', 'Acetal', 'Polycarbonate', 'Acrylic', 'G-10', 'Phenolic']}
+            />
+            <ProcessCard
+              to="/3d-printing"
+              photo="fdm-print"
+              title="3D Printing"
+              sub="FDM and SLA"
+              text="Prototypes, fixtures and short runs. Print the fit check first, then machine the production part from the same file."
+              chips={['PLA', 'PETG', 'ABS', 'Nylon', 'TPU', 'SLA resin']}
+            />
           </div>
-        </div>
-      </section>
-
-      {/* ─── Trust bar ─── */}
-      <section style={{
-        padding: '32px 40px',
-        borderTop: '1px solid var(--border-subtle)',
-        borderBottom: '1px solid var(--border-subtle)',
-        background: 'var(--bg-secondary)',
-      }}>
-        <div style={{
-          maxWidth: 1280, margin: '0 auto',
-          display: 'flex', justifyContent: 'center', gap: 48,
-          flexWrap: 'wrap', alignItems: 'center',
-        }}>
-          {[
-            { value: '<24h', label: 'Average turnaround' },
-            { value: '0.1mm', label: 'Layer resolution' },
-            { value: '100%', label: 'DFM analysis included' },
-            { value: '$0', label: 'No setup fees' },
-          ].map((s, i) => (
-            <div key={i} style={{ textAlign: 'center' }}>
-              <div style={{
-                fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700,
-                color: 'var(--accent)',
-              }}>{s.value}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ─── IP / security assurance ─── */}
-      <section style={{ padding: '24px 40px', borderBottom: '1px solid var(--border-subtle)', background: '#fff' }}>
-        <div style={{
-          maxWidth: 1280, margin: '0 auto',
-          display: 'flex', justifyContent: 'center', gap: 40,
-          flexWrap: 'wrap', fontSize: 13, color: 'var(--text-muted)',
-        }}>
-          <span>🔒 You retain 100% IP ownership · NDA on request</span>
-          <span>🛡️ Secure Stripe checkout — your card never touches our servers</span>
-          <span>📁 Your design files are kept private and never shared</span>
-        </div>
-      </section>
-
-      {/* ─── Technologies ─── */}
-      <section style={{
-        padding: '80px 40px', maxWidth: 1280, margin: '0 auto',
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: 60 }}>
-          <h2 style={{
-            fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 700,
-            color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: 12,
-          }}>
-            3D Printing Technologies
-          </h2>
-          <p style={{ fontSize: 16, color: 'var(--text-muted)', maxWidth: 560, margin: '0 auto' }}>
-            From rapid prototypes to end-use parts, choose the technology that fits your project.
+          <p className="next-note" style={{ marginTop: 24 }}>
+            Not sure which process, or which plastic? <Link to="/parts">Parts by type</Link> says what each kind of part is usually made from.
           </p>
         </div>
+      </section>
 
-        <div className="grid-2" style={{ gap: 24 }}>
-          {[
-            {
-              title: 'FDM Printing',
-              subtitle: 'Fused Deposition Modeling',
-              desc: 'Layer-by-layer thermoplastic extrusion. Ideal for functional prototypes, jigs, fixtures, and cost-effective production parts.',
-              materials: ['PLA', 'PLA+', 'ABS', 'PETG', 'TPU', 'Nylon'],
-              icon: (
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M12 2v6m0 8v6M2 12h6m8 0h6" />
-                  <circle cx="12" cy="12" r="3" />
-                  <rect x="3" y="3" width="18" height="18" rx="3" />
-                </svg>
-              ),
-            },
-            {
-              title: 'Resin Printing',
-              subtitle: 'SLA / DLP',
-              desc: 'High-resolution UV-cured resin for smooth surface finishes and fine detail. Perfect for visual models, dental, jewelry, and precision parts.',
-              materials: ['Standard Resin', 'Tough Resin', 'Flexible Resin', 'Castable'],
-              icon: (
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M12 3v18" />
-                  <path d="M5 6l7-3 7 3" />
-                  <path d="M5 6v12l7 3 7-3V6" />
-                </svg>
-              ),
-            },
-          ].map((tech, i) => (
-            <div key={i} className="card fade-up" style={{
-              padding: 36, animationDelay: `${i * 150}ms`,
-              transition: 'all 0.3s', cursor: 'default',
-            }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--accent)';
-                e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-primary)';
-                e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
-              }}
-            >
-              <div style={{ marginBottom: 16 }}>{tech.icon}</div>
-              <h3 style={{
-                fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700,
-                color: 'var(--text-primary)', marginBottom: 4,
-              }}>
-                {tech.title}
-              </h3>
-              <div style={{
-                fontSize: 13, color: 'var(--accent)', fontWeight: 500, marginBottom: 12,
-              }}>
-                {tech.subtitle}
-              </div>
-              <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 16 }}>
-                {tech.desc}
-              </p>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {tech.materials.map((m) => (
-                  <span key={m} style={{
-                    fontSize: 12, padding: '4px 10px', borderRadius: 6,
-                    background: 'var(--bg-secondary)', color: 'var(--text-muted)',
-                    fontWeight: 500,
-                  }}>
-                    {m}
-                  </span>
-                ))}
-              </div>
+      {/* ─── Work ─── */}
+      <section id="work" className="section">
+        <div className="pub-wrap">
+          <div className="flex-between" style={{ alignItems: 'flex-end', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
+            <div style={{ maxWidth: 600 }}>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>{captioned ? 'Recent work' : 'From the shop'}</div>
+              <h2 className="display">{captioned ? 'Recent work. Material, thickness and quantity under each.' : 'Milled, routed and printed plastic.'}</h2>
             </div>
-          ))}
+            <span style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 300 }}>Customer names and part numbers are never shown. Yours will not be either.</span>
+          </div>
+          <div className="photo-grid">
+            {GALLERY.map((id) => <ShopPhoto key={id} id={id} sizes="(max-width: 720px) 100vw, (max-width: 900px) 50vw, 33vw" />)}
+          </div>
         </div>
       </section>
 
-      {/* ─── How It Works ─── */}
-      <section id="how-it-works" style={{
-        padding: '80px 40px',
-        background: 'var(--bg-secondary)',
-        borderTop: '1px solid var(--border-subtle)',
-        borderBottom: '1px solid var(--border-subtle)',
-      }}>
-        <div style={{ maxWidth: 1280, margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: 60 }}>
-            <h2 style={{
-              fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 700,
-              color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: 12,
-            }}>
-              How It Works
-            </h2>
-            <p style={{ fontSize: 16, color: 'var(--text-muted)', maxWidth: 480, margin: '0 auto' }}>
-              From file upload to delivered parts in three simple steps.
+      {/* ─── Worked price example (owner approves the numbers first) ─── */}
+      {ok('price-example') && (
+        <section className="section-tight section-alt">
+          <div className="pub-wrap" style={{ maxWidth: 860 }}>
+            <div className="eyebrow" style={{ marginBottom: 10 }}>A real price</div>
+            <p className="lede">{fact('price-example')}</p>
+          </div>
+        </section>
+      )}
+
+      {/* ─── How ordering works ─── */}
+      <section className="section section-alt">
+        <div className="pub-wrap">
+          <div style={{ maxWidth: 560, marginBottom: 36 }}>
+            <div className="eyebrow" style={{ marginBottom: 10 }}>How it works</div>
+            <h2 className="display">No sales call unless you want one.</h2>
+          </div>
+          <div className="grid-4">
+            {STEPS.map(([n, t, d]) => (
+              <div key={n} className="card" style={{ padding: 24 }}>
+                <div aria-hidden="true" style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 700, color: 'var(--accent)', opacity: 0.35, marginBottom: 8 }}>{n}</div>
+                <h3 className="display" style={{ fontSize: 17, marginBottom: 8 }}>{t}</h3>
+                <p style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.65 }}>{d}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Plastics move ─── */}
+      <section className="section">
+        <div className="pub-wrap">
+          <div className="hero-grid" style={{ gap: 48 }}>
+            <ShopPhoto id="brackets-inspection" style={{ aspectRatio: '4 / 5', maxHeight: 520 }} />
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>What plastic will hold</div>
+              <h2 className="display" style={{ marginBottom: 18 }}>{ok('practice-rest') ? 'Plastics move. We measure for it.' : 'Plastics move. Buy the part with that in mind.'}</h2>
+              <ul className="checklist" style={{ marginBottom: 20 }}>{MOVES.map((m) => <li key={m}>{m}</li>)}</ul>
+              <p className="body-copy" style={{ marginBottom: 24 }}>
+                This shop is not ISO 9001 certified. If your supplier approval requires the certificate, it is better you know that now.
+              </p>
+              <Link to="/quality" className="btn btn-outline">What gets checked, and how</Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Where ─── */}
+      <section className="section-tight section-alt">
+        <div className="pub-wrap">
+          <div className="split">
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>Where</div>
+              <h2 className="display h2-sm" style={{ marginBottom: 0 }}>{brand.city}, {brand.region}.</h2>
+            </div>
+            <p className="body-copy" style={{ fontSize: 15 }}>
+              Lake County, the northern suburbs, Kenosha and Milwaukee are a drive. Everywhere else is a box.
+              {when('drive-times', (v) => ` ${v}`)}
+              {when('visits-welcome', ' Drop a part off or pick an order up; call ahead.')}
+              {when('shop-hours', (v) => ` ${v}`)}
+              {' '}Central time. <a href={brand.phoneHref}>{brand.phone}</a>
             </p>
           </div>
-
-          <div className="grid-3">
-            {[
-              {
-                step: '01',
-                title: 'Upload Your File',
-                desc: 'Drag and drop your STL, STEP, or 3MF file. Our engine parses the geometry automatically, extracting volume, surface area, and feature details.',
-              },
-              {
-                step: '02',
-                title: 'Configure & Review',
-                desc: 'Choose your material, layer height, and infill. Review instant DFM checks that flag printability issues before you order.',
-              },
-              {
-                step: '03',
-                title: 'Order & Receive',
-                desc: 'Confirm your quote, complete checkout, and receive production-quality parts shipped to your door. Track progress in real time.',
-              },
-            ].map((item, i) => (
-              <div key={i} className="fade-up" style={{
-                padding: 32, background: '#fff',
-                borderRadius: 16, border: '1px solid var(--border-primary)',
-                boxShadow: 'var(--shadow-sm)',
-                animationDelay: `${i * 120}ms`,
-              }}>
-                <div style={{
-                  fontFamily: 'var(--font-display)', fontSize: 40, fontWeight: 700,
-                  color: 'var(--accent)', opacity: 0.3, marginBottom: 16,
-                }}>{item.step}</div>
-                <h3 style={{
-                  fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700,
-                  color: 'var(--text-primary)', marginBottom: 8,
-                }}>
-                  {item.title}
-                </h3>
-                <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.7 }}>
-                  {item.desc}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Features ─── */}
-      <section style={{ padding: '80px 40px', maxWidth: 1280, margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: 60 }}>
-          <h2 style={{
-            fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 700,
-            color: 'var(--text-primary)', letterSpacing: '-1px', marginBottom: 12,
-          }}>
-            Built for Engineers
-          </h2>
-          <p style={{ fontSize: 16, color: 'var(--text-muted)', maxWidth: 520, margin: '0 auto' }}>
-            Real geometry analysis, not estimation. Every quote is calculated from your actual part data.
-          </p>
-        </div>
-
-        <div className="grid-3">
-          {[
-            {
-              icon: '⚡',
-              title: 'Real Geometry Parsing',
-              desc: 'STL and STEP files are parsed with OpenCascade WASM. Volume, surface area, bounding box, and feature count extracted automatically.',
-            },
-            {
-              icon: '🔍',
-              title: 'Instant DFM Analysis',
-              desc: 'Automated design-for-manufacturability checks flag issues like thin walls, unsupported overhangs, and minimum feature sizes before you order.',
-            },
-            {
-              icon: '💰',
-              title: 'Transparent Pricing',
-              desc: 'See exactly how your price is calculated: material volume, print time, support structures, and finish cost with full per-unit breakdown.',
-            },
-            {
-              icon: '📐',
-              title: '3D Part Preview',
-              desc: 'Interactive WebGL viewer lets you orbit, zoom, and inspect your part in 3D before committing to a print.',
-            },
-            {
-              icon: '📦',
-              title: 'Volume Discounts',
-              desc: 'Quantity pricing is calculated automatically. Order more parts and see your per-unit cost drop in real time.',
-            },
-            {
-              icon: '🚀',
-              title: 'Fast Turnaround',
-              desc: 'Standard and rush lead times available. Pick the timeline that works for your project and see the price adjust instantly.',
-            },
-          ].map((f, i) => (
-            <div key={i} className="fade-up" style={{
-              padding: 28, animationDelay: `${i * 80}ms`,
-            }}>
-              <div style={{ fontSize: 32, marginBottom: 12 }}>{f.icon}</div>
-              <h3 style={{
-                fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700,
-                color: 'var(--text-primary)', marginBottom: 8,
-              }}>
-                {f.title}
-              </h3>
-              <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.7 }}>
-                {f.desc}
-              </p>
-            </div>
-          ))}
         </div>
       </section>
 
       {/* ─── CTA ─── */}
-      <section style={{
-        padding: '80px 40px',
-        background: 'var(--bg-dark)',
-        textAlign: 'center',
-      }}>
-        <h2 style={{
-          fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 700,
-          color: '#F8FAFC', letterSpacing: '-1px', marginBottom: 16,
-        }}>
-          Ready to get your parts printed?
-        </h2>
-        <p style={{
-          fontSize: 16, color: '#94A3B8', marginBottom: 36,
-          maxWidth: 480, margin: '0 auto 36px',
-        }}>
-          Upload your file and get an instant quote. No signup required.
-        </p>
-        <button
-          className="btn btn-primary btn-lg"
-          onClick={() => navigate('/quote')}
-          style={{ fontSize: 16, padding: '16px 36px' }}
-        >
-          Get Your Instant Quote
-        </button>
+      <section className="section section-dark">
+        <div className="pub-wrap" style={{ textAlign: 'center' }}>
+          <h2 className="display" style={{ color: '#F8FAFC', marginBottom: 12 }}>Have a print? Send it.</h2>
+          <p style={{ color: '#CBD5E1', fontSize: 16, maxWidth: 540, margin: '0 auto 28px', lineHeight: 1.6 }}>
+            No print? <Link to="/replacement-parts" style={{ color: '#fff' }}>Send a photo.</Link> Either way you are talking to the person who runs the machine.
+          </p>
+          <div className="cta-row" style={{ justifyContent: 'center' }}>
+            <Link className="btn btn-primary btn-lg btn-on-dark" to="/quote">Get an instant quote</Link>
+            <a className="btn btn-lg btn-dark-outline" href={brand.phoneHref}>{brand.phone}</a>
+          </div>
+        </div>
       </section>
+    </PublicLayout>
+  );
+}
 
-      {/* ─── Footer ─── */}
-      <footer style={{
-        padding: '32px 40px',
-        borderTop: '1px solid var(--border-subtle)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        maxWidth: 1280, margin: '0 auto',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{
-            fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700,
-            color: 'var(--text-primary)',
-          }}>
-            Nord MFG
-          </span>
-          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-            &copy; {new Date().getFullYear()} All rights reserved.
-          </span>
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-          3D Printing Services &middot; FDM &middot; SLA/DLP
-        </div>
-      </footer>
-    </div>
+function ProcessCard({ to, photo, title, sub, text, chips }) {
+  const p = shopPhoto(photo);
+  return (
+    <Link to={to} className="card proc-card" style={{ textDecoration: 'none' }}>
+      <div className="photo-frame"><Photo src={p.src} alt={p.alt} loading="lazy" sizes="(max-width: 768px) 100vw, 33vw" /></div>
+      <div>
+        <h3 className="display" style={{ marginBottom: 2 }}>{title}</h3>
+        <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>{sub}</div>
+      </div>
+      <p style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.65 }}>{text}</p>
+      <div className="chips">{chips.map((c) => <span key={c} className="chip">{c}</span>)}</div>
+    </Link>
   );
 }

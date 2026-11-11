@@ -5,16 +5,25 @@ const fs = require("fs");
 const { v4: uuidv4 } = require("uuid");
 const { parseFile } = require("../parsers/fileParser");
 const { PricingEngine } = require("../services/pricingEngine");
-const { materialsDB, finishesDB, leadTimesDB, pricingDB, quotesDB, partsDB } = require("../models");
+const quoteGate = require("../services/quoteGate");
+const { runDFMAnalysis, defaultProcessSlug } = require("../parsers/fileParser");
+const { materialsDB, finishesDB, leadTimesDB, pricingDB, quotesDB, partsDB, pricingAuditDB, ordersDB, orderItemsDB } = require("../models");
+const ruleSchema = require("../config/ruleSchema");
+const { createPricingAdmin } = require("../services/pricingAdmin");
+const pricingPreview = require("../services/pricingPreview");
+const calibration = require("../services/calibration");
 const { resolveProcess, activeProcesses } = require("../processes/registry");
 const { authenticate, optionalAuth, requireAdmin } = require("./auth");
-const { sanitizeString, isValidSlug, nonNegativeNumber, positiveInt } = require("../middleware/validate");
+const { sanitizeString, isValidSlug, isValidUUID, nonNegativeNumber, positiveInt } = require("../middleware/validate");
+const shipBy = require("../services/shipBy");
 const { validateFileContent } = require("../middleware/fileValidator");
 const fileCrypto = require("../services/fileCrypto");
+const dxf = require("../geometry/dxf");
 
+const shopFacts = require("../shopFacts"); // hides catalog options the owner has not confirmed
 const router = express.Router();
 
-// âââ FILE UPLOAD CONFIG ââââââââââââââââââââââââââââââââââââââ
+// ─── FILE UPLOAD CONFIG ──────────────────────────────────────
 const uploadDir = path.join(__dirname, "..", "..", "data", "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -31,22 +40,42 @@ const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
   fileFilter: (req, file, cb) => {
-    const allowed = [".step", ".stp", ".stl", ".3mf", ".iges", ".igs"];
+    const allowed = [".step", ".stp", ".stl", ".3mf", ".iges", ".igs", ".dxf"];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error(`Unsupported file type: ${ext}`));
+      cb(Object.assign(new Error(`We can't read ${ext || "that kind of"} files here. Upload a STEP, STL, IGES or 3MF model, or a DXF for a flat routed part.`), { status: 400, expose: true }));
     }
   },
 });
 
 const pricingEngine = new PricingEngine();
+const pricingAdmin = createPricingAdmin({ pricingDB, auditDB: pricingAuditDB });
 
-// âââ Admin field whitelists (prevent mass assignment) ââââââââ
-const MATERIAL_FIELDS = ["name", "slug", "process", "subProcess", "category", "density", "costPerKg", "costPerSheet", "grades", "thicknesses", "active", "description", "color"];
+/**
+ * Load the stored pricing rules (admin-tuned) into the engine. Called once at
+ * startup after the DB is seeded, and after every admin save. The effective
+ * set is schema defaults ← legacy DEFAULT_PRICING_RULES ← the stored blob.
+ */
+function loadPricingRules() {
+  // Schema defaults with the stored (admin-tuned) values laid over them, each
+  // one validated and clamped — a database from an older version always
+  // yields a complete, sane rule set.
+  pricingEngine.rules = pricingAdmin.currentRules();
+  return pricingEngine.rules;
+}
+
+// ─── Admin field whitelists (prevent mass assignment) ────────
+// Every material field the pricing models read (pricePerKg / pricePerCm3,
+// machinability, materialClass, stockForms, wasteFactor, feedClass,
+// grades[].density, thicknesses, density, layer heights) plus the catalog
+// fields (name, category, color, active, description).
+const MATERIAL_FIELDS = ["name", "slug", "process", "subProcess", "category", "density", "costPerKg", "pricePerKg", "pricePerCm3", "machinability", "materialClass", "stockForms", "wasteFactor", "feedClass", "costPerSheet", "grades", "thicknesses", "layerHeights", "defaultLayerHeight", "active", "description", "color"];
+const MATERIAL_NUMBER_FIELDS = { density: [0, 30], costPerKg: [0, 10000], pricePerKg: [0, 10000], pricePerCm3: [0, 100], machinability: [0.05, 10], costPerSheet: [0, 100000], defaultLayerHeight: [0.01, 2], wasteFactor: [0, 2] };
+const FEED_CLASSES = ruleSchema.FEED_CLASSES;
 const FINISH_FIELDS = ["name", "slug", "process", "costPerSqMm", "costFlat", "minCost", "active", "description", "category"];
-const PRICING_FIELDS = ["sheetCutRate", "bendRate", "setupFee", "markupPercent", "minimumOrder", "cncRate", "printRate", "finishMultiplier"];
+// Pricing rules are whitelisted and range-checked by the rule schema (config/ruleSchema.js) in services/pricingAdmin.js.
 const LEAD_TIME_FIELDS = ["name", "slug", "days", "multiplier", "active", "description"];
 
 /** Pick only allowed fields from an object */
@@ -60,25 +89,84 @@ function whitelist(body, allowedFields) {
   return cleaned;
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════
 // FILE UPLOAD & PARSING
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════
+
+const DXF_ROUTING_ONLY = "A DXF is a 2D profile, so it can only be quoted for CNC routing (sheet and plate cut on the router). Switch the process to CNC routing and upload it again, or upload a STEP, STL, IGES or 3MF model for machining or printing.";
+
+/** What the client needs to show a part: geometry summary, DFM, and a 3D mesh or a 2D profile. */
+function partPayload(part, parsed) {
+  const g = parsed.geometry;
+  return {
+    partId: part.id,
+    fileName: part.fileName,
+    geometry: {
+      boundingBox: g.boundingBox,
+      surfaceArea: g.surfaceArea,
+      volume: g.volume,
+      triangleCount: g.triangleCount,
+      estimatedThickness: g.estimatedThickness,
+      flatWidth: g.flatWidth,
+      flatHeight: g.flatHeight,
+      flatArea: g.flatArea,
+      estimatedPerimeter: g.estimatedPerimeter,
+      estimatedHoles: g.estimatedHoles,
+      estimatedBends: g.estimatedBends,
+      estimatedSlots: g.estimatedSlots,
+      units: g.units,
+      // Recognised features (server/geometry/SCHEMA.md): holes, pockets,
+      // slots, walls, access, stock, confidence. Mesh data stays in meshPreview.
+      features: g.features || null,
+      // 2D input (DXF): the loops for the SVG preview, units, and what was skipped.
+      ...(dxf.is2D(g) ? { sourceFormat: "dxf", is2D: true, sourceUnit: g.sourceUnit, profile2d: g.profile2d } : {}),
+    },
+    dfm: parsed.dfm,
+    dfmAll: parsed.dfmAll,
+    meshPreview: {
+      positions: g.meshData?.positions || [],
+      triangleCount: g.meshData?.triangleCount || 0,
+    },
+  };
+}
 
 /**
  * POST /api/upload
  * Upload one or more CAD files, parse geometry, return analysis.
  * Requires authentication. Files validated for magic bytes.
+ *
+ * Optional form field `process`: the process the customer has selected. A
+ * .dxf is a 2D profile and is only accepted for routing — with any other
+ * process it is refused with a message that offers routing (code
+ * "dxf-routing-only"). Send the field before the files.
  */
 router.post("/upload", upload.array("files", 20), validateFileContent, async (req, res) => {
   try {
+    const errors = [];
+    for (const r of req.rejectedFiles || []) {
+      const isDxf = /\.dxf$/i.test(r.fileName || "");
+      errors.push({
+        fileName: r.fileName,
+        error: isDxf
+          ? "This does not look like a DXF file (a DWG renamed to .dxf will not work). Export the part outline as DXF from your CAD program and upload again."
+          : "The file's contents do not match its extension. Re-export it from your CAD program and upload again.",
+      });
+    }
     if (!req.files || req.files.length === 0) {
+      if (errors.length) return res.json({ parts: [], errors });
       return res.status(400).json({ error: "No files uploaded" });
     }
 
+    const selectedProcess = typeof req.body?.process === "string" ? req.body.process.trim() : "";
     const results = [];
-    const errors = [];
     for (const file of req.files) {
       try {
+        const isDxfFile = path.extname(file.originalname).toLowerCase() === ".dxf";
+        if (isDxfFile && selectedProcess && selectedProcess !== "routing") {
+          fs.unlink(file.path, () => {});
+          errors.push({ fileName: file.originalname, error: DXF_ROUTING_ONLY, code: "dxf-routing-only", offerProcess: "routing" });
+          continue;
+        }
         const parsed = await parseFile(file.path);
 
         // Encrypt the stored file at rest now that parsing is done (no-op unless
@@ -96,35 +184,14 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
           dfm: parsed.dfm,
         });
 
-        results.push({
-          partId: part.id,
-          fileName: file.originalname,
-          geometry: {
-            boundingBox: parsed.geometry.boundingBox,
-            surfaceArea: parsed.geometry.surfaceArea,
-            volume: parsed.geometry.volume,
-            triangleCount: parsed.geometry.triangleCount,
-            estimatedThickness: parsed.geometry.estimatedThickness,
-            flatWidth: parsed.geometry.flatWidth,
-            flatHeight: parsed.geometry.flatHeight,
-            flatArea: parsed.geometry.flatArea,
-            estimatedPerimeter: parsed.geometry.estimatedPerimeter,
-            estimatedHoles: parsed.geometry.estimatedHoles,
-            estimatedBends: parsed.geometry.estimatedBends,
-            estimatedSlots: parsed.geometry.estimatedSlots,
-            units: parsed.geometry.units,
-          },
-          dfm: parsed.dfm,
-          dfmAll: parsed.dfmAll,
-          meshPreview: {
-            positions: parsed.geometry.meshData?.positions || [],
-            triangleCount: parsed.geometry.meshData?.triangleCount || 0,
-          },
-        });
+        results.push(partPayload(part, parsed));
       } catch (err) {
         errors.push({
           fileName: file.originalname,
-          error: err.message,
+          // A parser running off the end of a truncated file throws a RangeError; say what to do, not where the buffer ended.
+          error: err instanceof RangeError || /out of range/i.test(err.message || "")
+            ? "This file is damaged or incomplete. Re-export it from your CAD program and upload again."
+            : err.message,
         });
       }
     }
@@ -136,9 +203,43 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
   }
 });
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+/**
+ * POST /api/parts/:partId/units   { units: "mm" | "in" }
+ * Set (or confirm) the drawing units of an uploaded DXF. The file is read
+ * again at the chosen scale, so every tolerance, DFM check and location is
+ * computed in real millimetres, and the stored part is replaced. Returns the
+ * same payload as an upload. Like /upload and /quote this is open: a part is
+ * addressed by its unguessable id.
+ */
+router.post("/parts/:partId/units", async (req, res) => {
+  try {
+    const units = req.body?.units;
+    if (units !== "mm" && units !== "in") return res.status(400).json({ error: 'units must be "mm" or "in"' });
+    const part = partsDB.getById(req.params.partId);
+    if (!part) return res.status(404).json({ error: "Part not found" });
+    if (!dxf.is2D(part.geometry)) return res.status(400).json({ error: "Units can only be chosen for a DXF. STEP, IGES and 3MF carry their own units; STL is read as millimetres." });
+    const safeName = path.basename(part.storedName || "");
+    const filePath = path.join(uploadDir, safeName);
+    if (!safeName || !fs.existsSync(filePath)) return res.status(410).json({ error: "The uploaded file is no longer on our server. Upload it again." });
+    const buffer = fileCrypto.isEncryptedPath(safeName) ? fileCrypto.decryptToBuffer(filePath) : fs.readFileSync(filePath);
+    let parsed;
+    try {
+      parsed = await parseFile(filePath, { buffer, ext: ".dxf", units });
+    } catch (err) {
+      // e.g. two outlines that were one loop at the other scale's weld tolerance
+      return res.status(422).json({ error: err.message });
+    }
+    const updated = partsDB.update(part.id, { geometry: parsed.geometry, dfm: parsed.dfm }) || { ...part, geometry: parsed.geometry };
+    res.json(partPayload({ id: part.id, fileName: updated.fileName || part.fileName }, parsed));
+  } catch (err) {
+    console.error("Units error:", err);
+    res.status(500).json({ error: "Could not change the units. Please try again." });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // INSTANT QUOTE
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════
 /**
  * POST /api/quote
  * Calculate instant quote for configured parts.
@@ -148,97 +249,323 @@ router.post("/upload", upload.array("files", 20), validateFileContent, async (re
  *   leadTimeSlug: "standard" | "expedited" | "rush" | "same-day"
  * }
  */
+const QUOTE_VALID_DAYS = 30;
+const CONFIG_FIELDS = ["partId", "materialSlug", "grade", "thicknessMm", "finishSlug", "quantity", "process", "subProcess", "layerHeight", "infill"];
+
+function quoteError(status, message, extra = {}) {
+  return Object.assign(new Error(message), { status, expose: true, extra });
+}
+
+/** The rate card's rush table wins when it names this lead time, else the lead-time record's own multiplier. */
+function rushMultiplier(leadTime) {
+  const fromTable = Number((pricingEngine.rules.rushMultipliers || {})[leadTime.slug]);
+  return Number.isFinite(fromTable) && fromTable >= 1 ? fromTable : leadTime.multiplier;
+}
+
+/**
+ * Price a set of configured parts. Shared by the quote builder (POST /quote)
+ * and reorder. Throws quoteError(400) for a bad lead time, part or material.
+ * @returns {{ quote, gate, dfmByPartId, leadTime }}
+ */
+function priceQuote(partConfigs, leadTimeSlug = "standard") {
+  const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === leadTimeSlug);
+  // A lead time the shop has not confirmed it offers cannot be bought, even by a hand-built request.
+  if (!leadTime || !leadTime.active || !shopFacts.leadTimeListed(leadTime)) {
+    throw quoteError(400, "Invalid lead time");
+  }
+  // Anodize and powder coat go out to a finisher, so those parts ship on Standard only.
+  if (!shopFacts.leadTimeAllowsFinishes(leadTime, (partConfigs || []).map((c) => c && c.finishSlug))) {
+    throw quoteError(400, `Anodize and powder coat are sent out to a finisher, so a part with either one ships on the Standard lead time. Choose Standard, or a finish done here.`, { code: "finish-lead-time" });
+  }
+
+  // Build pricing input
+  const pricingParts = [];
+  const dfmByPartId = {};
+  for (const config of partConfigs) {
+    const part = partsDB.getById(config.partId);
+    if (!part) {
+      throw quoteError(400, `Part not found: ${config.partId}`);
+    }
+    const material = materialsDB.getAll().find((m) => m.slug === config.materialSlug);
+    // Same rule as the lead time: a material the catalog does not list (switched
+    // off in admin, or not confirmed by the owner) cannot be priced or bought.
+    if (!material || !material.active || !shopFacts.materialListed(material)) {
+      throw quoteError(400, `Material not found: ${config.materialSlug}`);
+    }
+
+    const defaultFinishSlug = resolveProcess(config.process).defaultFinishSlug || 'raw';
+    const finish = finishesDB.getAll().find((f) => f.slug === (config.finishSlug || defaultFinishSlug)) || null;
+    if (finish && config.finishSlug && (finish.active === false || !shopFacts.finishListed(finish))) {
+      throw quoteError(400, `Finish not available: ${config.finishSlug}`);
+    }
+
+    const process = config.process || material.process || defaultProcessSlug();
+    // A DXF is a 2D profile: routing only, and nothing is assumed for it —
+    // the customer confirms ambiguous units and picks the stock thickness.
+    if (dxf.is2D(part.geometry)) {
+      const extra = { partId: config.partId };
+      if (process !== "routing") throw quoteError(400, `${part.fileName}: ${DXF_ROUTING_ONLY}`, { ...extra, code: "dxf-routing-only" });
+      if (part.geometry.profile2d.units?.needsConfirmation) {
+        throw quoteError(400, `${part.fileName}: choose whether this drawing is in inches or millimetres before we price it.`, { ...extra, code: "dxf-units-required" });
+      }
+      if (!(Number(config.thicknessMm) > 0)) {
+        throw quoteError(400, `${part.fileName}: select a stock thickness — a DXF has no thickness of its own.`, { ...extra, code: "dxf-thickness-required" });
+      }
+    }
+    const thicknessMm = Number(config.thicknessMm) > 0 ? Number(config.thicknessMm) : (material.thicknesses?.[2]?.mm || material.thicknesses?.[0]?.mm || 0);
+    pricingParts.push({
+      partId: config.partId,
+      fileName: part.fileName,
+      geometry: part.geometry,
+      material,
+      grade: config.grade || material.grades?.[0]?.name || '',
+      thicknessMm,
+      finish,
+      // Whole pieces only: 1.5 or -5 from a hand-built request becomes 1.
+      quantity: positiveInt(config.quantity, 1),
+      process,
+      subProcess: config.subProcess || '',
+      // Pass through only when actually provided — `|| 0` made an unset infill
+      // look like an intentional 0% (the engine then under-costed FDM material).
+      layerHeight: config.layerHeight != null ? Number(config.layerHeight) : undefined,
+      infill: config.infill != null ? Number(config.infill) : undefined,
+    });
+
+    // DFM for the chosen process/material/thickness — drives the checkout-vs-RFQ gate.
+    dfmByPartId[config.partId] = runDFMAnalysis(part.geometry, {
+      process,
+      subProcess: config.subProcess || resolveProcess(process).previewSubProcess,
+      thicknessMm,
+      materialType: /plastic|composite/i.test(material.category || "") ? "plastic" : "metal",
+      // Material identity for material-aware thresholds (acrylic brittle, nylon moisture, PEEK cost …)
+      materialSlug: material.slug,
+      materialName: material.name,
+    });
+  }
+
+  const leadTimeMultiplier = rushMultiplier(leadTime);
+  const quote = pricingEngine.calculateOrderQuote({
+    parts: pricingParts,
+    leadTimeMultiplier,
+  });
+
+  // Instant checkout or RFQ? Stored with the quote so checkout can enforce it.
+  const gate = quoteGate.evaluate(quote.lineItems, dfmByPartId, pricingEngine.rules);
+
+  return { quote, gate, dfmByPartId, leadTime, leadTimeMultiplier };
+}
+
+/** Ship-by date and surcharge in dollars for every active lead time, for the option list. */
+function leadTimeOptions(subtotal, finishSlugs = []) {
+  return leadTimesDB.getAll().filter((lt) => lt.active && shopFacts.leadTimeListed(lt)).map((lt) => ({
+    slug: lt.slug,
+    name: lt.name,
+    shipBy: shipBy.shipByDate(lt),
+    surcharge: Math.max(0, (subtotal || 0) * ((rushMultiplier(lt) || 1) - 1)),
+    // false when a sent-out finish (anodize, powder coat) rules this lead time out
+    available: shopFacts.leadTimeAllowsFinishes(lt, finishSlugs),
+  }));
+}
+
+/** May this requester re-price (update in place) this stored quote? */
+function quoteEditableBy(quote, user) {
+  return quote.status === "draft" && (!quote.userId || quote.userId === user?.userId);
+}
+
+/**
+ * Price the parts and save the result as a draft quote. One row per builder
+ * session: when `quoteId` names a draft the requester may edit, that row is
+ * updated; otherwise a row is inserted (under `quoteId` if it is unused).
+ * Every re-price restarts the 30-day price hold.
+ */
+function saveQuote({ parts: partConfigs, leadTimeSlug = "standard", quoteId, process: builderProcess, notes }, user) {
+  const priced = priceQuote(partConfigs, leadTimeSlug);
+  const config = {
+    process: sanitizeString(String(builderProcess || partConfigs[0]?.process || ""), 40),
+    parts: partConfigs.map((c) => whitelist(c, CONFIG_FIELDS)),
+  };
+  const existing = isValidUUID(quoteId) ? quotesDB.getById(quoteId) : null;
+  const record = {
+    ...priced.quote,
+    gate: priced.gate,
+    config,
+    leadTimeSlug,
+    status: "draft",
+    expiresAt: new Date(Date.now() + QUOTE_VALID_DAYS * 864e5).toISOString(),
+    // Bind the quote to the user when signed in; anonymous quotes (public
+    // quoting / guest-before-login) stay unbound and remain readable by id.
+    userId: user?.userId || null,
+  };
+  if (notes !== undefined) record.notes = sanitizeString(String(notes || ""), 2000);
+  let saved;
+  if (existing && quoteEditableBy(existing, user)) {
+    saved = quotesDB.update(existing.id, { ...record, userId: user?.userId || existing.userId || null });
+  } else {
+    // A quote that has moved on (ordered, sent as an RFQ) is forked, keeping the buyer's notes and drawing.
+    const carry = existing && (!existing.userId || existing.userId === user?.userId)
+      ? { notes: existing.notes || "", drawingFileName: existing.drawingFileName || "", drawingPath: existing.drawingPath || "" }
+      : {};
+    saved = quotesDB.insert(!existing && isValidUUID(quoteId) ? { id: quoteId, ...record } : { ...carry, ...record });
+  }
+  return { saved, ...priced };
+}
+
 router.post("/quote", optionalAuth, (req, res) => {
   try {
-    const { parts: partConfigs, leadTimeSlug = "standard" } = req.body;
+    const { parts: partConfigs } = req.body;
 
     if (!partConfigs || !Array.isArray(partConfigs) || partConfigs.length === 0) {
       return res.status(400).json({ error: "No parts configured" });
     }
 
-    const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === leadTimeSlug);
-    if (!leadTime) {
-      return res.status(400).json({ error: "Invalid lead time" });
-    }
+    const { saved, quote, gate, dfmByPartId, leadTime } = saveQuote(req.body, req.user);
 
-    // Build pricing input
-    const pricingParts = [];
-    for (const config of partConfigs) {
-      const part = partsDB.getById(config.partId);
-      if (!part) {
-        return res.status(400).json({ error: `Part not found: ${config.partId}` });
-      }
-      const material = materialsDB.getAll().find((m) => m.slug === config.materialSlug);
-      if (!material) {
-        return res.status(400).json({ error: `Material not found: ${config.materialSlug}` });
-      }
-
-      const defaultFinishSlug = resolveProcess(config.process).defaultFinishSlug || 'raw';
-      const finish = finishesDB.getAll().find((f) => f.slug === (config.finishSlug || defaultFinishSlug)) || null;
-
-      pricingParts.push({
-        partId: config.partId,
-        fileName: part.fileName,
-        geometry: part.geometry,
-        material,
-        grade: config.grade || material.grades?.[0]?.name || '',
-        thicknessMm: config.thicknessMm || material.thicknesses?.[2]?.mm || material.thicknesses?.[0]?.mm || 0,
-        finish,
-        quantity: config.quantity || 1,
-        process: config.process || 'sheetmetal',
-        subProcess: config.subProcess || '',
-        // Pass through only when actually provided — `|| 0` made an unset infill
-        // look like an intentional 0% (the engine then under-costed FDM material).
-        layerHeight: config.layerHeight != null ? Number(config.layerHeight) : undefined,
-        infill: config.infill != null ? Number(config.infill) : undefined,
-      });
-    }
-
-    const quote = pricingEngine.calculateOrderQuote({
-      parts: pricingParts,
-      leadTimeMultiplier: leadTime.multiplier,
-    });
-    // Store quote
-    const savedQuote = quotesDB.insert({
+    res.json({
+      quoteId: saved.id,
       ...quote,
-      leadTimeSlug,
-      status: "draft",
-      // Bind the quote to the user when signed in; anonymous quotes (public
-      // quoting / guest-before-login) stay unbound and remain readable by id.
-      userId: req.user?.userId || null,
+      gate,
+      expiresAt: saved.expiresAt,
+      notes: saved.notes || "",
+      drawingFileName: saved.drawingFileName || "",
+      shipBy: shipBy.shipByDate(leadTime),
+      leadTimeOptions: leadTimeOptions(quote.subtotal, (req.body.parts || []).map((c) => c && c.finishSlug)),
+      dfmByPartId: Object.fromEntries(
+        Object.entries(dfmByPartId).map(([id, d]) => [id, { summary: d.summary, checks: d.checks }])
+      ),
     });
-
-    res.json({ quoteId: savedQuote.id, ...quote });
   } catch (err) {
+    if (err.expose) return res.status(err.status).json({ error: err.message, ...(err.extra || {}) });
     console.error("Quote error:", err);
     res.status(500).json({ error: "Quote calculation failed. Please try again." });
   }
 });
 
+/** A stored quote as the customer may see it: no server paths, plus the live ship-by date. */
+function quoteView(quote) {
+  const { drawingPath, ...safe } = quote;
+  const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === quote.leadTimeSlug);
+  return {
+    ...safe,
+    leadTimeName: leadTime?.name || "",
+    shipBy: leadTime ? shipBy.shipByDate(leadTime) : null,
+    expired: Boolean(quote.expiresAt && new Date(quote.expiresAt) < new Date()),
+  };
+}
+
+/** Load a quote the requester may read, or answer 404. Anonymous quotes are readable by id (UUID). */
+function readableQuote(req, res) {
+  const quote = quotesDB.getById(req.params.id);
+  // If the quote is bound to a user, only that user (or an admin) may read it.
+  if (!quote || (quote.userId && (!req.user || (req.user.userId !== quote.userId && req.user.role !== "admin")))) {
+    res.status(404).json({ error: "Quote not found" });
+    return null;
+  }
+  return quote;
+}
+
 /**
  * GET /api/quote/:id
  */
 router.get("/quote/:id", optionalAuth, (req, res) => {
-  const quote = quotesDB.getById(req.params.id);
-  if (!quote) return res.status(404).json({ error: "Quote not found" });
-  // If the quote is bound to a user, only that user (or an admin) may read it.
-  // Anonymous quotes (no userId) remain publicly readable by id (UUID) so the
-  // public quote and guest-before-login flows keep working.
-  if (quote.userId && (!req.user || (req.user.userId !== quote.userId && req.user.role !== "admin"))) {
-    return res.status(404).json({ error: "Quote not found" });
-  }
-  res.json(quote);
+  const quote = readableQuote(req, res);
+  if (quote) res.json(quoteView(quote));
 });
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+/**
+ * GET /api/quote/:id/session
+ * Everything the quote builder needs to reopen a quote: each part's geometry
+ * and preview mesh with the configuration it was priced at. Used after the
+ * sign-in / register detour, on reload, and by reorder.
+ */
+router.get("/quote/:id/session", optionalAuth, (req, res) => {
+  const quote = readableQuote(req, res);
+  if (!quote) return;
+  // Quotes saved before the builder config was stored: rebuild it from the priced lines.
+  const configs = quote.config?.parts || (quote.lineItems || []).map((li) => ({
+    partId: li.partId, quantity: li.quantity, process: li.meta?.process, subProcess: li.meta?.subProcess,
+    materialSlug: li.meta?.materialSlug, grade: li.meta?.grade, finishSlug: li.meta?.finishSlug,
+  }));
+  const parts = [];
+  for (const config of configs) {
+    const part = partsDB.getById(config.partId);
+    if (!part) continue;
+    const { meshData, ...geometry } = part.geometry || {};
+    parts.push({
+      ...config,
+      fileName: part.fileName,
+      geometry,
+      dfm: part.dfm,
+      meshPreview: { positions: meshData?.positions || [], triangleCount: meshData?.triangleCount || 0 },
+    });
+  }
+  res.json({
+    quoteId: quote.id,
+    status: quote.status,
+    process: quote.config?.process || parts[0]?.process || "",
+    leadTimeSlug: quote.leadTimeSlug || "standard",
+    notes: quote.notes || "",
+    drawingFileName: quote.drawingFileName || "",
+    parts,
+  });
+});
+
+// ─── Drawing on the instant path ─────────────────────────────
+// An optional PDF the buyer attaches to a quote. It rides along to the order
+// and the admin view; it never changes the price.
+const quoteDrawingDir = path.join(__dirname, "..", "..", "data", "quote-drawings");
+if (!fs.existsSync(quoteDrawingDir)) fs.mkdirSync(quoteDrawingDir, { recursive: true });
+
+const drawingUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, quoteDrawingDir),
+    filename: (req, file, cb) => cb(null, `${uuidv4()}.pdf`),
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (path.extname(file.originalname).toLowerCase() === ".pdf") cb(null, true);
+    else cb(Object.assign(new Error("The drawing must be a PDF"), { status: 400, expose: true }));
+  },
+});
+
+router.post("/quote/:id/drawing", optionalAuth, (req, res) => {
+  const quote = readableQuote(req, res);
+  if (!quote) return;
+  if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed" });
+  drawingUpload.single("drawing")(req, res, (err) => {
+    if (err) return res.status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: err.code === "LIMIT_FILE_SIZE" ? "The drawing is over 25 MB" : err.message });
+    if (!req.file) return res.status(400).json({ error: "No drawing attached" });
+    // Extension is not proof: a PDF starts with "%PDF".
+    const head = Buffer.alloc(4);
+    const fd = fs.openSync(req.file.path, "r");
+    fs.readSync(fd, head, 0, 4, 0);
+    fs.closeSync(fd);
+    if (head.toString("latin1") !== "%PDF") {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: "That file isn't a PDF" });
+    }
+    // The previous file is left on disk: an earlier order may still point at it.
+    const updated = quotesDB.update(quote.id, { drawingFileName: sanitizeString(req.file.originalname, 255), drawingPath: req.file.path });
+    res.json({ drawingFileName: updated.drawingFileName });
+  });
+});
+
+router.delete("/quote/:id/drawing", optionalAuth, (req, res) => {
+  const quote = readableQuote(req, res);
+  if (!quote) return;
+  if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed" });
+  quotesDB.update(quote.id, { drawingFileName: "", drawingPath: "" });
+  res.json({ drawingFileName: "" });
+});
+
+// ═══════════════════════════════════════════════════════════════
 // MATERIALS & CONFIG (public)
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════
 
 router.get("/processes", (req, res) => {
   res.json(activeProcesses());
 });
 router.get("/materials", (req, res) => {
-  let mats = materialsDB.getAll().filter((m) => m.active);
+  let mats = materialsDB.getAll().filter((m) => m.active && shopFacts.materialListed(m));
   if (req.query.process) {
     // Materials without a process field are legacy sheet metal
     mats = mats.filter((m) => (m.process || 'sheetmetal') === req.query.process);
@@ -250,7 +577,7 @@ router.get("/materials", (req, res) => {
 });
 
 router.get("/finishes", (req, res) => {
-  let fins = finishesDB.getAll().filter((f) => f.active);
+  let fins = finishesDB.getAll().filter((f) => f.active && shopFacts.finishListed(f));
   if (req.query.process) {
     // Finishes without a process field are legacy sheet metal
     fins = fins.filter((f) => (f.process || 'sheetmetal') === req.query.process);
@@ -259,27 +586,95 @@ router.get("/finishes", (req, res) => {
 });
 
 router.get("/lead-times", (req, res) => {
-  res.json(leadTimesDB.getAll().filter((lt) => lt.active));
+  res.json(leadTimesDB.getAll().filter((lt) => lt.active && shopFacts.leadTimeListed(lt)).map((lt) => ({ ...lt, shipBy: shipBy.shipByDate(lt) })));
 });
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ADMIN â Materials CRUD (whitelisted fields)
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════
+// ADMIN — Materials CRUD (whitelisted fields)
+// ═══════════════════════════════════════════════════════════════
 router.get("/admin/materials", authenticate, requireAdmin, (req, res) => {
   res.json(materialsDB.getAll());
 });
 
+/**
+ * Validate the whitelisted material fields: numbers in range, feed class from
+ * the known set, grades/thicknesses/layerHeights in the shapes pricing reads.
+ * Returns { ok, error, values }.
+ */
+function validateMaterial(body) {
+  const safe = whitelist(body, MATERIAL_FIELDS);
+  for (const [k, [min, max]] of Object.entries(MATERIAL_NUMBER_FIELDS)) {
+    if (safe[k] === undefined || safe[k] === null || safe[k] === "") { if (k in safe) safe[k] = null; continue; }
+    const n = Number(safe[k]);
+    if (!Number.isFinite(n) || n < min || n > max) return { ok: false, error: `${k} must be a number between ${min} and ${max}` };
+    safe[k] = n;
+  }
+  for (const k of ["name", "slug", "process", "subProcess", "category", "description", "color"]) {
+    if (safe[k] !== undefined && safe[k] !== null) safe[k] = sanitizeString(String(safe[k]), k === "description" ? 1000 : 120);
+  }
+  if (safe.slug !== undefined && safe.slug !== null && !isValidSlug(safe.slug)) return { ok: false, error: "slug may only contain lowercase letters, digits and dashes" };
+  if (safe.active !== undefined) safe.active = Boolean(safe.active);
+  if (safe.feedClass !== undefined && safe.feedClass !== null && safe.feedClass !== "" && !FEED_CLASSES.includes(safe.feedClass)) {
+    return { ok: false, error: `feedClass must be one of ${FEED_CLASSES.join(", ")}` };
+  }
+  if (safe.grades !== undefined) {
+    if (!Array.isArray(safe.grades)) return { ok: false, error: "grades must be a list" };
+    safe.grades = safe.grades.map((g) => ({ name: sanitizeString(String(g?.name || ""), 120), density: Number(g?.density) }));
+    if (safe.grades.some((g) => !g.name || !Number.isFinite(g.density) || g.density <= 0 || g.density > 1)) {
+      return { ok: false, error: "every grade needs a name and a density in lb/in³ (0–1)" };
+    }
+  }
+  if (safe.thicknesses !== undefined) {
+    if (!Array.isArray(safe.thicknesses)) return { ok: false, error: "thicknesses must be a list" };
+    safe.thicknesses = safe.thicknesses.map((t) => {
+      const mm = Number(t?.mm);
+      const inch = t?.inch !== undefined && t?.inch !== "" && t?.inch !== null ? Number(t.inch) : Number((mm / 25.4).toFixed(4));
+      return { mm, inch, label: sanitizeString(String(t?.label || `${mm} mm`), 40) };
+    });
+    if (safe.thicknesses.some((t) => !Number.isFinite(t.mm) || t.mm <= 0 || t.mm > 300 || !Number.isFinite(t.inch))) {
+      return { ok: false, error: "every thickness needs a size in mm (0–300)" };
+    }
+    safe.thicknesses.sort((a, b) => a.mm - b.mm);
+  }
+  if (safe.layerHeights !== undefined) {
+    if (!Array.isArray(safe.layerHeights)) return { ok: false, error: "layerHeights must be a list" };
+    safe.layerHeights = safe.layerHeights.map(Number);
+    if (safe.layerHeights.some((h) => !Number.isFinite(h) || h <= 0 || h > 2)) return { ok: false, error: "layer heights must be in mm (0–2)" };
+    safe.layerHeights.sort((a, b) => a - b);
+  }
+  return { ok: true, values: safe };
+}
+
 router.put("/admin/materials/:id", authenticate, requireAdmin, (req, res) => {
-  const safe = whitelist(req.body, MATERIAL_FIELDS);
-  const updated = materialsDB.update(req.params.id, safe);
+  const v = validateMaterial(req.body);
+  if (!v.ok) return res.status(400).json({ error: v.error });
+  const updated = materialsDB.update(req.params.id, v.values);
   if (!updated) return res.status(404).json({ error: "Material not found" });
   res.json(updated);
 });
 
 router.post("/admin/materials", authenticate, requireAdmin, (req, res) => {
-  const safe = whitelist(req.body, MATERIAL_FIELDS);
-  const material = materialsDB.insert(safe);
+  const v = validateMaterial(req.body);
+  if (!v.ok) return res.status(400).json({ error: v.error });
+  if (!v.values.name || !v.values.slug) return res.status(400).json({ error: "name and slug are required" });
+  const material = materialsDB.insert({ active: false, ...v.values });
   res.status(201).json(material);
+});
+
+/**
+ * POST /api/admin/materials/:id/duplicate
+ * Copy a material (inactive, "-copy" slug) so the owner can add a grade or a
+ * price variant without typing the whole record.
+ */
+router.post("/admin/materials/:id/duplicate", authenticate, requireAdmin, (req, res) => {
+  const src = materialsDB.getById(req.params.id);
+  if (!src) return res.status(404).json({ error: "Material not found" });
+  const { id, createdAt, updatedAt, ...rest } = src;
+  const taken = new Set(materialsDB.getAll().map((m) => m.slug));
+  let slug = `${src.slug}-copy`;
+  for (let n = 2; taken.has(slug); n++) slug = `${src.slug}-copy-${n}`;
+  const copy = materialsDB.insert({ ...rest, slug, name: `${src.name} (copy)`, active: false });
+  res.status(201).json(copy);
 });
 
 router.delete("/admin/materials/:id", authenticate, requireAdmin, (req, res) => {
@@ -288,9 +683,9 @@ router.delete("/admin/materials/:id", authenticate, requireAdmin, (req, res) => 
   res.json({ success: true });
 });
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ADMIN â Finishes CRUD (whitelisted fields)
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════
+// ADMIN — Finishes CRUD (whitelisted fields)
+// ═══════════════════════════════════════════════════════════════
 
 router.get("/admin/finishes", authenticate, requireAdmin, (req, res) => {
   res.json(finishesDB.getAll());
@@ -308,32 +703,118 @@ router.post("/admin/finishes", authenticate, requireAdmin, (req, res) => {
   res.status(201).json(finish);
 });
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ADMIN â Pricing Rules (whitelisted fields)
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════
+// ADMIN — Pricing console
+//   schema   → the rule descriptors the console renders
+//   pricing  → GET current values / PUT validated changes (+ note → audit log)
+//   preview  → price 6 reference parts with candidate rules, no save
+//   history / restore / reset
+// ═══════════════════════════════════════════════════════════════
 
-router.get("/admin/pricing", authenticate, requireAdmin, (req, res) => {
-  const rules = pricingDB.getAll();
-  res.json(rules[0] || {});
+router.get("/admin/pricing/schema", authenticate, requireAdmin, (req, res) => {
+  res.json({ groups: ruleSchema.RULE_GROUPS, rules: ruleSchema.RULE_SCHEMA });
 });
 
+router.get("/admin/pricing", authenticate, requireAdmin, (req, res) => {
+  res.json(loadPricingRules());
+});
+
+/**
+ * PUT /api/admin/pricing
+ * Body: { rules: { key: value, … }, note: "why" }  — or the legacy flat form
+ * { key: value, …, note }. Partial updates are fine; every key is validated
+ * against the schema (unknown keys and out-of-range values are rejected).
+ */
 router.put("/admin/pricing", authenticate, requireAdmin, (req, res) => {
-  const safe = whitelist(req.body, PRICING_FIELDS);
-  const rules = pricingDB.getAll();
-  if (rules.length > 0) {
-    const updated = pricingDB.update(rules[0].id, safe);
-    // Update engine with whitelisted fields only
-    Object.assign(pricingEngine.rules, safe);
-    res.json(updated);
-  } else {
-    const created = pricingDB.insert(safe);
-    res.json(created);
+  const body = req.body || {};
+  const { rules: wrapped, note, ...flat } = body;
+  const candidate = wrapped && typeof wrapped === "object" ? wrapped : flat;
+  const result = pricingAdmin.save(candidate, { note, user: req.user });
+  if (!result.ok) return res.status(result.status || 400).json({ error: result.error, errors: result.errors || [] });
+  const rules = loadPricingRules();
+  res.json({ rules, audit: result.audit ? { id: result.audit.id, createdAt: result.audit.createdAt } : null, unchanged: !!result.unchanged });
+});
+
+/**
+ * POST /api/admin/pricing/preview
+ * Body: { rules: { key: value, … } } — candidate values (partial OK) layered on
+ * the saved rules. Returns prices for the reference parts under the candidate
+ * and under the saved rules, so the console can show before/after.
+ */
+router.post("/admin/pricing/preview", authenticate, requireAdmin, (req, res) => {
+  try {
+    const candidate = (req.body && req.body.rules && typeof req.body.rules === "object") ? req.body.rules : (req.body || {});
+    const v = ruleSchema.validateRules(candidate, { partial: true });
+    if (!v.ok) return res.status(400).json({ error: v.errors[0].message, errors: v.errors });
+    const saved = pricingAdmin.currentRules();
+    const merged = { ...saved, ...v.values };
+    const out = pricingPreview.run(merged, saved, { materials: materialsDB.getAll() });
+    res.json(out);
+  } catch (err) {
+    console.error("Pricing preview error:", err);
+    res.status(500).json({ error: "Preview failed" });
   }
 });
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ADMIN â Lead Times (whitelisted fields)
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+router.get("/admin/pricing/history", authenticate, requireAdmin, (req, res) => {
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+  res.json(pricingAdmin.history({ limit }));
+});
+
+router.post("/admin/pricing/restore/:id", authenticate, requireAdmin, (req, res) => {
+  const result = pricingAdmin.restore(req.params.id, { note: req.body?.note, user: req.user });
+  if (!result.ok) return res.status(result.status || 400).json({ error: result.error, errors: result.errors || [] });
+  res.json({ rules: loadPricingRules(), audit: result.audit ? { id: result.audit.id, createdAt: result.audit.createdAt } : null });
+});
+
+router.post("/admin/pricing/reset", authenticate, requireAdmin, (req, res) => {
+  const result = pricingAdmin.reset({ note: req.body?.note, user: req.user });
+  if (!result.ok) return res.status(result.status || 400).json({ error: result.error, errors: result.errors || [] });
+  res.json({ rules: loadPricingRules(), audit: result.audit ? { id: result.audit.id, createdAt: result.audit.createdAt } : null });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN — Calibration (engine minutes vs. what the job actually took)
+// ═══════════════════════════════════════════════════════════════
+
+router.get("/admin/calibration", authenticate, requireAdmin, (req, res) => {
+  try {
+    const rows = calibration.buildRows(ordersDB.getAll(), orderItemsDB.getAll());
+    const summary = calibration.summarize(rows, pricingAdmin.currentRules());
+    res.json({ items: rows, summary, minSamples: calibration.MIN_SAMPLES, statuses: calibration.COMPLETED_STATUSES });
+  } catch (err) {
+    console.error("Calibration error:", err);
+    res.status(500).json({ error: "Could not build the calibration table" });
+  }
+});
+
+/**
+ * PUT /api/admin/order-items/:id/actuals
+ * Body: { actualMinutes: number|null, actualNotes: string }
+ * Machine minutes per piece the job really took (excluding setup).
+ */
+router.put("/admin/order-items/:id/actuals", authenticate, requireAdmin, (req, res) => {
+  const item = orderItemsDB.getById(req.params.id);
+  if (!item) return res.status(404).json({ error: "Order item not found" });
+  const updates = {};
+  if (req.body.actualMinutes !== undefined) {
+    if (req.body.actualMinutes === null || req.body.actualMinutes === "") {
+      updates.actualMinutes = null;
+    } else {
+      const n = Number(req.body.actualMinutes);
+      if (!Number.isFinite(n) || n < 0 || n > 100000) return res.status(400).json({ error: "actualMinutes must be a number of minutes (0–100000)" });
+      updates.actualMinutes = n;
+    }
+    updates.actualRecordedAt = new Date().toISOString();
+  }
+  if (req.body.actualNotes !== undefined) updates.actualNotes = sanitizeString(String(req.body.actualNotes || ""), 500);
+  const updated = orderItemsDB.update(item.id, updates);
+  res.json(updated);
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN — Lead Times (whitelisted fields)
+// ═══════════════════════════════════════════════════════════════
 
 router.get("/admin/lead-times", authenticate, requireAdmin, (req, res) => {
   res.json(leadTimesDB.getAll());
@@ -346,9 +827,9 @@ router.put("/admin/lead-times/:id", authenticate, requireAdmin, (req, res) => {
   res.json(updated);
 });
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// ADMIN â Quotes / Orders
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════
+// ADMIN — Quotes / Orders
+// ═══════════════════════════════════════════════════════════════
 
 router.get("/admin/quotes", authenticate, requireAdmin, (req, res) => {
   const quotes = quotesDB.getAll().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -440,7 +921,7 @@ router.get("/admin/backup/db", authenticate, requireAdmin, (req, res) => {
       return res.status(404).json({ error: "Database file not found" });
     }
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    res.setHeader("Content-Disposition", `attachment; filename="nordmfg-backup-${timestamp}.db"`);
+    res.setHeader("Content-Disposition", `attachment; filename="straightedge-backup-${timestamp}.db"`);
     res.setHeader("Content-Type", "application/x-sqlite3");
     const stream = fs.createReadStream(DB_PATH);
     stream.pipe(res);
@@ -468,7 +949,7 @@ router.get("/admin/backup/json", authenticate, requireAdmin, (req, res) => {
       },
     };
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    res.setHeader("Content-Disposition", `attachment; filename="nordmfg-backup-${timestamp}.json"`);
+    res.setHeader("Content-Disposition", `attachment; filename="straightedge-backup-${timestamp}.json"`);
     res.setHeader("Content-Type", "application/json");
     res.json(backup);
   } catch (err) {
@@ -501,3 +982,6 @@ router.get("/parts/:partId/download", authenticate, requireAdmin, (req, res) => 
 });
 
 module.exports = router;
+module.exports.loadPricingRules = loadPricingRules;
+module.exports.saveQuote = saveQuote;
+module.exports.QUOTE_VALID_DAYS = QUOTE_VALID_DAYS;

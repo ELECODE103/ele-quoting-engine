@@ -1,6 +1,23 @@
-# Instant Quote SaaS Platform
+# Straightedge — instant quoting & ordering
 
-A production-ready instant quoting platform for custom sheet metal and CNC parts. Upload STEP/STL files, get real geometry analysis, DFM checks, and instant pricing.
+The web shop for Straightedge Manufacturing LLC (a Erik Lutz Enterprise company): CNC machining and routing of
+engineering plastics, plus FDM/SLA printing. Upload STEP/STL, get geometry analysis, a machine-specific DFM check and
+an instant price. Up to 100 pieces checks out with Stripe; larger runs, DFM failures, oversize parts and big tickets are
+routed to an RFQ queue for a firm quote within 24 hours.
+
+Brand facts (name, legal name, domain, phone, RFQ threshold) live in `shared/brand.json` and are used by both server and client.
+
+## Processes
+
+| slug | name | pricing model | notes |
+|---|---|---|---|
+| `cnc` | CNC Machining | stock envelope → removal volume ÷ rate × machinability | milling + turning; plastics-first material list |
+| `routing` | CNC Routing | sheet blank ÷ nest yield, cut length ÷ feed class, passes by thickness | 59" × 96" router; sheet/plate materials with thickness tables |
+| `3d-printing` | 3D Printing | volume/time per sub-process | FDM, SLA, SLS |
+| `sheetmetal` | Sheet Metal | perimeter × thickness^k + bends | registered but **inactive** |
+
+Quote gate: `server/services/quoteGate.js`. RFQs: `server/routes/rfq.js` (+ admin queue in the Admin panel).
+Catalog changes: bump `SEED_VERSION` in `server/config/defaults.js` to re-seed materials/finishes/processes on an existing database.
 
 ## Architecture
 

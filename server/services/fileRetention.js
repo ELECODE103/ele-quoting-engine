@@ -2,20 +2,28 @@
  * Uploaded-file retention sweep.
  *
  * Customer CAD files shouldn't linger on disk forever. This periodically deletes
- * files in the upload directory older than the retention window. By the time a
- * file ages out, its order has been produced (and the job traveler generated),
- * so the transient upload is safe to remove.
+ * files in the upload directory older than the retention window, except the
+ * ones the caller says are still needed (`opts.keep`): a part that was ordered,
+ * or that sits in a firm-quote request still in play, keeps its file. A quote
+ * nobody ordered loses its file after the window, as the site says.
  *
  * Window is configurable via UPLOAD_RETENTION_HOURS (default 168h = 7 days).
  */
 const fs = require("fs");
 const path = require("path");
 
-function sweepOnce(uploadDir, maxAgeMs) {
+/**
+ * @param {string} uploadDir
+ * @param {number} maxAgeMs
+ * @param {Set<string>|null} [keep] stored file names that must not be removed,
+ *        whatever their age: the CAD behind an order or an open firm-quote request.
+ */
+function sweepOnce(uploadDir, maxAgeMs, keep = null) {
   let removed = 0;
   if (!fs.existsSync(uploadDir)) return removed;
   const now = Date.now();
   for (const name of fs.readdirSync(uploadDir)) {
+    if (keep && keep.has(name)) continue;
     const fp = path.join(uploadDir, name);
     try {
       const st = fs.statSync(fp);
@@ -37,7 +45,7 @@ function startRetentionSweep(uploadDir, opts = {}) {
 
   const run = () => {
     try {
-      const removed = sweepOnce(uploadDir, maxAgeMs);
+      const removed = sweepOnce(uploadDir, maxAgeMs, typeof opts.keep === "function" ? opts.keep() : null);
       if (removed > 0) {
         console.log(`File retention: removed ${removed} upload(s) older than ${hours}h`);
       }
@@ -52,4 +60,23 @@ function startRetentionSweep(uploadDir, opts = {}) {
   return timer;
 }
 
-module.exports = { startRetentionSweep, sweepOnce };
+/**
+ * Stored names of the uploads still needed: every part on an order that was not
+ * cancelled, and every part on an RFQ that is new, in review, quoted or accepted.
+ */
+function neededUploads({ ordersDB, orderItemsDB, rfqsDB, partsDB }) {
+  const partIds = new Set();
+  const live = new Set(ordersDB.getAll().filter((o) => o.status !== "cancelled").map((o) => o.id));
+  for (const it of orderItemsDB.getAll()) if (it.partId && live.has(it.orderId)) partIds.add(it.partId);
+  for (const r of rfqsDB.getAll()) {
+    if (["new", "in-review", "quoted", "accepted", "won"].includes(r.status)) for (const p of r.parts || []) if (p.partId) partIds.add(p.partId);
+  }
+  const names = new Set();
+  for (const id of partIds) {
+    const part = partsDB.getById(id);
+    if (part && part.storedName) names.add(path.basename(part.storedName));
+  }
+  return names;
+}
+
+module.exports = { startRetentionSweep, sweepOnce, neededUploads };

@@ -1,0 +1,19 @@
+{
+  "name": "Straightedge",
+  "shortName": "Straightedge",
+  "legalName": "Straightedge Manufacturing LLC",
+  "parentName": "Erik Lutz Enterprise LLC",
+  "parentUrl": "https://www.erik-lutz.com",
+  "descriptor": "Machined plastics · CNC milling, turning & routing · 3D printing",
+  "domain": "straightedgemfg.com",
+  "url": "https://straightedgemfg.com",
+  "email": "quotes@straightedgemfg.com",
+  "phone": "224-213-6727",
+  "phoneHref": "tel:+12242136727",
+  "city": "Wauconda",
+  "region": "Lake County, Illinois",
+  "state": "IL",
+  "foundedYear": 2017,
+  "quoteTurnaroundHours": 24,
+  "rfqQuantityThreshold": 100
+}

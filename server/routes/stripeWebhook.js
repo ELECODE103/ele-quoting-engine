@@ -8,28 +8,28 @@
  *
  * SECURITY:
  * - In production, webhook signature verification is REQUIRED
- * - Payment amount is verified against stored order total
+ * - Payment amount (before promo discounts) is verified against stored order total
  * - Idempotent: only updates orders still in pending_payment status
+ * - On payment: order confirmation to the customer, new-order notice to the shop
  */
 const express = require("express");
-const { ordersDB, quotesDB } = require("../models");
+const { ordersDB } = require("../models");
+const stripeClient = require("../services/stripeClient");
+const orderEvents = require("../services/orderEvents");
 
 const router = express.Router();
-
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? require("stripe")(process.env.STRIPE_SECRET_KEY)
-  : null;
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 router.post("/", async (req, res) => {
+  const stripe = stripeClient.get();
   if (!stripe) {
     return res.status(503).json({ error: "Stripe not configured" });
   }
 
   let event;
 
-  // âââ Signature Verification ââââââââââââââââââââââââââââââââââ
+  // ─── Signature Verification ──────────────────────────────────
   if (webhookSecret) {
     const sig = req.headers["stripe-signature"];
     try {
@@ -52,7 +52,7 @@ router.post("/", async (req, res) => {
     }
   }
 
-  // âââ Handle checkout.session.completed ââââââââââââââââââââââââ
+  // ─── Handle checkout.session.completed ────────────────────────
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
     const orderId = session.metadata?.orderId;
@@ -68,47 +68,17 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // âââ Payment Amount Verification âââââââââââââââââââââââââââââ
-    // Verify the amount paid matches what we expect
-    const paidAmountCents = session.amount_total;
-    // The order persists its expected price in `total` (set at checkout-session
-    // creation); `orderTotal` is a quote-level field NOT stored on the order row,
-    // so we must read `total` here or this reconciliation guard never runs.
-    const expectedAmountCents = Math.round((order.total || order.orderTotal || 0) * 100);
-
-    if (paidAmountCents && expectedAmountCents > 0) {
-      // Allow a small tolerance (1 cent) for rounding differences
-      if (Math.abs(paidAmountCents - expectedAmountCents) > 1) {
-        console.error(
-          `Webhook: Payment amount mismatch for order ${orderId}. ` +
-          `Paid: ${paidAmountCents} cents, Expected: ${expectedAmountCents} cents`
-        );
-        // Still mark as paid but flag for manual review
-        ordersDB.update(orderId, {
-          status: "paid_amount_mismatch",
-          stripePaymentIntentId: session.payment_intent || "",
-          paidAt: new Date().toISOString(),
-          paidAmountCents,
-          expectedAmountCents,
-          needsReview: true,
-        });
-        console.warn("Order " + orderId + " marked for review due to amount mismatch");
-        return res.json({ received: true, warning: "amount_mismatch" });
-      }
+    // Amount check, paid status, ship-by date and the confirmation emails all
+    // live in orderEvents so this path and the return-page confirmation agree.
+    // Idempotent: an order that is no longer pending is left alone.
+    const result = await orderEvents.settleFromSession(order, session, { base: orderEvents.baseUrl(req) });
+    if (result.warning) {
+      console.warn("Order " + orderId + " marked for review due to amount mismatch");
+      return res.json({ received: true, warning: result.warning });
     }
-
-    // Only update if still pending (idempotent)
-    if (order.status === "pending_payment") {
-      ordersDB.update(orderId, {
-        status: "paid",
-        stripePaymentIntentId: session.payment_intent || "",
-        paidAt: new Date().toISOString(),
-        paidAmountCents: paidAmountCents || null,
-      });
-      console.log("Order " + orderId + " marked as paid via Stripe webhook");
-    } else {
-      console.log("Webhook: Order " + orderId + " already in status " + order.status + " â skipping");
-    }
+    console.log(result.changed
+      ? "Order " + orderId + " marked as paid via Stripe webhook"
+      : "Webhook: Order " + orderId + " already in status " + order.status + " — skipping");
   }
 
   // Acknowledge receipt

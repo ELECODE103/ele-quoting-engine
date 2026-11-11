@@ -1,0 +1,76 @@
+{
+ "plate_holes": {
+  "bbox": [
+   120,
+   80,
+   8
+  ],
+  "holes": 7,
+  "through": 6,
+  "blind": 1,
+  "counterbored": 1,
+  "countersunk": 1,
+  "diameters": [
+   6.6,
+   6.6,
+   6.6,
+   6.6,
+   5.0,
+   6.6,
+   6.6
+  ],
+  "blindDepth": 5.0,
+  "cboreDiameter": 11.0,
+  "cboreDepth": 6.0,
+  "cskDiameter": 13.0,
+  "pockets": 0
+ },
+ "tube": {
+  "bbox": [
+   40,
+   40,
+   60
+  ],
+  "od": 40,
+  "bore": 25,
+  "length": 60,
+  "holes": 1,
+  "revolved": true
+ },
+ "tray": {
+  "bbox": [
+   150,
+   100,
+   20
+  ],
+  "pockets": 1,
+  "pocketDepth": 12.0,
+  "pocketArea": 8345.061929829746,
+  "pocketCornerRadius": 8.0,
+  "holes": 0
+ },
+ "tslot_block": {
+  "bbox": [
+   60,
+   60,
+   30
+  ],
+  "undercut": true,
+  "undercutArea": 500,
+  "surfaceArea": 17000,
+  "holes": 0
+ },
+ "boss_plate": {
+  "bbox": [
+   80,
+   60,
+   16
+  ],
+  "bosses": 1,
+  "bossDiameter": 20,
+  "bossHeight": 10,
+  "holes": 1,
+  "holeDiameter": 8.0,
+  "holeDepth": 16.0
+ }
+}

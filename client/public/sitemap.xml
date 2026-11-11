@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fallback only. `npm run build` overwrites this in client/dist with the full
+     list (including /materials/* pages) and <lastmod> dates - see scripts/seo/prerender.mjs. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://straightedgemfg.com/</loc></url>
+  <url><loc>https://straightedgemfg.com/machining</loc></url>
+  <url><loc>https://straightedgemfg.com/routing</loc></url>
+  <url><loc>https://straightedgemfg.com/3d-printing</loc></url>
+  <url><loc>https://straightedgemfg.com/materials</loc></url>
+  <url><loc>https://straightedgemfg.com/quality</loc></url>
+  <url><loc>https://straightedgemfg.com/about</loc></url>
+  <url><loc>https://straightedgemfg.com/rfq</loc></url>
+</urlset>

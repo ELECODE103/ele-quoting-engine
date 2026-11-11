@@ -3,7 +3,7 @@
  * Keeps route handlers clean; centralises security logic.
  */
 
-// âââ Sanitisers ââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── Sanitisers ──────────────────────────────────────────────
 
 /** Strip HTML/script tags, JS protocol handlers, event handlers, and control chars */
 function sanitizeString(val, maxLength = 500) {
@@ -49,7 +49,7 @@ function isValidUUID(val) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
 }
 
-// âââ Express middleware factory ââââââââââââââââââââââââââââââ
+// ─── Express middleware factory ──────────────────────────────
 
 /**
  * Validate request body fields.

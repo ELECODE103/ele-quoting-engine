@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatShipDate } from '../utils/format';
 
 /**
- * Fulfillment drawer â single unified view for an order.
+ * Fulfillment drawer — single unified view for an order.
  * Shows shipping info, line items with CAD downloads, status timeline,
  * tracking entry, notes, and traveler PDF link.
  */
 
 const STATUS_PIPELINE = [
   { key: 'pending_payment', label: 'Pending Payment' },
+  { key: 'pending_po', label: 'PO to confirm' },
   { key: 'paid', label: 'Paid' },
   { key: 'received', label: 'Received' },
   { key: 'in_production', label: 'In Production' },
@@ -117,10 +118,10 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
           <div className="font-display" style={{ fontSize: 20, fontWeight: 700 }}>
             Order Detail
           </div>
-          <button className="btn btn-ghost" onClick={onClose} style={{ fontSize: 12 }}>Close â</button>
+          <button className="btn btn-ghost" onClick={onClose} style={{ fontSize: 12 }}>Close ✕</button>
         </div>
 
-        {loading && <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>Loadingâ¦</div>}
+        {loading && <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>Loading…</div>}
         {err && <div style={{ padding: 16, color: '#E94E4E' }}>Error: {err}</div>}
 
         {order && !loading && (
@@ -134,6 +135,16 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                 <div style={{ color: '#888' }}>
                   Placed: {new Date(order.createdAt).toLocaleString()}
                 </div>
+                {order.shipBy && (
+                  <div style={{ color: '#333', fontWeight: 600, marginTop: 4 }}>
+                    Promised ship-by: {formatShipDate(order.shipBy, { year: true })}{order.leadTimeName ? ` (${order.leadTimeName})` : ''}
+                  </div>
+                )}
+                {order.paymentMethod === 'po' && (
+                  <div style={{ color: '#92400E', fontWeight: 600, marginTop: 4 }}>
+                    PO {order.poNumber} — not charged. Confirm the PO before starting.
+                  </div>
+                )}
               </div>
               <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--accent, #4F8CFF)' }}>
                 {formatCurrency(order.total || 0)}
@@ -168,7 +179,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                         letterSpacing: 0.3,
                       }}
                     >
-                      {done && 'â '}{s.label}
+                      {done && '✓ '}{s.label}
                     </button>
                   );
                 })}
@@ -178,7 +189,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
             {/* Shipping address */}
             <Section title="Ship To">
               <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                <div style={{ fontWeight: 600 }}>{order.shippingName || 'â'}</div>
+                <div style={{ fontWeight: 600 }}>{order.shippingName || '—'}</div>
                 <div>{order.shippingAddress || ''}</div>
                 <div>
                   {[order.shippingCity, order.shippingState, order.shippingZip].filter(Boolean).join(', ')}
@@ -199,12 +210,12 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                       {it.fileName || 'part'}
                     </div>
                     <div style={{ color: '#888', fontSize: 11 }}>
-                      {it.process} Â· {it.materialName || it.materialSlug}
-                      {it.finishName ? ` Â· ${it.finishName}` : ''} Â· qty {it.quantity}
+                      {it.process} · {it.materialName || it.materialSlug}
+                      {it.finishName ? ` · ${it.finishName}` : ''} · qty {it.quantity}
                     </div>
                     {it.geometry && (
                       <div style={{ color: '#999', fontSize: 10, fontFamily: 'monospace' }}>
-                        {it.geometry.boundingBox ? `${Math.round(it.geometry.boundingBox.x || 0)}Ã${Math.round(it.geometry.boundingBox.y || 0)}Ã${Math.round(it.geometry.boundingBox.z || 0)} mm` : ''}
+                        {it.geometry.boundingBox ? `${Math.round(it.geometry.boundingBox.x || 0)}×${Math.round(it.geometry.boundingBox.y || 0)}×${Math.round(it.geometry.boundingBox.z || 0)} mm` : ''}
                       </div>
                     )}
                   </div>
@@ -219,13 +230,34 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                           borderRadius: 3, cursor: 'pointer',
                         }}
                       >
-                        â¬ CAD
+                        ⬇ CAD
                       </button>
                     )}
                   </div>
                 </div>
               ))}
             </Section>
+
+            {/* What the buyer attached on the quote: notes + drawing (price unaffected) */}
+            {(order.customerNotes || order.drawingFileName) && (
+              <Section title="From the customer">
+                {order.customerNotes && <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', marginBottom: order.drawingFileName ? 8 : 0 }}>{order.customerNotes}</div>}
+                {order.drawingFileName && (
+                  <div style={{ fontSize: 12 }}>
+                    Drawing:{' '}
+                    {order.hasDrawing ? (
+                      <button
+                        onClick={() => api.downloadOrderDrawing(order.id, order.drawingFileName).catch(e => alert(e.message))}
+                        style={{ border: 'none', background: 'none', color: '#4F8CFF', cursor: 'pointer', padding: 0, textDecoration: 'underline', fontSize: 12 }}
+                      >
+                        {order.drawingFileName}
+                      </button>
+                    ) : order.drawingFileName}
+                    <span style={{ color: '#888' }}> — review before cutting; contact the customer if it changes the price.</span>
+                  </div>
+                )}
+              </Section>
+            )}
 
             {/* Tracking / shipping */}
             <Section title="Tracking">
@@ -236,7 +268,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                     onChange={(e) => setCarrier(e.target.value)}
                     style={{ width: '100%', padding: '6px 8px', fontSize: 12 }}
                   >
-                    <option value="">â</option>
+                    <option value="">—</option>
                     {CARRIERS.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </Field>
@@ -272,6 +304,25 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
               />
             </Section>
 
+            {/* Documents: the branded PDFs (server/services/documents.js) */}
+            <Section title="Documents (PDF)">
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[
+                  ['Order confirmation', `order-confirmation/${order.id}`],
+                  ['Packing slip', `packing-slip/${order.id}`],
+                  ['Certificate of conformance', `coc/${order.id}`],
+                  ['First-article form', `fai?orderId=${order.id}&line=1`],
+                  ['Traveler', `traveler/${order.id}`],
+                  ...(order.quoteId ? [['Quote', `quote/${order.quoteId}`]] : []),
+                ].map(([label, path]) => (
+                  <button key={path} type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}
+                    onClick={() => api.openPdf(path).catch((e) => alert(e.message))}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </Section>
+
             {/* Actions */}
             <div style={{ display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
               <button
@@ -280,7 +331,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                 disabled={saving}
                 style={{ fontSize: 12 }}
               >
-                {saving ? 'Savingâ¦' : 'Save Changes'}
+                {saving ? 'Saving…' : 'Save Changes'}
               </button>
               <a
                 href={`/orders/${order.id}/traveler`}
@@ -289,7 +340,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                 className="btn btn-ghost"
                 style={{ fontSize: 12, textDecoration: 'none' }}
               >
-                ð Open Job Traveler
+                Open job traveler
               </a>
               <a
                 href={`/orders/${order.id}`}
@@ -298,7 +349,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                 className="btn btn-ghost"
                 style={{ fontSize: 12, textDecoration: 'none' }}
               >
-                ð Customer View
+                Customer view
               </a>
             </div>
           </>

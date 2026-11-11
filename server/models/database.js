@@ -7,7 +7,8 @@ const initSqlJs = require("sql.js");
 const path = require("path");
 const fs = require("fs");
 
-const DB_PATH = path.join(__dirname, "..", "..", "data", "quoting.db");
+// QUOTING_DB_PATH lets the test suites run against a throwaway database.
+const DB_PATH = process.env.QUOTING_DB_PATH || path.join(__dirname, "..", "..", "data", "quoting.db");
 
 function ensureDataDir() {
   const dataDir = path.dirname(DB_PATH);
@@ -93,6 +94,7 @@ const SCHEMA = `
     grades_json TEXT,
     thicknesses_json TEXT,
     layer_heights_json TEXT,
+    feed_class TEXT,
     active INTEGER DEFAULT 1,
     created_at TEXT,
     updated_at TEXT
@@ -165,6 +167,43 @@ const SCHEMA = `
     active INTEGER DEFAULT 1,
     created_at TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS pricing_audit (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    user_email TEXT,
+    action TEXT DEFAULT 'save',
+    note TEXT,
+    diff_json TEXT,
+    rules_json TEXT,
+    created_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS rfqs (
+    id TEXT PRIMARY KEY,
+    quote_id TEXT,
+    user_id TEXT,
+    status TEXT DEFAULT 'new',
+    contact_name TEXT,
+    email TEXT,
+    company TEXT,
+    phone TEXT,
+    process TEXT,
+    quantities TEXT,
+    tolerance TEXT,
+    finish_notes TEXT,
+    due_date TEXT,
+    notes TEXT,
+    drawing_file_name TEXT,
+    drawing_path TEXT,
+    budget_total REAL,
+    reasons_json TEXT,
+    parts_json TEXT,
+    quoted_at TEXT,
+    quoted_total REAL,
+    created_at TEXT,
+    updated_at TEXT
+  );
 `;
 
 // Singleton
@@ -210,6 +249,53 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       // Normalized per-item process config (thickness, sub-process, layer height,
       // infill, grade, …) as one JSON blob, so new processes don't need new columns.
       'ALTER TABLE order_items ADD COLUMN config_json TEXT',
+      // Checkout-vs-RFQ decision stored with the quote so checkout can enforce it.
+      'ALTER TABLE quotes ADD COLUMN gate_json TEXT',
+      // Routing: cut-feed class per sheet material (soft / medium / brittle / abrasive / aluminum)
+      'ALTER TABLE materials ADD COLUMN feed_class TEXT',
+      // Admin materials editor: free-text note shown with the material.
+      'ALTER TABLE materials ADD COLUMN description TEXT',
+      // Calibration: what the job actually took, entered by the owner per order line
+      // (machine minutes per piece, excluding setup) so the engine's time model can
+      // be compared with the shop floor.
+      'ALTER TABLE order_items ADD COLUMN actual_minutes REAL',
+      'ALTER TABLE order_items ADD COLUMN actual_notes TEXT',
+      'ALTER TABLE order_items ADD COLUMN actual_recorded_at TEXT',
+      // Checkout funnel: one quote row per session (the builder's input config is
+      // kept so the quote can be reopened or reordered), a 30-day price hold, and
+      // the totals the checkout page shows.
+      'ALTER TABLE quotes ADD COLUMN config_json TEXT',
+      'ALTER TABLE quotes ADD COLUMN expires_at TEXT',
+      'ALTER TABLE quotes ADD COLUMN lead_time_surcharge REAL',
+      'ALTER TABLE quotes ADD COLUMN shipping_estimate REAL',
+      'ALTER TABLE quotes ADD COLUMN notes TEXT',
+      'ALTER TABLE quotes ADD COLUMN drawing_file_name TEXT',
+      'ALTER TABLE quotes ADD COLUMN drawing_path TEXT',
+      // Orders: who to email, promised ship date, how it is being paid.
+      'ALTER TABLE orders ADD COLUMN customer_email TEXT',
+      'ALTER TABLE orders ADD COLUMN customer_name TEXT',
+      'ALTER TABLE orders ADD COLUMN lead_time_slug TEXT',
+      'ALTER TABLE orders ADD COLUMN lead_time_name TEXT',
+      'ALTER TABLE orders ADD COLUMN lead_days INTEGER',
+      'ALTER TABLE orders ADD COLUMN ship_by TEXT',
+      'ALTER TABLE orders ADD COLUMN paid_at TEXT',
+      'ALTER TABLE orders ADD COLUMN payment_method TEXT',
+      'ALTER TABLE orders ADD COLUMN po_number TEXT',
+      'ALTER TABLE orders ADD COLUMN rfq_id TEXT',
+      'ALTER TABLE orders ADD COLUMN customer_notes TEXT',
+      'ALTER TABLE orders ADD COLUMN drawing_file_name TEXT',
+      'ALTER TABLE orders ADD COLUMN drawing_path TEXT',
+      // What the total is made of besides the parts (shipping is in shipping_cost).
+      'ALTER TABLE orders ADD COLUMN lead_time_surcharge REAL',
+      // RFQs: the firm quote sent to the customer and what they did with it.
+      'ALTER TABLE rfqs ADD COLUMN quoted_lead_days INTEGER',
+      'ALTER TABLE rfqs ADD COLUMN quote_note TEXT',
+      'ALTER TABLE rfqs ADD COLUMN valid_until TEXT',
+      'ALTER TABLE rfqs ADD COLUMN quote_sent_at TEXT',
+      'ALTER TABLE rfqs ADD COLUMN accepted_at TEXT',
+      'ALTER TABLE rfqs ADD COLUMN accepted_via TEXT',
+      'ALTER TABLE rfqs ADD COLUMN po_number TEXT',
+      'ALTER TABLE rfqs ADD COLUMN order_id TEXT',
     ];
     for (const sql of migrations) {
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatShipDate, formatDate } from '../utils/format';
+import { ok } from '../facts';
 
 export default function CheckoutPage() {
   const { quoteId } = useParams();
@@ -59,7 +60,7 @@ export default function CheckoutPage() {
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
         <button
           className="btn btn-ghost"
-          onClick={() => navigate('/quote')}
+          onClick={() => navigate(`/quote?quote=${quoteId}`)}
           style={{ marginBottom: 24 }}
         >
           ← Back to Quote
@@ -71,6 +72,13 @@ export default function CheckoutPage() {
             padding: 12, marginBottom: 24, color: '#664D03', fontSize: 13,
           }}>
             Payment was cancelled. You can try again below.
+          </div>
+        )}
+
+        {quoteData?.expired && (
+          <div role="alert" className="gate-box" style={{ marginBottom: 24 }}>
+            This price was held until {formatDate(quoteData.expiresAt)} and has expired.{' '}
+            <a href={`/quote?quote=${quoteId}`} style={{ color: 'inherit', fontWeight: 600 }}>Reopen the quote</a> to get today's price. Your parts are still there.
           </div>
         )}
 
@@ -172,7 +180,7 @@ export default function CheckoutPage() {
                 type="submit"
                 className="btn btn-primary btn-lg"
                 style={{ width: '100%', justifyContent: 'center' }}
-                disabled={loading}
+                disabled={loading || !quoteData || quoteData.expired}
               >
                 {loading ? 'Redirecting to payment...' : 'Pay & Place Order'}
               </button>
@@ -200,15 +208,28 @@ export default function CheckoutPage() {
               <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>Order Summary</h3>
 
               <div style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Quote ID</span>
-                  <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>{quoteId}</span>
-                </div>
+                {(quoteData?.lineItems || []).map((li) => (
+                  <div key={li.partId} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 10, fontSize: 12 }}>
+                    <span style={{ color: 'var(--text-primary)', minWidth: 0, overflowWrap: 'anywhere' }}>
+                      {li.fileName} <span style={{ color: 'var(--text-muted)' }}>× {li.quantity}</span>
+                    </span>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 500, whiteSpace: 'nowrap' }}>{formatCurrency(li.lineTotal)}</span>
+                  </div>
+                ))}
+
+                <div style={{ borderTop: '1px solid var(--border-primary)', margin: '12px 0' }} />
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Subtotal</span>
                   <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>{quoteData ? formatCurrency(quoteData.subtotal) : '...'}</span>
                 </div>
+
+                {quoteData?.leadTimeSurcharge > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{quoteData.leadTimeName || 'Rush'} fee</span>
+                    <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>{formatCurrency(quoteData.leadTimeSurcharge)}</span>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Shipping</span>
@@ -223,6 +244,23 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
+              {quoteData?.shipBy && (
+                <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-primary)' }}>
+                  <b>Ships by {formatShipDate(quoteData.shipBy, { year: true })}</b>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                    {quoteData.leadTimeName ? `${quoteData.leadTimeName} lead time, ` : ''}if you pay today. Weekends and federal holidays don't count.
+                  </div>
+                  {quoteData.expiresAt && !quoteData.expired && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Price held until {formatDate(quoteData.expiresAt)}.</div>
+                  )}
+                  {quoteData.drawingFileName && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                      Drawing attached: {quoteData.drawingFileName}. We review drawings before cutting; we'll contact you before work starts if anything changes the price.
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{
                 background: 'var(--accent-bg)',
                 border: '1px solid var(--accent)',
@@ -236,7 +274,7 @@ export default function CheckoutPage() {
               </div>
 
               <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                🔒 You retain full IP ownership of your designs. Files are stored securely and never shared. NDA available on request.
+                🔒 You retain full IP ownership of your designs. Files are stored securely and never shared. {ok('paperwork-packet') ? 'NDA available on request.' : ''}
               </div>
             </div>
           </div>
