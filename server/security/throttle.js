@@ -92,9 +92,20 @@ function createTtlStore({ ttlMs, maxEntries = MAX_KEYS }) {
   return { get, set, has: (k, now) => get(k, now) !== undefined, delete: (k) => items.delete(k), clear: () => items.clear(), size: () => items.size };
 }
 
-/** The caller's address as Express resolved it (trust proxy is set in production). */
+/**
+ * The caller's address as Express resolved it (TRUST_PROXY_HOPS in production).
+ * For telling Cloudflare which address a Turnstile token came from — NOT a
+ * limiter key: an IPv6 client owns a whole /64 and can change address at will.
+ */
 function clientIp(req) {
   return String(req.ip || req.socket?.remoteAddress || "unknown");
 }
 
-module.exports = { createThrottle, createTtlStore, clientIp };
+/**
+ * The key every per-client counter uses (sign-in failures, form limits, reset
+ * requests, confirmation emails): the same one the upload, pricing and general
+ * limiters use — IPv4-mapped addresses folded to IPv4, IPv6 grouped by /64.
+ */
+const { clientKey } = require("./clientKey");
+
+module.exports = { createThrottle, createTtlStore, clientIp, clientKey };

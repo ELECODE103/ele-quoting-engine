@@ -34,7 +34,7 @@ const tokens = require("../security/tokens");
 const totp = require("../security/totp");
 const secretBox = require("../security/secretBox");
 const keys = require("../security/keys");
-const { createThrottle, clientIp } = require("../security/throttle");
+const { createThrottle, clientKey } = require("../security/throttle");
 const { accountLinkBase } = require("../security/links");
 const mailer = require("../services/mailer");
 const templates = require("../emails/templates");
@@ -49,7 +49,7 @@ if (!process.env.JWT_SECRET) {
     console.error("FATAL: JWT_SECRET environment variable is required in production");
     process.exit(1);
   } else {
-    console.warn("WARNING: JWT_SECRET not set - using insecure dev fallback. Do NOT use in production.");
+    console.warn("WARNING: JWT_SECRET not set - using a random secret for this process: sessions and emailed links stop working at each restart. Set JWT_SECRET.");
   }
 }
 
@@ -66,12 +66,13 @@ const MSG = {
   verifyBad: "This confirmation link has been used, replaced or has expired. Sign in and ask for a new one.",
 };
 
-// --- Rate limiters (per IP) ---
+// --- Rate limiters (per client: security/clientKey.js, the key every limiter in the app uses) ---
 const registerLimiter = rateLimit({
   windowMs: HOUR,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: clientKey,
   message: { error: "Too many registration attempts. Please try again later.", code: "rate-limited" },
 });
 const tokenLimiter = rateLimit({
@@ -79,6 +80,7 @@ const tokenLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: clientKey,
   message: { error: `Too many attempts. Try again in 15 minutes, or ${CALL}.`, code: "rate-limited" },
 });
 
@@ -245,7 +247,7 @@ router.post("/login", async (req, res) => {
     if (!isValidEmail(normalizeEmail(email))) {
       return res.status(400).json({ error: "Please enter a valid email address" });
     }
-    const ip = clientIp(req);
+    const ip = clientKey(req); // the shared client key: IPv6 by /64, TRUST_PROXY_HOPS
     const emailKey = normalizeEmail(email).slice(0, 254);
     const now = Date.now();
 
@@ -423,7 +425,7 @@ router.post("/password-reset/request", async (req, res) => {
   try {
     const email = normalizeEmail(req.body && req.body.email);
     if (!isValidEmail(email)) return res.status(400).json({ error: "Please enter a valid email address" });
-    const ip = clientIp(req);
+    const ip = clientKey(req); // the shared client key: IPv6 by /64, TRUST_PROXY_HOPS
     if (resetPerIp.peek(ip).limited) return res.status(429).json({ error: `Too many reset requests from this connection. Try again in an hour, or ${CALL}.`, code: "rate-limited" });
 
     check = botGuard.checkForm(req, { form: "password-reset", email: "" });
@@ -549,6 +551,7 @@ const twoFactorLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: clientKey,
   message: { error: "Too many attempts. Try again in 15 minutes.", code: "rate-limited" },
 });
 

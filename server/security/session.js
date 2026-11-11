@@ -93,7 +93,7 @@ function issue(user, res, req) {
   const token = jwt.sign(
     { userId: user.id, email: user.email, role: user.role || "customer", tv: Number(user.tokenVersion) || 0, jti },
     loginSecret(),
-    { expiresIn: Math.round(hours * 3600) }
+    { expiresIn: Math.round(hours * 3600), algorithm: "HS256" }
   );
   if (res) setCookie(res, token, hours * 3600, req);
   return { token, csrfToken: csrfTokenFor(jti), expiresAt: new Date(Date.now() + hours * 3600e3).toISOString() };

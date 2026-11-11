@@ -14,15 +14,16 @@ const jwt = require("jsonwebtoken");
 
 const AUDIENCE = "rfq-quote";
 
+const ALGORITHM = "HS256"; // signed and verified with this one algorithm, named on both sides
+
 function key() {
-  const base = process.env.JWT_SECRET || "dev-secret-DO-NOT-USE-IN-PROD";
-  return crypto.createHmac("sha256", base).update("rfq-quote-link-v1").digest();
+  return crypto.createHmac("sha256", require("../security/keys").baseSecret()).update("rfq-quote-link-v1").digest();
 }
 
 /** @param {{id:string, quoteSentAt:string, validUntil:string}} rfq */
 function sign(rfq) {
   const exp = Math.floor(new Date(rfq.validUntil).getTime() / 1000);
-  return jwt.sign({ rfqId: rfq.id, v: rfq.quoteSentAt, exp }, key(), { audience: AUDIENCE });
+  return jwt.sign({ rfqId: rfq.id, v: rfq.quoteSentAt, exp }, key(), { audience: AUDIENCE, algorithm: ALGORITHM });
 }
 
 /**
@@ -32,7 +33,7 @@ function sign(rfq) {
  */
 function verify(token) {
   try {
-    const p = jwt.verify(String(token || ""), key(), { audience: AUDIENCE, ignoreExpiration: true });
+    const p = jwt.verify(String(token || ""), key(), { audience: AUDIENCE, algorithms: [ALGORITHM], ignoreExpiration: true });
     if (!p || !p.rfqId || !p.exp) return null;
     return { rfqId: p.rfqId, v: p.v, expired: p.exp * 1000 < Date.now() };
   } catch {

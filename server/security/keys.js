@@ -9,10 +9,16 @@
  */
 const crypto = require("crypto");
 
-const DEV_FALLBACK = "dev-secret-DO-NOT-USE-IN-PROD"; // same fallback routes/auth.js has always used outside production
+// With no JWT_SECRET (a developer's machine; production refuses to start without one) the
+// secret is a random value made for this process. It used to be a fixed string in the source,
+// which anyone could sign with on a server started without `npm start` (no NODE_ENV). Now such a
+// server simply forgets its sessions and links at each restart.
+let processSecret = null;
 
 function baseSecret() {
-  return process.env.JWT_SECRET || DEV_FALLBACK;
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  if (!processSecret) processSecret = crypto.randomBytes(48).toString("hex");
+  return processSecret;
 }
 
 /** 32-byte key for `label` (HMAC-SHA256 of the label under JWT_SECRET). */

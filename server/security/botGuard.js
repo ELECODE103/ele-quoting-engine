@@ -24,7 +24,7 @@
 const crypto = require("crypto");
 const turnstile = require("./turnstile");
 const tokens = require("./tokens");
-const { createThrottle, createTtlStore, clientIp } = require("./throttle");
+const { createThrottle, createTtlStore, clientIp, clientKey } = require("./throttle");
 const brand = require("../../shared/brand.json");
 
 const MIN_FILL_SECONDS = 3;
@@ -134,10 +134,10 @@ function requireHuman(opts = {}) {
 
 /** Trade a Turnstile token for a one-hour verified-human token (the quote tool does this once). */
 async function humanVerifyHandler(req, res) {
-  const ip = clientIp(req);
+  const ip = clientKey(req);
   if (limits.humanVerifyPerIp.hit(ip).count > limits.humanVerifyPerIp.max) return res.status(429).json({ error: MESSAGES.tooMany, code: "rate-limited" });
   if (!turnstile.configured()) return res.json({ required: false, humanToken: "", expiresIn: 0 });
-  const result = await turnstile.verify(turnstileTokenFrom(req), { ip, action: req.body?.action === "quote" ? "quote" : undefined });
+  const result = await turnstile.verify(turnstileTokenFrom(req), { ip: clientIp(req), action: req.body?.action === "quote" ? "quote" : undefined });
   if (!result.ok) {
     if (result.reason === "unavailable") return res.status(503).json({ error: MESSAGES.humanUnavailable, code: "human-check-unavailable" });
     return res.status(403).json({ error: MESSAGES.humanRequired, code: "human-check-required" });
@@ -173,7 +173,7 @@ function checkForm(req, { form, email, dedupe }) {
   }
 
   // 2. Per-IP limits.
-  const ip = clientIp(req);
+  const ip = clientKey(req);
   if (limits.formPerIpHour.peek(ip).limited || limits.formPerIpDay.peek(ip).limited) {
     return { ok: false, status: 429, code: "rate-limited", error: MESSAGES.tooMany };
   }
@@ -206,7 +206,7 @@ function releaseForm(check) {
 
 /** Count an accepted submission and remember its answer for duplicate suppression. */
 function recordForm(req, check, { email, response }) {
-  const ip = clientIp(req);
+  const ip = clientKey(req);
   limits.formPerIpHour.hit(ip);
   limits.formPerIpDay.hit(ip);
   const ek = emailKey(email);
@@ -221,7 +221,7 @@ function recordForm(req, check, { email, response }) {
  * Counts the send when the answer is yes.
  */
 function allowConfirmationEmail(req, recipient) {
-  const ip = clientIp(req);
+  const ip = clientKey(req);
   const rk = emailKey(recipient);
   if (!rk) return false;
   if (limits.confirmPerRecipientDay.peek(rk).limited || limits.confirmPerIpDay.peek(ip).limited) return false;
@@ -231,7 +231,7 @@ function allowConfirmationEmail(req, recipient) {
 }
 
 function formTokenHandler(req, res) {
-  const ip = clientIp(req);
+  const ip = clientKey(req);
   if (limits.formTokenPerIp.hit(ip).count > limits.formTokenPerIp.max) return res.status(429).json({ error: MESSAGES.tooMany, code: "rate-limited" });
   const form = typeof req.query.form === "string" ? req.query.form.slice(0, 40) : "form";
   res.set("Cache-Control", "no-store");
