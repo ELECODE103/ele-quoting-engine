@@ -37,11 +37,44 @@ function writeOutbox(message) {
   }
 }
 
-async function send({ to, subject, text, html, replyTo }) {
-  if (!to || !subject) return false;
+/**
+ * One plain address, nothing else: no display name, no list, no angle
+ * brackets, no line breaks. Anything a visitor typed that is not exactly that
+ * is not a recipient.
+ */
+function cleanAddress(value) {
+  if (typeof value !== "string") return "";
+  const v = value.trim();
+  if (v.length === 0 || v.length > 254) return "";
+  return /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/.test(v) ? v : "";
+}
+
+/** A subject is one line: control characters (line breaks above all) become spaces. */
+function cleanSubject(value) {
+  // eslint-disable-next-line no-control-regex
+  return String(value || "").replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
+async function send(message) {
+  const { text, html } = message || {};
+  // Recipients and the subject are cleaned here, at the last step before the
+  // wire, whatever the caller did: a typed address or name can never add a
+  // header or a second recipient.
+  // A list is only ever built by our own code (the shop's notification
+  // addresses); a string is exactly one address.
+  const rawTo = message && message.to;
+  const list = Array.isArray(rawTo) ? rawTo.map(cleanAddress).filter(Boolean) : [cleanAddress(rawTo)].filter(Boolean);
+  const to = list.length > 1 ? list : (list[0] || "");
+  const subject = cleanSubject(message && message.subject);
+  const rawReply = message && message.replyTo;
+  const replyTo = cleanAddress(Array.isArray(rawReply) ? rawReply[0] : rawReply);
+  if (list.length === 0 || !subject) {
+    if (message && (message.to || message.subject)) console.error("[mailer] refused a message with an unusable recipient or subject");
+    return false;
+  }
   writeOutbox({ to, subject, text: text || "", html: html || "", replyTo: replyTo || null });
   if (!configured()) {
-    console.log(`[mailer] (not configured, not sent) To: ${to} | ${subject}`);
+    console.log(`[mailer] (not configured, not sent) To: ${list.join(", ")} | ${subject}`);
     return false;
   }
   try {
@@ -53,7 +86,7 @@ async function send({ to, subject, text, html, replyTo }) {
       },
       body: JSON.stringify({
         from: process.env.EMAIL_FROM,
-        to: Array.isArray(to) ? to : [to],
+        to: list,
         subject,
         text: text || "",
         html: html || undefined,
@@ -74,7 +107,10 @@ async function send({ to, subject, text, html, replyTo }) {
 
 /** Where the shop's own notifications go. */
 function shopNotifyAddress() {
-  return process.env.RFQ_NOTIFY_TO || process.env.ADMIN_EMAIL || brand.email;
+  const configured = process.env.RFQ_NOTIFY_TO || process.env.ADMIN_EMAIL || brand.email;
+  // RFQ_NOTIFY_TO may name several people, separated by commas.
+  const parts = String(configured).split(",").map((s) => s.trim()).filter(Boolean);
+  return parts.length > 1 ? parts : (parts[0] || brand.email);
 }
 
-module.exports = { send, configured, shopNotifyAddress, rfqNotifyAddress: shopNotifyAddress };
+module.exports = { send, configured, shopNotifyAddress, rfqNotifyAddress: shopNotifyAddress, cleanAddress, cleanSubject };

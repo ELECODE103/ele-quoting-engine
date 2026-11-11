@@ -75,6 +75,15 @@ const acceptUrl = `${base}/firm-quote/eyJhbGciOiJIUzI1NiJ9.sample.signature`;
 module.exports = {
   "rfq-received-buyer": () => templates.rfqReceivedBuyer({ rfq }),
   "rfq-received-shop": () => templates.rfqReceivedShop({ rfq, adminUrl: `${base}/admin` }),
+  "rfq-received-shop-unverified": () => templates.rfqReceivedShop({ rfq, adminUrl: `${base}/admin`, unverified: true, buyerEmailed: false }),
+  "part-request-shop-unverified": () => templates.rfqReceivedShop({ rfq: partRfq, adminUrl: `${base}/admin`, unverified: true, buyerEmailed: false, partPending: true }),
+  // Account emails. The links here are placeholders, not working tokens.
+  "account-verify-email": () => templates.verifyEmail({ verifyUrl: `${base}/verify-email#token=SAMPLE-NOT-A-TOKEN` }),
+  "account-password-reset": () => templates.passwordResetRequested({ resetUrl: `${base}/reset-password#token=SAMPLE-NOT-A-TOKEN` }),
+  "account-password-changed": () => templates.passwordChanged({ when: "2026-11-11T15:04:00Z" }),
+  "account-locked": () => templates.accountLocked({ minutes: 15, resetUrl: `${base}/forgot-password` }),
+  "account-two-factor-on": () => templates.twoFactorChanged({ change: "enabled" }),
+  "account-recovery-code-used": () => templates.twoFactorChanged({ change: "recovery-used" }),
   "part-request-buyer": () => templates.rfqReceivedBuyer({ rfq: partRfq, part }),
   "part-request-shop": () => templates.rfqReceivedShop({ rfq: partRfq, adminUrl: `${base}/admin`, part }),
   "rfq-quoted": () => templates.rfqQuoted({ rfq, acceptUrl, shipBy: "2026-12-02" }),

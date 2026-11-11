@@ -22,7 +22,12 @@ const FONT = "-apple-system,'Segoe UI',Helvetica,Arial,sans-serif";
 const PROCESS_LABELS = { cnc: "CNC machining", routing: "CNC routing", "3d-printing": "3D printing", sheetmetal: "Sheet metal" };
 
 function esc(v) {
-  return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+/** Only http(s), mailto and tel links go into an href; anything else becomes "#". */
+function safeHref(url) {
+  const u = String(url ?? "").trim();
+  return /^(https?:\/\/|mailto:|tel:)/i.test(u) ? u : "#";
 }
 function money(n) {
   return "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -37,7 +42,17 @@ function shortId(id) {
 function firstName(name) {
   return String(name || "").trim().split(/\s+/)[0] || "";
 }
-const greeting = (name) => (firstName(name) ? `Hi ${firstName(name)},` : "Hello,");
+/**
+ * "Hi Dana," only when the first word of the typed name looks like a name
+ * (letters, with an apostrophe or hyphen inside, 30 characters at most). The
+ * name on a request form is whatever a visitor typed, and the email goes to an
+ * address they typed too, so a web address, a slogan or a string of symbols
+ * never gets greeted by our domain: those read "Hello,".
+ */
+function greeting(name) {
+  const first = firstName(name);
+  return /^\p{L}[\p{L}\p{M}'’-]{0,29}$/u.test(first) ? `Hi ${first},` : "Hello,";
+}
 
 const TRACKING_URLS = {
   ups: (n) => `https://www.ups.com/track?tracknum=${n}`,
@@ -96,7 +111,7 @@ function layout(m) {
   const ctaHtml = m.cta ? `
         <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 20px;"><tr>
           <td style="background:${INK};border-radius:4px;">
-            <a href="${esc(m.cta.url)}" style="display:inline-block;padding:13px 26px;font:600 15px/1 ${FONT};color:${BONE};text-decoration:none;">${esc(m.cta.label)}</a>
+            <a href="${esc(safeHref(m.cta.url))}" style="display:inline-block;padding:13px 26px;font:600 15px/1 ${FONT};color:${BONE};text-decoration:none;">${esc(m.cta.label)}</a>
           </td>
         </tr></table>
         <p style="margin:0 0 14px;font:12px/1.5 ${FONT};color:${MUTED};word-break:break-all;">If the button doesn't work, paste this into your browser:<br>${esc(m.cta.url)}</p>` : "";
@@ -272,17 +287,35 @@ function partRequestBuyer({ rfq, part }) {
   });
 }
 
-function rfqReceivedShop({ rfq, adminUrl, part }) {
+/**
+ * To the shop: a new request. The subject carries the reference and counts
+ * only — never a name, company or note a visitor typed (subjects are where
+ * injected text does the most harm, and where a mail client shows it first).
+ *
+ * `unverified` (the sender did not pass the bot check and is not a signed-in
+ * account with a confirmed email): the notice says so at the top, and says
+ * that no email went to the address they typed. `partPending`: a send-the-part
+ * request whose sender has not been given the ship-to address yet.
+ */
+function rfqReceivedShop({ rfq, adminUrl, part, unverified = false, buyerEmailed = true, partPending = false }) {
   const parts = rfq.parts || [];
+  const ref = shortId(rfq.id);
+  const flag = unverified ? " [unverified sender]" : "";
   return layout({
     subject: part
-      ? `RFQ: ${rfq.contactName}${rfq.company ? " / " + rfq.company : ""} — part being shipped in (${part.reference})`
-      : `RFQ: ${rfq.contactName}${rfq.company ? " / " + rfq.company : ""} — ${parts.length || "?"} part(s)`,
-    preheader: `New RFQ from ${rfq.contactName}`,
-    heading: `New RFQ from ${rfq.contactName}`,
+      ? `RFQ: ${ref} — ${partPending ? "wants to send a part in" : "part being shipped in"}${flag}`
+      : `RFQ: ${ref} — ${parts.length || "?"} part(s)${flag}`,
+    preheader: unverified ? "Unverified sender: check the address before you reply." : `New RFQ ${ref}`,
+    heading: unverified ? "New RFQ from an unverified sender" : `New RFQ from ${rfq.contactName}`,
     paragraphs: [
+      ...(unverified ? [
+        "UNVERIFIED SENDER: this request did not pass the bot check and did not come from a signed-in account with a confirmed email. No confirmation was emailed to the address below. Read it before you reply: the address may not belong to whoever typed it.",
+      ] : []),
+      ...(!unverified && !buyerEmailed ? ["No confirmation email went to this address (the daily limit for that address or connection was reached, or the account has not confirmed its email yet)."] : []),
+      ...(partPending ? [`Send-the-part request: the sender was NOT given the ship-to address. If the request is real, reply with reference ${ref} and the address.`] : []),
       `${rfq.contactName} <${rfq.email}>${rfq.company ? " — " + rfq.company : ""}${rfq.phone ? " — " + rfq.phone : ""}`,
-      ...(part ? [`No drawing. The customer was told to write ${part.reference} on the box and ship the part to the shop at their cost. Measure it, then quote it from the RFQ queue.`] : []),
+      ...(part && !partPending ? [`No drawing. The customer was told to write ${part.reference} on the box and ship the part to the shop at their cost. Measure it, then quote it from the RFQ queue.`] : []),
+      ...(part && partPending ? ["No drawing: the customer wants to send the part in."] : []),
       ...(part && rfq.returnPart ? [RETURN_REMINDER] : []),
       ...(part && !rfq.returnPart ? ["Customer did not ask for the original back."] : []),
       ...(rfq.paperwork ? [PAPERWORK_REMINDER] : []),
@@ -298,6 +331,7 @@ function rfqReceivedShop({ rfq, adminUrl, part }) {
       ["FAI + CoC", rfq.paperwork ? "YES — price it in" : "Not requested"],
       ["Original part back", part ? (rfq.returnPart ? "YES — price in the return shipping" : "No") : ""],
       ["Budgetary total shown", part ? "" : money(rfq.budgetTotal)],
+      ["Sender", unverified ? "UNVERIFIED (no bot check, no confirmed account)" : ""],
       ["Reference", shortId(rfq.id)],
     ],
     items: parts.map((p) => ({
@@ -356,9 +390,10 @@ function rfqQuoted({ rfq, acceptUrl, shipBy }) {
 function rfqAcceptedShop({ rfq, order, adminUrl }) {
   const po = order.paymentMethod === "po";
   return layout({
+    // Reference and amount only: the PO number, name and company are typed by the customer and stay in the body.
     subject: po
-      ? `Quote accepted on PO ${order.poNumber}: ${rfq.contactName}${rfq.company ? " / " + rfq.company : ""}`
-      : `Quote accepted, card checkout started: ${rfq.contactName}${rfq.company ? " / " + rfq.company : ""}`,
+      ? `Quote ${shortId(rfq.id)} accepted on a purchase order — ${money(order.total)}`
+      : `Quote ${shortId(rfq.id)} accepted, card checkout started — ${money(order.total)}`,
     preheader: `${money(order.total)} — ${po ? "PO " + order.poNumber : "paying by card"}`,
     heading: po ? "Quote accepted on a purchase order" : "Quote accepted",
     paragraphs: [
@@ -421,7 +456,7 @@ function orderConfirmation({ order, items, orderUrl }) {
 function newOrderShop({ order, items, adminUrl, warning }) {
   const po = order.paymentMethod === "po";
   return layout({
-    subject: `New order ${shortId(order.id)} — ${money(order.total)}${po ? ` (PO ${order.poNumber})` : ""}`,
+    subject: `New order ${shortId(order.id)} — ${money(order.total)}${po ? " (purchase order)" : ""}`,
     preheader: `${order.customerName || order.shippingName || "Customer"} · ships by ${formatShipBy(order.shipBy)}`,
     heading: po ? "New order on a purchase order" : "New paid order",
     paragraphs: [
@@ -472,7 +507,100 @@ function orderShipped({ order, items, orderUrl }) {
   });
 }
 
+// ─── Account ───────────────────────────────────────────────────
+// These go to an address somebody typed into a form, so they carry no typed
+// text at all: no name, no company, nothing but our own words and one link.
+
+/** Confirm the address on a new account. */
+function verifyEmail({ verifyUrl }) {
+  return layout({
+    subject: `${brand.name}: confirm your email address`,
+    preheader: "One click and your account is ready to check out.",
+    heading: "Confirm your email address",
+    paragraphs: [
+      "Hello,",
+      `Someone, we hope you, created a ${brand.name} account with this address. Confirm it and the account can check out and get order emails.`,
+    ],
+    cta: { label: "Confirm my email", url: verifyUrl },
+    after: [
+      "The link works once and for 24 hours. You can ask for a new one from the checkout page.",
+      `Not you? Do nothing and the account stays unconfirmed. Questions: ${brand.phone}.`,
+    ],
+  });
+}
+
+/** A password reset was asked for. */
+function passwordResetRequested({ resetUrl }) {
+  return layout({
+    subject: `${brand.name}: reset your password`,
+    preheader: "The link works once and for one hour.",
+    heading: "Reset your password",
+    paragraphs: [
+      "Hello,",
+      `We were asked to reset the password on the ${brand.name} account for this address.`,
+    ],
+    cta: { label: "Choose a new password", url: resetUrl },
+    after: [
+      "The link works once and for one hour. Choosing a new password signs the account out everywhere else.",
+      `Didn't ask for this? Do nothing: your password stays as it is. If it keeps happening, call ${brand.phone}.`,
+    ],
+  });
+}
+
+/** The password was changed. */
+function passwordChanged({ when }) {
+  return layout({
+    subject: `${brand.name}: your password was changed`,
+    preheader: "If this was you, nothing to do.",
+    heading: "Your password was changed",
+    paragraphs: [
+      "Hello,",
+      `The password on your ${brand.name} account was changed${when ? ` on ${longDate(when)}` : ""}. Every device that was signed in has been signed out.`,
+    ],
+    after: [
+      `If this was you, there is nothing to do. If it wasn't, call ${brand.phone} now and we'll lock the account.`,
+    ],
+  });
+}
+
+/** Too many wrong passwords: sign-in is paused for a while. */
+function accountLocked({ minutes, resetUrl }) {
+  return layout({
+    subject: `${brand.name}: sign-in paused on your account`,
+    preheader: `Too many wrong passwords. Sign-in is paused for ${minutes} minutes.`,
+    heading: "Sign-in is paused on your account",
+    paragraphs: [
+      "Hello,",
+      `Someone entered the wrong password for your ${brand.name} account several times in a row, so sign-in is paused for ${minutes} minutes. Nobody got in.`,
+      "If that was you, wait it out or choose a new password now. Choosing a new password lifts the pause at once.",
+    ],
+    cta: resetUrl ? { label: "Choose a new password", url: resetUrl } : undefined,
+    after: [
+      `If it wasn't you, your password held. Make sure it is one you use nowhere else. Questions: ${brand.phone}.`,
+    ],
+  });
+}
+
+/** Two-step sign-in was switched on or off, or new recovery codes were made. */
+function twoFactorChanged({ change }) {
+  const what = {
+    enabled: ["Two-step sign-in is on", "Two-step sign-in was switched on for your account. From now on, signing in takes your password and a code from your authenticator app."],
+    disabled: ["Two-step sign-in is off", "Two-step sign-in was switched off for your account. Signing in now takes only your password."],
+    "recovery-codes": ["New recovery codes were made", "New recovery codes were made for your account. The old ones no longer work."],
+    "recovery-used": ["A recovery code was used to sign in", "A recovery code was used to sign in to your account in place of an authenticator code. That code is now spent."],
+  }[change] || ["Your sign-in settings changed", "The sign-in settings on your account were changed."];
+  return layout({
+    subject: `${brand.name}: ${what[0].charAt(0).toLowerCase()}${what[0].slice(1)}`,
+    preheader: what[0],
+    heading: what[0],
+    paragraphs: ["Hello,", what[1]],
+    after: [`If this was you, there is nothing to do. If it wasn't, call ${brand.phone} now.`],
+  });
+}
+
 module.exports = {
+  verifyEmail, passwordResetRequested, passwordChanged, accountLocked, twoFactorChanged,
+  esc, safeHref, greeting,
   layout, trackingUrl, shortId, money, DRAWING_NOTE,
   PAPERWORK_LABEL, PAPERWORK_SHORT, PAPERWORK_INCLUDED, PAPERWORK_NOT_INCLUDED, RETURN_INCLUDED, RETURN_NOT_INCLUDED, RETURN_REMINDER, PAPERWORK_REMINDER,
   chargeRows, quoteCovers, isPartRequest,
