@@ -75,6 +75,19 @@ test("ZIP pre-flight: entry count, total size, ratio, encryption and repeated na
   // case and a leading slash do not hide the model
   assert.ok(read3mfModel(buildZip([{ name: "/3D/3DModel.model", data: model }])).includes("<vertex"));
 
+  // ZIP64 (which some 3MF writers always use) still reads — both an archive with ZIP64 size fields
+  // (written by Python's zipfile) and one with a ZIP64 end-of-directory record…
+  const zip64Fields = fs.readFileSync(path.join(__dirname, "fixtures", "box_zip64.3mf"));
+  assert.strictEqual(inspectZip(zip64Fields).entries.length, 1);
+  assert.ok(read3mfModel(zip64Fields).includes("<triangle"));
+  const zip64End = buildZip([{ name: "3D/3dmodel.model", data: model }], { zip64: true });
+  assert.ok(zip64End.includes(Buffer.from([0x50, 0x4b, 0x06, 0x07])), "has a ZIP64 end-of-directory locator");
+  assert.ok(read3mfModel(zip64End).includes("<triangle"));
+  // …and a ZIP64 record that claims a trillion entries is refused on the claim alone.
+  let zip64Lie = null;
+  try { inspectZip(buildZip([{ name: "3D/3dmodel.model", data: model }], { zip64: true, zip64Entries: 1e12 })); } catch (e) { zip64Lie = e.code; }
+  assert.strictEqual(zip64Lie, "ZIP_TOO_LARGE");
+
   const code = (fn) => { try { fn(); return null; } catch (e) { assert.strictEqual(e.expose, true, "message is for the customer"); assert.ok(!/adm-zip|ADM-ZIP/.test(e.message)); return e.code; } };
   assert.strictEqual(code(() => inspectZip(Buffer.from("not a zip at all, just some text that is long enough"))), "ZIP_MALFORMED");
   assert.strictEqual(code(() => inspectZip(Buffer.alloc(5))), "ZIP_MALFORMED");

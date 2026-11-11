@@ -3,7 +3,7 @@
  * sizes that are not true (a decompression bomb), repeat an entry name, or
  * pack thousands of entries — things a normal ZIP library refuses to write.
  *
- *   buildZip([{ name, data, method: "deflate"|"store", declaredSize, declaredCompressedSize }])
+ *   buildZip([{ name, data, method: "deflate"|"store", declaredSize, declaredCompressedSize }], { zip64, zip64Entries })
  */
 const zlib = require("zlib");
 
@@ -18,7 +18,7 @@ function crc32(buf) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function buildZip(entries) {
+function buildZip(entries, opt = {}) {
   const locals = [];
   const centrals = [];
   let offset = 0;
@@ -77,7 +77,32 @@ function buildZip(entries) {
   end.writeUInt32LE(cd.length, 12);
   end.writeUInt32LE(offset, 16);
   end.writeUInt16LE(0, 20);
-  return Buffer.concat([...locals, cd, end]);
+  if (!opt.zip64) return Buffer.concat([...locals, cd, end]);
+
+  // ZIP64 end-of-directory record + locator; the classic end record then holds
+  // only "see the ZIP64 record" markers. opt.zip64Entries lets a test lie about the count.
+  const count = BigInt(opt.zip64Entries !== undefined ? opt.zip64Entries : entries.length);
+  const rec = Buffer.alloc(56);
+  rec.writeUInt32LE(0x06064b50, 0);
+  rec.writeBigUInt64LE(44n, 4);
+  rec.writeUInt16LE(45, 12);
+  rec.writeUInt16LE(45, 14);
+  rec.writeUInt32LE(0, 16);
+  rec.writeUInt32LE(0, 20);
+  rec.writeBigUInt64LE(count, 24);
+  rec.writeBigUInt64LE(count, 32);
+  rec.writeBigUInt64LE(BigInt(cd.length), 40);
+  rec.writeBigUInt64LE(BigInt(offset), 48);
+  const loc = Buffer.alloc(20);
+  loc.writeUInt32LE(0x07064b50, 0);
+  loc.writeUInt32LE(0, 4);
+  loc.writeBigUInt64LE(BigInt(offset + cd.length), 8);
+  loc.writeUInt32LE(1, 16);
+  end.writeUInt16LE(0xffff, 8);
+  end.writeUInt16LE(0xffff, 10);
+  end.writeUInt32LE(0xffffffff, 12);
+  end.writeUInt32LE(0xffffffff, 16);
+  return Buffer.concat([...locals, cd, rec, loc, end]);
 }
 
 /** The model XML of a 3MF holding one axis-aligned box (12 triangles), in millimetres. */

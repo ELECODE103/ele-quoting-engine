@@ -239,7 +239,12 @@ function partPayload(part, parsed) {
 /**
  * POST /api/upload
  * Upload one or more CAD files, parse geometry, return analysis.
- * Requires authentication. Files validated for magic bytes.
+ * Open to anonymous visitors (a part is addressed by its unguessable id). What
+ * bounds it: file size and count, the per-address rate limit and daily byte
+ * budget, the storage and database ceilings (security/uploadGuards.js), a
+ * content check per format (middleware/fileValidator.js), and parsing in a
+ * worker under a time and memory budget (parsers/parsePool.js). A file that is
+ * refused or fails to parse is deleted before the answer is sent.
  *
  * Optional form field `process`: the process the customer has selected. A
  * .dxf is a 2D profile and is only accepted for routing — with any other
