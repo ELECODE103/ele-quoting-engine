@@ -8,6 +8,11 @@
  * rests on. A sentence with no basis is printed as UNSUPPORTED and the script
  * exits 1, so a new unbacked claim cannot slip in unnoticed.
  *
+ * It also reads every sentence and every meta description for wording the owner
+ * ruled out on 2026-11-11 (docs/messaging/messaging-framework.md, "Owner
+ * decisions"): any ISO or CMM statement, any statement of shop size, and a
+ * replacement part quoted from a photo. One hit exits 1.
+ *
  *   node scripts/claims-check.js            summary + any UNSUPPORTED lines
  *   node scripts/claims-check.js --all      every sentence, as a markdown table
  */
@@ -28,9 +33,9 @@ const TRIGGERS = [
 const BASIS = [
   // Published contact details: shared/brand.json (audit A3).
   ["CONTACT (A3)", /224-213-6727|quotes@straightedgemfg\.com|^© \d{4}/],
-  // Statements that the shop does NOT have something (audit B9; brief: no ISO, no CMM).
-  ["NEGATIVE (B9)", /not ISO 9001|no CMM|There is no CMM|needs a CMM|requires the certificate|NSF, 3-A or USDA status for the shop|"FDA approved\."|does not claim|cannot certify/i],
-  // Regulatory definitions, sourced (audit B12, research 2.5).
+  // Regulatory definitions, sourced (audit B12, research 2.5). Includes what a machine shop
+  // cannot certify about food contact. (The old NEGATIVE basis, "not ISO 9001 / no CMM", is
+  // gone with the wording: owner decision 1, 2026-11-11. Those words are now in BANNED below.)
   ["REGULATION (B12)", /\b(FDA|NSF|USDA|3-A|21 CFR)\b|food.contact|food.safe|touches food/i],
   // Hedged rules of thumb and the buyer's own situation; not claims about the shop.
   ["ADVICE", /about 50 pieces|builder quotes weeks/],
@@ -40,12 +45,23 @@ const BASIS = [
   ["PHYSICS (B14/B15)", /five to ten times|ten times|about 2%|2% in length|next morning|two-foot|150 °F|weeks/],
   // Datasheet values on the material pages, each with its source linked on the page.
   ["DATASHEET (cited on page)", /psi|g\/cm³|°F|°C|ASTM|ISO 527|ISO 62|D638|D570|datasheet|retrieved|EU 10\/2011|in 24 h|saturation|PE 1000|nylon 6|Nylon 6|PA12|Type 1|G-10|FR-4|POM|Ultem 1000|Delrin 150|C360|Ensinger|dynamic/],
-  // One-person shop, as given in the brief (audit B4, B5, A30).
-  ["ONE PERSON (brief, B5)", /one.person|One person|one set of hands|fifty people|second source/i],
-  // Conduct promises in the first person that cost nothing to keep (framework section 6).
-  ["CONDUCT PROMISE (framework 6)", /by the date on the quote|that day|before you order|before anything is cut|you hear|I will say|you will be told/i],
+  // Resin names that carry a number, from the owner's SLA list (shop-facts `sla-resins`).
+  ...(facts["sla-resins"] && facts["sla-resins"].confirmed ? [["RESIN NAME (owner, sla-resins)", /Tough 1500|Tough 2000|Rigid 10K/]] : []),
+  // Conduct promises that cost nothing to keep (framework section 6). (The old ONE PERSON
+  // basis is gone with the wording: owner decision 2, 2026-11-11. See BANNED below.)
+  ["CONDUCT PROMISE (framework 6)", /by the date on the quote|that day|before you order|before anything is cut|before work starts|you hear|we say so|we will say|you will be told/i],
   // General design or buying advice, not a claim about the shop.
   ["ADVICE", /50 pieces|Two angles|two or three|Three ways|three|first choice|a question or two|printed fit|3D print|second photo|one more dimension|one picture|one straight cut|one thing|One of the easiest|404|days|within|hours/i],
+];
+
+// Wording the owner ruled out on 2026-11-11. Checked against every sentence on every page and
+// every meta description and JSON-LD block, trigger or not. "ISO 527" and "ISO 62" are test
+// methods in the datasheet tables and are not statements about the shop.
+const BANNED = [
+  ["ISO statement (decision 1)", /\bISO(?![ -]?(527|62|10303)\b)/],
+  ["CMM statement (decision 1)", /\bCMM\b/],
+  ["shop size (decision 2)", /one[- ]person|one person\b|one set of hands|second source|fifty people|shelf of spares|\bour (team|engineers|machinists|experts|staff|quality department)\b/i],
+  ["replacement part quoted from a photo (decision 4)", /send (us |me )?a (photo|picture)|text (us |me )?a photo|photo with a tape measure/i],
 ];
 
 // A sentence that carries the exact wording or number of a fact the owner has
@@ -92,8 +108,15 @@ function files(dir, base = "") {
 if (!fs.existsSync(DIR)) { console.error("Run `npm run build` first."); process.exit(2); }
 
 const seen = new Map();
+const banned = [];
+const ban = (route, s) => { for (const [why, re] of BANNED) if (re.test(s)) banned.push({ route, why, s }); };
 for (const [route, file] of files(DIR).sort()) {
-  for (const s of sentences(text(fs.readFileSync(file, "utf8")))) {
+  const html = fs.readFileSync(file, "utf8");
+  for (const m of html.matchAll(/<meta[^>]+content="([^"]*)"/g)) ban(`${route} (meta)`, m[1]);
+  for (const m of html.matchAll(/<title>([^<]*)<\/title>/g)) ban(`${route} (title)`, m[1]);
+  for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) ban(`${route} (JSON-LD)`, m[1]);
+  for (const s of sentences(text(html))) {
+    ban(route, s);
     const trig = TRIGGERS.filter(([, re]) => re.test(s)).map(([n]) => n);
     if (trig.length === 0) continue;
     const basis = (BASIS.find(([, re]) => re.test(s)) || [ownerConfirmed(s) ? "OWNER CONFIRMED (shop-facts.json)" : "UNSUPPORTED"])[0];
@@ -121,5 +144,12 @@ const bad = rows.filter((r) => r.basis === "UNSUPPORTED");
 if (bad.length) {
   console.log(`\n${bad.length} UNSUPPORTED:`);
   for (const r of bad) console.log(`  [${r.routes.slice(0, 2).join(" ")}] ${r.s}`);
-  process.exit(1);
 }
+const bannedUnique = [...new Map(banned.map((b) => [`${b.why}|${b.s}`, b])).values()];
+if (bannedUnique.length) {
+  console.log(`\n${bannedUnique.length} BANNED (owner decisions, 2026-11-11):`);
+  for (const b of bannedUnique) console.log(`  [${b.route}] ${b.why}: ${b.s.slice(0, 200)}`);
+} else if (!process.argv.includes("--all")) {
+  console.log("Owner decisions 2026-11-11: no ISO, CMM, shop-size or send-a-photo wording on any page, title, meta description or JSON-LD block.");
+}
+if (bad.length || bannedUnique.length) process.exit(1);

@@ -4,6 +4,29 @@ For the copywriter implementing the launch copy. Evidence is in `research.md` (s
 
 ---
 
+## Owner decisions (2026-11-11)
+
+The owner reviewed the live site and took it down over the first two items below. **These override everything further down this document where they conflict.** `node scripts/claims-check.js` fails the build on wording 1, 2 and 4 rule out.
+
+**1. Say what is done. Say nothing about what the shop lacks.**
+No ISO line anywhere, in either direction: not "not certified", not "working toward", not "in progress", not "built to", not "ISO-style", no logo. No line about a CMM or any other equipment that is not in the building. Never claim or imply certification.
+What the Quality page and every quality mention say instead, in his words: **"First-article inspection and a certificate of conformance with every production order. Material traceable to the lot."** (facts `fai-coc`, `lot-traceability`). Other practices (material certs passed through, travelers, corrective action, written procedures, inspection tools) stay behind their own flags until he confirms each one. Do not invent a practice.
+
+**2. No statement of shop size. Direct access is the benefit, said as "engineer-led".**
+Never: "one person", "one-person shop", "one set of hands", "alone", any headcount, or advice to keep a second source because of the shop's size. Equally never the opposite: no "our team", "our engineers", "our machinists", "our experts", no departments. The brand deals square, so the copy does not imply staff that do not exist.
+- Headlines, hero, stats, footer: engineer-led. Approved: **"Your quote and your parts are handled by the engineer who answers the phone."** In the same spirit: "Call and you reach the engineer running your job." (fact `engineer-led`). "The engineer", singular. His name and a stated title stay behind `owner-name` and `engineer-title`.
+- Everywhere else: first person plural ("we", "our", "us"), no statement about size. No first person singular on pages, system emails or documents. "A person quotes it" is fine where the contrast is with the software.
+
+**3. Confirmed facts to keep straight.**
+Turning is not sold as its own operation: "milled and routed". Anodize and powder coat are sent out; bead blasting is done here. Lead times: Standard 7 to 10, Expedited 3 to 5 business days. A person quotes within 24 hours when the instant price does not apply. SLA printing uses Formlabs Grey, White, Clear, Tough 1500, Tough 2000, Rigid 10K, High Temp and ESD resins at 0.1 mm or 0.05 mm layers (fact `sla-resins`); no flexible or dental resin.
+
+**4. Replacement parts are quoted from the physical part, not from a photo.**
+His words: "For the replacement parts page I don't want them to send us a picture of the part. They need to send us the physical part." The door is "No CAD? Send us the part." The flow: a short request (what the part is and does, the machine, material if known, how many, how soon; no upload), then a reference to write on the box and the ship-to address, then we measure the part and send a price. The street address is given only after a request is sent (confirmation screen and email, from `server/config/shipFrom.json`); it never appears on a public page, in the page source or in structured data. Whether the original is returned and who pays shipping (`part-return`), drop-off (`visits-welcome`) and how soon a price follows the part (`part-quote-time`) are his to answer; until then the copy says only "Tell us in the request if you need the original back."
+
+**What this supersedes below.** Section 1: the one-sentence promise and the "What Straightedge is not" list. Section 2: "a clear statement on ISO" and the continuity plan as proof points; "the person who runs the machines" as a CTA label. Section 3: "made by the person who quotes them", pillar 2's "one person" wording, the "Not-ISO statement" in pillar 4. Section 4: rules 11 and 12, the "one person, I" row of the word list, rewrites 9 and 10 and the two that follow. Section 5: headline H3. Section 6: the one-person and ISO objection answers, and the first person singular in the rest (the answers stand in "we"); the no-drawing answer. Section 7: the stat "One person", "ISO status first" and "the one-person question" on Quality, "first person throughout" on About, the replacement-parts H1 and photo steps, the firm-quote "attach a photo" path. Section 8, item 8. Read those passages as history, not as instructions.
+
+---
+
 ## 1. Positioning
 
 **Positioning statement**

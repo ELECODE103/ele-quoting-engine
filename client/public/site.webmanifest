@@ -1,7 +1,7 @@
 {
   "name": "Straightedge",
   "short_name": "Straightedge",
-  "description": "Machined plastics · CNC milling, turning & routing · 3D printing",
+  "description": "Machined plastics · CNC milling & routing · 3D printing",
   "start_url": "/",
   "display": "browser",
   "background_color": "#F4F1EA",

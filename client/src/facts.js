@@ -98,9 +98,23 @@ export function toleranceFor(text) {
   return toleranceRows().find((r) => r.match.some((k) => hay.includes(k))) || null;
 }
 
+/** What each confirmed plastic holds, as a phrase: '±0.005" on acetal, ±0.010" on UHMW and HDPE'. '' when none is confirmed. */
+export const HOLDS = (() => {
+  const by = new Map();
+  for (const r of toleranceRows()) by.set(r.standard, [...(by.get(r.standard) || []), r.material === 'Acetal / Delrin' ? 'acetal' : r.material]);
+  return [...by].map(([tol, mats]) => `${tol} on ${mats.length > 1 ? `${mats.slice(0, -1).join(', ')} and ${mats[mats.length - 1]}` : mats[0]}`).join(', ');
+})();
+
 /** "milled, turned and routed" / "milled and routed" */
 export const MACHINED = when('turning', 'milled, turned and routed', 'milled and routed');
 export const MILLING = when('turning', 'milling and turning', 'milling');
+
+// SLA resins the owner has stated (shop-facts `sla-resins`): the names for chips and lists.
+// Empty until the fact is confirmed, so a page falls back to what the catalog lists.
+export const SLA_RESINS = when('sla-resins', (v) => v.resins.replace(/^Formlabs\s+/, '').split(/,\s*|\s+and\s+/), []);
+
+// What is inspected and documented, in the owner's approved words (2026-11-11). '' until confirmed.
+export const QUALITY_LINE = when(['fai-coc', 'lot-traceability'], (a, b) => `${a} ${b}`);
 
 // Finishes done by an outside finisher (owner, 2026-11-10: anodize and powder coat are sent out;
 // bead blasting is done in the shop). The quote tool says so next to each one.

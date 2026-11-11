@@ -196,15 +196,16 @@ const DRAWING_NOTE = "We review drawings before cutting; we'll contact you befor
 
 // ─── RFQ ───────────────────────────────────────────────────────
 
-function rfqReceivedBuyer({ rfq }) {
+function rfqReceivedBuyer({ rfq, part }) {
+  if (part) return partRequestBuyer({ rfq, part });
   const n = (rfq.parts || []).length;
   return layout({
     subject: `${brand.name}: we have your quote request`,
-    preheader: `A firm quote comes back${shopFacts.when("quote-turnaround", (v) => ` within ${v}`)} from the person who will run the job.`,
+    preheader: `A firm quote comes back${shopFacts.when("quote-turnaround", (v) => ` within ${v}`)} from the engineer who will run the job.`,
     heading: "We have your request",
     paragraphs: [
       greeting(rfq.contactName),
-      `Thanks. We have your request${n ? ` for ${n} part${n === 1 ? "" : "s"}` : ""}. A firm quote comes back${shopFacts.when("quote-turnaround", (v) => ` within ${v},`)} from the person who will run the job.`,
+      `Thanks. We have your request${n ? ` for ${n} part${n === 1 ? "" : "s"}` : ""}. A firm quote comes back${shopFacts.when("quote-turnaround", (v) => ` within ${v},`)} from the engineer who will run the job.`,
       // "before then" only means something when a turnaround is stated.
       `If anything on the print needs a conversation first, you'll hear from us ${shopFacts.ok("quote-turnaround") ? "before then" : "about that first"}.`,
     ],
@@ -213,14 +214,43 @@ function rfqReceivedBuyer({ rfq }) {
   });
 }
 
-function rfqReceivedShop({ rfq, adminUrl }) {
+/**
+ * To the buyer of a replacement part with no drawing: the part is quoted from
+ * the part itself, so this email carries the reference to write on the box and
+ * the address to ship it to. `part` = { reference, shipTo: { name, lines } }.
+ * Whether the original goes back, and how soon a price follows, are said only
+ * once the owner has answered (shop-facts `part-return`, `part-quote-time`).
+ */
+function partRequestBuyer({ rfq, part }) {
+  const address = [part.shipTo.name, ...part.shipTo.lines].join(", ");
+  return layout({
+    subject: `${brand.name}: send us the part (reference ${part.reference})`,
+    preheader: `Write ${part.reference} on the box. The ship-to address is inside.`,
+    heading: "Now send us the part",
+    paragraphs: [
+      greeting(rfq.contactName),
+      "Thanks. We have your request. The next step is yours: write the reference below on the box and ship the worn part to the address below.",
+      `We measure the part and send you a price.${shopFacts.when("part-quote-time", (v) => ` ${v}`)} Nothing is ordered and nothing is charged until you say so.`,
+    ],
+    facts: [["Reference (write it on the box)", part.reference], ["Ship the part to", address]],
+    after: [
+      shopFacts.when("part-return", (v) => v, "Need the original part back? Reply to this email and say so."),
+      `Questions, or a line that cannot run without the part? Call ${brand.phone}.`,
+    ],
+  });
+}
+
+function rfqReceivedShop({ rfq, adminUrl, part }) {
   const parts = rfq.parts || [];
   return layout({
-    subject: `RFQ: ${rfq.contactName}${rfq.company ? " / " + rfq.company : ""} — ${parts.length || "?"} part(s)`,
+    subject: part
+      ? `RFQ: ${rfq.contactName}${rfq.company ? " / " + rfq.company : ""} — part being shipped in (${part.reference})`
+      : `RFQ: ${rfq.contactName}${rfq.company ? " / " + rfq.company : ""} — ${parts.length || "?"} part(s)`,
     preheader: `New RFQ from ${rfq.contactName}`,
     heading: `New RFQ from ${rfq.contactName}`,
     paragraphs: [
       `${rfq.contactName} <${rfq.email}>${rfq.company ? " — " + rfq.company : ""}${rfq.phone ? " — " + rfq.phone : ""}`,
+      ...(part ? [`No drawing. The customer was told to write ${part.reference} on the box and ship the part to the shop. Measure it, then quote it from the RFQ queue.`] : []),
       ...(rfq.reasons || []).length ? [`Why it's an RFQ: ${rfq.reasons.map((r) => r.message).join("; ")}`] : [],
       ...(rfq.notes ? [`Notes: ${rfq.notes}`] : []),
     ],
@@ -230,7 +260,7 @@ function rfqReceivedShop({ rfq, adminUrl }) {
       ["Finish notes", rfq.finishNotes],
       ["Need by", rfq.dueDate],
       ["Drawing", rfq.drawingFileName || "none"],
-      ["Budgetary total shown", money(rfq.budgetTotal)],
+      ["Budgetary total shown", part ? "" : money(rfq.budgetTotal)],
       ["Reference", shortId(rfq.id)],
     ],
     items: parts.map((p) => ({
@@ -382,6 +412,6 @@ function orderShipped({ order, items, orderUrl }) {
 
 module.exports = {
   layout, trackingUrl, shortId, money, DRAWING_NOTE,
-  rfqReceivedBuyer, rfqReceivedShop, rfqQuoted, rfqAcceptedShop,
+  rfqReceivedBuyer, partRequestBuyer, rfqReceivedShop, rfqQuoted, rfqAcceptedShop,
   orderConfirmation, newOrderShop, orderShipped,
 };
