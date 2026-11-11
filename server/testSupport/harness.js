@@ -21,6 +21,10 @@
  *   start({ mailer: "configured" })   EMAIL_* set (sends are still captured), so
  *                                     email confirmation is enforced
  *   h.turnstile → { calls: [...], mode: "pass" | "fail" | "down" }
+ *   h.admin()                         the owner's account as the owner sets it up: registered, email
+ *                                     confirmed, two-step sign-in switched on (it is required for the
+ *                                     admin role). Returns a session token with the admin role.
+ *   h.adminLogin()                    sign in to that account again: password and a current code
  *   h.ip = "203.0.113.7"              pin the caller's address (default: a new one per call)
  *   h.limits = true                   keep the form limits counting across h.form("/api/rfq") calls
  */
@@ -28,6 +32,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
+const totp = require("../security/totp");
 
 // A password that passes the rules in server/security/passwords.js. Made per run; not a real credential.
 const PASSWORD = `Tt9-${crypto.randomBytes(9).toString("base64url")}`;
@@ -43,6 +48,8 @@ async function start(opts = {}) {
   delete process.env.STRIPE_WEBHOOK_SECRET;
   delete process.env.ADMIN_RECOVERY;
   process.env.NODE_ENV = "test";
+  // The explicit test switch (security/testHooks.js): the suites post Stripe webhooks without a signature.
+  process.env.SE_TEST_HOOKS = "1";
   if (opts.mailer === "configured") {
     // Nothing is sent: mailer.send is replaced below. This only makes mailer.configured() true.
     process.env.EMAIL_API_KEY = "test-not-a-key";
@@ -192,6 +199,41 @@ async function start(opts = {}) {
       const r = await raw("POST", "/api/auth/login", { json: { email, password, ...extra } });
       if (r.status !== 200) throw new Error(`login failed: ${r.text}`);
       return r.body.token;
+    },
+    /**
+     * The owner's account, set up the way the owner does it: register the
+     * ADMIN_EMAIL address, confirm the emailed link (that is what gives the
+     * admin role), then switch two-step sign-in on — without it every admin
+     * route answers 403. Returns the session token issued at enrolment.
+     * `{ enrol: false }` stops before the second step.
+     */
+    async admin(name = "Owner", { password = PASSWORD, enrol = true } = {}) {
+      const email = process.env.ADMIN_EMAIL;
+      let token = await h.register(email, name, { password });
+      if (!enrol) return token;
+      // The role came with the confirmation; this session predates it but the role is read from the database.
+      const setup = await raw("POST", "/api/auth/2fa/setup", { json: { password }, token });
+      if (setup.status !== 200) throw new Error(`2fa setup failed: ${setup.text}`);
+      h.adminSecret = setup.body.setupKey.replace(/\s/g, "");
+      const enabled = await raw("POST", "/api/auth/2fa/enable", { json: { code: totp.codeAt(h.adminSecret) }, token });
+      if (enabled.status !== 200) throw new Error(`2fa enable failed: ${enabled.text}`);
+      h.adminPassword = password;
+      // The "two-step sign-in is on" notice is the owner's own doing: not part of what a suite counts.
+      for (let i = sent.length - 1; i >= 0; i--) if (sent[i].to === email && /two-step sign-in/i.test(sent[i].subject)) sent.splice(i, 1);
+      return enabled.body.token;
+    },
+    /**
+     * Sign in to the owner's account again: password, then the authenticator's
+     * current code. A code is accepted once per 30-second step, and suites sign
+     * in many times a second, so the stored "last step used" is cleared first —
+     * the same as the owner waiting for the next code.
+     */
+    async adminLogin() {
+      const email = process.env.ADMIN_EMAIL;
+      const row = h.models.usersDB.getAll().find((u) => u.email === email);
+      if (!row || !h.adminSecret) throw new Error("adminLogin: call h.admin() first");
+      h.models.usersDB.update(row.id, { totpLastStep: null });
+      return h.login(email, h.adminPassword, { totp: totp.codeAt(h.adminSecret) });
     },
     /** Upload the 20 mm cube and return its partId. */
     async uploadCube() {

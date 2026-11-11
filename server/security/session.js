@@ -77,6 +77,8 @@ function publicUser(user) {
     role: user.role || "customer",
     emailVerified: isEmailVerified(user),
     twoFactorEnabled: hasTwoFactor(user),
+    // An admin must switch two-step sign-in on before any admin page opens.
+    twoFactorRequired: adminEnrolmentRequired(user),
     createdAt: user.createdAt,
   };
 }
@@ -158,12 +160,26 @@ function csrfOk(req, session) {
   return typeof sent === "string" && keys.safeEqual(sent, csrfTokenFor(session.claims.jti));
 }
 
+/** Text and code of the refusal an admin gets on every admin route until two-step sign-in is switched on. */
+const ENROLMENT_REQUIRED = { error: "Set up two-step sign-in before using the admin pages.", code: "two-factor-enrolment-required" };
+
+/** An admin account that has not switched two-step sign-in on yet. */
+function adminEnrolmentRequired(user) {
+  return Boolean(user && user.role === "admin" && !hasTwoFactor(user));
+}
+
 function attach(req, session) {
   const { user, claims } = session;
+  // Two-step sign-in is required for the admin role (owner decision, 2026-11-11).
+  // Until it is switched on, an admin account's session carries the customer
+  // role: every check of `req.user.role === "admin"`, in any route, fails closed.
+  // Only the enrolment endpoints (requireAdminAccount) know the account by its stored role.
+  const pending = adminEnrolmentRequired(user);
   req.user = {
     userId: user.id,
     email: user.email,
-    role: user.role || "customer",
+    role: pending ? "customer" : (user.role || "customer"),
+    adminEnrolmentRequired: pending,
     emailVerified: isEmailVerified(user),
     twoFactorEnabled: hasTwoFactor(user),
     sessionId: claims.jti,
@@ -193,9 +209,25 @@ function optionalAuth(req, res, next) {
   next();
 }
 
-/** After `authenticate`. The role comes from the database row loaded for this request. */
+/**
+ * After `authenticate`. The role comes from the database row loaded for this
+ * request, and counts only once two-step sign-in is on: an admin who has not
+ * enrolled gets 403 with a code the page turns into the enrolment screen.
+ */
 function requireAdmin(req, res, next) {
+  if (req.user && req.user.adminEnrolmentRequired) return res.status(403).json(ENROLMENT_REQUIRED);
   if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  next();
+}
+
+/**
+ * After `authenticate`. For the two-step enrolment endpoints only: the account
+ * is an admin by its stored role, enrolled or not. Nothing else may use this.
+ */
+function requireAdminAccount(req, res, next) {
+  if (!req.account || req.account.role !== "admin") {
     return res.status(403).json({ error: "Admin access required" });
   }
   next();
@@ -225,7 +257,7 @@ function bumpTokenVersion(user, extra = {}) {
 }
 
 module.exports = {
-  authenticate, optionalAuth, requireAdmin,
+  authenticate, optionalAuth, requireAdmin, requireAdminAccount, adminEnrolmentRequired, ENROLMENT_REQUIRED,
   issue, resolve, revoke, sweepRevoked, bumpTokenVersion, clearCookie, credential,
   publicUser, isEmailVerified, hasTwoFactor, csrfTokenFor, cookieName,
   adminSessionHours, CUSTOMER_SESSION_HOURS,

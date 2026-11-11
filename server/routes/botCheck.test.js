@@ -431,7 +431,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // ═══ What the owner sees ══════════════════════════════════════
   test("the admin queue shows how each sender was checked", async () => {
-    const owner = await h.register("owner@shop.test", "Owner");
+    const owner = await h.admin("Owner");
     const list = await h.get("/api/rfq/admin/list", owner);
     assert.strictEqual(list.status, 200);
     const checks = new Set(list.body.map((r) => r.senderCheck));

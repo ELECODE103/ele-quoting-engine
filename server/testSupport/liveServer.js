@@ -11,6 +11,18 @@
  *   s.log()      → everything the server printed so far
  *   await s.stop();
  *
+ * The account and bot gates are all in force, so the helpers act the way a
+ * person using the site does:
+ *   s.register(email)        a form token a few seconds old, then the emailed
+ *                            confirmation link is opened (read from the outbox)
+ *   s.admin()                the same for ADMIN_EMAIL, then two-step sign-in is
+ *                            switched on (required for the admin role)
+ *   s.rfq(fields, files)     the request form, with its form token
+ *   s.formToken("rfq")       a form token as if the form had been open ten seconds
+ *   s.mail(to, /subject/)    messages the server wrote to its outbox
+ * Turnstile has no keys here (the bot check is "off", as in production before
+ * the owner sets them) unless a test passes its own.
+ *
  * Secrets: JWT_SECRET and the Stripe key are random throwaway strings made
  * here at run time; nothing real is ever used and nothing is written down.
  */
@@ -23,6 +35,7 @@ const os = require("os");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..", "..");
+const totp = require("../security/totp");
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -97,9 +110,13 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
     STRIPE_SECRET_KEY: `sk_test_${crypto.randomBytes(16).toString("hex")}`,
     ADMIN_EMAIL: adminEmail,
     FRONTEND_URL: `http://127.0.0.1:${port}`,
+    // Every message the server would send is also written here, so a test can open an emailed link.
+    // In production mode the mailer only honours it together with the test switch.
+    EMAIL_OUTBOX_DIR: path.join(tmp, "outbox"),
+    SE_TEST_HOOKS: "1",
     ...env,
   };
-  for (const k of ["EMAIL_API_KEY", "EMAIL_FROM", "STRIPE_WEBHOOK_SECRET", "HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"]) if (!(k in env)) delete childEnv[k];
+  for (const k of ["EMAIL_API_KEY", "EMAIL_FROM", "STRIPE_WEBHOOK_SECRET", "HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY", "ADMIN_RECOVERY", "STRIPE_WEBHOOK_ALLOW_UNSIGNED"]) if (!(k in env)) delete childEnv[k];
   if (!("NORD_FILE_ENC_KEY" in env)) delete childEnv.NORD_FILE_ENC_KEY;
   if (!("NORD_FILE_ENC_KEY_PREVIOUS" in env)) delete childEnv.NORD_FILE_ENC_KEY_PREVIOUS;
 
@@ -149,12 +166,85 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
       const m = multipart(o.fields || {}, files);
       return s.req({ ...o, url: o.url || "/api/upload", method: "POST", body: m.body, headers: { ...m.headers, ...(o.headers || {}) } });
     },
+    /**
+     * A form token for `form` ("register", "rfq", "password-reset") issued `agoMs` ago, as if a
+     * person had had the form open that long. Signed here with the server's own throwaway secret
+     * (this process made it); the server checks it exactly as it checks one it issued itself.
+     */
+    formToken(form, agoMs = 10000) {
+      const prev = process.env.JWT_SECRET;
+      process.env.JWT_SECRET = childEnv.JWT_SECRET;
+      try { return require("../security/botGuard").issueFormToken(form, { now: Date.now() - agoMs }); }
+      finally { if (prev === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = prev; }
+    },
+    /** Messages in the server's outbox, oldest first, optionally for one recipient and a subject pattern. */
+    mail(to, re) {
+      const dir = childEnv.EMAIL_OUTBOX_DIR;
+      let names = [];
+      try { names = fs.readdirSync(dir).sort(); } catch { /* nothing sent yet */ }
+      return names.map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")))
+        .filter((m) => (!to || (Array.isArray(m.to) ? m.to.includes(to) : m.to === to)) && (!re || re.test(m.subject)));
+    },
+    /**
+     * Create an account the way a person does: the form open a few seconds, then the emailed
+     * confirmation link opened. Returns the session token. `{ verify: false }` leaves the address unconfirmed.
+     */
     async register(email, o = {}) {
-      const r = await s.post("/api/auth/register", { email, password: `Aa1${crypto.randomBytes(9).toString("hex")}`, name: "Test Buyer" }, o);
+      const password = o.password || `Aa1-${crypto.randomBytes(9).toString("base64url")}`;
+      const r = await s.post("/api/auth/register", { email, password, name: "Test Buyer" }, { ...o, headers: { "X-Form-Token": s.formToken("register"), ...(o.headers || {}) } });
       if (r.status !== 201) throw new Error(`register failed (${r.status}): ${r.text}`);
+      s.passwords[email] = password;
+      if (o.verify !== false) await s.confirmEmail(email, o);
       return r.body.token;
     },
-    admin: (o = {}) => s.register(adminEmail, o),
+    passwords: {},
+    async confirmEmail(email, o = {}) {
+      let mail;
+      for (let i = 0; i < 40 && !mail; i++) { mail = s.mail(email, /confirm your email/i).pop(); if (!mail) await new Promise((r) => setTimeout(r, 50)); }
+      if (!mail) throw new Error(`no confirmation email in the outbox for ${email}`);
+      const token = (mail.text.match(/#token=(\S+)/) || [])[1];
+      const v = await s.post("/api/auth/verify-email", { token }, { ip: o.ip });
+      if (v.status !== 200) throw new Error(`verify failed (${v.status}): ${v.text}`);
+      return v.body;
+    },
+    /**
+     * The owner's account as the owner sets it up: register ADMIN_EMAIL, confirm the emailed link
+     * (that gives the admin role), switch two-step sign-in on (without it every admin route is 403).
+     * Returns the session token issued at enrolment; `{ enrol: false }` stops before the second step.
+     */
+    async admin(o = {}) {
+      const token = await s.register(adminEmail, o);
+      if (o.enrol === false) return token;
+      return s.enrol(token, o);
+    },
+    /** Switch two-step sign-in on for the owner's account, as the enrolment screen does. Returns the new session token. */
+    async enrol(token, o = {}) {
+      const setup = await s.post("/api/auth/2fa/setup", { password: s.passwords[adminEmail] }, { ip: o.ip, token });
+      if (setup.status !== 200) throw new Error(`2fa setup failed (${setup.status}): ${setup.text}`);
+      s.adminSecret = setup.body.setupKey.replace(/\s/g, "");
+      const enabled = await s.post("/api/auth/2fa/enable", { code: totp.codeAt(s.adminSecret) }, { ip: o.ip, token });
+      if (enabled.status !== 200) throw new Error(`2fa enable failed (${enabled.status}): ${enabled.text}`);
+      return enabled.body.token;
+    },
+    /**
+     * Headers that carry a session the way the browser does: the httpOnly cookie, plus the CSRF
+     * token the page gets from /api/auth/session (`{ csrf: false }` leaves it off, as another site would have to).
+     */
+    async browser(token, { csrf = true } = {}) {
+      const cookie = `${production ? "__Host-" : ""}se_session=${token}`;
+      if (!csrf) return { Cookie: cookie };
+      if (!s.csrfTokens[token]) {
+        const r = await s.req({ url: "/api/auth/session", headers: { Cookie: cookie } });
+        if (!r.body || !r.body.authenticated) throw new Error(`no session for that cookie: ${r.text}`);
+        s.csrfTokens[token] = r.body.csrfToken;
+      }
+      return { Cookie: cookie, "X-CSRF-Token": s.csrfTokens[token] };
+    },
+    csrfTokens: {},
+    /** The request form as a person sends it (multipart, with its form token). files: [{ name, data, field }] */
+    rfq(fields = {}, files = [], o = {}) {
+      return s.upload(files.map((f) => ({ field: "drawing", ...f })), { ...o, url: "/api/rfq", fields, headers: { "X-Form-Token": s.formToken("rfq"), ...(o.headers || {}) } });
+    },
     async stop({ keep = false } = {}) {
       if (!exited) {
         child.kill("SIGTERM");

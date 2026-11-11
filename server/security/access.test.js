@@ -15,7 +15,7 @@ const live = require("../testSupport/liveServer");
 const { test, run } = runner("Access, errors and logs (live server)");
 const cube = fs.readFileSync(path.join(live.ROOT, "tools", "vet-quotes", "parts", "cube_20mm.stl"));
 const pdf = Buffer.from("%PDF-1.4\n%%EOF\n");
-let s, admin, alice, bob;
+let s, admin, pendingAdmin, alice, bob;
 const st = {};
 let ipN = 0;
 const ip = () => `198.51.100.${(++ipN % 250) + 1}`; // spread across addresses: this suite is about access, not rate limits
@@ -23,7 +23,8 @@ const INTERNALS = /node_modules|\/server\/|\.js:\d+|\bat [A-Za-z_.<>]+ \(|ENOENT
 
 test("setup: an admin, two buyers, a quote each, a drawing and a request", async () => {
   s = await live.start({ env: { RATE_PDF_PER_15MIN: "1000" } });
-  admin = await s.admin({ ip: ip() });
+  // The owner's account, registered and confirmed but not yet enrolled in two-step sign-in.
+  pendingAdmin = await s.admin({ ip: ip(), enrol: false });
   alice = await s.register("alice@example.com", { ip: ip() });
   bob = await s.register("bob@example.com", { ip: ip() });
   const up = await s.upload([{ name: "cube.stl", data: cube }], { ip: ip() });
@@ -35,14 +36,15 @@ test("setup: an admin, two buyers, a quote each, a drawing and a request", async
   st.aliceQuote = qa.body.quoteId;
   const d = await s.upload([{ field: "drawing", name: "print.pdf", data: pdf }], { url: `/api/quote/${st.aliceQuote}/drawing`, ip: ip(), token: alice });
   assert.strictEqual(d.status, 200, d.text);
-  const rfq = await s.upload([{ field: "drawing", name: "print.pdf", data: pdf }], { url: "/api/rfq", ip: ip(), token: alice, fields: { contactName: "Alice", email: "alice@example.com", quoteId: st.aliceQuote } });
+  const rfq = await s.rfq({ contactName: "Alice", email: "alice@example.com", quoteId: st.aliceQuote }, [{ name: "print.pdf", data: pdf }], { ip: ip(), token: alice });
   assert.strictEqual(rfq.status, 201, rfq.text);
   st.aliceRfq = rfq.body.rfqId;
 });
 
-test("every admin route: 401 without a token, 403 with a buyer's, never a body", async () => {
-  const id = "00000000-0000-4000-8000-000000000000";
-  const routes = [
+const ID = "00000000-0000-4000-8000-000000000000";
+const adminRoutes = () => {
+  const id = ID;
+  return [
     ["GET", "/api/admin/materials"], ["POST", "/api/admin/materials"], ["PUT", `/api/admin/materials/${id}`], ["DELETE", `/api/admin/materials/${id}`], ["POST", `/api/admin/materials/${id}/duplicate`],
     ["GET", "/api/admin/finishes"], ["POST", "/api/admin/finishes"], ["PUT", `/api/admin/finishes/${id}`],
     ["GET", "/api/admin/lead-times"], ["PUT", `/api/admin/lead-times/${id}`],
@@ -55,16 +57,67 @@ test("every admin route: 401 without a token, 403 with a buyer's, never a body",
     ["POST", "/api/orders"], ["PUT", `/api/orders/${id}/status`], ["GET", "/api/orders/admin/queue"],
     ["GET", "/api/rfq/admin/list"], ["PUT", `/api/rfq/admin/${st.aliceRfq}`], ["GET", `/api/rfq/admin/${st.aliceRfq}/drawing`],
   ];
-  for (const [method, url] of routes) {
-    const anon = await s.req({ method, url, ip: ip(), json: method === "GET" || method === "DELETE" ? undefined : {} });
+};
+const bodyFor = (method) => (method === "GET" || method === "DELETE" ? undefined : {});
+
+test("an admin who has not switched two-step sign-in on reaches the enrolment endpoints and nothing else", async () => {
+  const before = (await s.get("/api/auth/session", { ip: ip(), token: pendingAdmin })).body;
+  assert.deepStrictEqual([before.authenticated, before.user.role, before.user.twoFactorEnabled, before.user.twoFactorRequired], [true, "admin", false, true]);
+  for (const [method, url] of adminRoutes()) {
+    const r = await s.req({ method, url, ip: ip(), token: pendingAdmin, json: bodyFor(method) });
+    assert.strictEqual(r.status, 403, `${method} ${url} as an admin without two-step sign-in → ${r.status}`);
+    assert.strictEqual(r.body && r.body.code, "two-factor-enrolment-required", `${method} ${url}: ${r.text.slice(0, 120)}`);
+    assert.deepStrictEqual(Object.keys(r.body).sort(), ["code", "error"]);
+    assert.ok(!r.buffer.includes(Buffer.from("SQLite format 3")) && !r.buffer.includes(Buffer.from("%PDF")));
+  }
+  // The admin role does nothing for it elsewhere either: another customer's quote and request stay hidden.
+  assert.strictEqual((await s.get(`/api/quote/${st.aliceQuote}`, { ip: ip(), token: pendingAdmin })).status, 404);
+  assert.strictEqual((await s.get(`/api/rfq/${st.aliceRfq}`, { ip: ip(), token: pendingAdmin })).status, 404);
+  // What it can reach: the status of the second step, its setup, and sign-out.
+  assert.strictEqual((await s.get("/api/auth/2fa", { ip: ip(), token: pendingAdmin })).status, 200);
+  assert.strictEqual((await s.get("/api/auth/2fa", { ip: ip(), token: alice })).status, 403, "a buyer has no enrolment screen");
+  const throwaway = (await s.post("/api/auth/login", { email: s.adminEmail, password: s.passwords[s.adminEmail] }, { ip: ip() })).body.token;
+  assert.strictEqual((await s.post("/api/auth/logout", {}, { ip: ip(), token: throwaway })).status, 200);
+  assert.strictEqual((await s.get("/api/auth/profile", { ip: ip(), token: throwaway })).status, 401, "sign-out ended that session");
+  // Enrolling opens the admin routes, on the session issued at enrolment.
+  admin = await s.enrol(pendingAdmin, { ip: ip() });
+  assert.strictEqual((await s.get("/api/admin/stats", { ip: ip(), token: admin })).status, 200);
+  assert.strictEqual((await s.get("/api/admin/stats", { ip: ip(), token: pendingAdmin })).status, 401, "the session from before enrolment is over");
+});
+
+test("every admin route: 401 without a session, 403 with a buyer's (bearer token or browser cookie), never a body", async () => {
+  const aliceBrowser = await s.browser(alice);
+  const aliceNoCsrf = await s.browser(alice, { csrf: false });
+  for (const [method, url] of adminRoutes()) {
+    const anon = await s.req({ method, url, ip: ip(), json: bodyFor(method) });
     assert.strictEqual(anon.status, 401, `${method} ${url} without a token → ${anon.status}`);
-    const buyer = await s.req({ method, url, ip: ip(), token: alice, json: method === "GET" || method === "DELETE" ? undefined : {} });
+    const buyer = await s.req({ method, url, ip: ip(), token: alice, json: bodyFor(method) });
     assert.strictEqual(buyer.status, 403, `${method} ${url} as a buyer → ${buyer.status}`);
-    for (const r of [anon, buyer]) {
+    // The same buyer the way the site's own pages send it: session cookie + CSRF token.
+    const cookie = await s.req({ method, url, ip: ip(), headers: aliceBrowser, json: bodyFor(method) });
+    assert.strictEqual(cookie.status, 403, `${method} ${url} as a buyer (cookie session) → ${cookie.status}`);
+    // The refusal is a sentence and, for a missing session, the code the page reads to show sign-in. Nothing else.
+    assert.deepStrictEqual(anon.body, { error: "Authentication required", code: "auth-required" }, `${method} ${url}: ${anon.text.slice(0, 120)}`);
+    for (const r of [buyer, cookie]) {
       assert.ok(r.text.length < 200 && r.body && Object.keys(r.body).join() === "error", `${method} ${url} answered with more than an error: ${r.text.slice(0, 120)}`);
+    }
+    for (const r of [anon, buyer, cookie]) {
       assert.ok(!r.buffer.includes(Buffer.from("SQLite format 3")) && !r.buffer.includes(Buffer.from("%PDF")));
     }
+    // A cookie alone (what another site could make the browser send) is refused before the role is even looked at.
+    if (method !== "GET") {
+      const forged = await s.req({ method, url, ip: ip(), headers: aliceNoCsrf, json: bodyFor(method) });
+      assert.strictEqual(forged.status, 403, `${method} ${url} with a cookie and no CSRF token → ${forged.status}`);
+      assert.strictEqual(forged.body.code, "csrf");
+    }
   }
+  // The admin's own cookie without the CSRF token changes nothing either.
+  const adminNoCsrf = await s.browser(admin, { csrf: false });
+  const before = (await s.get("/api/admin/pricing", { ip: ip(), token: admin })).text;
+  const put = await s.req({ method: "PUT", url: "/api/admin/pricing", ip: ip(), headers: adminNoCsrf, json: { rules: { cncMachineRatePerHour: 1 }, note: "forged" } });
+  assert.deepStrictEqual([put.status, put.body.code], [403, "csrf"]);
+  assert.strictEqual((await s.get("/api/admin/pricing", { ip: ip(), token: admin })).text, before, "pricing is unchanged");
+  assert.strictEqual((await s.req({ url: "/api/admin/stats", ip: ip(), headers: await s.browser(admin) })).status, 200, "the admin's cookie session works for the admin");
 });
 
 test("forged, altered and expired tokens are refused", async () => {
@@ -200,6 +253,12 @@ test("logs hold no password, login token, signed link or request body", async ()
   for (const token of [admin, alice, bob]) assert.ok(!log.includes(token) && !log.includes(token.split(".")[2]), "no login token in the log");
   assert.ok(!/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/.test(log), "nothing shaped like a JWT in the log");
   assert.ok(!/Bearer\s+\S{20,}|password["']?\s*[:=]\s*["']?\S{4,}/i.test(log));
+  // Email is not configured on this server: each message is logged as its template and a count, never
+  // the customer's address, the subject or the body (cross-branch finding M1).
+  assert.ok(/\[mailer\] \(not configured, not sent\) template verifyEmail, 1 recipient/.test(log), "the unsent confirmation is logged by template name");
+  assert.ok(/template rfqReceivedShop, 1 recipient/.test(log));
+  for (const address of ["alice@example.com", "bob@example.com"]) assert.ok(!log.includes(address), `a customer's address (${address}) is in the log`);
+  assert.ok(!/To:\s*\S+@|#token=|Confirm your email|reference [0-9A-F]{8}/i.test(log), "no recipient line, link, subject or reference from a message in the log");
   const { redactUrl } = require("./redact");
   assert.strictEqual(redactUrl(`/firm-quote/${linkToken}?paid=true`), "/firm-quote/[token]");
   assert.strictEqual(redactUrl("/api/orders/123?token=abc"), "/api/orders/123");

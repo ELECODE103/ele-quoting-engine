@@ -544,12 +544,9 @@ router.get("/:id/drawing", authenticate, (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 // GET /api/orders/:id/traveler — Generate job traveler data
 // ═══════════════════════════════════════════════════════════════
-router.get("/:id/traveler", authenticate, (req, res) => {
+// Admin only, checked before the lookup so the answer does not say whether an order id exists.
+router.get("/:id/traveler", authenticate, requireAdmin, (req, res) => {
   try {
-    // Admin only, checked before the lookup so the answer does not say whether an order id exists.
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
     const order = ordersDB.getById(req.params.id);
     if (!order) return res.status(404).json({ error: "Order not found" });
 

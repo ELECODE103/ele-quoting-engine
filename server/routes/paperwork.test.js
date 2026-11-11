@@ -65,7 +65,7 @@ const LABEL = "First-article inspection report and certificate of conformance";
 
   // ─── Through the routes ────────────────────────────────────
   test("option off (the default): no fee, no flag, and the offer says what ticking the box would cost", async () => {
-    owner = await h.register("owner@shop.test", "Owner");
+    owner = await h.admin("Owner");
     buyer = await h.register("dana@buyer.test", "Dana Buyer");
     partA = await h.uploadCube();
     const r = await h.post("/api/quote", { parts: [h.cncConfig(partA, 10)], leadTimeSlug: "standard" });

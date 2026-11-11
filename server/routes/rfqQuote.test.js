@@ -36,7 +36,7 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
   }
 
   test("setup: owner account, a part, an RFQ from a gated quote (shop + buyer emails)", async () => {
-    owner = await h.register("owner@shop.test", "Owner");
+    owner = await h.admin("Owner");
     partId = await h.uploadCube();
     h.sent.length = 0;
     const id = await newRfq();
@@ -313,8 +313,13 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
   });
 
   test("a phone photo (HEIC) is accepted; an attachment we don't take is refused in words, not a 500", async () => {
-    const ok = await h.form("/api/rfq", { contactName: "Sam Maint", email: "sam@plant.test" }, { drawing: { name: "IMG_0042.HEIC", data: Buffer.from("fake heic bytes") } });
+    // The start of a real iPhone photo: an ISO media "ftyp" box with the "heic" brand (the contents are checked, not just the name).
+    const heic = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypheic"), Buffer.alloc(48)]);
+    const ok = await h.form("/api/rfq", { contactName: "Sam Maint", email: "sam@plant.test" }, { drawing: { name: "IMG_0042.HEIC", data: heic } });
     assert.strictEqual(ok.status, 201, ok.text);
+    // A file that only has the name of a photo is refused, in words, and not kept.
+    const fake = await h.form("/api/rfq", { contactName: "Sam Maint", email: "sam@plant.test", notes: "not a photo" }, { drawing: { name: "IMG_0043.HEIC", data: Buffer.from("fake heic bytes") } });
+    assert.deepStrictEqual([fake.status, fake.body.code], [400, "content-mismatch"]);
     const bad = await h.form("/api/rfq", { contactName: "Sam Maint", email: "sam@plant.test" }, { drawing: { name: "setup.exe", data: Buffer.from("MZ") } });
     assert.strictEqual(bad.status, 400);
     assert.ok(/isn't accepted/.test(bad.body.error));

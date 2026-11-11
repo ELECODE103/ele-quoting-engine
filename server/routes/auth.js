@@ -41,7 +41,7 @@ const templates = require("../emails/templates");
 const brand = require("../../shared/brand.json");
 
 const router = express.Router();
-const { authenticate, optionalAuth, requireAdmin } = session;
+const { authenticate, optionalAuth, requireAdmin, requireAdminAccount } = session;
 
 // --- JWT Secret: REQUIRE in production, warn in dev ---
 if (!process.env.JWT_SECRET) {
@@ -102,8 +102,13 @@ function jsonOnly(req, res, next) {
 }
 router.use(jsonOnly);
 
+/**
+ * Lower case, and spaces around it dropped (a pasted address often has one).
+ * Only plain spaces and tabs: anything else at the ends (a line break, a NUL, a
+ * zero-width character) stays, so validation sees it and refuses the address.
+ */
 function normalizeEmail(email) {
-  return String(email || "").toLowerCase().trim();
+  return String(email || "").toLowerCase().replace(/^[ \t]+|[ \t]+$/g, "");
 }
 
 function findByEmail(email) {
@@ -151,7 +156,7 @@ function sendVerification(user, req) {
  * confirmed, so registering that address first on a new database gains nothing.
  */
 function promoteIfOwner(user) {
-  const adminEmail = normalizeEmail(process.env.ADMIN_EMAIL);
+  const adminEmail = String(process.env.ADMIN_EMAIL || "").toLowerCase().trim(); // our own setting: trimmed in full, as in security/adminAccount.js
   if (adminEmail && user.email === adminEmail && session.isEmailVerified(user) && user.role !== "admin") {
     console.log("  Promoted the ADMIN_EMAIL account to the admin role (email confirmed).");
     return usersDB.update(user.id, { role: "admin" });
@@ -234,6 +239,11 @@ router.post("/login", async (req, res) => {
     const { email, password } = req.body || {};
     if (!email || !password || typeof email !== "string" || typeof password !== "string") {
       return res.status(400).json({ error: "Email and password are required" });
+    }
+    // An address that could not be an account's (a control character in it, no "@") is refused as
+    // malformed before any counter or lookup sees it. That says nothing about which addresses have accounts.
+    if (!isValidEmail(normalizeEmail(email))) {
+      return res.status(400).json({ error: "Please enter a valid email address" });
     }
     const ip = clientIp(req);
     const emailKey = normalizeEmail(email).slice(0, 254);
@@ -520,6 +530,10 @@ router.put("/profile", authenticate, (req, res) => {
 });
 
 // ─── Two-step sign-in (admin) ──────────────────────────────────
+// Required for the admin role. These endpoints (with sign-out and the session
+// check) are all an admin account can reach until it is switched on: every
+// other admin route answers 403 `two-factor-enrolment-required` (session.js).
+// They use requireAdminAccount, which goes by the stored role, enrolled or not.
 
 function recoveryHash(userId, code) {
   return keys.mac("recovery-code-v1", `${userId}:${totp.normalizeRecoveryCode(code)}`);
@@ -560,7 +574,7 @@ function secondFactorOk(user, { code, recoveryCode }) {
 }
 
 // GET /api/auth/2fa — status only; the secret is never returned after setup.
-router.get("/2fa", authenticate, requireAdmin, (req, res) => {
+router.get("/2fa", authenticate, requireAdminAccount, (req, res) => {
   const u = req.account;
   res.set("Cache-Control", "no-store");
   res.json({
@@ -576,7 +590,7 @@ router.get("/2fa", authenticate, requireAdmin, (req, res) => {
 // code computed here (no outside service). Nothing is switched on until a code
 // from the app is confirmed. Asking again makes a new secret; the old pending
 // one is thrown away, never shown again.
-router.post("/2fa/setup", twoFactorLimiter, authenticate, requireAdmin, async (req, res) => {
+router.post("/2fa/setup", twoFactorLimiter, authenticate, requireAdminAccount, async (req, res) => {
   try {
     const u = req.account;
     if (session.hasTwoFactor(u)) return res.status(409).json({ error: "Two-step sign-in is already on. Switch it off first to set it up again.", code: "already-enabled" });
@@ -599,7 +613,7 @@ router.post("/2fa/setup", twoFactorLimiter, authenticate, requireAdmin, async (r
 // POST /api/auth/2fa/enable   { code }
 // Confirms the app is producing the right codes, switches the second step on,
 // and returns ten recovery codes — once. Only their hashes are kept.
-router.post("/2fa/enable", twoFactorLimiter, authenticate, requireAdmin, (req, res) => {
+router.post("/2fa/enable", twoFactorLimiter, authenticate, requireAdminAccount, (req, res) => {
   const u = req.account;
   if (session.hasTwoFactor(u)) return res.status(409).json({ error: "Two-step sign-in is already on.", code: "already-enabled" });
   const secret = secretBox.open("totp", u.totpPendingEnc, u.id);
@@ -623,7 +637,7 @@ router.post("/2fa/enable", twoFactorLimiter, authenticate, requireAdmin, (req, r
 
 // POST /api/auth/2fa/recovery-codes   { code }
 // New codes (the old ones stop working), shown once. Needs a current authenticator code.
-router.post("/2fa/recovery-codes", twoFactorLimiter, authenticate, requireAdmin, (req, res) => {
+router.post("/2fa/recovery-codes", twoFactorLimiter, authenticate, requireAdminAccount, (req, res) => {
   const u = req.account;
   if (!session.hasTwoFactor(u)) return res.status(409).json({ error: "Two-step sign-in is not on.", code: "not-enabled" });
   const ok = secondFactorOk(u, { code: req.body && req.body.code });
@@ -636,7 +650,7 @@ router.post("/2fa/recovery-codes", twoFactorLimiter, authenticate, requireAdmin,
 });
 
 // POST /api/auth/2fa/disable   { password, code | recoveryCode }
-router.post("/2fa/disable", twoFactorLimiter, authenticate, requireAdmin, async (req, res) => {
+router.post("/2fa/disable", twoFactorLimiter, authenticate, requireAdminAccount, async (req, res) => {
   try {
     const u = req.account;
     if (!session.hasTwoFactor(u)) return res.status(409).json({ error: "Two-step sign-in is not on.", code: "not-enabled" });

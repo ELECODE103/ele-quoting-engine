@@ -230,16 +230,27 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
     assert.strictEqual(byEmail("owner@shop.test").role, "customer");
     await h.confirmEmail("owner@shop.test");
     assert.strictEqual(byEmail("owner@shop.test").role, "admin");
-    assert.strictEqual((await h.get("/api/admin/stats", owner)).status, 200, "the same session is now an admin: the role is read per request");
+    // The same session is now an admin account: the role is read per request. Two-step sign-in is
+    // required for the role to count, so the refusal changes from "not an admin" to "enrol first",
+    // and the enrolment endpoints open.
+    const stats = await h.get("/api/admin/stats", owner);
+    assert.deepStrictEqual([stats.status, stats.body.code], [403, "two-factor-enrolment-required"]);
+    assert.strictEqual((await h.get("/api/auth/2fa", owner)).status, 200);
+    const view = (await h.get("/api/auth/session", owner)).body.user;
+    assert.deepStrictEqual([view.role, view.twoFactorEnabled, view.twoFactorRequired], ["admin", false, true]);
   });
 
   test("the admin role is checked against the database on every request, whatever the token says", async () => {
     const row = byEmail("owner@shop.test");
     usersDB.update(row.id, { role: "customer" });
-    assert.strictEqual((await h.get("/api/admin/stats", owner)).status, 403, "demoted: the old token no longer opens the admin area");
+    const demoted = await h.get("/api/admin/stats", owner);
+    assert.deepStrictEqual([demoted.status, demoted.body.code], [403, undefined], "demoted: the old token is an ordinary customer's, with no enrolment screen");
+    assert.strictEqual((await h.get("/api/auth/2fa", owner)).status, 403, "and the enrolment endpoints are closed to it");
     assert.strictEqual((await h.get("/api/orders", owner)).body.length, 0, "and it lists only its own orders");
     usersDB.update(row.id, { role: "admin" });
-    assert.strictEqual((await h.get("/api/admin/stats", owner)).status, 200);
+    assert.strictEqual((await h.get("/api/admin/stats", owner)).body.code, "two-factor-enrolment-required");
+    assert.strictEqual((await h.get("/api/auth/2fa", owner)).status, 200);
+    // (The same demotion against a fully enrolled admin session is checked after enrolment, below.)
     // A customer's token re-signed by hand with role "admin" is not a valid session at all.
     const danaRow = byEmail("dana@buyer.test");
     const forged = jwt.sign({ userId: danaRow.id, email: danaRow.email, role: "admin", tv: 0, jti: crypto.randomUUID() }, "guessed-secret", { expiresIn: 3600 });
@@ -569,7 +580,8 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
 
   test("profile responses never carry the password hash or any secret column", async () => {
     const p = await h.get("/api/auth/profile", dana);
-    assert.deepStrictEqual(Object.keys(p.body).sort(), ["company", "createdAt", "email", "emailVerified", "id", "name", "phone", "role", "twoFactorEnabled"]);
+    assert.deepStrictEqual(Object.keys(p.body).sort(), ["company", "createdAt", "email", "emailVerified", "id", "name", "phone", "role", "twoFactorEnabled", "twoFactorRequired"]);
+    assert.strictEqual(p.body.twoFactorRequired, false, "only an admin account is asked to enrol");
     const put = await h.put("/api/auth/profile", { name: "Dana Buyer", role: "admin", emailVerifiedAt: "x", tokenVersion: 99 }, dana);
     assert.strictEqual(put.body.role, "customer");
     assert.strictEqual(put.body.name, "Dana Buyer");
@@ -639,6 +651,12 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
     assert.strictEqual((await h.get("/api/admin/stats", owner)).status, 401);
     assert.strictEqual((await h.get("/api/admin/stats", ownerBefore)).status, 401);
     owner = r.body.token;
+    assert.strictEqual((await h.get("/api/admin/stats", owner)).status, 200);
+    // Enrolled and inside: the role is still read from the database on every request.
+    usersDB.update(ownerRow.id, { role: "customer" });
+    const demoted = await h.get("/api/admin/stats", owner);
+    assert.deepStrictEqual([demoted.status, demoted.body.code], [403, undefined], "demoted mid-session: shut out at once");
+    usersDB.update(ownerRow.id, { role: "admin" });
     assert.strictEqual((await h.get("/api/admin/stats", owner)).status, 200);
     assert.strictEqual(mailTo("owner@shop.test", /two-step sign-in is on/).length, 1);
     // Status never returns the secret, and setup cannot be re-run to see it.
@@ -759,6 +777,20 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
     const r = await login("owner@shop.test", ownerPw);
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.body.user.role, "admin");
+    // Back in with the password alone, but only as far as the enrolment screen: the admin routes
+    // stay shut until two-step sign-in is switched on again.
+    assert.strictEqual(r.body.user.twoFactorRequired, true);
+    const shut = await h.get("/api/admin/stats", r.body.token);
+    assert.deepStrictEqual([shut.status, shut.body.code], [403, "two-factor-enrolment-required"]);
+    assert.strictEqual((await h.put("/api/admin/pricing", { rules: {}, note: "x" }, r.body.token)).body.code, "two-factor-enrolment-required");
+    assert.strictEqual((await h.get("/api/auth/2fa", r.body.token)).status, 200);
+    setupKey = (await h.post("/api/auth/2fa/setup", { password: ownerPw }, r.body.token)).body.setupKey; secretsSeen.push(setupKey, setupKey.replace(/\s/g, ""));
+    advance(30_000);
+    const again = await h.post("/api/auth/2fa/enable", { code: code() }, r.body.token);
+    assert.strictEqual(again.status, 200, again.text);
+    secretsSeen.push(...again.body.recoveryCodes);
+    assert.strictEqual((await h.get("/api/admin/stats", again.body.token)).status, 200, "enrolled again: the admin routes open");
+    assert.strictEqual((await h.get("/api/admin/stats", r.body.token)).status, 401, "on the new session only");
   });
 
   test("ADMIN_RECOVERY=verify-email confirms the owner's address when no link can be sent; it does nothing for any other account", async () => {

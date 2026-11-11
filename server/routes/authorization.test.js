@@ -23,7 +23,10 @@ const { test, run } = runner("Authorisation sweep");
 const SHIP = { shippingName: "Alice Buyer", shippingAddress: "100 Main St", shippingCity: "Elgin", shippingState: "IL", shippingZip: "60120" };
 const PDF = { name: "print.pdf", data: Buffer.from("%PDF-1.4\n% test drawing\n") };
 
-// Who may call each route. "admin": the admin only. "auth": any signed-in
+// Who may call each route. "admin": the admin only, and only once two-step
+// sign-in is switched on for that account. "admin-account": an admin account
+// whether or not it has enrolled — the enrolment endpoints, the only admin
+// routes such an account can reach. "auth": any signed-in
 // account (the handler then checks ownership — part 2). "open": no sign-in
 // (public data, or the id / signed link in the URL is the credential — part 2).
 const INVENTORY = {
@@ -77,11 +80,11 @@ const INVENTORY = {
   "POST /api/auth/password-reset/confirm": "open",
   "GET /api/auth/profile": "auth",
   "PUT /api/auth/profile": "auth",
-  "GET /api/auth/2fa": "admin",
-  "POST /api/auth/2fa/setup": "admin",
-  "POST /api/auth/2fa/enable": "admin",
-  "POST /api/auth/2fa/recovery-codes": "admin",
-  "POST /api/auth/2fa/disable": "admin",
+  "GET /api/auth/2fa": "admin-account",
+  "POST /api/auth/2fa/setup": "admin-account",
+  "POST /api/auth/2fa/enable": "admin-account",
+  "POST /api/auth/2fa/recovery-codes": "admin-account",
+  "POST /api/auth/2fa/disable": "admin-account",
   // routes/orders.js
   "POST /api/orders/checkout-session": "auth",
   "POST /api/orders/": "admin",
@@ -141,7 +144,7 @@ function routesOf(prefix, router) {
   }
 
   test("setup: the admin, Alice with a quote, a drawing, a paid order and a request; Bob with nothing; a guest's quote and request", async () => {
-    owner = await h.register("owner@shop.test", "Owner");
+    owner = await h.admin("Owner");
     alice = await h.register("alice@buyer.test", "Alice Buyer");
     bob = await h.register("bob@other.test", "Bob Other");
     partId = await h.uploadCube();
@@ -197,7 +200,7 @@ function routesOf(prefix, router) {
   }
 
   test("every admin-only route answers 401 to a guest and 403 to a signed-in customer, with real ids, and changes nothing", async () => {
-    const admin = Object.entries(INVENTORY).filter(([, who]) => who === "admin").map(([route]) => route);
+    const admin = Object.entries(INVENTORY).filter(([, who]) => who === "admin" || who === "admin-account").map(([route]) => route);
     assert.ok(admin.length >= 40);
     const snapshot = () => JSON.stringify([h.models.materialsDB.getAll().length, h.models.finishesDB.getAll().length, h.models.pricingDB.getAll(), ordersDB.getById(aliceOrder).status, rfqsDB.getById(aliceRfq).status, h.models.leadTimesDB.getAll().map((l) => l.multiplier), ordersDB.getAll().length]);
     const before = snapshot();
@@ -213,6 +216,50 @@ function routesOf(prefix, router) {
       }
     }
     assert.strictEqual(snapshot(), before);
+  });
+
+  test("an admin account without two-step sign-in is refused on every admin route (403, enrolment code) and reaches only the enrolment endpoints", async () => {
+    // A second admin account that has not enrolled (the owner's has: h.admin()).
+    const pending = await h.register("second-admin@shop.test", "Second Admin");
+    const row = usersDB.getAll().find((u) => u.email === "second-admin@shop.test");
+    usersDB.update(row.id, { role: "admin" });
+    const sessionView = (await h.get("/api/auth/session", pending)).body.user;
+    assert.deepStrictEqual([sessionView.role, sessionView.twoFactorEnabled, sessionView.twoFactorRequired], ["admin", false, true]);
+    const ownerView = (await h.get("/api/auth/session", owner)).body.user;
+    assert.deepStrictEqual([ownerView.role, ownerView.twoFactorEnabled, ownerView.twoFactorRequired], ["admin", true, false]);
+
+    const snapshot = () => JSON.stringify([h.models.materialsDB.getAll().length, h.models.finishesDB.getAll().length, h.models.pricingDB.getAll(), ordersDB.getById(aliceOrder).status, rfqsDB.getById(aliceRfq).status, h.models.leadTimesDB.getAll().map((l) => l.multiplier), ordersDB.getAll().length]);
+    const before = snapshot();
+    const body = { status: "shipped", quotedTotal: 1, quotedLeadDays: 1, rules: {}, note: "x", name: "X", slug: "x", multiplier: 0.01, quoteId: aliceQuote };
+    const adminOnly = Object.entries(INVENTORY).filter(([, who]) => who === "admin").map(([route]) => route);
+    assert.ok(adminOnly.length >= 40);
+    for (const route of adminOnly) {
+      const [method, pattern] = route.split(" ");
+      const r = await as(pending)(method, concrete(pattern), body);
+      assert.strictEqual(r.status, 403, `${route} as an admin who has not enrolled → ${r.status} ${r.text.slice(0, 80)}`);
+      assert.deepStrictEqual(r.body, { error: "Set up two-step sign-in before using the admin pages.", code: "two-factor-enrolment-required" }, route);
+    }
+    assert.strictEqual(snapshot(), before, "nothing changed");
+    // Where the admin role widens what a signed-in account may read, it does not for this account.
+    assert.strictEqual((await as(pending)("GET", `/api/orders/${aliceOrder}`)).status, 403);
+    assert.strictEqual((await as(pending)("GET", `/api/quote/${aliceQuote}`)).status, 404);
+    assert.strictEqual((await as(pending)("GET", `/api/rfq/${aliceRfq}`)).status, 404);
+    assert.deepStrictEqual((await as(pending)("GET", "/api/orders")).body, [], "its own (empty) order list, not everyone's");
+    // The enrolment endpoints answer on their merits, not with the enrolment refusal.
+    const status = await as(pending)("GET", "/api/auth/2fa");
+    assert.deepStrictEqual([status.status, status.body.enabled], [200, false]);
+    const wrongPw = await as(pending)("POST", "/api/auth/2fa/setup", { password: "not-the-password" });
+    assert.deepStrictEqual([wrongPw.status, wrongPw.body.code], [401, "invalid-credentials"]);
+    const noSetup = await as(pending)("POST", "/api/auth/2fa/enable", { code: "000000" });
+    assert.deepStrictEqual([noSetup.status, noSetup.body.code], [400, "setup-missing"]);
+    for (const route of ["/api/auth/2fa/recovery-codes", "/api/auth/2fa/disable"]) {
+      const r = await as(pending)("POST", route, { password: h.password, code: "000000" });
+      assert.deepStrictEqual([r.status, r.body.code], [409, "not-enabled"], route);
+    }
+    // Sign-out is always there.
+    assert.strictEqual((await as(pending)("POST", "/api/auth/logout")).status, 200);
+    assert.strictEqual((await as(pending)("GET", "/api/auth/profile")).status, 401);
+    usersDB.update(row.id, { role: "customer" });
   });
 
   test("every sign-in-only route answers 401 to a guest", async () => {
