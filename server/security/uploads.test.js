@@ -5,6 +5,7 @@
  * Run: node server/security/uploads.test.js
  */
 const assert = require("assert");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
@@ -545,6 +546,53 @@ test("RFQ attachment: the contents must match the extension, as for CAD uploads 
   assert.strictEqual(s.files("rfq-drawings").length, before + genuine.length);
   // Nothing was stored for the refused ones, and nothing refused reached the shop's log as a name or a path.
   assert.ok(!s.log().includes("invoice.pdf") && !s.log().includes("alert(document.domain)"));
+});
+
+test("after the merge: quote drawings and request attachments are encrypted at rest and covered by the retention sweep", async () => {
+  const key = crypto.randomBytes(36).toString("base64"); // a throwaway key made here; never written anywhere
+  const jwtSecret = crypto.randomBytes(32).toString("hex");
+  let s = await live.start({ env: { NORD_FILE_ENC_KEY: key, JWT_SECRET: jwtSecret } });
+  const me = "203.0.113.90";
+  try {
+    const up = await s.upload([{ name: "cube.stl", data: cube }], { ip: me });
+    const mats = (await s.get("/api/materials?process=cnc", { ip: me })).body;
+    const q = await s.post("/api/quote", { parts: [{ partId: up.body.parts[0].partId, materialSlug: mats[0].slug, quantity: 1, process: "cnc", subProcess: "milling" }] }, { ip: me });
+    assert.strictEqual((await s.upload([{ field: "drawing", name: "print.pdf", data: pdf }], { url: `/api/quote/${q.body.quoteId}/drawing`, ip: me })).status, 200);
+    assert.strictEqual((await s.rfq({ contactName: "A Buyer", email: "buyer@example.com", notes: "kept" }, [{ name: "print.pdf", data: pdf }], { ip: me })).status, 201);
+    const kept = { quote: s.files("quote-drawings"), rfq: s.files("rfq-drawings") };
+    assert.deepStrictEqual([kept.quote.length, kept.rfq.length], [1, 1]);
+    for (const [folder, names] of [["quote-drawings", kept.quote], ["rfq-drawings", kept.rfq]]) {
+      assert.ok(/^[0-9a-f-]{36}\.pdf\.enc$/.test(names[0]), `${folder}: ${names[0]}`);
+      const bytes = fs.readFileSync(path.join(s.dir(folder), names[0]));
+      assert.strictEqual(bytes.subarray(0, 4).toString("latin1"), "SEF1");
+      assert.ok(!bytes.includes(Buffer.from("%PDF")), `${folder}: the stored file is not readable on disk`);
+    }
+    // Stop. Age every file by three days, and leave strays in both folders: an attachment whose request
+    // was refused, a drawing nobody points at, each old; and one that is only an hour old.
+    const tmpDir = s.tmp;
+    await s.stop({ keep: true });
+    const old = new Date(Date.now() - 72 * 3600 * 1000);
+    const recent = new Date(Date.now() - 3600 * 1000);
+    for (const folder of ["quote-drawings", "rfq-drawings"]) {
+      const dir = path.join(tmpDir, "data", folder);
+      for (const f of fs.readdirSync(dir)) fs.utimesSync(path.join(dir, f), old, old);
+      for (const [name, when] of [[`${crypto.randomUUID()}.pdf.enc`, old], [`${crypto.randomUUID()}.pdf`, old], [`${crypto.randomUUID()}.png`, recent]]) {
+        fs.writeFileSync(path.join(dir, name), Buffer.alloc(2048, 7));
+        fs.utimesSync(path.join(dir, name), when, when);
+      }
+    }
+    s = await live.start({ tmpDir, env: { NORD_FILE_ENC_KEY: key, JWT_SECRET: jwtSecret } });
+    assert.ok(/File retention: removed 4 drawing file\(s\) no quote, order or request refers to/.test(s.log()), s.log().split("\n").filter((l) => /retention/i.test(l)).join(" | "));
+    for (const [folder, names] of [["quote-drawings", kept.quote], ["rfq-drawings", kept.rfq]]) {
+      const now = s.files(folder);
+      assert.ok(now.includes(names[0]), `${folder}: the drawing a ${folder === "quote-drawings" ? "quote" : "request"} points at was kept, whatever its age`);
+      assert.strictEqual(now.length, 2, `${folder}: the referenced file and the hour-old stray remain (${now.join(", ")})`);
+      assert.strictEqual(now.filter((f) => f.endsWith(".png")).length, 1, "a stray younger than a day is left for now");
+    }
+    // The kept drawing still opens for the buyer's quote: the sweep did not touch what is in use.
+    assert.strictEqual((await s.get(`/api/quote/${q.body.quoteId}`, { ip: me })).body.drawingFileName, "print.pdf");
+    assert.ok(!s.log().includes(key), "the key is not in the log");
+  } finally { await s.stop(); }
 });
 
 run(async () => {
