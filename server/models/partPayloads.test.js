@@ -141,6 +141,20 @@ test("store and read back: the row is small, the files hold the rest, and what c
   assert.strictEqual(partsDB.getById(part.id), null);
 });
 
+test("what is kept of an upload counts against the sender's daily budget: the file and its payload", async () => {
+  const guards = require("../security/uploadGuards");
+  const stl = fs.readFileSync(path.join(partsDir, "star_wheel.stl"));
+  h.ip = "203.0.113.200";
+  try {
+    const before = guards.budget.used("203.0.113.200");
+    const part = await upload("star_wheel.stl", stl);
+    const meshBytes = fs.statSync(path.join(payloadDir, `${part.partId}.mesh.json`)).size;
+    const charged = guards.budget.used("203.0.113.200") - before;
+    assert.ok(meshBytes > 2 * stl.length, `the mesh file (${meshBytes} bytes) is larger than the upload (${stl.length} bytes)`);
+    assert.ok(charged >= stl.length + meshBytes, `charged ${charged} bytes for a ${stl.length}-byte file and a ${meshBytes}-byte mesh`);
+  } finally { h.ip = ""; }
+});
+
 test("a part id is never a path: ids that are not our UUIDs are hashed, and no file leaves the folder", async () => {
   for (const id of ["../../etc/passwd", "..\\..\\x", "a/b", "", "quoting.db", "%2e%2e", "x".repeat(500)]) {
     const stem = payloads.stem(id);
@@ -186,8 +200,9 @@ test("the storage ceiling counts payload files and refuses a part that would cro
   assert.ok(!guards.DRAWING_DIRS.includes(payloadDir), "and is not swept as a drawing folder");
   const filler = path.join(payloadDir, ".tmp-filler");
   await withEnv({ UPLOAD_DIR_MAX_MB: "10" }, async () => {
-    fs.writeFileSync(filler, Buffer.alloc(10 * 1024 * 1024 - 20000));
-    guards.storage.invalidate();
+    // Fill the folders to within `room` bytes of a 10 MB ceiling, whatever earlier tests left in them.
+    const leave = (room) => { try { fs.unlinkSync(filler); } catch { /* first time */ } fs.writeFileSync(filler, Buffer.alloc(10 * 1024 * 1024 - guards.storage.scan() - room)); guards.storage.invalidate(); };
+    leave(20000);
     const quiet = console.error; const lines = []; console.error = (...a) => lines.push(a.join(" "));
     try {
       assert.throws(() => partsDB.insert({ fileName: "over.stl", geometry: bigGeometry() }), (err) => err.name === "PayloadError" && err.code === "storage-full");
@@ -195,8 +210,7 @@ test("the storage ceiling counts payload files and refuses a part that would cro
       assert.strictEqual(partsDB.getAll().filter((p) => p.fileName === "over.stl").length, 0);
       // Through the upload route the customer gets the same words as for a full upload folder.
       const stl = fs.readFileSync(path.join(partsDir, "star_wheel.stl"));
-      fs.writeFileSync(filler, Buffer.alloc(10 * 1024 * 1024 - 400000)); // room for the 300 kB STL, not for its 850 kB mesh
-      guards.storage.invalidate();
+      leave(400000); // room for the 300 kB STL, not for its 850 kB mesh
       const r = await h.form("/api/upload", {}, { files: { name: "star_wheel.stl", data: stl } });
       assert.deepStrictEqual([r.status, r.body.parts.length, r.body.errors[0].code], [200, 0, "storage-full"], r.text.slice(0, 200));
       assert.strictEqual(r.body.errors[0].error, guards.FULL_MESSAGE);

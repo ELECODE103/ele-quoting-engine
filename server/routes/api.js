@@ -345,6 +345,9 @@ router.post(
         });
         pending.delete(storedPath); // the part row owns the file now
         uploadGuards.storage.add(file.size);
+        // What we keep of the file besides the file (its preview mesh can be several times the size of a
+        // small, dense STL) counts against the sender's daily budget too.
+        uploadGuards.budget.add(client, (Number(part.meshBytes) || 0) + (Number(part.detailBytes) || 0));
 
         results.push(partPayload(part, parsed));
       } catch (err) {

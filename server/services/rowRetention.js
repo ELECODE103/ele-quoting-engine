@@ -2,10 +2,11 @@
  * Database row retention.
  *
  * The upload sweep (fileRetention.js) removes old CAD files; this removes the
- * database rows that go with them. A part row carries the parsed geometry and
- * preview mesh, so abandoned uploads are what make the database file grow —
- * and every write rewrites the whole file. Without this the file only gets
- * bigger and every save gets slower.
+ * database rows that go with them, and with each part row its payload files
+ * (the preview mesh and any large geometry detail under data/part-payloads:
+ * models/partsStore.js deletes them when the row is deleted). Every write
+ * rewrites the whole database file, so without this the file only gets bigger
+ * and every save gets slower.
  *
  * Kept, whatever their age:
  *   - parts on an order that was not cancelled, or on an RFQ still in play
