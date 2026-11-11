@@ -308,6 +308,11 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       // What the page should tell the buyer about email and, for a part, the address.
       senderVerified,
       confirmationEmail: buyerEmail,
+      // Why no confirmation went out, so the page can say what happened and not guess:
+      //   "sender-unverified"    the bot check is off or could not be reached (a person replies instead)
+      //   "account-unconfirmed"  signed in, but the account's email is not confirmed yet
+      //   "daily-limit"          the cap on confirmations to one address or connection was reached
+      ...(buyerEmail ? {} : { noEmailReason: !senderVerified ? "sender-unverified" : accountUnconfirmed ? "account-unconfirmed" : "daily-limit" }),
       ...(accountUnconfirmed ? { needsEmailVerification: true } : {}),
       ...(sendPart ? { reference: part.reference, returnPart: Boolean(rfq.returnPart), ...(partForBuyer ? { shipTo: part.shipTo } : { shipToPending: true }) } : {}),
     };

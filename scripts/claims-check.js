@@ -13,6 +13,8 @@
  * decisions"): any ISO or CMM statement, any statement of shop size, a
  * replacement part quoted from a photo, and inspection paperwork said to come
  * with every order (it is an option the customer asks for). One hit exits 1.
+ * The same goes for a confirmation email or an on-screen ship-to address
+ * promised before a request is sent (hardening decision, 2026-11-11).
  *
  *   node scripts/claims-check.js            summary + any UNSUPPORTED lines
  *   node scripts/claims-check.js --all      every sentence, as a markdown table
@@ -65,6 +67,12 @@ const BANNED = [
   ["replacement part quoted from a photo (decision 4)", /send (us |me )?a (photo|picture)|text (us |me )?a photo|photo with a tape measure/i],
   // Decision 5 (2026-11-11): a first-article report and a certificate of conformance are an
   // option the customer asks for, with a fee. No page may say they come with every order.
+  // Hardening decision (2026-11-11): whether a request gets an automatic confirmation email, and
+  // whether a send-the-part request shows the ship-to address on the screen, is decided per request
+  // (only for a sender who passed the bot check; with no Turnstile keys, never). So no page may
+  // promise either before the request is sent. The confirmation screen says what happened, from the
+  // server's answer; it is not prerendered and is not read here.
+  ["confirmation email or on-screen address promised before a request is sent (hardening decision)", /confirmation email|on the (next )?screen and by email|address to ship[^.?!]*\b(on the (next )?screen|by email)\b|by email\b[^.?!]*\baddress to ship/i],
   ["inspection paperwork with every order (decision 5)", /every production order|(first.article|certificate of conformance|\bFAI\b|\bCoC\b)[^.?!]*\b(with|on) every (order|job)\b|\b(with|on) every (order|job)\b[^.?!]*(first.article|certificate of conformance)/i],
 ];
 
@@ -154,6 +162,6 @@ if (bannedUnique.length) {
   console.log(`\n${bannedUnique.length} BANNED (owner decisions, 2026-11-11):`);
   for (const b of bannedUnique) console.log(`  [${b.route}] ${b.why}: ${b.s.slice(0, 200)}`);
 } else if (!process.argv.includes("--all")) {
-  console.log("Owner decisions 2026-11-11: no ISO, CMM, shop-size, send-a-photo or paperwork-with-every-order wording on any page, title, meta description or JSON-LD block.");
+  console.log("Owner decisions 2026-11-11: no ISO, CMM, shop-size, send-a-photo or paperwork-with-every-order wording, and no confirmation email or on-screen ship-to address promised before a request is sent, on any page, title, meta description or JSON-LD block.");
 }
 if (bad.length || bannedUnique.length) process.exit(1);

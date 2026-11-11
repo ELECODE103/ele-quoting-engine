@@ -33,9 +33,13 @@ const PART_QUOTE_TIME = fact('part-quote-time');
  * The form is bot-checked (utils/useFormGuard): a hidden honeypot field, a
  * form token that proves the form was open for a few seconds, and Cloudflare
  * Turnstile when the server has keys. The server answers with what it did:
- * `confirmationEmail` (was the buyer emailed?) and, in part mode, `shipTo` or
- * `shipToPending` (the address is only given to a sender who passed the
- * check). The confirmation screens below say exactly that, no more.
+ * `confirmationEmail` (was the buyer emailed?), `noEmailReason` when not, and,
+ * in part mode, `shipTo` or `shipToPending` (the address is only given to a
+ * sender who passed the check). The confirmation screens below say exactly
+ * that, no more — and the text before the form promises neither an email nor
+ * an address on the screen, because whether either happens is decided per
+ * request (owner decision, 2026-11-11: with no Turnstile keys there is no
+ * automatic confirmation and no address on screen).
  *
  * Two checkboxes ride as their own fields, because the owner prices both into
  * the firm quote: `paperwork` (a first-article inspection report and a
@@ -147,14 +151,14 @@ export default function RfqPage() {
 
   if (sent) {
     const reference = sent.reference || String(sent.rfqId || '').slice(0, 8).toUpperCase();
-    // What the server did about email. Older answers have no flag: read as "sent".
-    const emailed = sent.confirmationEmail !== false;
-    const unverified = sent.senderVerified === false;
-    const whyNoEmail = sent.needsEmailVerification
-      ? null // the notice below says it
-      : unverified
-        ? 'We did not send an automatic confirmation email this time: our spam check could not confirm the request came from a person at that address. A person here reads it all the same.'
-        : 'We did not send another confirmation email: we limit how many go to one address in a day. Your request is in.';
+    // What the server did, from its answer and nothing else. A confirmation email is only
+    // mentioned when the server says it sent one; the ship-to address only when it is in the answer.
+    const emailed = sent.confirmationEmail === true;
+    const whyNoEmail = emailed || sent.needsEmailVerification || sent.noEmailReason === 'account-unconfirmed'
+      ? null // sent, or the confirm-your-email notice below says why not
+      : sent.noEmailReason === 'daily-limit'
+        ? 'We did not send another confirmation email: we limit how many go to one address in a day. Your request is in.'
+        : 'No automatic confirmation email goes out for this request. We read it and reply to you at that address.';
     // Part mode: the next step is the buyer's. The address comes from the server response only.
     if (part) {
       return (
@@ -170,7 +174,7 @@ export default function RfqPage() {
                 </p>
               ) : (
                 <p className="lede" style={{ marginBottom: 20 }}>
-                  Keep the reference below. A person here reads the request first, then replies to <b>{form.email}</b> with the
+                  Keep the reference below. We read the request first, then reply to <b>{form.email}</b> with the
                   address to ship the part to. Do not send anything yet.
                 </p>
               )}
@@ -189,7 +193,7 @@ export default function RfqPage() {
                           {sent.shipTo.name}{(sent.shipTo.lines || []).map((l) => <span key={l}><br />{l}</span>)}
                         </dd>
                       )
-                      : <dd style={{ margin: '2px 0 0' }}>It comes in our reply to {form.email}, once a person here has read the request. In a hurry? Call <a href={brand.phoneHref}>{brand.phone}</a> with the reference.</dd>}
+                      : <dd style={{ margin: '2px 0 0' }} data-testid="ship-to-pending">It comes in our reply to {form.email}, once we have read the request. In a hurry? Call <a href={brand.phoneHref}>{brand.phone}</a> with the reference.</dd>}
                   </div>
                 </dl>
               </div>
@@ -198,7 +202,7 @@ export default function RfqPage() {
                 {!emailed && whyNoEmail ? `${whyNoEmail} ` : ''}
                 {(sent.returnPart ?? returnPart)
                   ? 'You asked for the original back: we send it back with your finished parts, and the price we quote includes that return shipping.'
-                  : 'You did not ask for the original back, so we keep it with the job. Changed your mind? Reply to that email before you order.'}{' '}
+                  : `You did not ask for the original back, so we keep it with the job. Changed your mind? ${emailed ? 'Reply to the confirmation email' : `Call ${brand.phone} or email ${brand.email} with the reference`} before you order.`}{' '}
                 {paperwork ? 'You asked for a first-article inspection report and a certificate of conformance: the price we quote will include them. ' : ''}
                 Nothing is ordered and nothing is charged until you say so. Questions: <a href={brand.phoneHref}>{brand.phone}</a>.
               </p>
@@ -266,8 +270,8 @@ export default function RfqPage() {
                 <div className="plain-box" style={{ marginBottom: 20 }}>
                   <h2 className="display h3-like" style={{ marginBottom: 6 }}>No drawing?</h2>
                   <p className="body-copy">
-                    Send us the part. Tell us what it is and what it does; when the request goes in you get a reference
-                    and the address to ship it to.{' '}
+                    Send us the part. Tell us what it is and what it does; when the request goes in you get a reference,
+                    and we send you the address to ship it to.{' '}
                     {part
                       ? 'The form is set up for that now.'
                       : <button type="button" className="linklike-inline" onClick={() => setMode('part')}>Switch the form to a send-the-part request</button>}
@@ -307,13 +311,13 @@ export default function RfqPage() {
               <h2 className="display h3-like" style={{ marginBottom: 8 }}>What happens next</h2>
               {part ? (
                 <ul className="checklist" style={{ marginBottom: 20 }}>
-                  <li>You get a reference and the address to ship the part to, on the next screen and by email.</li>
+                  <li>You get a reference on the next screen, and we send you the address to ship the part to. Do not ship anything until you have both.</li>
                   <li>Write the reference on the box and send the part. {PART_RETURN ? `${PART_RETURN} Untick the box on the form if you do not need it back.` : 'Tell us in the request if you need the original back.'}</li>
                   <li>We measure it and send you a price.{PART_QUOTE_TIME ? ` ${PART_QUOTE_TIME}` : ''} Nothing is ordered and nothing is charged until you say so.</li>
                 </ul>
               ) : (
                 <ul className="checklist" style={{ marginBottom: 20 }}>
-                  <li>You get a confirmation email with a reference number.</li>
+                  <li>You get a reference number on the next screen. Keep it: it is how we find your request.</li>
                   <li>The engineer who will run the job reads the request and replies{within}, with a price or with a question.</li>
                   <li>Nothing is ordered and nothing is charged until you say so.</li>
                 </ul>
@@ -370,7 +374,7 @@ export default function RfqPage() {
                     <label className="full">
                       <span className="field-label">Drawing (PDF, DXF, DWG, JPG or PNG)</span>
                       <input className="input" type="file" accept=".pdf,.dxf,.dwg,.png,.jpg,.jpeg" onChange={pickFile} />
-                      <span className="field-hint">One file, up to {MAX_MB} MB. Reply to the confirmation email with anything else.</span>
+                      <span className="field-hint">One file, up to {MAX_MB} MB. Email anything else to {brand.email} with your reference.</span>
                     </label>
                     <label className="full"><span className="field-label">Anything else</span><textarea className="input" rows={4} placeholder="What the part does, what it mates with, what went wrong with the last supplier." value={form.notes} onChange={set('notes')} /></label>
                   </>

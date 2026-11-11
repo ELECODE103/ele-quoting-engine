@@ -5,8 +5,11 @@ import brand from '../brand';
 import { ok, when, lines } from '../facts';
 
 // Replacement parts are quoted from the physical part, not from a photo
-// (owner, 2026-11-11). The ship-to street address is never on this page: it
-// comes back from the server after a request is sent, and in the email.
+// (owner, 2026-11-11). The ship-to street address is never on this page. After
+// a request is sent it reaches the buyer one of two ways, decided by the server
+// for that request: on the confirmation screen and by email (the sender passed
+// the bot check), or in a reply from us (no check ran). So this page says only
+// what is true either way: "we send you the address".
 // The customer ships the part in at their cost; the original goes back with the
 // finished parts, and the quoted price covers that return shipping (owner,
 // 2026-11-11, part-return). Drop-off and how soon a price follows are still the
@@ -18,7 +21,7 @@ const STEPS = [
   ['Tell us about the part',
     'A short request: what the part is and what it does, the machine it came off, the material if you know it, how many you need and how soon. No drawing and no photo.'],
   ['Send us the part',
-    'When the request goes in you get a reference and the address to ship to, on the screen and by email. Write the reference on the box.'
+    'When the request goes in you get a reference, and we send you the address to ship to. Write the reference on the box.'
     + when('visits-welcome', ` Or drop the part off in ${brand.city}; call ahead.`)
     + ` ${RETURN_NOTE}`],
   when('no-cad-drawing',
@@ -70,7 +73,7 @@ export default function ReplacementPartsPage() {
                 <a className="btn btn-outline btn-lg" href={brand.phoneHref}>Call {brand.phone}</a>
               </div>
               <p className="next-note">
-                The button opens a short request. Send it and you get a reference to write on the box and the address to ship to.
+                The button opens a short request. Send it and you get a reference to write on the box, and we send you the address to ship to.
                 We measure the part and send you a price.{when('part-quote-time', (v) => ` ${v}`)} The call rings the shop.
                 {when('drive-times', (v) => ` ${v}`)}
               </p>
