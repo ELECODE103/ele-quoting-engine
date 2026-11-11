@@ -13,17 +13,19 @@
  *       No onclick="…" attributes anywhere.
  *   style-src-elem 'self' [+ hashes]
  *       Stylesheets come from /assets only. The app's pages have no <style>
- *       blocks; the one static page that has (the brand guide in
- *       client/public/brand) is allowed by the SHA-256 of its block, computed
- *       from the built file at startup (staticStyleHashes).
+ *       blocks. A hand-written static page in client/public that has one is
+ *       allowed by the SHA-256 of its block, computed from the built file at
+ *       startup (staticStyleHashes) — but only if the site serves that page.
+ *       Today none qualifies: the brand guide and its sheets are internal and
+ *       answer 404 (seo.js), so the policy carries no hashes.
  *   style-src-attr 'unsafe-inline'
  *       The prerendered pages carry style="…" attributes (React inline
  *       styles written out as HTML). An attribute can restyle its own element
  *       and nothing else; it cannot run script.
  *   font-src 'self'
  *       Fonts are self-hosted (@fontsource); the Google Fonts hosts are gone.
- *       (The static brand pages embed their fonts as data: URIs; data: is
- *       added to font-src on those URLs only.)
+ *       (A served static page whose own hash-allowed CSS embeds fonts as
+ *       data: URIs would get data: on its URL only; none is served today.)
  *   img-src 'self' data: blob:
  *       Local images, inline SVG in CSS, and canvas / preview blobs.
  *   connect-src 'self'
@@ -68,6 +70,9 @@ function scanStaticPages(distDir) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) { if (depth < 4) walk(p, depth + 1); continue; }
       if (!e.name.endsWith(".html")) continue;
+      // A page the live site does not serve (the internal brand sheets: seo.js answers 404 for them)
+      // gets no allowance in the policy either.
+      if (require("../seo").isInternalBrandPath(`/${path.relative(distDir, p).split(path.sep).join("/")}`)) continue;
       const html = fs.readFileSync(p, "utf8");
       for (const m of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {
         styleHashes.add(`'sha256-${crypto.createHash("sha256").update(m[1], "utf8").digest("base64")}'`);

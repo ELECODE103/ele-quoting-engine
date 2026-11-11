@@ -1,7 +1,6 @@
 require("dotenv").config();
 
 const express = require("express");
-const cors = require("cors");
 const path = require("path");
 const rateLimit = require("express-rate-limit");
 const { ready: dbReady } = require("./models/database");
@@ -69,30 +68,9 @@ app.use("/api/upload", uploadLimiter);
 // DXF unit changes, drawing uploads, PDFs, backups (server/security/rateLimits.js).
 require("./security/rateLimits").install(app);
 
-// CORS — allow dev and production origins
-// The dev-server origins are for development only: in production the list is the site itself.
-const allowedOrigins = [
-  ...(process.env.NODE_ENV === "production" ? [] : ["http://localhost:3001", "http://localhost:3000"]),
-  process.env.FRONTEND_URL,
-].filter(Boolean);
-
-// Same-origin requests (module scripts send an Origin header) are always fine,
-// whatever FRONTEND_URL says — otherwise a domain change takes the whole site
-// down until the env var catches up. Unknown cross-origin callers simply get
-// no CORS headers (the browser blocks them) instead of a 403 for everyone.
-app.use((req, res, next) => cors({
-  origin: process.env.NODE_ENV === "production"
-    ? (origin, callback) => {
-        if (!origin) return callback(null, true);            // curl, server-to-server
-        try { if (new URL(origin).host === req.get("host")) return callback(null, true); } catch { /* fall through */ }
-        callback(null, allowedOrigins.includes(origin));
-      }
-    : true,
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  maxAge: 86400, // Cache preflight for 24 hours
-})(req, res, next));
+// CORS: the site's own origin and FRONTEND_URL only (plus the dev servers outside production),
+// with the headers the app's pages send. Never a reflected origin. See server/security/cors.js.
+require("./security/cors").install(app);
 
 // ─── Compression (text assets and HTML; Railway's edge does not gzip for us) ──
 app.use(require("compression")());
@@ -105,7 +83,9 @@ app.use("/api/stripe/webhook", express.raw({ type: "application/json" }), stripe
 // configuration of a few KB; files go through multer, not through these parsers). A route that
 // ever needs more must raise the limit for itself, not here. JSON_BODY_LIMIT_KB overrides.
 app.use(express.json({ limit: require("./security/limits").limits.jsonBodyBytes }));
-app.use(express.urlencoded({ extended: false, limit: 100 * 1024, parameterLimit: 100 }));
+// No urlencoded parser: no route reads a form-encoded body (forms with files go through multer,
+// everything else is JSON). Without it a plain HTML form posted from another site arrives with
+// an empty body instead of being parsed into one a JSON route would accept.
 
 // ─── Health Check (no version exposure) ──────────────────────────
 app.get("/api/health", (req, res) => {
@@ -234,10 +214,11 @@ async function start() {
   if (process.env.NODE_ENV === "production") {
     const mailer = require("./services/mailer");
     require("./security").startupWarnings(); // bot check and email verification: what is off, by name
+    for (const line of require("./security/testHooks").startupWarnings()) console.warn(line);
     if (!mailer.configured()) console.warn("WARNING: EMAIL_API_KEY / EMAIL_FROM not set — no email is sent: RFQ notices, firm quotes, order confirmations and shipping notices are only logged.");
     if (!process.env.STRIPE_WEBHOOK_SECRET) console.warn("WARNING: STRIPE_WEBHOOK_SECRET not set — Stripe webhooks are refused; orders are marked paid only when the buyer returns to the order page.");
     if (!process.env.ADMIN_EMAIL) console.warn("WARNING: ADMIN_EMAIL not set — no account will be given the admin role.");
-    if (!process.env.FRONTEND_URL) console.warn("WARNING: FRONTEND_URL not set — links in emails are built from the request's Host header.");
+    if (!process.env.FRONTEND_URL) console.warn("WARNING: FRONTEND_URL not set — links in emails use the request's host only when it is one of ours, otherwise the brand URL. Set FRONTEND_URL=https://straightedgemfg.com.");
     if (!process.env.NORD_FILE_ENC_KEY) {
       console.warn("WARNING: NORD_FILE_ENC_KEY not set — customer files are stored UNENCRYPTED on the volume: CAD uploads (data/uploads), drawings attached to instant quotes (data/quote-drawings) and RFQ attachments (data/rfq-drawings). Anyone with access to the volume or a volume backup can read them. To turn encryption on, follow docs/security/file-encryption.md (the owner creates the key in Railway).");
     } else {

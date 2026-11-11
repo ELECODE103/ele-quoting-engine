@@ -48,6 +48,29 @@ const LEGACY_REDIRECTS = {
 
 const HEAD_RE = /<!--seo:head-->[\s\S]*?<!--\/seo:head-->/;
 
+/**
+ * Files under client/public/brand that are working material, not the site:
+ * the brand guide, the kit and review sheets (HTML, their PDF and their page
+ * renderings), the notes beside them, and the sample customer documents. They
+ * ship in the build because the brand scripts write them there, but the live
+ * site does not serve them: these answer 404.
+ *
+ * Everything else under /brand stays public, because pages use it: the logo
+ * SVGs, the icons the web manifest names, the Open Graph images (/brand/og,
+ * og-default.png) and the social and machine artwork.
+ */
+const INTERNAL_BRAND_PAGE_IMAGES = /^(brand-guide|kit-sheet|review-sheet(-\d+)?)\.png$/;
+function isInternalBrandPath(urlPath) {
+  let p;
+  try { p = decodeURIComponent(String(urlPath || "")); } catch { return false; } // malformed encoding: not a file we serve anyway
+  p = path.posix.normalize(p.replace(/\\/g, "/")).toLowerCase();
+  if (!p.startsWith("/brand/")) return false;
+  const rest = p.slice("/brand/".length).replace(/\/+$/, "");
+  if (rest === "documents" || rest.startsWith("documents/")) return true;        // sample quote, order confirmation, packing slip, CoC, FAI
+  if (/\.(html?|md|pdf)$/.test(rest)) return true;                                // the internal pages, their notes and PDFs, at any depth
+  return INTERNAL_BRAND_PAGE_IMAGES.test(rest);                                   // pictures of those pages
+}
+
 function loadManifest(distDir) {
   try {
     const m = JSON.parse(fs.readFileSync(path.join(distDir, "seo-manifest.json"), "utf8"));
@@ -113,6 +136,11 @@ function createSeoRouter(distDir) {
   // 3. Static files. `index: false` so "/" goes through the route handler below,
   //    `redirect: false` so a directory name never turns into a 301 to "dir/".
   router.use("/_prerender", (req, res) => res.status(404).type("text/plain").send("Not found"));
+  // Internal brand pages and the sample documents are not part of the live site.
+  router.use((req, res, next) => {
+    if (isInternalBrandPath(req.path)) return res.status(404).set("X-Robots-Tag", "noindex").type("text/plain").send("Not found");
+    next();
+  });
   router.use(express.static(distDir, {
     index: false,
     redirect: false,
@@ -164,4 +192,4 @@ function createSeoRouter(distDir) {
   return router;
 }
 
-module.exports = { createSeoRouter, LEGACY_REDIRECTS, CANONICAL_HOST };
+module.exports = { createSeoRouter, LEGACY_REDIRECTS, CANONICAL_HOST, isInternalBrandPath };

@@ -46,9 +46,12 @@ test("JSON bodies over 1 MB are refused on every route (was 50 MB); ordinary one
   // 900 kB is under the limit: the route itself answers (no parts → 400), not the size guard.
   const ok = await s.post("/api/quote", { parts: [], pad: "x".repeat(900 * 1024) }, { ip: "203.0.113.1" });
   assert.strictEqual(ok.status, 400, ok.text);
-  // urlencoded bodies are not used by the app: 100 kB is the cap
-  const form = await s.req({ url: "/api/auth/login", method: "POST", ip: "203.0.113.1", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: Buffer.from(`a=${"x".repeat(200 * 1024)}`) });
-  assert.strictEqual(form.status, 413);
+  // Form-encoded bodies are not used by the app and are no longer parsed at all (the global urlencoded
+  // parser is gone): the account routes refuse the content type, and elsewhere the body is simply not read.
+  const form = await s.req({ url: "/api/auth/login", method: "POST", ip: "203.0.113.1", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: Buffer.from(`email=a%40b.co&password=x&a=${"x".repeat(200 * 1024)}`) });
+  assert.strictEqual(form.status, 415, form.text);
+  const formQuote = await s.req({ url: "/api/quote", method: "POST", ip: "203.0.113.1", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: Buffer.from(`parts[0][partId]=x&pad=${"x".repeat(3 * 1024 * 1024)}`) });
+  assert.deepStrictEqual([formQuote.status, formQuote.body], [400, { error: "No parts configured" }], "3 MB of form fields: not parsed, not an error about size, just no parts");
 });
 
 test("a body that is not JSON, nests absurdly deep, or carries __proto__ is answered plainly and changes nothing", async () => {
