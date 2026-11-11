@@ -35,7 +35,7 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const { v4: uuidv4 } = require("uuid");
+const { randomUUID: uuidv4 } = require("crypto"); // RFC 4122 v4, same format the uuid package produced
 const { rfqsDB, quotesDB, ordersDB, orderItemsDB, materialsDB } = require("../models");
 const { authenticate, optionalAuth, requireAdmin } = require("./auth");
 const { sanitizeString, isValidEmail } = require("../middleware/validate");
@@ -65,7 +65,7 @@ function partShipTo(rfqId) {
   };
 }
 
-const drawingDir = path.join(__dirname, "..", "..", "data", "rfq-drawings");
+const drawingDir = path.join(require("../security/uploadGuards").DATA_DIR, "rfq-drawings"); // data/rfq-drawings (QUOTING_DATA_DIR moves it for tests)
 if (!fs.existsSync(drawingDir)) fs.mkdirSync(drawingDir, { recursive: true });
 
 // Phone photos arrive as HEIC or WebP as often as JPEG; they are stored for the shop to open, never parsed.
@@ -224,7 +224,7 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       dueDate: sanitizeString(b.dueDate || "", 40),
       notes: sanitizeString(b.notes || "", 2000),
       drawingFileName: req.file ? sanitizeString(req.file.originalname, 255) : "",
-      drawingPath: req.file ? req.file.path : "",
+      drawingPath: req.file ? await require("../services/fileCrypto").encryptFile(req.file.path) : "", // encrypted at rest when NORD_FILE_ENC_KEY is set
       budgetTotal: quote?.orderTotal || 0,
       reasons: quote?.gate?.reasons || [],
       parts,
@@ -371,7 +371,7 @@ router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
 router.get("/admin/:id/drawing", authenticate, requireAdmin, (req, res) => {
   const rfq = rfqsDB.getById(req.params.id);
   if (!rfq || !rfq.drawingPath || !fs.existsSync(rfq.drawingPath)) return res.status(404).json({ error: "No drawing" });
-  res.download(rfq.drawingPath, rfq.drawingFileName || path.basename(rfq.drawingPath));
+  require("../services/fileCrypto").sendDownload(res, rfq.drawingPath, rfq.drawingFileName); // decrypts when stored encrypted; always an attachment
 });
 
 // ─── Customer: the firm quote behind an emailed link ──────────

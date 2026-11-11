@@ -21,10 +21,12 @@
  * fetch may try to route localhost through the proxy. Run with
  *   env -u HTTPS_PROXY -u HTTP_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost node tools/vet-quotes/run_vetting.js
  *
- * Rate limit note: the server allows 200 API calls / 15 min per client IP (50
- * uploads). In production mode it trusts one proxy hop, so this harness sends a
- * fresh X-Forwarded-For per request to stay under the limit. That only works
- * against a local test server — never point this at production.
+ * Rate limit note: per client IP the server allows 200 API calls / 15 min, 50
+ * uploads / 15 min, and for pricing 300 quotes / 15 min with a burst limit of
+ * 40 / 10 s (server/security/rateLimits.js). In production mode it trusts one
+ * proxy hop, so this harness sends an X-Forwarded-For that changes every 30
+ * calls to stay under all of them. That only works against a local test server
+ * — never point this at production.
  */
 const fs = require("fs");
 const path = require("path");
@@ -56,7 +58,7 @@ const DXF_STEP_PARITY = 0.02;            // a DXF must price within 2 % of the S
 let reqCounter = 0;
 function fakeIp() {
   reqCounter += 1;
-  const n = 1000 + Math.floor(reqCounter / 150); // new "client" every 150 calls
+  const n = 1000 + Math.floor(reqCounter / 30); // new "client" every 30 calls (under the 40 / 10 s pricing burst limit)
   return `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`;
 }
 async function api(method, route, { json, form } = {}) {

@@ -3,7 +3,7 @@
  * Exposes the exact same interface with JSON column auto-serialization.
  */
 const { getDatabase, saveToDisk } = require("./database");
-const { v4: uuidv4 } = require("uuid");
+const { randomUUID: uuidv4 } = require("crypto"); // RFC 4122 v4, same format the uuid package produced
 
 // Mapping of JS field names → SQLite JSON column names per table
 const JSON_COLUMNS = {
@@ -129,8 +129,37 @@ for (const [k, v] of Object.entries(FIELD_TO_COLUMN)) {
   COLUMN_TO_FIELD[v] = k;
 }
 
+// Table and column names are the only parts of a statement that are not bound
+// parameters, so they are held to a plain identifier shape and to names this
+// module knows. Values always go through `?` placeholders.
+const IDENTIFIER = /^[a-z_][a-z0-9_]{0,63}$/;
+
+/** A value sql.js can bind: string, number, null or bytes. Anything else is stored as JSON text, never passed raw. */
+function toSqlValue(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  // SQLite text ends at the first NUL byte: "owner@shop.test\0.example" would be stored as
+  // "owner@shop.test". A string must be stored whole or not at all, so NULs are removed, never truncated at.
+  if (typeof value === "string") return value.indexOf("\u0000") === -1 ? value : value.replace(/\u0000/g, "");
+  if (typeof value === "bigint") return value.toString();
+  if (value instanceof Uint8Array) return value;
+  if (typeof value === "object") { try { return JSON.stringify(value); } catch { return null; } }
+  return null; // functions, symbols
+}
+
+/** An id as a bindable value, or null for anything that cannot be one (an object or array from a request body). */
+function idValue(id) {
+  if (typeof id === "string") return id.length <= 128 && id.indexOf("\u0000") === -1 ? id : null;
+  if (typeof id === "number" && Number.isFinite(id)) return id;
+  return null;
+}
+
 class SqliteDB {
   constructor(tableName) {
+    if (!IDENTIFIER.test(String(tableName)) || !Object.prototype.hasOwnProperty.call(JSON_COLUMNS, tableName)) {
+      throw new Error(`SqliteDB: unknown table "${String(tableName).slice(0, 40)}"`);
+    }
     this.tableName = tableName;
     this.jsonMappings = JSON_COLUMNS[tableName] || {};
     this._columnCache = null;
@@ -168,10 +197,12 @@ class SqliteDB {
    */
   _filterColumns(serialized) {
     const validCols = this._getColumns();
-    if (validCols.size === 0) return serialized; // fallback: don't filter
+    // Column names are interpolated into the statement, so only names the
+    // table really has may pass. If the table's columns cannot be read, nothing
+    // passes (fail closed) rather than everything.
     const filtered = {};
     for (const [key, value] of Object.entries(serialized)) {
-      if (validCols.has(key)) {
+      if (validCols.has(key) && IDENTIFIER.test(key)) {
         filtered[key] = value;
       }
       // silently skip unknown columns
@@ -192,16 +223,10 @@ class SqliteDB {
         continue;
       }
       // Map camelCase to snake_case
-      const colName = FIELD_TO_COLUMN[key] || key;
-      // Convert booleans to integers for SQLite
-      if (typeof value === "boolean") {
-        result[colName] = value ? 1 : 0;
-      } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-        // Unknown nested objects get JSON-stringified
-        result[colName] = JSON.stringify(value);
-      } else {
-        result[colName] = value;
-      }
+      const colName = Object.prototype.hasOwnProperty.call(FIELD_TO_COLUMN, key) ? FIELD_TO_COLUMN[key] : key;
+      // Booleans become 0/1; objects and arrays in a plain column become JSON text;
+      // nothing that sql.js cannot bind is ever handed to it.
+      result[colName] = toSqlValue(value);
     }
     return result;
   }
@@ -284,7 +309,9 @@ class SqliteDB {
   }
 
   getById(id) {
-    const rows = this._query(`SELECT * FROM ${this.tableName} WHERE id = ?`, [id]);
+    const key = idValue(id);
+    if (key === null) return null;
+    const rows = this._query(`SELECT * FROM ${this.tableName} WHERE id = ?`, [key]);
     return rows.length > 0 ? this._deserialize(rows[0]) : null;
   }
 
@@ -299,6 +326,7 @@ class SqliteDB {
       createdAt: now,
       ...record,
     };
+    if (idValue(full.id) === null) full.id = uuidv4();
     const serialized = this._filterColumns(this._serialize(full));
     const columns = Object.keys(serialized);
     if (columns.length === 0) return full;
@@ -314,6 +342,7 @@ class SqliteDB {
   }
 
   update(id, updates) {
+    if (idValue(id) === null) return null;
     const now = new Date().toISOString();
     const updateData = { ...updates, updatedAt: now };
     const serialized = this._filterColumns(this._serialize(updateData));
@@ -327,6 +356,7 @@ class SqliteDB {
   }
 
   delete(id) {
+    if (idValue(id) === null) return false;
     const changed = this._run(`DELETE FROM ${this.tableName} WHERE id = ?`, [id]);
     return changed > 0;
   }
@@ -344,4 +374,4 @@ class SqliteDB {
   }
 }
 
-module.exports = { SqliteDB };
+module.exports = { SqliteDB, IDENTIFIER, toSqlValue };

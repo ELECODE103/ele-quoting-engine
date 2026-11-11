@@ -538,7 +538,7 @@ router.get("/:id/drawing", authenticate, (req, res) => {
   const order = ownedOrder(req, res);
   if (!order) return;
   if (!order.drawingPath || !fs.existsSync(order.drawingPath)) return res.status(404).json({ error: "No drawing on this order" });
-  res.download(order.drawingPath, order.drawingFileName || path.basename(order.drawingPath));
+  require("../services/fileCrypto").sendDownload(res, order.drawingPath, order.drawingFileName); // decrypts when stored encrypted; always an attachment
 });
 
 // ═══════════════════════════════════════════════════════════════

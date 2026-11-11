@@ -4,7 +4,7 @@
  */
 const fs = require("fs");
 const path = require("path");
-const { v4: uuidv4 } = require("uuid");
+const { randomUUID: uuidv4 } = require("crypto"); // RFC 4122 v4, same format the uuid package produced
 
 const DATA_DIR = path.join(__dirname, "..", "..", "data");
 
