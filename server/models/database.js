@@ -217,6 +217,7 @@ const SCHEMA = `
 
 // Singleton
 let dbInstance = null;
+let payloadMigration = null; // what the part-payload migration did at this start (for the log and the tests)
 let SQL = null;
 
 /**
@@ -328,7 +329,14 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
     // Account hardening (2026-11-11). Additive columns; see ./accountMigration.js.
     require("./accountMigration").apply(dbInstance);
 
+    // Part payloads (2026-11-11): preview meshes and large geometry detail move out of the rows into
+    // files under data/part-payloads. One batch in memory, VACUUM, then the single save below.
+    const bytesBefore = fileSize();
+    const moved = require("./partPayloadMigration").apply(dbInstance);
+
     saveToDisk();
+    if (moved.vacuumed) console.log(`  Database file: ${(bytesBefore / 1e6).toFixed(1)} MB → ${(fileSize() / 1e6).toFixed(1)} MB after moving part payloads out.`);
+    payloadMigration = moved;
     readyResolve();
   } catch (err) {
     console.error("Failed to initialize SQLite:", err);
@@ -381,4 +389,4 @@ function getDatabase() {
   return dbInstance;
 }
 
-module.exports = { getDatabase, saveToDisk, batch, compact, fileSize, ready, DB_PATH };
+module.exports = { getDatabase, saveToDisk, batch, compact, fileSize, ready, DB_PATH, payloadMigration: () => payloadMigration };

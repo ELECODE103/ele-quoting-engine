@@ -1,7 +1,8 @@
 /**
  * Guards in front of every route that writes an uploaded file to disk.
  *
- *   storage   a hard ceiling on what the upload folders may hold together
+ *   storage   a hard ceiling on what the upload folders (and the part-payload
+ *             folder derived from uploads) may hold together
  *             (UPLOAD_DIR_MAX_MB). At UPLOAD_DIR_WARN_PERCENT a warning is
  *             logged; at the ceiling new files are refused politely and the
  *             refusal is logged. The retention sweeps bring usage back down.
@@ -25,8 +26,12 @@ const brand = require("../../shared/brand.json");
 const DAY_MS = 24 * 60 * 60 * 1000;
 // QUOTING_DATA_DIR lets the test suites write to a throwaway folder (like QUOTING_DB_PATH for the database).
 const DATA_DIR = process.env.QUOTING_DATA_DIR ? path.resolve(process.env.QUOTING_DATA_DIR) : path.join(__dirname, "..", "..", "data");
-/** Every folder that receives files from the public. */
-const STORAGE_DIRS = ["uploads", "quote-drawings", "rfq-drawings"].map((d) => path.join(DATA_DIR, d));
+/** The folders drawings land in (swept for files no quote, order or request refers to). */
+const DRAWING_DIRS = ["quote-drawings", "rfq-drawings"].map((d) => path.join(DATA_DIR, d));
+/** Where each part's preview mesh and large geometry detail are kept (models/partPayloads.js). */
+const PART_PAYLOAD_DIR = path.join(DATA_DIR, "part-payloads");
+/** Every folder that holds what the public sends or what is derived from it: together they are held to one ceiling. */
+const STORAGE_DIRS = [path.join(DATA_DIR, "uploads"), ...DRAWING_DIRS, PART_PAYLOAD_DIR];
 
 // ─── Storage ceiling ─────────────────────────────────────────
 
@@ -83,7 +88,7 @@ const storage = {
     if (used + incoming > max) {
       if (now - this.lastRefuseLogAt > 60 * 1000) {
         this.lastRefuseLogAt = now;
-        console.error(`UPLOAD STORAGE FULL: ${mb(used)} MB of ${mb(max)} MB used in data/uploads, data/quote-drawings and data/rfq-drawings — new files are being refused. Raise UPLOAD_DIR_MAX_MB, shorten UPLOAD_RETENTION_HOURS, or clear old files.`);
+        console.error(`UPLOAD STORAGE FULL: ${mb(used)} MB of ${mb(max)} MB used in data/uploads, data/quote-drawings, data/rfq-drawings and data/part-payloads — new files are being refused. Raise UPLOAD_DIR_MAX_MB, shorten UPLOAD_RETENTION_HOURS, or clear old files.`);
       }
       return false;
     }
@@ -98,10 +103,11 @@ const storage = {
 const mb = (bytes) => Math.round(bytes / (1024 * 1024));
 
 // ─── Database ceiling ────────────────────────────────────────
-// Every upload adds a row holding the part's geometry and preview mesh (up to a
-// few MB), and sql.js rewrites the whole database file on every write. Past
-// DB_MAX_MB new uploads are refused, so abuse cannot grow the database until
-// writes stall the site or memory runs out. Row retention shrinks it again.
+// sql.js rewrites the whole database file on every write, so the file has a
+// ceiling: past DB_MAX_MB new uploads are refused. A part row is small now (its
+// preview mesh and large detail are files under data/part-payloads, counted
+// against the storage ceiling above), so this is a backstop against rows
+// growing some other way; row retention shrinks the file again.
 const database = {
   lastWarnAt: 0,
   lastRefuseLogAt: 0,
@@ -242,4 +248,4 @@ function safeFileName(name, fallback = "file") {
   return clean || fallback;
 }
 
-module.exports = { storage, database, budget, admit, account, safeFileName, STORAGE_DIRS, DATA_DIR, FULL_MESSAGE };
+module.exports = { storage, database, budget, admit, account, safeFileName, STORAGE_DIRS, DRAWING_DIRS, PART_PAYLOAD_DIR, DATA_DIR, FULL_MESSAGE };

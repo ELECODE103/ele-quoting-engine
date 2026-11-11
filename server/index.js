@@ -188,7 +188,10 @@ async function start() {
   const uploadGuards = require("./security/uploadGuards");
   startRetentionSweep(path.join(uploadGuards.DATA_DIR, "uploads"), { keep: () => neededUploads(require("./models")) });
   // Drawings (instant-quote PDFs, RFQ attachments) no quote, order or request refers to any more.
-  require("./services/fileRetention").startDrawingSweep(uploadGuards.STORAGE_DIRS.slice(1), require("./models"), { onSwept: () => uploadGuards.storage.invalidate() });
+  require("./services/fileRetention").startDrawingSweep(uploadGuards.DRAWING_DIRS, require("./models"), { onSwept: () => uploadGuards.storage.invalidate() });
+  // Part payload files (preview meshes, large geometry detail): each goes when its part row goes;
+  // this removes whatever is left without a row (a crash between the two, a file from a failed store).
+  require("./services/fileRetention").startPayloadSweep(require("./models").partsDB);
   uploadGuards.storage.hasRoom(0); // logs now if the upload folders are already near or over their ceiling
 
   // The rows that go with those files: abandoned uploads and lapsed draft
@@ -198,7 +201,8 @@ async function start() {
   const sweepDatabase = () => {
     try {
       const r = sweepRows(require("./models"));
-      if (r.quotes || r.parts) console.log(`Row retention: removed ${r.parts} abandoned part(s) and ${r.quotes} lapsed draft quote(s); database ${(r.bytesBefore / 1e6).toFixed(1)} MB → ${(r.bytesAfter / 1e6).toFixed(1)} MB`);
+      if (r.quotes || r.parts) console.log(`Row retention: removed ${r.parts} abandoned part(s) with their payload files and ${r.quotes} lapsed draft quote(s); database ${(r.bytesBefore / 1e6).toFixed(1)} MB → ${(r.bytesAfter / 1e6).toFixed(1)} MB`);
+      if (r.parts) uploadGuards.storage.invalidate();
     } catch (err) {
       console.error("Row retention sweep error:", err.message);
     }
@@ -220,9 +224,9 @@ async function start() {
     if (!process.env.ADMIN_EMAIL) console.warn("WARNING: ADMIN_EMAIL not set — no account will be given the admin role.");
     if (!process.env.FRONTEND_URL) console.warn("WARNING: FRONTEND_URL not set — links in emails use the request's host only when it is one of ours, otherwise the brand URL. Set FRONTEND_URL=https://straightedgemfg.com.");
     if (!process.env.NORD_FILE_ENC_KEY) {
-      console.warn("WARNING: NORD_FILE_ENC_KEY not set — customer files are stored UNENCRYPTED on the volume: CAD uploads (data/uploads), drawings attached to instant quotes (data/quote-drawings) and RFQ attachments (data/rfq-drawings). Anyone with access to the volume or a volume backup can read them. To turn encryption on, follow docs/security/file-encryption.md (the owner creates the key in Railway).");
+      console.warn("WARNING: NORD_FILE_ENC_KEY not set — customer files are stored UNENCRYPTED on the volume: CAD uploads (data/uploads), drawings attached to instant quotes (data/quote-drawings), RFQ attachments (data/rfq-drawings) and each part's preview mesh and geometry detail (data/part-payloads). Anyone with access to the volume or a volume backup can read them. To turn encryption on, follow docs/security/file-encryption.md (the owner creates the key in Railway).");
     } else {
-      console.log("File encryption: on — new CAD uploads, quote drawings and RFQ attachments are stored encrypted (AES-256-GCM).");
+      console.log("File encryption: on — new CAD uploads, quote drawings, RFQ attachments and part preview meshes are stored encrypted (AES-256-GCM).");
     }
   }
 

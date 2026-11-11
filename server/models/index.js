@@ -17,7 +17,8 @@ const finishesDB = new DBClass("finishes");
 const leadTimesDB = new DBClass("lead_times");
 const pricingDB = new DBClass("pricing_rules");
 const quotesDB = new DBClass("quotes");
-const partsDB = new DBClass("parts");
+// A part's preview mesh and large geometry detail live in files, not in the row (models/partsStore.js).
+const partsDB = new (require("./partsStore").PartsStore)(new DBClass("parts"));
 const ordersDB = new DBClass("orders");
 const orderItemsDB = new DBClass("order_items");
 const usersDB = new DBClass("users");

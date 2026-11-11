@@ -595,6 +595,72 @@ test("after the merge: quote drawings and request attachments are encrypted at r
   } finally { await s.stop(); }
 });
 
+test("a dense model adds kilobytes to the database, not megabytes: its preview mesh is a file, encrypted with the rest, and survives a restart", async () => {
+  // A sphere of 14,160 triangles: its preview mesh is 2.4 MB of JSON, which used to be the part's database row.
+  const sphere = (() => {
+    const n = 60, r = 25, tris = [];
+    const P = (i, j) => { const t = Math.PI * i / n, p = Math.PI * j / n; return [r * Math.sin(t) * Math.cos(p), r * Math.sin(t) * Math.sin(p), r * Math.cos(t)]; };
+    for (let i = 0; i < n; i++) for (let j = 0; j < 2 * n; j++) { const a = P(i, j), b = P(i + 1, j), c = P(i + 1, j + 1), d = P(i, j + 1); if (i > 0) tris.push([a, b, d]); if (i < n - 1) tris.push([b, c, d]); }
+    const buf = Buffer.alloc(84 + tris.length * 50); buf.writeUInt32LE(tris.length, 80);
+    let o = 84; for (const t of tris) { o += 12; for (const v of t) for (const x of v) { buf.writeFloatLE(x, o); o += 4; } o += 2; }
+    return buf;
+  })();
+  const key = crypto.randomBytes(36).toString("base64");
+  const jwtSecret = crypto.randomBytes(32).toString("hex");
+  let s = await live.start({ env: { NORD_FILE_ENC_KEY: key, JWT_SECRET: jwtSecret } });
+  const me = "203.0.113.95";
+  try {
+    const dbFile = path.join(s.dataDir, "quoting.db");
+    const before = fs.statSync(dbFile).size;
+    const ups = [];
+    for (let i = 0; i < 3; i++) {
+      const r = await s.upload([{ name: `sphere-${i}.stl`, data: sphere }], { ip: me });
+      assert.strictEqual(r.status, 200, r.text.slice(0, 200));
+      assert.strictEqual(r.body.parts.length, 1, JSON.stringify(r.body.errors));
+      ups.push(r.body.parts[0]);
+    }
+    const grew = fs.statSync(dbFile).size - before;
+    const meshJson = JSON.stringify(ups[0].meshPreview).length;
+    assert.ok(meshJson > 2 * 1024 * 1024, `the mesh is ${meshJson} bytes of JSON`);
+    assert.ok(grew < 200 * 1024, `three dense parts grew the database by ${grew} bytes (it was ${3 * meshJson} before this change)`);
+    console.log(`       (three 14,160-triangle parts: database +${(grew / 1024).toFixed(0)} kB; their meshes, ${(3 * meshJson / 1e6).toFixed(1)} MB, are in files)`);
+    const payloadFiles = s.files("part-payloads");
+    assert.deepStrictEqual(payloadFiles.slice().sort(), ups.map((u) => `${u.partId}.mesh.json.enc`).sort());
+    for (const f of payloadFiles) {
+      const bytes = fs.readFileSync(path.join(s.dir("part-payloads"), f));
+      assert.strictEqual(bytes.subarray(0, 4).toString("latin1"), "SEF1");
+      assert.ok(!bytes.includes(Buffer.from("positions")), "the mesh is not readable on disk");
+    }
+    assert.ok(!fs.readFileSync(dbFile).includes(Buffer.from('"positions":[2')), "and it is not in the database file");
+    // Price, then reopen the quote after a restart: the preview comes back from the file.
+    const mats = (await s.get("/api/materials?process=cnc", { ip: me })).body;
+    const q = await s.post("/api/quote", { parts: ups.map((u) => ({ partId: u.partId, materialSlug: mats[0].slug, quantity: 1, process: "cnc", subProcess: "milling" })) }, { ip: me });
+    assert.strictEqual(q.status, 200, q.text.slice(0, 200));
+    const tmpDir = s.tmp;
+    await s.stop({ keep: true });
+    s = await live.start({ tmpDir, env: { NORD_FILE_ENC_KEY: key, JWT_SECRET: jwtSecret } });
+    assert.ok(!/Part payloads: moved/.test(s.log()), "nothing to migrate: these rows never held a mesh");
+    assert.ok(!/removed \d+ part payload file/.test(s.log()), "the sweep leaves files that have a row");
+    const session = await s.get(`/api/quote/${q.body.quoteId}/session`, { ip: me });
+    assert.strictEqual(session.status, 200);
+    assert.deepStrictEqual(session.body.parts.map((p) => p.meshPreview.positions.length), ups.map((u) => u.meshPreview.positions.length));
+    assert.deepStrictEqual(session.body.parts[0].meshPreview.positions.slice(0, 300), ups[0].meshPreview.positions.slice(0, 300));
+    const again = await s.post("/api/quote", { parts: ups.map((u) => ({ partId: u.partId, materialSlug: mats[0].slug, quantity: 1, process: "cnc", subProcess: "milling" })), quoteId: q.body.quoteId }, { ip: me });
+    assert.strictEqual(again.body.orderTotal, q.body.orderTotal, "the same price after the restart");
+    // A stray payload with no part row is swept at the next start; the real ones stay.
+    await s.stop({ keep: true });
+    const stray = path.join(tmpDir, "data", "part-payloads", `${crypto.randomUUID()}.mesh.json.enc`);
+    fs.writeFileSync(stray, Buffer.alloc(4096, 1));
+    const hourAgo = new Date(Date.now() - 3600 * 1000);
+    fs.utimesSync(stray, hourAgo, hourAgo);
+    s = await live.start({ tmpDir, env: { NORD_FILE_ENC_KEY: key, JWT_SECRET: jwtSecret } });
+    assert.ok(/File retention: removed 1 part payload file\(s\) with no part row/.test(s.log()));
+    assert.strictEqual(s.files("part-payloads").length, 3);
+    assert.ok(/part preview meshes are stored encrypted/.test(s.log()));
+    assert.ok(!s.log().includes(key));
+  } finally { await s.stop(); }
+});
+
 run(async () => {
   for (const s of servers) await s.stop();
 });

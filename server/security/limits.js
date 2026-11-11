@@ -33,14 +33,24 @@ const limits = {
   get uploadMaxFiles() { return envInt("UPLOAD_MAX_FILES", 10, 1, 50); },
   /** Bytes one client address may upload in a rolling 24 hours (CAD + drawings). */
   get uploadDailyBytesPerClient() { return envInt("UPLOAD_DAILY_MB_PER_IP", 500, 1, 100000) * MB; },
-  /** Hard ceiling on everything stored under data/uploads, data/quote-drawings and data/rfq-drawings. */
+  /** Hard ceiling on everything stored under data/uploads, data/quote-drawings, data/rfq-drawings and data/part-payloads. */
   get storageMaxBytes() { return envInt("UPLOAD_DIR_MAX_MB", 2048, 10, 1000000) * MB; },
   /**
-   * Database file size past which new uploads are refused. Each upload adds a geometry row (up to
-   * ~3 MB for a dense mesh) and every write rewrites the whole file: measured, a write blocks the
-   * server for about 2 ms per MB of database (0.4 s at 200 MB) and memory runs at ~5× the file.
+   * Database file size past which new uploads are refused. Every write rewrites the whole file:
+   * measured, a write blocks the server for about 2 ms per MB of database (0.4 s at 200 MB) and
+   * memory runs at ~5× the file. A part row used to carry its preview mesh (up to ~3 MB); the mesh
+   * and other large detail now live in files (partInline* above), so a row is tens of kB at most
+   * and this ceiling is a backstop, not something a busy month reaches.
    */
   get databaseMaxBytes() { return envInt("DB_MAX_MB", 256, 16, 16384) * MB; },
+  /**
+   * What stays in a part's database row. A preview mesh whose JSON is larger than the first figure,
+   * and geometry detail (recognised features, a DXF's loops) larger than the second, are written to
+   * per-part files under data/part-payloads instead (models/partPayloads.js), so a row is a few kB
+   * to a few tens of kB and the database no longer grows by megabytes per upload.
+   */
+  get partInlineMeshBytes() { return envInt("PART_INLINE_MESH_KB", 16, 0, 1024) * 1024; },
+  get partInlineGeometryBytes() { return envInt("PART_INLINE_GEOMETRY_KB", 64, 8, 4096) * 1024; },
   /** Share of the ceiling at which a warning is logged. */
   get storageWarnFraction() { return envInt("UPLOAD_DIR_WARN_PERCENT", 80, 10, 99) / 100; },
   /** Largest drawing (PDF) attached to an instant quote, bytes. */

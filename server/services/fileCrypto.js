@@ -1,6 +1,8 @@
 /**
  * At-rest encryption for files customers send us: CAD uploads, the drawing a
- * buyer attaches to an instant quote, and RFQ attachments.
+ * buyer attaches to an instant quote, and RFQ attachments — and for what we
+ * derive from them and keep in files: each part's preview mesh and large
+ * geometry detail (data/part-payloads, models/partPayloads.js).
  *
  * Customer files are proprietary, so once an upload has been read it is stored
  * encrypted and decrypted only for an authorised download (admin, or the
@@ -156,6 +158,20 @@ async function encryptFile(plainPath) {
   }
 }
 
+/**
+ * Encrypt bytes we already hold in memory (a part's stored mesh, say) into the
+ * same on-disk format a file gets, so nothing readable is ever written first.
+ * Throws when no key is configured: the caller decides whether to store plain.
+ */
+function encryptBuffer(plaintext) {
+  const k = getKey();
+  if (!k) throw new FileCryptoError("no-key", "No file encryption key is configured (NORD_FILE_ENC_KEY).");
+  const iv = crypto.randomBytes(IV_LEN);
+  const cipher = crypto.createCipheriv(ALGO, k.key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  return Buffer.concat([header(k.id, iv, cipher.getAuthTag()), ciphertext]);
+}
+
 function decryptBuffer(data) {
   const keys = decryptKeys();
   if (keys.length === 0) throw new FileCryptoError("no-key", "This file is encrypted and no file encryption key is configured (NORD_FILE_ENC_KEY).");
@@ -238,7 +254,7 @@ async function sendDownload(res, storedPath, downloadName) {
 
 module.exports = {
   isEnabled, configProblem, isEncryptedPath,
-  encryptFileInPlace, encryptFile,
-  decryptToBuffer, decryptFile, readStored, sendDownload,
+  encryptFileInPlace, encryptFile, encryptBuffer,
+  decryptBuffer, decryptToBuffer, decryptFile, readStored, sendDownload,
   FileCryptoError, ENC_SUFFIX, MIN_SECRET_LENGTH,
 };

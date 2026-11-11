@@ -333,7 +333,8 @@ router.post(
         pending.add(storedPath);
         const storedName = path.basename(storedPath);
 
-        // Store part in DB
+        // Store the part: scalars in the database row, the preview mesh (and any other large
+        // payload) in files under data/part-payloads (models/partsStore.js).
         const part = partsDB.insert({
           fileName,
           storedName: storedName,
@@ -350,6 +351,15 @@ router.post(
         current = null;
         if (err.code === "cancelled") break;
         if (err.code === "busy") { busy = err; errors.push({ fileName, error: err.message, code: "busy" }); continue; }
+        if (err.name === "PayloadError") {
+          // The file was read, but what we keep of it could not be stored (the storage ceiling, or the disk).
+          // Nothing of this part was kept: its upload is deleted with the rest of `pending`.
+          console.error(`Upload: part data not stored (${err.code})`);
+          errors.push(err.code === "storage-full"
+            ? { fileName, error: uploadGuards.FULL_MESSAGE, code: "storage-full" }
+            : { fileName, error: `We couldn't store this file just now. Try again in a minute, or email it to ${brand.email}.`, code: "store-failed" });
+          continue;
+        }
         errors.push(parseFailure(fileName, err));
       }
     }
@@ -421,6 +431,10 @@ router.post("/parts/:partId/units", async (req, res) => {
     const updated = partsDB.update(part.id, { geometry: parsed.geometry, dfm: parsed.dfm }) || { ...part, geometry: parsed.geometry };
     res.json(partPayload({ id: part.id, fileName: updated.fileName || part.fileName }, parsed));
   } catch (err) {
+    if (err.name === "PayloadError" && err.code === "storage-full") {
+      res.set("Retry-After", "3600");
+      return res.status(503).json({ error: uploadGuards.FULL_MESSAGE, code: "storage-full" });
+    }
     console.error("Units error:", err);
     res.status(500).json({ error: "Could not change the units. Please try again." });
   }
@@ -505,6 +519,11 @@ function priceQuote(partConfigs, leadTimeSlug = "standard", { paperwork = false 
     const part = partsDB.getById(config.partId);
     if (!part) {
       throw quoteError(400, `Part not found: ${config.partId}`);
+    }
+    // A part whose measurements are kept in a file (a very detailed model) cannot be priced from a
+    // partial copy: if that file cannot be read, say so instead of quoting a wrong number.
+    if (part.payloadError) {
+      throw quoteError(409, `${part.fileName}: we can no longer read what we measured from this file. Upload it again and it will be priced as before.`, { partId: config.partId, code: "part-data-unavailable" });
     }
     const material = materialsDB.getAll().find((m) => m.slug === config.materialSlug);
     // Same rule as the lead time: a material the catalog does not list (switched
@@ -726,7 +745,8 @@ router.get("/quote/:id/session", optionalAuth, (req, res) => {
   }));
   const parts = [];
   for (const config of configs) {
-    const part = partsDB.getById(config.partId);
+    // The preview mesh is read from the part's file here, and only here.
+    const part = partsDB.getById(config.partId, { mesh: true });
     if (!part) continue;
     const { meshData, ...geometry } = part.geometry || {};
     parts.push({
@@ -735,6 +755,8 @@ router.get("/quote/:id/session", optionalAuth, (req, res) => {
       geometry,
       dfm: part.dfm,
       meshPreview: { positions: meshData?.positions || [], triangleCount: meshData?.triangleCount || 0 },
+      // The quote still opens and prices without its 3D preview (the mesh file is missing or cannot be decrypted).
+      ...(part.meshError ? { previewUnavailable: true } : {}),
     });
   }
   res.json({
@@ -1166,7 +1188,7 @@ router.get("/admin/parts", authenticate, requireAdmin, (req, res) => {
     const parts = partsDB.getAll();
     // Sort newest first
     parts.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-    // Strip heavy fields (geometry meshData, dfm) to keep payload small
+    // Only the list's own columns (rows hold no mesh; this keeps dfm and detail out too)
     const slim = parts.map((p) => ({
       id: p.id,
       fileName: p.fileName,
@@ -1229,6 +1251,9 @@ router.get("/admin/backup/json", authenticate, requireAdmin, (req, res) => {
         parts: partsDB.getAll(),
         orders: ordersDB.getAll(),
       },
+      // Each part's preview mesh, and the geometry detail of very detailed models, are files under
+      // data/part-payloads on the volume, not rows: they are not in this export (nor in the .db file).
+      notIncluded: ["data/part-payloads (preview meshes, large geometry detail)", "data/uploads, data/quote-drawings, data/rfq-drawings (customer files)"],
     };
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     res.setHeader("Content-Disposition", `attachment; filename="straightedge-backup-${timestamp}.json"`);

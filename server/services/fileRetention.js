@@ -126,4 +126,24 @@ function startDrawingSweep(dirs, models, opts = {}) {
   return timer;
 }
 
-module.exports = { startRetentionSweep, sweepOnce, neededUploads, referencedDrawings, sweepDrawings, startDrawingSweep };
+/**
+ * Part payload files (data/part-payloads) are deleted with their part's row.
+ * This sweep is the backstop: at startup and every six hours it removes any
+ * payload file no row accounts for, and temporary files left by a crash.
+ */
+function startPayloadSweep(partsDB, opts = {}) {
+  const run = () => {
+    try {
+      const r = partsDB.sweepPayloads(opts);
+      if (r.removed > 0) console.log(`File retention: removed ${r.removed} part payload file(s) with no part row (${(r.bytes / 1e6).toFixed(1)} MB)`);
+    } catch (err) {
+      console.error("Part payload sweep error:", err.message);
+    }
+  };
+  run();
+  const timer = setInterval(run, opts.intervalMs || 6 * 60 * 60 * 1000);
+  if (timer.unref) timer.unref();
+  return timer;
+}
+
+module.exports = { startRetentionSweep, sweepOnce, neededUploads, referencedDrawings, sweepDrawings, startDrawingSweep, startPayloadSweep };

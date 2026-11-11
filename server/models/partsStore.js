@@ -1,0 +1,152 @@
+/**
+ * The parts table, with each part's large payloads kept in files.
+ *
+ * Wraps the plain table (SqliteDB or JsonDB) and keeps its interface, so the
+ * routes and services go on calling partsDB.insert / getById / update /
+ * delete. What changes is where the bytes live (see models/partPayloads.js):
+ *
+ *   insert / update   the geometry is split: scalars and small detail go in the
+ *                     row, a large preview mesh and large geometry detail go to
+ *                     files (written first, so a row never points at a file
+ *                     that is not there). `meshBytes` / `detailBytes` on the row
+ *                     say what was written.
+ *   getById           gives back the geometry pricing and DFM have always had:
+ *                     complete, in the same key order, minus the preview mesh's
+ *                     vertex list (which only reopening a quote needs —
+ *                     ask for it with `{ mesh: true }`). If a file the row
+ *                     needs cannot be read, the part comes back with
+ *                     `payloadError` set and the caller must not price it.
+ *   getAll / query    the rows as stored: enough for lists, counts and sweeps;
+ *                     no mesh, and no large detail for the few parts that have
+ *                     it in a file.
+ *   delete            the row, then its files.
+ *
+ * Rows written before this (the mesh inline in the row) read exactly as they
+ * always did; the startup migration (partPayloadMigration.js) moves them.
+ */
+const { randomUUID } = require("crypto");
+const payloads = require("./partPayloads");
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+class PartsStore {
+  constructor(table) {
+    this.table = table;
+    this.tableName = table.tableName;
+    this._logged = new Set();
+  }
+
+  /** Write the files for a geometry and return the row's version of it with the sizes written. */
+  _store(id, geometry, opt) {
+    const { row, meshJson, geometryJson } = payloads.split(geometry);
+    const written = [];
+    let meshBytes = 0;
+    let detailBytes = 0;
+    try {
+      if (meshJson !== null) { meshBytes = payloads.write(id, "mesh", meshJson, opt); written.push("mesh"); }
+      if (geometryJson !== null) { detailBytes = payloads.write(id, "geometry", geometryJson, opt); written.push("geometry"); }
+    } catch (err) {
+      for (const kind of written) payloads.remove(id, kind); // all or nothing
+      throw err;
+    }
+    // A kind this geometry no longer has (a DXF re-read at another scale can shrink) leaves no stale file.
+    if (meshJson === null) payloads.remove(id, "mesh");
+    if (geometryJson === null) payloads.remove(id, "geometry");
+    return { geometry: row, meshBytes, detailBytes };
+  }
+
+  /**
+   * @throws {payloads.PayloadError} storage-full / write-failed: nothing was stored
+   */
+  insert(record) {
+    const id = typeof record.id === "string" && UUID.test(record.id) ? record.id : randomUUID();
+    const hasGeometry = record.geometry && typeof record.geometry === "object";
+    const stored = hasGeometry ? this._store(id, record.geometry) : { geometry: record.geometry, meshBytes: 0, detailBytes: 0 };
+    const row = this.table.insert({ ...record, id, geometry: stored.geometry, meshBytes: stored.meshBytes, detailBytes: stored.detailBytes });
+    // The caller gets its part back with the geometry it handed in (as an insert always answered).
+    return { ...row, geometry: record.geometry };
+  }
+
+  update(id, updates) {
+    if (!updates || !Object.prototype.hasOwnProperty.call(updates, "geometry")) {
+      const row = this.table.update(id, updates);
+      return row ? this._hydrate(row) : row;
+    }
+    if (!this.table.getById(id)) return null;
+    const stored = updates.geometry && typeof updates.geometry === "object" ? this._store(id, updates.geometry) : { geometry: updates.geometry, meshBytes: 0, detailBytes: 0 };
+    const row = this.table.update(id, { ...updates, geometry: stored.geometry, meshBytes: stored.meshBytes, detailBytes: stored.detailBytes });
+    return row ? this._hydrate(row) : row;
+  }
+
+  /**
+   * @param {{ mesh?: boolean }} [opt]  mesh: also load the preview mesh from its file
+   */
+  getById(id, opt = {}) {
+    const row = this.table.getById(id);
+    return row ? this._hydrate(row, opt) : null;
+  }
+
+  _hydrate(row, { mesh = false } = {}) {
+    const out = { ...row };
+    let geometry = row.geometry;
+    if (Number(row.detailBytes) > 0) {
+      try {
+        geometry = payloads.readJson(row.id, "geometry");
+      } catch (err) {
+        out.payloadError = err.code || "unreadable";
+        this._logOnce(row.id, "geometry", out.payloadError);
+      }
+    }
+    if (mesh && Number(row.meshBytes) > 0 && geometry && typeof geometry === "object") {
+      try {
+        geometry = { ...geometry, meshData: payloads.readJson(row.id, "mesh") };
+      } catch (err) {
+        out.meshError = err.code || "unreadable";
+        this._logOnce(row.id, "mesh", out.meshError);
+      }
+    }
+    out.geometry = geometry;
+    return out;
+  }
+
+  _logOnce(id, kind, code) {
+    const key = `${id}:${kind}:${code}`;
+    if (this._logged.has(key)) return;
+    if (this._logged.size > 500) this._logged.clear();
+    this._logged.add(key);
+    console.error(`Part payload unreadable (${code}): the ${kind} file of part ${String(id).slice(0, 8)} could not be read${code === "no-key" || code === "wrong-key" ? " — see docs/security/file-encryption.md (NORD_FILE_ENC_KEY / NORD_FILE_ENC_KEY_PREVIOUS)" : ""}`);
+  }
+
+  getAll() {
+    return this.table.getAll();
+  }
+
+  query(filterFn) {
+    return this.table.query(filterFn);
+  }
+
+  delete(id) {
+    const deleted = this.table.delete(id);
+    // The files go with the row (and are cleared even if the row was already gone).
+    if (typeof id === "string" && id) payloads.remove(id);
+    return deleted;
+  }
+
+  upsert(matchFn, record) {
+    const existing = this.table.getAll().find(matchFn);
+    return existing ? this.update(existing.id, record) : this.insert(record);
+  }
+
+  clear() {
+    const ids = this.table.getAll().map((r) => r.id);
+    this.table.clear();
+    for (const id of ids) payloads.remove(id);
+  }
+
+  /** Remove payload files no row accounts for. @returns {{removed:number, bytes:number}} */
+  sweepPayloads(opt) {
+    return payloads.sweep(this.table.getAll(), opt);
+  }
+}
+
+module.exports = { PartsStore };

@@ -17,6 +17,7 @@ With a key set, these are encrypted with AES-256-GCM before they are stored:
 | CAD uploads (STEP, STL, 3MF, IGES, DXF) | `data/uploads` | Admin → Parts → download; re-reading a DXF when the buyer changes its units |
 | The drawing a buyer attaches to an instant quote | `data/quote-drawings` | The buyer's or the admin's order page → drawing |
 | RFQ attachments (drawings, photos) | `data/rfq-drawings` | Admin → RFQs → drawing |
+| Each part's 3D preview mesh, and the measured detail of very detailed models | `data/part-payloads` | The quote tool, when a quote is reopened; pricing, for the few models whose detail is too large for the database row |
 
 Encrypted files have a name ending in `.enc`. They are decrypted in memory only, for a signed-in
 admin's (or the buyer's own) download. Nothing is ever decrypted to disk.
@@ -27,9 +28,9 @@ support export — without also getting the Railway variables.
 It does **not** protect:
 
 - **The database** (`data/quoting.db`). Customer names, emails, addresses, quote and order history
-  are in it unencrypted. So is the measured geometry of every uploaded part and the 3D preview mesh
-  (up to 50,000 triangles) — enough to reconstruct the shape of a part even though its CAD file is
-  encrypted. Treat a database backup as confidential.
+  are in it unencrypted. So are the measurements of every uploaded part (size, volume, hole counts).
+  The 3D preview mesh is no longer in the database: since 2026-11-11 it is a file under
+  `data/part-payloads` and is encrypted with the rest. Treat a database backup as confidential.
 - Against anyone who can open the Railway project: they can read the variable.
 - Files uploaded **before** the key was set. They stay as they are. CAD uploads that are not on an
   order age out after 7 days; drawings and files on orders and open requests stay until removed.
@@ -124,6 +125,8 @@ stored under it is still needed.
 |---|---|---|
 | Downloading a part or drawing gives "This file is encrypted with a key this server does not have" | The key was changed or removed | Put the earlier key in `NORD_FILE_ENC_KEY_PREVIOUS` (or back in `NORD_FILE_ENC_KEY`) and deploy |
 | A buyer changing a DXF's units is told to upload the file again | Same cause | Same fix; the buyer can also simply re-upload |
+| A reopened quote shows the part without its 3D preview | The preview mesh was stored under a key the server no longer has | Same fix. The quote still opens and prices; only the picture is missing |
+| A buyer re-pricing a very detailed part is told "we can no longer read what we measured from this file" | Same cause, for a model whose measured detail is kept in a file | Same fix; the buyer can also simply re-upload |
 | The key is lost for good | Files stored under it cannot be recovered | Quotes, prices and orders are unaffected (they use the database). Ask the customer for the file again when a job needs it |
 | The site will not deploy after you set the key | The key is too short or a placeholder | See Step 4; the previous deployment is still serving |
 

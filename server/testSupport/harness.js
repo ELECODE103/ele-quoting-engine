@@ -40,6 +40,9 @@ const PASSWORD = `Tt9-${crypto.randomBytes(9).toString("base64url")}`;
 async function start(opts = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "se-test-"));
   process.env.QUOTING_DB_PATH = path.join(tmp, "quoting.db");
+  // Uploads, drawings and part payload files of a suite go to its own throwaway folder (removed by
+  // h.stop()), not to the repository's data folder. A suite that set its own folder keeps it.
+  if (!process.env.QUOTING_DATA_DIR) process.env.QUOTING_DATA_DIR = path.join(tmp, "data");
   process.env.JWT_SECRET = "test-secret";
   process.env.ADMIN_EMAIL = "owner@shop.test";
   process.env.FRONTEND_URL = "https://shop.test";
