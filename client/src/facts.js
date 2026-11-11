@@ -101,3 +101,7 @@ export function toleranceFor(text) {
 /** "milled, turned and routed" / "milled and routed" */
 export const MACHINED = when('turning', 'milled, turned and routed', 'milled and routed');
 export const MILLING = when('turning', 'milling and turning', 'milling');
+
+// Finishes done by an outside finisher (owner, 2026-11-10: anodize and powder coat are sent out;
+// bead blasting is done in the shop). The quote tool says so next to each one.
+export const SENT_OUT_FINISHES = new Set(['cnc-anodize-clear', 'cnc-anodize-black', 'cnc-anodize-color', 'cnc-powder-coat']);

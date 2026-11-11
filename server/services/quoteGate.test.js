@@ -20,6 +20,15 @@ test("ordinary quote goes straight to checkout", () => {
   assert.strictEqual(r.reasons.length, 0);
 });
 
+test("a line priced as lathe work goes to a person while turning is not sold as its own operation", () => {
+  const r = gate.evaluate([line({ meta: { process: "cnc", subProcess: "turning" } })], { p1: okDfm });
+  assert.strictEqual(require("../shopFacts").ok("turning"), false, "owner: the manual lathe supports other work");
+  assert.strictEqual(r.requiresRfq, true);
+  assert.ok(r.reasons.some((x) => x.code === "turning-review"));
+  const milled = gate.evaluate([line({ meta: { process: "cnc", subProcess: "milling" } })], { p1: okDfm });
+  assert.strictEqual(milled.requiresRfq, false);
+});
+
 test(`over ${gate.RFQ_QTY_THRESHOLD} pieces requires an RFQ`, () => {
   const r = gate.evaluate([line({ quantity: gate.RFQ_QTY_THRESHOLD + 1 })], { p1: okDfm });
   assert.strictEqual(r.requiresRfq, true);

@@ -3,7 +3,7 @@
  * Uses PDFKit to generate professional job travelers and packing lists
  */
 const PDFDocument = require("pdfkit");
-const brand = require("../../shared/brand.json");
+const brand = { ...require("../../shared/brand.json"), ...(({ _note, ...a }) => a)(require("../config/shipFrom.json")) };
 const shopFacts = require("../shopFacts");
 
 // ============================================================================
@@ -604,7 +604,7 @@ function generatePackingList(order, items) {
     .font("Helvetica")
     .fillColor("#666666");
   doc.text(shopFacts.businessName(brand), margin + 10, y);
-  doc.text(`${brand.city}, ${brand.state}`, margin + 10, y + 12);
+  doc.text([brand.address, `${brand.city}, ${brand.state}`, brand.zip].filter(Boolean).join(" "), margin + 10, y + 12);
   doc.text(`${brand.phone} · ${brand.email}`, margin + 10, y + 24);
   doc.text(`Order Reference: ${order.id.substring(0, 8)}`, margin + 10, y + 38);
 

@@ -48,6 +48,21 @@ const BASIS = [
   ["ADVICE", /50 pieces|Two angles|two or three|Three ways|three|first choice|a question or two|printed fit|3D print|second photo|one more dimension|one picture|one straight cut|one thing|One of the easiest|404|days|within|hours/i],
 ];
 
+// A sentence that carries the exact wording or number of a fact the owner has
+// confirmed in shared/shop-facts.json rests on that confirmation.
+function confirmedStrings() {
+  const out = [];
+  const walk = (v) => { if (typeof v === "string") { if (v.trim().length >= 4) out.push(v.trim()); } else if (v && typeof v === "object") Object.values(v).forEach(walk); };
+  for (const f of Object.values(facts)) if (f.confirmed === true) walk(f.value);
+  return out;
+}
+const CONFIRMED_STRINGS = confirmedStrings();
+const squash = (t) => t.replace(/\s+/g, " ");
+function ownerConfirmed(sentence) {
+  const s = squash(sentence);
+  return CONFIRMED_STRINGS.some((v) => s.includes(squash(v)) || s.includes(squash(v).split(" on a ")[0]));
+}
+
 function text(html) {
   const main = (html.match(/<main[\s\S]*?<\/main>/) || [html])[0] + (html.match(/<footer[\s\S]*?<\/footer>/) || [""])[0] + (html.match(/<header[\s\S]*?<\/header>/) || [""])[0];
   return main
@@ -81,7 +96,7 @@ for (const [route, file] of files(DIR).sort()) {
   for (const s of sentences(text(fs.readFileSync(file, "utf8")))) {
     const trig = TRIGGERS.filter(([, re]) => re.test(s)).map(([n]) => n);
     if (trig.length === 0) continue;
-    const basis = (BASIS.find(([, re]) => re.test(s)) || ["UNSUPPORTED"])[0];
+    const basis = (BASIS.find(([, re]) => re.test(s)) || [ownerConfirmed(s) ? "OWNER CONFIRMED (shop-facts.json)" : "UNSUPPORTED"])[0];
     if (!seen.has(s)) seen.set(s, { routes: [], trig, basis });
     seen.get(s).routes.push(route);
   }

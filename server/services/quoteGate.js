@@ -10,6 +10,7 @@
  *     a stock-to-part ratio that usually means multiple setups / 4th axis,
  *     a machined block priced without a feature list (legacy geometry only),
  *     a wall thinner than the review threshold,
+ *     a line priced as lathe work while turning is not sold as its own operation,
  *     or a line total big enough that a wrong model assumption costs real money
  *
  * Thresholds come from the Gate group of the pricing rules when the caller
@@ -76,6 +77,13 @@ function evaluate(lineItems = [], dfmByPartId = {}, rules = {}) {
       if (envelope) {
         reasons.push({ partId, code: "envelope", message: envelope.detail });
       }
+    }
+
+    // Lathe work is a supporting operation here (a manual lathe for bores and
+    // second operations), not something sold by the click: a line priced as
+    // turning keeps its budgetary price and goes to a person.
+    if (process === "cnc" && li.meta?.subProcess === "turning" && !shopFacts.ok("turning")) {
+      reasons.push({ partId, code: "turning-review", message: "Turned parts are quoted by a person — lathe work here is done by hand" });
     }
 
     if (process === "cnc") {

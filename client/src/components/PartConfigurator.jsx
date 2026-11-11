@@ -1,5 +1,5 @@
 import { formatBox } from '../utils/format';
-import { gradeLabel } from '../facts';
+import { gradeLabel, ok, SENT_OUT_FINISHES } from '../facts';
 
 // Short, friendly use-case guidance per material. Keyed by lowercase keywords
 // matched against the material name/category, so it works without a DB field.
@@ -128,8 +128,8 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
           </label>
         )}
 
-        {/* Milling vs turning (CNC only) */}
-        {isCnc && (
+        {/* Milling vs turning (CNC only) — shown only when the shop sells turning as its own operation */}
+        {isCnc && ok('turning') && (
           <label>
             <span className="field-label">Operation</span>
             <select className="input" value={part.subProcess || 'milling'} onChange={(e) => onChange({ subProcess: e.target.value })}>
@@ -187,7 +187,7 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
           <select className="input" value={part.finishSlug} onChange={(e) => onChange({ finishSlug: e.target.value })}>
             {finishes.map((f) => (
               <option key={f.slug} value={f.slug}>
-                {f.name}{f.pricePerPart > 0 ? ` (+$${f.pricePerPart.toFixed(2)} each)` : ''}
+                {f.name}{SENT_OUT_FINISHES.has(f.slug) ? ' — sent out to a finisher' : ''}{f.pricePerPart > 0 ? ` (+$${f.pricePerPart.toFixed(2)} each)` : ''}
               </option>
             ))}
           </select>

@@ -11,7 +11,8 @@
  * Each builder returns a Promise<Buffer>.
  */
 const PDFDocument = require("pdfkit");
-const brand = require("../../shared/brand.json");
+// Company facts, plus the ship-from street address (server-side only; see config/shipFrom.json).
+const brand = { ...require("../../shared/brand.json"), ...(({ _note, ...a }) => a)(require("../config/shipFrom.json")) };
 const art = require("../../shared/brand-mark.json");
 const shopFacts = require("../shopFacts");
 // The legal name prints only once the owner has confirmed it (shared/shop-facts.json); until then the trading name.
