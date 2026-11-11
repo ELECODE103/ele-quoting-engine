@@ -2,7 +2,7 @@
  * 3D printing DFM — FDM (up to 12 × 12 × 24") and Formlabs SLA (~6 × 6 × 7") in-house; SLS
  * rules kept for the outsourced option. Signature: run(geometry, options) → { checks, summary }
  *   options.subProcess "fdm" | "sla" | "sls"
- *   options.materialSlug / materialName / material (fdm-abs, sla-standard, …)
+ *   options.materialSlug / materialName / material (fdm-abs, sla-grey, …)
  *
  * Rules consume `features` (server/geometry/SCHEMA.md) via the feature adapter. Only a part
  * that cannot be printed FAILS: bigger than the build volume in every orientation, a

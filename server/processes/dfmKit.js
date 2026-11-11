@@ -164,7 +164,7 @@ function materialProfile(options = {}) {
   else if (has(/petg/)) Object.assign(p, { family: "petg", isPlastic: true, isMetal: false });
   else if (has(/pla/)) Object.assign(p, { family: "pla", isPlastic: true, isMetal: false });
   else if (has(/tpu|flex/)) Object.assign(p, { family: "tpu", isPlastic: true, isMetal: false, flexible: true, soft: true });
-  else if (has(/sla-|resin/)) Object.assign(p, { family: "resin", isPlastic: true, isMetal: false, brittle: /standard|clear/.test(key) });
+  else if (has(/sla-|resin/)) Object.assign(p, { family: "resin", isPlastic: true, isMetal: false, brittle: /standard|grey|white|clear|rigid|high-temp/.test(key) });
   else if (has(/aluminum|aluminium|6061|7075/)) Object.assign(p, { family: "aluminum", isPlastic: false, isMetal: true });
   else if (has(/brass|360/)) Object.assign(p, { family: "brass", isPlastic: false, isMetal: true });
   else if (has(/stainless|304|316/)) Object.assign(p, { family: "stainless", isPlastic: false, isMetal: true });

@@ -377,7 +377,7 @@ test("lacy part (80% removed) warns major; 3D (not 2.5D) part warns toward milli
 console.log("DFM rules — 3D printing (measured features)");
 
 const fdm = (g, extra = {}) => printing.run(g, { subProcess: "fdm", materialSlug: "fdm-pla", ...extra });
-const sla = (g, extra = {}) => printing.run(g, { subProcess: "sla", materialSlug: "sla-standard", ...extra });
+const sla = (g, extra = {}) => printing.run(g, { subProcess: "sla", materialSlug: "sla-grey", ...extra });
 
 test("clean block passes FDM and SLA with no warns", () => {
   for (const r of [fdm(block()), sla(block())]) {

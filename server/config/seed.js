@@ -9,6 +9,7 @@ const {
   processesDB,
   usersDB,
 } = require("../models");
+const database = require("../models/database");
 const {
   SEED_VERSION,
   DEFAULT_MATERIALS,
@@ -18,7 +19,13 @@ const {
   MANUFACTURING_PROCESSES,
 } = require("./defaults");
 
+// Seeding is hundreds of small writes; held in one batch it is a single save
+// (on the production volume each save used to take about a second).
 function seedDatabase() {
+  return database.batch(seedDatabaseNow);
+}
+
+function seedDatabaseNow() {
   try {
     // Detect stale data: if materials exist but lack the 'process' field, re-seed
     const existingMats = materialsDB.getAll();

@@ -58,7 +58,6 @@ export function lines(items) {
 // applies the same rule to the quote tool's lists (server/shopFacts.js).
 export function materialVisible(m) {
   if (m.subProcess === 'sls' || /\bSLS\b/.test(m.name || '')) return ok('sls-offered');
-  if (m.slug === 'sla-dental') return ok('dental-resin');
   return true;
 }
 

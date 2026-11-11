@@ -61,7 +61,7 @@ const REFERENCE_PARTS = [
     lines: [
       { process: "cnc", subProcess: "milling", materialSlug: "cnc-delrin" },
       { process: "3d-printing", subProcess: "fdm", materialSlug: "fdm-abs" },
-      { process: "3d-printing", subProcess: "sla", materialSlug: "sla-standard" },
+      { process: "3d-printing", subProcess: "sla", materialSlug: "sla-grey" },
     ],
   },
   {

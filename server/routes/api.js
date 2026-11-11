@@ -20,7 +20,8 @@ const { validateFileContent } = require("../middleware/fileValidator");
 const fileCrypto = require("../services/fileCrypto");
 const dxf = require("../geometry/dxf");
 
-const shopFacts = require("../shopFacts"); // hides catalog options the owner has not confirmed
+const shopFacts = require("../shopFacts");
+const { offeredLayerHeight } = require("../services/layerHeight"); // hides catalog options the owner has not confirmed
 const router = express.Router();
 
 // ─── FILE UPLOAD CONFIG ──────────────────────────────────────
@@ -327,7 +328,7 @@ function priceQuote(partConfigs, leadTimeSlug = "standard") {
       subProcess: config.subProcess || '',
       // Pass through only when actually provided — `|| 0` made an unset infill
       // look like an intentional 0% (the engine then under-costed FDM material).
-      layerHeight: config.layerHeight != null ? Number(config.layerHeight) : undefined,
+      layerHeight: offeredLayerHeight(material, config.layerHeight),
       infill: config.infill != null ? Number(config.infill) : undefined,
     });
 
