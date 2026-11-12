@@ -62,6 +62,8 @@ const INVENTORY = {
   "GET /api/admin/lead-times": "admin",
   "PUT /api/admin/lead-times/:id": "admin",
   "GET /api/admin/quotes": "admin",
+  "POST /api/admin/quotes/void-open": "admin", // ends the price hold on open quotes: priceIntegrity.test.js
+  "GET /api/admin/audit": "admin", // the admin change log: adminCatalog.test.js
   "GET /api/admin/stats": "admin",
   "GET /api/admin/parts": "admin",
   "GET /api/admin/backup/db": "admin",
@@ -69,6 +71,7 @@ const INVENTORY = {
   "GET /api/parts/:partId/download": "admin",
   // routes/auth.js
   "POST /api/auth/register": "open",
+  "POST /api/auth/admin-setup": "open", // needs the owner's ADMIN_SETUP_CODE, closed once an admin exists: adminSetup.test.js
   "POST /api/auth/login": "open",
   "POST /api/auth/logout": "open",
   "POST /api/auth/logout-all": "auth",
