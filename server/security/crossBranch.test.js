@@ -221,7 +221,7 @@ test("W1: an unsigned Stripe webhook is refused unless the test switch is set â€
   const c = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, buyer);
   assert.strictEqual(c.status, 200, c.text);
   const order = ordersDB.getById(c.body.orderId);
-  const event = JSON.stringify({ type: "checkout.session.completed", data: { object: { id: order.stripeSessionId, payment_status: "paid", amount_total: Math.round(order.total * 100), amount_subtotal: Math.round(order.total * 100), metadata: { orderId: order.id } } } });
+  const event = JSON.stringify({ type: "checkout.session.completed", data: { object: { id: order.stripeSessionId, payment_status: "paid", currency: "usd", amount_total: Math.round(order.total * 100), amount_subtotal: Math.round(order.total * 100), metadata: { orderId: order.id } } } });
   const post = () => fetch(`${h.base}/api/stripe/webhook`, { method: "POST", headers: { "Content-Type": "application/json" }, body: event });
   const keep = { hooks: process.env.SE_TEST_HOOKS, env: process.env.NODE_ENV };
   const quiet = console.error; console.error = () => {};
@@ -337,6 +337,9 @@ test("typed text round-trips unchanged: ordinary notes are no longer mangled and
   h.sent.length = 0;
   const quoted = await h.put(`/api/rfq/admin/${rfq.id}`, { status: "quoted", quotedTotal: 900, quotedLeadDays: 7, quoteNote: NOTE }, admin);
   assert.strictEqual(quoted.body.quoteNote, NOTE);
+  // (The order is paid first: an unpaid order cannot be moved into production by hand.)
+  h.pay(order.stripeSessionId);
+  assert.strictEqual((await h.post(`/api/orders/${order.id}/confirm-payment`, {}, buyer)).body.status, "paid");
   const st = await h.put(`/api/orders/${order.id}/status`, { status: "in_production", notes: NOTE }, admin);
   assert.strictEqual(st.status, 200, st.text);
   assert.strictEqual(ordersDB.getById(order.id).notes, NOTE);

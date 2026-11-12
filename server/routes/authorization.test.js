@@ -91,6 +91,8 @@ const INVENTORY = {
   "GET /api/orders/": "auth",
   "GET /api/orders/:id": "auth",
   "PUT /api/orders/:id/status": "admin",
+  "POST /api/orders/:id/resolve-attention": "admin",
+  "GET /api/orders/admin/payment-settings": "admin",
   "POST /api/orders/:id/confirm-payment": "auth",
   "POST /api/orders/:id/reorder": "auth",
   "GET /api/orders/:id/drawing": "auth",
@@ -104,6 +106,7 @@ const INVENTORY = {
   "GET /api/rfq/quote/:token": "open",
   "POST /api/rfq/quote/:token/accept": "open",
   "POST /api/rfq/quote/:token/confirm-payment": "open",
+  "POST /api/rfq/return/confirm": "open", // needs a return token for that one order: orderLifecycle.test.js
   "GET /api/rfq/:id": "open",
   // routes/pdf.js
   "GET /api/pdf/traveler/:orderId": "admin",

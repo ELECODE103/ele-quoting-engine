@@ -229,6 +229,13 @@ test("order status: the body sets status, tracking and notes — never the total
   const order = h.models.ordersDB.getAll().find((o) => o.quoteId === q.body.quoteId);
   assert.strictEqual(order.status, "pending_payment", "a buyer cannot mark their own order paid");
   assert.ok(Math.abs(order.total - q.body.orderTotal) < 0.005, "the total is the quote's");
+  // An unpaid order cannot be jumped into production; the owner marks it paid first, and has to say how it was paid.
+  const jump = await h.put(`/api/orders/${order.id}/status`, { status: "in_production", total: 0 }, admin);
+  assert.deepStrictEqual([jump.status, jump.body.code], [409, "transition-not-allowed"]);
+  const noReason = await h.put(`/api/orders/${order.id}/status`, { status: "paid", paidAt: "1999" }, admin);
+  assert.deepStrictEqual([noReason.status, noReason.body.code], [400, "reason-required"]);
+  assert.strictEqual((await h.put(`/api/orders/${order.id}/status`, { status: "paid", reason: "cheque 1042 received", paidVia: "cheque", paidAt: "1999", total: 0 }, admin)).status, 200);
+  assert.notStrictEqual(h.models.ordersDB.getById(order.id).paidAt, "1999", "the payment date is the server's");
   const r = await h.put(`/api/orders/${order.id}/status`, { status: "in_production", total: 0, subtotal: 0, userId: "someone-else", stripePaymentId: "x", paidAt: "1999", notes: "<img src=x onerror=alert(1)>ok" }, admin);
   assert.strictEqual(r.status, 200, r.text);
   const after = h.models.ordersDB.getById(order.id);
