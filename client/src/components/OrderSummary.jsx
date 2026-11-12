@@ -154,7 +154,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
         <Row label="Ship weight" value={formatWeight(quote.totalWeight)} muted />
         {quote.shipBy && <Row label="Ships by" value={formatShipDate(quote.shipBy, { year: true })} />}
         <div className="flex-between" style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-display)', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-primary)' }}>
-          <span>{needsRfq ? 'Budgetary' : 'Total'}</span>
+          <span data-testid="summary-total-label">{needsRfq ? 'Budgetary' : totalLabel(quote)}</span>
           <span>{formatCurrency(quote.orderTotal)}</span>
         </div>
         <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
@@ -192,6 +192,17 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
       )}
     </aside>
   );
+}
+
+/**
+ * What the total is called. It is "Total" when it is everything the buyer pays (as it has always
+ * been). When something is still to be added it says what: sales tax (added on the payment page)
+ * and, for an order with no parcel price, shipping.
+ */
+export function totalLabel(quote) {
+  const co = quote?.checkout;
+  const missing = [co?.shipping?.manual && 'shipping', co?.tax?.mode === 'stripe' && 'tax'].filter(Boolean);
+  return missing.length ? `Total before ${missing.join(' and ')}` : 'Total';
 }
 
 /**
