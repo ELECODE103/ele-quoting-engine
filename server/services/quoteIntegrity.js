@@ -426,7 +426,8 @@ function allowedDiscount(rules, quantity, linesInOrder) {
  * always at least the part, so an honest price never falls under it.
  */
 function rawMaterialPerPiece(line, part) {
-  const geometry = line.is2D ? dxf.materialize(part.geometry, line.thicknessMm) : (part.geometry || {});
+  // (A drawing at its thickness is worked out once per request, and is a place to yield: services/pricingMemo.js.)
+  const geometry = line.is2D ? require("./pricingMemo").materialize(part.geometry, line.thicknessMm) : (part.geometry || {});
   const { f } = resolveFeatures(geometry, { thicknessMm: line.thicknessMm, subProcess: line.subProcess });
   const box = f.obb.w * f.obb.h * f.obb.d;
   const mm3 = Math.max(0, Math.min(Number(f.volume) || 0, box > 0 ? box : Infinity));
@@ -482,7 +483,8 @@ function assertSane(quote, lines, parts, rules) {
 
     // An independent look at the material in the part.
     let raw;
-    try { raw = rawMaterialPerPiece(line, parts[i]); } catch (err) { throw fail("material estimate failed", { ...ident, error: String(err && err.message).slice(0, 120) }); }
+    // (The yielding pricing runner stops a pass by throwing: that is not a failed estimate, and is passed on.)
+    try { raw = rawMaterialPerPiece(line, parts[i]); } catch (err) { if (err && err.pricingInterrupt) throw err; throw fail("material estimate failed", { ...ident, error: String(err && err.message).slice(0, 120) }); }
     if (!Number.isFinite(raw) || raw < 0) throw fail("material estimate is not a number", { ...ident, raw });
     const d = allowedDiscount(rules, line.quantity, items.length);
     const floor = raw * FLOOR_SLACK * (1 - d.volume) * (1 - d.nesting);

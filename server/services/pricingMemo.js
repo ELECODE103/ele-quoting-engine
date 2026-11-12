@@ -59,6 +59,7 @@ function createMemo() {
     dfm: new WeakMap(),        // geometry object → Map(options JSON → result)
     price: new WeakMap(),      // geometry object → Map(key → price)
     pure: new Map(),           // wrapPure() id → WeakMap(object → value)
+    extruded: new WeakMap(),   // stored 2D geometry → Map(thickness → the geometry at that thickness)
     ids: new WeakMap(),        // object → small integer, for keys
     nextId: 1,
     interruptible: false,
@@ -191,6 +192,31 @@ function wrapPure(fn) {
     byObject.set(obj, value);
     return value;
   };
+}
+
+/**
+ * A drawing at a stock thickness (geometry/dxf materialize), once per drawing and thickness for the
+ * length of the request, and a place where pricing may yield like the others.
+ *
+ * Three steps of pricing a quote give a DXF its thickness: the engine's price for the line, the
+ * floor check on that price (services/quoteIntegrity.js) and the packed weight for shipping
+ * (services/shipping.js). For a drawing with thousands of holes each is several milliseconds, and
+ * the last two ran over every line in one stretch with nowhere to yield: 25 different dense drawings
+ * held the thread 150 to 210 ms at a time. Here each is worked out once, between two turns of the
+ * loop. The result is the same object for every caller in the request; pricing only reads it.
+ * With no memo active this is the plain function.
+ */
+function materialize(geometry, thicknessMm) {
+  const real = require("../geometry/dxf").materialize;
+  const memo = active;
+  const t = Number(thicknessMm);
+  if (!memo || geometry === null || typeof geometry !== "object" || !Number.isFinite(t)) return real(geometry, thicknessMm);
+  let byThickness = memo.extruded.get(geometry);
+  if (!byThickness) { byThickness = new Map(); memo.extruded.set(geometry, byThickness); }
+  if (byThickness.has(t)) { memo.stats.hits++; return byThickness.get(t); }
+  const value = compute(memo, () => real(geometry, thicknessMm));
+  byThickness.set(t, value);
+  return value;
 }
 
 /** Run `fn` with a memo active (and nothing else): for synchronous callers that want the saving without the yielding. */
@@ -446,4 +472,4 @@ function resetForTests() {
   for (const k of Object.keys(counters)) counters[k] = 0;
 }
 
-module.exports = { run, sync, within, warming, wrapModels, wrapModel, wrapDfm, wrapEngine, wrapPure, createMemo, Interrupt, usedMs, retryAfterSeconds, stats, resetForTests, usage };
+module.exports = { run, sync, within, warming, wrapModels, wrapModel, wrapDfm, wrapEngine, wrapPure, materialize, createMemo, Interrupt, usedMs, retryAfterSeconds, stats, resetForTests, usage };

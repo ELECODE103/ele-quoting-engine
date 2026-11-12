@@ -80,7 +80,8 @@ class PricingEngine {
     if (dxf.is2D(params.geometry)) {
       if (def.slug !== "routing") throw new Error("A DXF is a 2D profile and can only be priced for CNC routing");
       if (!(Number(params.thicknessMm) > 0)) throw new Error("A DXF part needs a stock thickness before it can be priced");
-      params = { ...params, geometry: dxf.materialize(params.geometry, params.thicknessMm) };
+      // (Once per drawing and thickness in a request, shared with the floor check and the shipping weight: services/pricingMemo.js.)
+      params = { ...params, geometry: require("./pricingMemo").materialize(params.geometry, params.thicknessMm) };
     }
     return calculate(params, this.rules);
   }

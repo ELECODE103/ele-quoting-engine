@@ -128,7 +128,12 @@ function measure(parts = [], rules = {}) {
   const atThickness = (flat, thicknessMm) => {
     let byThickness = extruded.get(flat);
     if (!byThickness) { byThickness = new Map(); extruded.set(flat, byThickness); }
-    if (!byThickness.has(thicknessMm)) { let g = null; try { g = dxf.materialize(flat, thicknessMm); } catch { g = null; } byThickness.set(thicknessMm, g); }
+    if (!byThickness.has(thicknessMm)) {
+      let g = null;
+      // Inside a pricing request this is the request's own copy (and a place to yield): services/pricingMemo.js.
+      try { g = require("./pricingMemo").materialize(flat, thicknessMm); } catch (err) { if (err && err.pricingInterrupt) throw err; g = null; }
+      byThickness.set(thicknessMm, g);
+    }
     return byThickness.get(thicknessMm);
   };
   for (const part of parts) {
@@ -277,7 +282,8 @@ function shippingFor(priced = {}, rules = {}, lookup = {}, opt = {}) {
 }
 
 function softMeasure(parts, rules) {
-  try { return measure(parts, rules); } catch { return { partsLb: null, packedLb: null, longestIn: null, pieces: 0, unknown: ["not measured"] }; }
+  // (The yielding pricing runner stops a pass by throwing: that is not a failure to measure, and is passed on.)
+  try { return measure(parts, rules); } catch (err) { if (err && err.pricingInterrupt) throw err; return { partsLb: null, packedLb: null, longestIn: null, pieces: 0, unknown: ["not measured"] }; }
 }
 
 /**

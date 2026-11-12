@@ -17,10 +17,19 @@ if (isMainThread && process.env.REVIEW_STUBS === "1") {
         create: async (args) => {
           const id = `cs_test_review_${created.length + 1}`;
           created.push(args);
-          sessions[id] = { id, url: `https://checkout.stripe.invalid/${id}`, payment_status: "unpaid", metadata: args.metadata };
+          // (2026-11-12, second integration pass) The session says what Stripe's would: its amount, currency and state.
+          // The order lifecycle settles a payment only against those, so a stand-in without them could never show a
+          // paid order. With REVIEW_STUB_PAY=1 (set by a script that needs a PAID order, e.g. reorder-block.js) a
+          // session reads back as paid when the server asks Stripe about it; otherwise nothing is ever paid, as before.
+          const amount = (args.line_items || []).reduce((sum, li) => sum + li.price_data.unit_amount * (li.quantity || 1), 0);
+          sessions[id] = { id, object: "checkout.session", url: `https://checkout.stripe.invalid/${id}`, status: "open", payment_status: "unpaid", currency: "usd", amount_total: amount, amount_subtotal: amount, total_details: { amount_discount: 0, amount_tax: 0 }, payment_intent: null, metadata: args.metadata };
           return sessions[id];
         },
-        retrieve: async (id) => sessions[id],
+        retrieve: async (id) => {
+          const session = sessions[id];
+          if (session && process.env.REVIEW_STUB_PAY === "1" && session.status === "open") Object.assign(session, { status: "complete", payment_status: "paid", payment_intent: `pi_${id}` });
+          return session;
+        },
       },
     },
   });
