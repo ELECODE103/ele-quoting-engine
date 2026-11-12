@@ -40,6 +40,7 @@ if (process.env.NODE_ENV === "production") {
 // Content-Security-Policy (no inline or eval script), frame-ancestors, Referrer-Policy,
 // Permissions-Policy, HSTS: all in server/security/headers.js, with the reason for each source.
 require("./security/headers").install(app, { distDir: path.join(__dirname, "..", "client", "dist") });
+require("./ops").install(app); // one canonical host (CANONICAL_HOST / REDIRECT_HOSTS) and the counters behind Admin → System: server/ops
 
 // Rate limiting — generous for normal use, blocks abuse
 const apiLimiter = rateLimit({
@@ -129,6 +130,8 @@ app.use("/api/rfq", rfqRoutes);
 // PDF routes (job travelers, packing lists)
 const pdfRoutes = require("./routes/pdf");
 app.use("/api/pdf", pdfRoutes);
+
+require("./ops").mountRoutes(app); // admin System status, digest and full backup
 
 // Unknown API paths answer in JSON like the rest of the API (not Express's HTML page).
 app.use("/api", (req, res) => res.status(404).json({ error: "Not found" }));
@@ -230,13 +233,14 @@ async function start() {
     }
   }
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`\n  ┌─────────────────────────────────────────┐`);
     console.log(`  │  Straightedge quote API on port ${PORT}     │`);
     console.log(`  │  Environment: ${(process.env.NODE_ENV || "development").padEnd(24)}│`);
     console.log(`  │  http://localhost:${PORT}/api               │`);
     console.log(`  └─────────────────────────────────────────┘\n`);
   });
+  require("./ops").started(server); // clean stop on SIGTERM, startup alert, five-minute checks, daily digest
 }
 
 start().catch((err) => {
