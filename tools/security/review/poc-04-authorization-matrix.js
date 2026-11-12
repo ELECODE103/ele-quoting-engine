@@ -59,8 +59,11 @@ const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
     const sessB = await s.get(`/api/quote/${qb.body.quoteId}/session`, { ip: ipB, token: B });
     const key = sessB.body.parts && sessB.body.parts[0] && sessB.body.parts[0].editKey;
     console.log("B quoting A's partId:", qb.status, "session gives editKey:", Boolean(key), key === dxfA.editKey ? "(same key the uploader got)" : "");
-    const sw = await s.post(`/api/parts/${dxfA.partId}/units`, { units: "in" }, { ip: ipB, token: B, headers: { "X-Part-Key": key } });
+    const sw = await s.post(`/api/parts/${dxfA.partId}/units`, { units: "in" }, { ip: ipB, token: B, headers: key ? { "X-Part-Key": key } : {} }); // review-fixes: B is given no key to send
     console.log("B changes units of A's part:", sw.status, sw.body.geometry && sw.body.geometry.boundingBox.width);
+    // review-fixes: and with A's real key, had B stolen it — the part belongs to A's account, so the key alone does nothing.
+    const sw2 = await s.post(`/api/parts/${dxfA.partId}/units`, { units: "in" }, { ip: ipB, token: B, headers: { "X-Part-Key": dxfA.editKey } });
+    console.log("B changes units of A's part with A's own key:", sw2.status, JSON.stringify(sw2.body).slice(0, 120));
     // (review-fixes: prints the refusal instead of crashing when B has no quote holding A's part.)
     const leaked = sessB.body && sessB.body.parts && sessB.body.parts[0];
     console.log("B reads A's mesh via own quote:", leaked ? `positions ${leaked.meshPreview && leaked.meshPreview.positions.length} fileName ${leaked.fileName}` : `REFUSED (quote ${qb.status} ${JSON.stringify(qb.body)}; session ${sessB.status})`);

@@ -17,7 +17,8 @@ const { start, report, money, SHIP } = require("./lib");
     const mats = (await h.get("/api/admin/materials", admin)).body;
     const priciest = mats.filter((m) => m.process === "cnc" && m.active).sort((a, b) => (b.pricePerKg || 0) - (a.pricePerKg || 0))[0];
     const body = (slug = priciest.slug, extra = {}) => ({ parts: [{ partId: block.partId, process: "cnc", materialSlug: slug, quantity: 25 }], leadTimeSlug: "standard", ...extra });
-    const price = async (b = body()) => { const q = await h.post("/api/quote", b); return q.status === 200 ? q.body : { error: q.body.error, status: q.status }; };
+    // review-fixes: priced by the signed-in buyer who checks out below (a part belongs to the account that buys it: F5); a refusal keeps its code.
+    const price = async (b = body()) => { const q = await h.post("/api/quote", b, buyer); return q.status === 200 ? q.body : { error: q.body.error, code: q.body.code, status: q.status }; };
     const history = async () => (await h.get("/api/admin/pricing/history", admin)).body.length;
 
     // ── rules: bounds ──
@@ -39,8 +40,8 @@ const { start, report, money, SHIP } = require("./lib");
     const normal = await price(body("cnc-aluminum-6061"));
     const low = await h.put("/api/admin/pricing", { note: "review PoC: every floor at its legal minimum", rules: { marginPercent: 0, minimumPartPrice: 0, minimumOrderTotal: 0, shippingBaseRate: 0, shippingPerKg: 0, cncMachineRatePerHour: 20, laborRatePerHour: 10, nestingEfficiencyBonus: 0.9, volumeDiscounts: [{ minQty: 1, discount: 0.9 }] } }, admin);
     const floor = await price(body("cnc-aluminum-6061"));
-    const co = await h.post("/api/orders/checkout-session", { quoteId: floor.quoteId, ...SHIP }, buyer);
-    r.note(`25 brackets in aluminum: ${money(normal.orderTotal)} at the shipped rules; with margin 0, floors 0, shipping 0, mill rate $20/h and a 90% quantity break (save ${low.status}): ${money(floor.orderTotal)}; checkout ${co.status}`);
+    const co = floor.quoteId ? await h.post("/api/orders/checkout-session", { quoteId: floor.quoteId, ...SHIP }, buyer) : { status: 0 };
+    r.note(`25 brackets in aluminum: ${money(normal.orderTotal)} at the shipped rules; with margin 0, floors 0, shipping 0, mill rate $20/h and a 90% quantity break (save ${low.status}): ${floor.quoteId ? money(floor.orderTotal) : `REFUSED ${floor.status} ${floor.code} — ${floor.error}`}; checkout ${co.status || "not reached"}`);
     r.finding(co.status === 200 && floor.orderTotal < normal.orderTotal * 0.1, `F-12: nothing refuses to sell at a price far under cost: each value is inside its own range, and checkout only refuses a total of zero or less (orders.js:85)`);
     await h.post("/api/admin/pricing/reset", { note: "review PoC reset" }, admin);
 

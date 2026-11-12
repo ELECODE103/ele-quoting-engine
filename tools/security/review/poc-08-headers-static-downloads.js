@@ -17,7 +17,7 @@ const show = (label, h) => console.log(`\n== ${label}\n` + ["content-security-po
     show("admin part download", dl.headers); console.log("  (first bytes):", dl.buffer.slice(0,8).toString("latin1").replace(/[^\x20-\x7e]/g,"."));
     const bk = await s.get("/api/admin/backup/db", { token: admin, ip: "203.0.113.1" }); show("admin backup db", bk.headers);
     // error page / stack leak: force a 500 by bad JSON
-    const bad = await s.req({ method: "POST", url: "/api/quote", headers: { "Content-Type": "application/json", "Content-Length": "5" }, body: "{bad", ip });
+    const bad = await s.req({ method: "POST", url: "/api/quote", headers: { "Content-Type": "application/json", "Content-Length": "4" }, body: "{bad", ip }); // review-fixes: was "5" for a 4-byte body, so the server (rightly) waited for the fifth byte and the script timed out — on the old tree too
     console.log("\nbad JSON:", bad.status, bad.text.slice(0, 200));
     // sourcemaps / dotfiles exposed?
     for (const p of ["/.env", "/.git/config", "/data/quoting.db", "/assets/index.js.map", "/server/index.js", "/brand/documents/", "/_prerender/home.html"]) {

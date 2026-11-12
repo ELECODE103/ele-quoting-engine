@@ -70,12 +70,13 @@ const { start, report, money, SHIP, ROOT, nextIp } = require("./lib");
     r.note(`buyer opens the link and sees ${money(seen)}; owner saves a new total of $2,500 without pressing send (quoteSent: ${edit.body.quoteSent}, new email: ${Boolean(edit.body.emailSent)}); buyer presses accept on the page they have open: ${acc.status}, Stripe amount ${money(s.amount_total / 100)}`);
     r.finding(acc.status === 201 && s.amount_total === 250000, "F-09: saving a new total without re-sending leaves the emailed link live at the new amount: no new email, and the accept request does not say which price the buyer agreed to");
     const d = await quoted(1500);
-    await h.put(`/api/rfq/admin/${d.id}`, { quotedTotal: 0 }, admin);
+    const zeroSave = await h.put(`/api/rfq/admin/${d.id}`, { quotedTotal: 0 }, admin); // review-fixes: keep the answer to the save
     const zero = await accept(d.token, { method: "po", poNumber: "PO-ZERO" });
     const orders = (await h.get("/api/orders", admin)).body;
     const zeroOrder = orders.find((o) => o.rfqId === d.id);
-    r.note(`owner saves a total of 0 on a quote that is out: PO acceptance -> ${zero.status}; order ${zeroOrder ? `"${zeroOrder.status}" for ${money(zeroOrder.total)}` : "none"}`);
-    r.finding(Boolean(zeroOrder), "F-09b: a quote whose total was saved as 0 after sending can be accepted on a PO as a $0.00 order in the production queue");
+    r.note(`owner saves a total of 0 on a quote that is out: save ${zeroSave.status} ${zeroSave.body.code || ""}; PO acceptance -> ${zero.status}; order ${zeroOrder ? `"${zeroOrder.status}" for ${money(zeroOrder.total)}` : "none"}`);
+    // review-fixes: the weakness is a $0.00 order; an order at the amount that was actually quoted is the link working as meant.
+    r.finding(Boolean(zeroOrder) && !(zeroOrder.total > 0), "F-09b: a quote whose total was saved as 0 after sending can be accepted on a PO as a $0.00 order in the production queue");
 
     // ── purchase orders ──
     const e = await quoted(4200);

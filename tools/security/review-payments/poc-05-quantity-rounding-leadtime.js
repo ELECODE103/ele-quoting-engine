@@ -14,7 +14,8 @@ const { start, report, money, SHIP } = require("./lib");
     const cube = await h.upload("cube_20mm.stl");
     const clip = await h.upload("small_clip.stl");
     const base = { partId: cube.partId, process: "cnc", materialSlug: "cnc-aluminum-6061" };
-    const quote = (parts, extra = {}) => h.post("/api/quote", { parts, leadTimeSlug: "standard", ...extra });
+    // review-fixes: quotes are made by the signed-in buyer who then checks out (a part belongs to the account that buys it: F5).
+    const quote = (parts, extra = {}) => h.post("/api/quote", { parts, leadTimeSlug: "standard", ...extra }, buyer);
 
     // ── quantities ──
     const seen = [];
