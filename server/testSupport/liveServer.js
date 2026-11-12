@@ -156,9 +156,20 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
       if (o.ip) headers["X-Forwarded-For"] = o.ip;
       if (o.token) headers.Authorization = `Bearer ${o.token}`;
       let body = o.body;
-      if (o.json !== undefined) { body = Buffer.from(JSON.stringify(o.json)); headers["Content-Type"] = "application/json"; headers["Content-Length"] = String(body.length); }
-      return request(port, { method: o.method || (body ? "POST" : "GET"), url: o.url, headers, body, timeoutMs: o.timeoutMs });
+      let json = o.json;
+      // As the quote page does: each part of a quote request carries the edit key its upload answer gave
+      // (security/partAccess.js). `{ partKeys: false }` sends the body exactly as written.
+      if (o.partKeys !== false && json && typeof json === "object" && Array.isArray(json.parts) && String(o.url).split("?")[0] === "/api/quote") {
+        json = { ...json, parts: json.parts.map((p) => (p && typeof p === "object" && !Array.isArray(p) && typeof p.partId === "string" && p.editKey === undefined && s.editKeys[p.partId] ? { ...p, editKey: s.editKeys[p.partId] } : p)) };
+      }
+      if (json !== undefined) { body = Buffer.from(JSON.stringify(json)); headers["Content-Type"] = "application/json"; headers["Content-Length"] = String(body.length); }
+      return request(port, { method: o.method || (body ? "POST" : "GET"), url: o.url, headers, body, timeoutMs: o.timeoutMs }).then((r) => {
+        if (r.body && Array.isArray(r.body.parts)) for (const p of r.body.parts) if (p && p.partId && p.editKey) s.editKeys[p.partId] = p.editKey;
+        return r;
+      });
     },
+    /** partId → edit key, for every part uploaded through this helper. */
+    editKeys: {},
     get: (url, o = {}) => s.req({ ...o, url, method: "GET" }),
     post: (url, json, o = {}) => s.req({ ...o, url, method: "POST", json }),
     /** POST multipart to `url` (default the CAD upload). files: [{ name, data, field }] */

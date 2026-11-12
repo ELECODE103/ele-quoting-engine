@@ -141,11 +141,21 @@ async function start(opts = {}) {
     return { status: res.status, body: parsed, text, headers: res.headers };
   }
 
-  /** A request as the site's own pages send it: the verified-human token rides along. */
+  /**
+   * A request as the site's own pages send it: the verified-human token rides along, and a quote
+   * request carries, for each part this harness uploaded, the edit key the upload answer gave it
+   * (that key is what lets a visitor without an account price their own part; security/partAccess.js).
+   */
   async function call(method, url, body, token, rawBody, extraHeaders = {}) {
     const headers = { ...extraHeaders };
     if (h.humanToken) headers["X-Human-Token"] = h.humanToken;
-    return raw(method, url, { headers, json: rawBody ? undefined : body, body: rawBody, token });
+    if (method === "POST" && url === "/api/quote" && body && Array.isArray(body.parts)) {
+      body = { ...body, parts: body.parts.map((p) => (p && typeof p === "object" && !Array.isArray(p) && typeof p.partId === "string" && p.editKey === undefined && h.editKeys[p.partId] ? { ...p, editKey: h.editKeys[p.partId] } : p)) };
+    }
+    const r = await raw(method, url, { headers, json: rawBody ? undefined : body, body: rawBody, token });
+    // Remember the edit key of every part an upload (or a reopened quote) hands back, as the page does.
+    if (r.body && Array.isArray(r.body.parts)) for (const p of r.body.parts) if (p && p.partId && p.editKey) h.editKeys[p.partId] = p.editKey;
+    return r;
   }
 
   const h = {
@@ -172,6 +182,8 @@ async function start(opts = {}) {
     password: PASSWORD,
     turnstile: turnstileStub,
     humanToken: "",
+    /** partId → edit key, for every part uploaded through this harness. */
+    editKeys: {},
     ip: "",
     limits: false,
     /**

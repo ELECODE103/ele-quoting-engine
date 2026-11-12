@@ -34,9 +34,23 @@ test("built-in processes are registered with behavior wiring", () => {
   assert.strictEqual(registry.getProcess("cnc").dfmFn, "runCNCDFM");
 });
 
-test("unknown process resolves to a safe sheet-metal fallback (no throw)", () => {
-  const def = registry.resolveProcess("does-not-exist");
-  assert.strictEqual(def.priceMethod, "calculateSheetMetalPrice");
+// Until the independent review of 2026-11-11 (F1) this test asserted the opposite: an unknown slug
+// "resolved to a safe sheet-metal fallback". That fallback is what let any part be priced as flat
+// sheet metal at the order minimum, so it is gone: an unknown process is refused everywhere.
+test("an unknown process is refused: no fallback to sheet metal, in the registry, in pricing or in DFM", () => {
+  for (const slug of ["does-not-exist", "__proto__", "constructor", "toString", "", undefined, null, 7, {}, ["cnc"]]) {
+    assert.throws(() => registry.resolveProcess(slug), (err) => err.name === "UnknownProcessError" && err.code === "process-unknown", `resolveProcess(${String(slug)})`);
+    assert.strictEqual(registry.activeProcess(slug), null, `activeProcess(${String(slug)})`);
+    assert.throws(() => engine.calculatePartPrice({ process: slug, geometry, material, grade: "A36", finish: null, quantity: 1, thicknessMm: 2 }), /Unknown manufacturing process/, `pricing ${String(slug)}`);
+    assert.throws(() => runDFMAnalysis(geometry, { process: slug === undefined || slug === "" || slug === null ? "nope" : slug, thicknessMm: 2 }), /Unknown manufacturing process/, `DFM ${String(slug)}`);
+  }
+});
+
+test("sheet metal is registered (its model can still be run by name) but is not an active process", () => {
+  assert.strictEqual(registry.resolveProcess("sheetmetal").slug, "sheetmetal");
+  assert.strictEqual(registry.activeProcess("sheetmetal"), null);
+  assert.deepStrictEqual(registry.activeProcesses().map((p) => p.slug).sort(), ["3d-printing", "cnc", "routing"]);
+  for (const slug of ["cnc", "routing", "3d-printing"]) assert.strictEqual(registry.activeProcess(slug).slug, slug);
 });
 
 test("a NEW process registered at runtime flows through pricing dispatch", () => {

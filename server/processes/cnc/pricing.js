@@ -28,7 +28,7 @@
  * Output keeps the shared line-item shape: perUnit{…}, quantity, lineTotal,
  * weight, meta (machineTimeHours, geometrySummary, costBuildup[], confidence).
  */
-const { clampNumber, costBuildup, round, tableValue, nextStandard, applyCommercialTerms, finishCost } = require("../shared");
+const { clampNumber, costBuildup, round, tableValue, nextStandard, applyCommercialTerms, finishCost, requiredPrice } = require("../shared");
 const { resolveFeatures, materialClassOf } = require("../featureAdapter");
 
 const LB_IN3_TO_G_CM3 = 27.6799;
@@ -67,7 +67,7 @@ function priceMilling({ f, derived, confidence, notes }, params, r) {
   const mach = clampNumber(material.machinability, 0.05, 5, 1.0);
   const cls = materialClassOf(material);
   const densityGcm3 = gradeDensityGcm3(material, grade);
-  const pricePerKg = Number(material.pricePerKg || material.costPerKg) || 1.0;
+  const pricePerKg = requiredPrice(material.pricePerKg || material.costPerKg, "the material's price per kg"); // no built-in price
   const waste = clampNumber(material.wasteFactor, 0, 2, clampNumber(r.materialDefaultWasteFactor, 0, 2, 0.15));
   const millRate = clampNumber(r.cncMachineRatePerHour, 1, 1e4, 95);
   const laborRate = clampNumber(r.laborRatePerHour, 1, 1e4, 65);
@@ -323,7 +323,7 @@ function priceTurning({ f, derived, confidence, notes }, params, r) {
   const cls = materialClassOf(material);
   const mach = clampNumber(material.machinability, 0.05, 5, 1.0);
   const densityGcm3 = gradeDensityGcm3(material, grade);
-  const pricePerKg = Number(material.pricePerKg || material.costPerKg) || 1.0;
+  const pricePerKg = requiredPrice(material.pricePerKg || material.costPerKg, "the material's price per kg"); // no built-in price
   const waste = clampNumber(material.wasteFactor, 0, 2, clampNumber(r.materialDefaultWasteFactor, 0, 2, 0.15));
   const latheRate = clampNumber(r.latheRatePerHour, 1, 1e4, 85);
   const cb = costBuildup();

@@ -26,6 +26,10 @@ function envInt(name, def, min, max) {
 }
 
 const limits = {
+  // ── Checkout (POST /api/orders/checkout-session) ──────────────
+  /** Checkout requests one ACCOUNT may make in 15 minutes (each may create a Stripe session). */
+  get rateCheckoutPerAccount15Min() { return envInt("CHECKOUT_PER_ACCOUNT_15MIN", 12, 1, 1000); },
+
   // ── Uploads (POST /api/upload) ────────────────────────────────
   /** Largest single CAD file, bytes. */
   get uploadMaxFileBytes() { return envInt("UPLOAD_MAX_FILE_MB", 50, 1, 500) * MB; },

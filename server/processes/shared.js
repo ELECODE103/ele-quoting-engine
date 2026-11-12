@@ -73,6 +73,25 @@ function round(v, d = 2) {
   return Number.isFinite(v) ? Number(v.toFixed(d)) : 0;
 }
 
+/**
+ * A price the model cannot work without (a material's $/kg or $/cm³). There is no built-in
+ * stand-in: a record with a blank, zero or non-numeric price used to be priced at $1/kg,
+ * $6/kg or $0.10/cm³ (payments review 2026-11-11, F-13). It is refused instead.
+ */
+class PricingInputError extends Error {
+  constructor(what) {
+    super(`Cannot price: ${what} is missing`);
+    this.name = "PricingInputError";
+    this.code = "pricing-input-missing";
+    this.what = what;
+  }
+}
+function requiredPrice(value, what) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) throw new PricingInputError(what);
+  return n;
+}
+
 /** Lookup in a map-table rule with a safe fallback. */
 function tableValue(table, key, fallback) {
   const v = table && typeof table === "object" ? Number(table[key]) : NaN;
@@ -134,6 +153,6 @@ function finishCost(finish, surfaceAreaMm2) {
 }
 
 module.exports = {
-  clampNumber, PRINT_SUBPROCESSES, summarizeChecks,
+  clampNumber, PRINT_SUBPROCESSES, summarizeChecks, requiredPrice, PricingInputError,
   costBuildup, round, tableValue, nextStandard, applyCommercialTerms, finishCost,
 };

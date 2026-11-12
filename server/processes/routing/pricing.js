@@ -21,7 +21,7 @@
  * aluminum 0.002" × 2 × 18k = 1,830 but DOC ≤ 1.5 mm. Those are the defaults
  * in ruleSchema.routerFeedMmPerMin.
  */
-const { clampNumber, costBuildup, round, tableValue, applyCommercialTerms, finishCost } = require("../shared");
+const { clampNumber, costBuildup, round, tableValue, applyCommercialTerms, finishCost, requiredPrice } = require("../shared");
 const { resolveFeatures } = require("../featureAdapter");
 
 const LB_IN3_TO_G_CM3 = 27.6799;
@@ -34,7 +34,7 @@ function calculate(params, rules) {
 
   const gradeData = (material.grades || []).find((g) => g.name === grade) || (material.grades || [])[0] || { density: 0.04 };
   const densityGcm3 = (Number(gradeData.density) || 0.04) * LB_IN3_TO_G_CM3;
-  const pricePerKg = Number(material.pricePerKg || material.costPerKg) || 6.0;
+  const pricePerKg = requiredPrice(material.pricePerKg || material.costPerKg, "the material's price per kg"); // no built-in price
   const feedClass = material.feedClass || "medium";
   const routerRate = clampNumber(r.routerMachineRatePerHour, 1, 1e4, 95);
 

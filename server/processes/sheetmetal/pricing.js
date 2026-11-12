@@ -34,7 +34,7 @@ function calculate(params, rules) {
   const volumeIn3 = flatAreaIn2 * thicknessIn;
   const weightLb = volumeIn3 * density;
   const weightKg = weightLb * 0.4536;
-  const materialCost = weightKg * (material.pricePerKg || material.costPerKg || 1.0);
+  const materialCost = weightKg * require("../shared").requiredPrice(material.pricePerKg || material.costPerKg, "the material's price per kg"); // no built-in price
 
   // ─── 2. LASER CUTTING COST ─────────────────
   const perimeterMm = geometry.estimatedPerimeter || 0;

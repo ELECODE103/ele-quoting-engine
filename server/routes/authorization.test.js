@@ -131,7 +131,7 @@ function routesOf(prefix, router) {
   const rfqToken = require("../services/rfqToken");
   const tokens = require("../security/tokens");
 
-  let owner, alice, bob, partId, aliceQuote, aliceOrder, aliceRfq, anonQuote, anonRfq, anonQuoted;
+  let owner, alice, bob, partId, guestPart, aliceQuote, aliceOrder, aliceRfq, anonQuote, anonRfq, anonQuoted;
   const asGuest = (method, url, json) => h.raw(method, url, { json: method === "GET" ? undefined : (json || {}), headers: { "X-Human-Token": h.humanToken } });
   const as = (token) => (method, url, json) => h.raw(method, url, { json: method === "GET" ? undefined : (json || {}), token, headers: { "X-Human-Token": h.humanToken } });
   const tokenFrom = (mail) => (mail.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/) || [])[1];
@@ -165,7 +165,10 @@ function routesOf(prefix, router) {
     assert.strictEqual(r.status, 201, r.text);
     aliceRfq = r.body.rfqId;
     // A guest's quote and request (no account behind them).
-    anonQuote = (await h.post("/api/quote", { parts: [h.cncConfig(partId, 500)], leadTimeSlug: "standard" })).body.quoteId;
+    // (The guest brings a part of their own: Alice's part is Alice's since she priced it signed in.)
+    guestPart = await h.uploadCube();
+    anonQuote = (await h.post("/api/quote", { parts: [h.cncConfig(guestPart, 500)], leadTimeSlug: "standard" })).body.quoteId;
+    assert.ok(anonQuote, "the guest's quote was priced");
     anonRfq = (await h.form("/api/rfq", { quoteId: anonQuote, contactName: "Gil Guest", email: "gil@guest.test", phone: "815-555-0199", notes: "private words" })).body.rfqId;
     anonQuoted = await quoteRfq(anonRfq);
     assert.ok(anonQuoted);
@@ -281,7 +284,13 @@ function routesOf(prefix, router) {
       assert.strictEqual(session.status, 404);
       assert.ok(!session.text.includes("positions"), "no geometry of Alice's part");
       // Re-pricing with her quote id makes a new quote for the caller; hers is untouched and nothing of hers is carried over.
-      const re = await call("POST", "/api/quote", { quoteId: aliceQuote, parts: [h.cncConfig(partId, 9)], leadTimeSlug: "standard" });
+      // (With a part of the caller's own. Alice's part cannot be priced by anyone else at all: review 2026-11-11, F5.)
+      const hers = await call("POST", "/api/quote", { quoteId: aliceQuote, parts: [{ ...h.cncConfig(partId, 9), editKey: h.editKeys[partId] }], leadTimeSlug: "standard" });
+      assert.strictEqual(hers.status, 400);
+      assert.strictEqual(hers.body.code, "part-not-found", "Alice's part is not found for another caller, even one holding its edit key");
+      assert.ok(!hers.text.includes("cube_20mm"), "and nothing about it comes back");
+      const own = await h.uploadCube();
+      const re = await call("POST", "/api/quote", { quoteId: aliceQuote, parts: [{ ...h.cncConfig(own, 9), editKey: h.editKeys[own] }], leadTimeSlug: "standard" });
       assert.strictEqual(re.status, 200);
       assert.notStrictEqual(re.body.quoteId, aliceQuote);
       assert.strictEqual(re.body.notes, "");

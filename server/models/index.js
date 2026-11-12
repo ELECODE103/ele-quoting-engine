@@ -26,6 +26,7 @@ const processesDB = new DBClass("processes");
 const rfqsDB = new DBClass("rfqs");
 const pricingAuditDB = new DBClass("pricing_audit");
 const revokedSessionsDB = new DBClass("revoked_sessions");
+const adminAuditDB = new DBClass("admin_audit"); // append-only admin change log (services/adminAudit.js)
 
 module.exports = {
   // Export instances
@@ -42,6 +43,7 @@ module.exports = {
   rfqsDB,
   pricingAuditDB,
   revokedSessionsDB,
+  adminAuditDB,
 
   // Also export classes for advanced use
   SqliteDB,

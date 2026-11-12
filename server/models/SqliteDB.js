@@ -20,6 +20,7 @@ const JSON_COLUMNS = {
   processes: { subProcesses: "sub_processes_json" },
   rfqs: { reasons: "reasons_json", parts: "parts_json" },
   pricing_audit: { diff: "diff_json", rules: "rules_json" },
+  admin_audit: { changes: "changes_json" },
 };
 
 // Map camelCase JS names → snake_case SQL column names
@@ -121,6 +122,8 @@ const FIELD_TO_COLUMN = {
   // Part payloads kept in files (2026-11-11): bytes of preview mesh / geometry detail under data/part-payloads
   meshBytes: "mesh_bytes",
   detailBytes: "detail_bytes",
+  // Review fixes (2026-11-11)
+  setupCodeMac: "setup_code_mac",
 };
 
 // 0/1 columns that read back as booleans (SQLite has no boolean type).

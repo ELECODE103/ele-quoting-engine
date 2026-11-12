@@ -757,7 +757,10 @@ function runDFMAnalysis(geometry, options = {}) {
     }
     geometry = dxf.materialize(geometry, options.thicknessMm);
   }
-  const fn = (def.dfm && def.dfm.run) || DFM_FN_BY_NAME[def.dfmFn] || runSheetMetalDFM;
+  // resolveProcess has already refused an unknown slug; a registered process without a DFM
+  // function is a wiring error, not a reason to check the part as sheet metal.
+  const fn = (def.dfm && def.dfm.run) || DFM_FN_BY_NAME[def.dfmFn];
+  if (typeof fn !== "function") throw new Error(`Process ${def.slug} has no DFM function`);
   // Sheet metal DFM takes a thickness argument; the others take an options object.
   if (def.slug === "sheetmetal" || fn === runSheetMetalDFM) {
     return fn(geometry, options.thicknessMm || geometry.estimatedThickness);
