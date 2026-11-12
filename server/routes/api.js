@@ -878,7 +878,7 @@ router.post(
   (req, res, next) => {
     const quote = readableQuote(req, res);
     if (!quote) return;
-    if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed" });
+    if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed", code: "quote-locked" });
     req.quote = quote;
     next();
   },
@@ -896,7 +896,7 @@ router.post(
 router.delete("/quote/:id/tax-certificate", optionalAuth, async (req, res) => {
   const quote = readableQuote(req, res);
   if (!quote) return;
-  if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed" });
+  if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed", code: "quote-locked" });
   const previous = quote.taxCertPath;
   quotesDB.update(quote.id, { taxCertFileName: "", taxCertPath: "" });
   await taxCertificates.discardIfUnused(previous, require("../models"), { quoteId: quote.id });
@@ -1110,7 +1110,7 @@ router.post("/admin/pricing/preview", authenticate, requireAdmin, (req, res) => 
 router.post("/admin/shipping/preview", authenticate, requireAdmin, (req, res) => {
   const b = req.body || {};
   const candidate = b.rules && typeof b.rules === "object" ? ruleSchema.validateRules(b.rules, { partial: true }) : { ok: true, values: {} };
-  if (!candidate.ok) return res.status(400).json({ error: candidate.errors[0].message, errors: candidate.errors });
+  if (!candidate.ok) return res.status(400).json({ error: candidate.errors[0].message, errors: candidate.errors, code: "invalid-settings" });
   const rules = { ...pricingAdmin.currentRules(), ...candidate.values };
   const n = (v, lo, hi, d) => { const x = Number(v); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
   const shipping = require("../services/shipping");

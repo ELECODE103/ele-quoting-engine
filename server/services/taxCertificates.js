@@ -59,10 +59,11 @@ function receive(req, res) {
     upload.single("certificate")(req, res, async (err) => {
       const mb = Math.round(maxBytes() / (1024 * 1024));
       if (err) {
-        res.status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: err.code === "LIMIT_FILE_SIZE" ? `The certificate is over ${mb} MB.` : (err.expose ? err.message : "That upload couldn't be read. Try again.") });
+        const tooBig = err.code === "LIMIT_FILE_SIZE";
+        res.status(tooBig ? 413 : 400).json({ error: tooBig ? `The certificate is over ${mb} MB.` : (err.expose ? err.message : "That upload couldn't be read. Try again."), code: tooBig ? "certificate-too-large" : err.expose ? "certificate-type" : "certificate-unreadable" });
         return resolve(null);
       }
-      if (!req.file) { res.status(400).json({ error: "No certificate attached." }); return resolve(null); }
+      if (!req.file) { res.status(400).json({ error: "No certificate attached.", code: "certificate-missing" }); return resolve(null); }
       let stored = req.file.path;
       try {
         uploadGuards.account(req, { received: req.file.size });
@@ -78,7 +79,7 @@ function receive(req, res) {
       } catch (e) {
         console.error("Tax certificate upload error:", e.message);
         await remove(stored);
-        if (!res.headersSent) res.status(500).json({ error: "Could not attach the certificate. Please try again." });
+        if (!res.headersSent) res.status(500).json({ error: "Could not attach the certificate. Please try again.", code: "certificate-failed" });
         resolve(null);
       }
     });
