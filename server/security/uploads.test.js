@@ -343,7 +343,7 @@ test("event loop stays responsive while a large STEP file parses: /api/health an
   // Everything up to the last few checks happened while the worker was busy; the tail includes storing the result.
   const during = pings.slice(0, Math.max(1, pings.length - 3));
   const worst = Math.max(...during);
-  assert.ok(worst < 250, `slowest health check while parsing: ${worst} ms`);
+  assert.ok(worst < 250, `slowest health check while parsing: ${worst} ms (check ${during.indexOf(worst) + 1} of ${pings.length}; all over 100 ms: ${pings.map((ms, i) => (ms > 100 ? `#${i + 1}=${ms}` : "")).filter(Boolean).join(" ")})`);
   console.log(`       (2 MB STEP: ${took} ms; ${pings.length} health checks, median ${during.sort((a, b) => a - b)[Math.floor(during.length / 2)]} ms, worst ${worst} ms; worst including storing the result ${Math.max(...pings)} ms)`);
 });
 
