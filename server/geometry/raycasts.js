@@ -3,7 +3,7 @@
  * printing overhang and bridging. All sample triangle centroids; meshes above
  * MAX_SAMPLES triangles are downsampled (area-weighted) and say so.
  */
-const { raycast, pointInside } = require("./bvh");
+const { raycast, occluded, pointInside } = require("./bvh");
 const { weightedPercentile, v } = require("./vec");
 const { DEG } = require("./fit");
 
@@ -132,8 +132,8 @@ function accessAnalysis(mesh, bvh, sample, extraDirs = [], preferAxis = null) {
       if (nd <= 0.01 && !parallel) continue;
       const off = parallel ? sideOffset : eps;
       const ox = mesh.centroid[t * 3] + nx * off, oy = mesh.centroid[t * 3 + 1] + ny * off, oz = mesh.centroid[t * 3 + 2] + nz * off;
-      const h = raycast(bvh, ox, oy, oz, d[0], d[1], d[2], eps, Infinity, t);
-      if (!h) { visible[k][i] = parallel ? 1 : 2; any = true; }
+      // only "is the way clear" is asked: the first obstacle ends the search
+      if (!occluded(bvh, ox, oy, oz, d[0], d[1], d[2], eps, t)) { visible[k][i] = parallel ? 1 : 2; any = true; }
     }
     if (any) covered[i] = 1; else undercut += a;
   }

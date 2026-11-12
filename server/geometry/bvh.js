@@ -25,6 +25,7 @@ function buildBVH(mesh) {
   const nmin = new Float64Array(maxNodes * 3), nmax = new Float64Array(maxNodes * 3);
   const left = new Int32Array(maxNodes), right = new Int32Array(maxNodes);
   const start = new Int32Array(maxNodes), count = new Int32Array(maxNodes);
+  const splitAxis = new Uint8Array(maxNodes); // axis an inner node was split on (left = lower centroids)
   let nodeCount = 0;
   const cen = mesh.centroid;
 
@@ -56,10 +57,10 @@ function buildBVH(mesh) {
     const mid = (lo + hi) >> 1;
     quickSelect(order, lo, hi - 1, mid, cen, axis);
     const l = nodeCount++, r = nodeCount++;
-    left[node] = l; right[node] = r; start[node] = lo; count[node] = cnt;
+    left[node] = l; right[node] = r; start[node] = lo; count[node] = cnt; splitAxis[node] = axis;
     stack.push([l, lo, mid], [r, mid, hi]);
   }
-  return { mesh, order, nmin, nmax, left, right, start, count, nodeCount };
+  return { mesh, order, nmin, nmax, left, right, start, count, splitAxis, nodeCount };
 }
 
 function quickSelect(order, lo, hi, k, cen, axis) {
@@ -75,8 +76,19 @@ function quickSelect(order, lo, hi, k, cen, axis) {
   }
 }
 
+// Traversal stack shared by raycast() and occluded(): neither is re-entrant, and a
+// fresh typed array per ray (hundreds of thousands of rays per part) was a
+// measurable share of the time.
+const STACK = new Int32Array(128);
+
 /**
  * Nearest ray hit. dir need not be unit; t is in units of |dir|.
+ *
+ * The visiting order (right child first, no front-to-back sorting) and the
+ * strict `t < best` are part of the result: when two triangles are hit at the
+ * same t (a ray through a shared edge) the first one visited is reported, and
+ * a node is skipped by comparing a slab distance with a triangle distance that
+ * can differ in the last bit. Do not reorder this traversal.
  * @returns {{t:number, tri:number, u:number, v:number}|null}
  */
 function raycast(bvh, ox, oy, oz, dx, dy, dz, tMin = 1e-7, tMax = Infinity, skipTri = -1) {
@@ -84,7 +96,7 @@ function raycast(bvh, ox, oy, oz, dx, dy, dz, tMin = 1e-7, tMax = Infinity, skip
   const pos = mesh.pos;
   const idx = 1 / dx, idy = 1 / dy, idz = 1 / dz;
   let best = tMax, bestTri = -1, bu = 0, bv = 0;
-  const stack = new Int32Array(128);
+  const stack = STACK;
   let sp = 0;
   stack[sp++] = 0;
   while (sp > 0) {
@@ -127,6 +139,67 @@ function raycast(bvh, ox, oy, oz, dx, dy, dz, tMin = 1e-7, tMax = Infinity, skip
   return bestTri < 0 ? null : { t: best, tri: bestTri, u: bu, v: bv };
 }
 
+/**
+ * Is anything hit at all? Equal to `raycast(bvh, …, tMin, Infinity, skipTri) !== null`
+ * for every input, and stops at the first hit instead of looking for the nearest.
+ *
+ * Why it is the same answer: raycast() skips a node for one of three reasons —
+ * the ray misses its box, the box is behind tMin, or the box starts beyond
+ * the nearest hit so far. The third can only happen once a hit exists, so
+ * whether raycast() finds any hit depends only on the first two tests and the
+ * triangle test, and those are repeated here unchanged (same boxes, same
+ * arithmetic, NaN handled the same way). The order of visiting does not
+ * matter for "is there one", so the child on the ray's side is taken first.
+ */
+function occluded(bvh, ox, oy, oz, dx, dy, dz, tMin = 1e-7, skipTri = -1) {
+  const { nmin, nmax, left, right, start, count, order, mesh, splitAxis } = bvh;
+  const pos = mesh.pos;
+  const idx = 1 / dx, idy = 1 / dy, idz = 1 / dz;
+  const stack = STACK;
+  let sp = 0;
+  stack[sp++] = 0;
+  while (sp > 0) {
+    const node = stack[--sp];
+    const n3 = node * 3;
+    let t0 = (nmin[n3] - ox) * idx, t1 = (nmax[n3] - ox) * idx;
+    let tn = Math.min(t0, t1), tf = Math.max(t0, t1);
+    t0 = (nmin[n3 + 1] - oy) * idy; t1 = (nmax[n3 + 1] - oy) * idy;
+    tn = Math.max(tn, Math.min(t0, t1)); tf = Math.min(tf, Math.max(t0, t1));
+    t0 = (nmin[n3 + 2] - oz) * idz; t1 = (nmax[n3 + 2] - oz) * idz;
+    tn = Math.max(tn, Math.min(t0, t1)); tf = Math.min(tf, Math.max(t0, t1));
+    if (tf < tn || tf < tMin) continue;
+    if (left[node] < 0) {
+      const s = start[node], e = s + count[node];
+      for (let i = s; i < e; i++) {
+        const tri = order[i];
+        if (tri === skipTri) continue;
+        const o = tri * 9;
+        const e1x = pos[o + 3] - pos[o], e1y = pos[o + 4] - pos[o + 1], e1z = pos[o + 5] - pos[o + 2];
+        const e2x = pos[o + 6] - pos[o], e2y = pos[o + 7] - pos[o + 1], e2z = pos[o + 8] - pos[o + 2];
+        const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x;
+        const det = e1x * px + e1y * py + e1z * pz;
+        if (det > -1e-14 && det < 1e-14) continue;
+        const inv = 1 / det;
+        const tx = ox - pos[o], ty = oy - pos[o + 1], tz = oz - pos[o + 2];
+        const u = (tx * px + ty * py + tz * pz) * inv;
+        if (u < -1e-9 || u > 1 + 1e-9) continue;
+        const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x;
+        const w = (dx * qx + dy * qy + dz * qz) * inv;
+        if (w < -1e-9 || u + w > 1 + 1e-9) continue;
+        const t = (e2x * qx + e2y * qy + e2z * qz) * inv;
+        if (t > tMin && t < Infinity) return true;
+      }
+    } else {
+      // the child holding the lower centroids is nearer when the ray runs towards +axis
+      const a = splitAxis[node];
+      const d = a === 0 ? dx : a === 1 ? dy : dz;
+      if (d > 0) { stack[sp++] = right[node]; stack[sp++] = left[node]; }
+      else { stack[sp++] = left[node]; stack[sp++] = right[node]; }
+    }
+  }
+  return false;
+}
+
 /** Count all ray hits (for parity inside/outside tests). */
 function countHits(bvh, ox, oy, oz, dx, dy, dz, tMin = 1e-7) {
   let c = 0;
@@ -166,4 +239,4 @@ function queryBox(bvh, bx0, by0, bz0, bx1, by1, bz1, out) {
   return out;
 }
 
-module.exports = { buildBVH, raycast, countHits, pointInside, queryBox };
+module.exports = { buildBVH, raycast, occluded, countHits, pointInside, queryBox };
