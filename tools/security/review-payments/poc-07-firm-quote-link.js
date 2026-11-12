@@ -34,7 +34,7 @@ const { start, report, money, SHIP, ROOT, nextIp } = require("./lib");
     const [hd, pl, sg] = a.token.split(".");
     const head = JSON.parse(Buffer.from(hd, "base64url"));
     const claims = JSON.parse(Buffer.from(pl, "base64url"));
-    r.note(`link emailed to the address on the request: ${a.mailed}; token header ${JSON.stringify(head)}; claims ${Object.keys(claims).join(", ")} (no amount: the amount is read from the request when the link is used)`);
+    r.note(`link emailed to the address on the request: ${a.mailed}; token header ${JSON.stringify(head)}; claims ${Object.keys(claims).join(", ")} (amt: the amount the link was issued for, in cents: ${claims.amt})`);
     const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
     const forged = {
       "alg none": `${b64({ alg: "none", typ: "JWT" })}.${pl}.`,
@@ -66,15 +66,20 @@ const { start, report, money, SHIP, ROOT, nextIp } = require("./lib");
     const seen = (await view(c.token)).body.quotedTotal;
     const edit = await h.put(`/api/rfq/admin/${c.id}`, { quotedTotal: 2500 }, admin);
     const acc = await accept(c.token, { method: "card" });
-    const s = h.lastSession();
-    r.note(`buyer opens the link and sees ${money(seen)}; owner saves a new total of $2,500 without pressing send (quoteSent: ${edit.body.quoteSent}, new email: ${Boolean(edit.body.emailSent)}); buyer presses accept on the page they have open: ${acc.status}, Stripe amount ${money(s.amount_total / 100)}`);
-    r.finding(acc.status === 201 && s.amount_total === 250000, "F-09: saving a new total without re-sending leaves the emailed link live at the new amount: no new email, and the accept request does not say which price the buyer agreed to");
+    const s = h.lastSession(); // (updated with the order-lifecycle fixes: there may be no session at all now)
+    r.note(`buyer opens the link and sees ${money(seen)}; owner saves a new total of $2,500 without pressing send (quoteSent: ${edit.body.quoteSent}, new email: ${Boolean(edit.body.emailSent)}, link invalidated: ${Boolean(edit.body.linkInvalidated)}); buyer presses accept on the page they have open: ${acc.status} (${acc.body.code || "ok"}), Stripe amount ${s ? money(s.amount_total / 100) : "none: no session was made"}; opening the link again: ${(await view(c.token)).status}`);
+    r.finding(acc.status === 201 && Boolean(s) && s.amount_total === 250000, "F-09: saving a new total without re-sending leaves the emailed link live at the new amount: no new email, and the accept request does not say which price the buyer agreed to");
+    const resent = await h.put(`/api/rfq/admin/${c.id}`, { status: "quoted" }, admin);
+    const fresh = resent.body.acceptUrl.split("/firm-quote/")[1];
+    const lied = await accept(fresh, { method: "card", seenTotal: 1500 });
+    r.note(`owner sends it again at $2,500: the new link shows ${money((await view(fresh)).body.quotedTotal)}; an accept that says the buyer saw $1,500 -> ${lied.status} (${lied.body.code})`);
+    r.finding(lied.status === 201, "F-09: an accept that names a different total from the quote's is honoured");
     const d = await quoted(1500);
     await h.put(`/api/rfq/admin/${d.id}`, { quotedTotal: 0 }, admin);
     const zero = await accept(d.token, { method: "po", poNumber: "PO-ZERO" });
     const orders = (await h.get("/api/orders", admin)).body;
     const zeroOrder = orders.find((o) => o.rfqId === d.id);
-    r.note(`owner saves a total of 0 on a quote that is out: PO acceptance -> ${zero.status}; order ${zeroOrder ? `"${zeroOrder.status}" for ${money(zeroOrder.total)}` : "none"}`);
+    r.note(`owner saves a total of 0 on a quote that is out: PO acceptance -> ${zero.status} (${zero.body.code || "ok"}); order ${zeroOrder ? `"${zeroOrder.status}" for ${money(zeroOrder.total)}` : "none"}`);
     r.finding(Boolean(zeroOrder), "F-09b: a quote whose total was saved as 0 after sending can be accepted on a PO as a $0.00 order in the production queue");
 
     // ── purchase orders ──
@@ -85,9 +90,11 @@ const { start, report, money, SHIP, ROOT, nextIp } = require("./lib");
     const card2 = await accept(e.token, { method: "card" });
     const eo = (await h.get("/api/orders", admin)).body.find((o) => o.rfqId === e.id);
     const inQueue = (await h.get("/api/orders/admin/queue", admin)).body.some((o) => o.id === eo.id);
-    r.note(`PO without a number: ${noPo.status}; PO acceptance by whoever holds the link: ${po.status}; second PO: ${po2.status}; card after PO: ${card2.status}`);
+    // (Updated with the order-lifecycle fixes: a PO number with a line break is refused, so the script then places the order with a clean one.)
+    r.note(`PO without a number: ${noPo.status}; PO number with a line break in it: ${po.status} (${po.body.code || "accepted"}); then PO-779: ${po2.status}; card after PO: ${card2.status}`);
     r.note(`order: "${eo.status}", ${money(eo.total)}, ship to "${eo.shippingName}", PO number stored as ${JSON.stringify(eo.poNumber)}; listed in the production queue: ${inQueue}`);
-    r.finding(po2.status === 201 || card2.status === 201, "a quote can be accepted more than once in sequence");
+    r.finding(po.status === 201, "F-10: a PO number with a line break in it is accepted");
+    r.finding((po.status === 201 && po2.status === 201) || card2.status === 201, "a quote can be accepted more than once in sequence");
     const { pdfText } = require(path.join(ROOT, "server", "testSupport", "pdfText.js"));
     const trav = await h.s.req({ url: `/api/pdf/traveler/${eo.id}`, token: admin });
     const lines = pdfText(trav.buffer).split("\n");
@@ -125,6 +132,12 @@ const { start, report, money, SHIP, ROOT, nextIp } = require("./lib");
     const lq = (await h.get(`/api/quote/${iq2.body.quoteId}`, racer)).body;
     r.note(`quote re-priced to 90 pcs while its 1-piece checkout was in flight: order ${lo.items[0].quantity} pc, ${money(lo.total)}, Stripe ${money(ls.amount_total / 100)}; the quote row now reads ${lq.lineItems[0].quantity} pcs, ${money(lq.orderTotal)}, status "${lq.status}"`);
     r.finding(Math.abs(lo.total - ls.amount_total / 100) > 0.005 || lo.items[0].quantity !== 1, "re-pricing a quote during its checkout makes the order and the charge disagree");
+
+    // ── what Stripe is told (review section 8; added with the order-lifecycle fixes) ──
+    const urls = h.sessions().filter((x) => x.metadata && x.metadata.rfqId).map((x) => `${x._args.success_url} ${x._args.cancel_url}`);
+    const leaked = urls.filter((u) => /firm-quote\/eyJ/.test(u) || u.includes(f.token) || u.includes(g.token));
+    r.note(`return URLs given to Stripe for firm-quote orders: ${urls.length} pairs, e.g. ${(urls[0] || "").split(" ")[1]}`);
+    r.finding(leaked.length > 0, "the firm-quote link (a credential) is placed in the return URLs sent to Stripe");
 
     // ── amount paid vs amount quoted ──
     const k = await quoted(1234.567);

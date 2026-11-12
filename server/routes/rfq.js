@@ -437,7 +437,8 @@ router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
   const next = { ...rfq, ...updates };
   const revised = next.quotedTotal !== rfq.quotedTotal || next.quotedLeadDays !== rfq.quotedLeadDays || (next.quoteNote || "") !== (rfq.quoteNote || "")
     || Boolean(next.paperwork) !== Boolean(rfq.paperwork) || Boolean(next.returnPart) !== Boolean(rfq.returnPart);
-  const sendQuote = b.status === "quoted" && (rfq.status !== "quoted" || b.resend === true || revised);
+  // Terms that were saved earlier without sending count too: pressing send then really sends them.
+  const sendQuote = b.status === "quoted" && (rfq.status !== "quoted" || b.resend === true || revised || termsChanged(rfq));
   if (sendQuote) {
     if (rfq.status === "accepted") return res.status(409).json({ error: "The customer already accepted this quote" });
     if (!(next.quotedTotal > 0)) return res.status(400).json({ error: "Enter the quoted total before sending the quote" });

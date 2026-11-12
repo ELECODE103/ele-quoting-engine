@@ -81,7 +81,10 @@ async function newPendingOrder(h, buyer, qty = 2) {
     const stUnpaid = await status(o.orderId);
     await h.webhook({ id: "evt_x", type: "checkout.session.async_payment_failed", data: { object: o.session } });
     await h.webhook({ id: "evt_y", type: "checkout.session.expired", data: { object: { ...o.session, status: "expired" } } });
-    r.finding(stUnpaid !== "pending_payment" || (await status(o.orderId)) !== "pending_payment", "an unpaid / failed / expired session event marks the order paid");
+    // (Updated with the order-lifecycle fixes: an expired-session event now closes the unpaid order out as "expired", which is not "paid".)
+    const stAfterExpired = await status(o.orderId);
+    r.note(`unpaid event: "${stUnpaid}"; after the failed and expired events: "${stAfterExpired}"`);
+    r.finding(stUnpaid !== "pending_payment" || !["pending_payment", "expired"].includes(stAfterExpired), "an unpaid / failed / expired session event marks the order paid");
 
     // ── events the server does not handle ──
     o = await newPendingOrder(h, buyer);
@@ -90,9 +93,12 @@ async function newPendingOrder(h, buyer, qty = 2) {
     const dispute = await h.webhook({ id: "evt_d", type: "charge.dispute.created", data: { object: { id: "dp_1", amount: o.session.amount_total } } });
     const stRefunded = await status(o.orderId);
     r.note(`charge.refunded: ${refund.status}; charge.dispute.created: ${dispute.status}; order afterwards: "${stRefunded}"`);
+    const inQueueAfter = (await h.get("/api/orders/admin/queue", admin)).body.some((x) => x.id === o.orderId);
+    r.note(`  still in the production queue: ${inQueueAfter}; emails to the shop about it: ${h.s.mail(null, /refunded|disputed/i).length}`);
     r.finding(stRefunded === "paid", "F-07: a refund or dispute in Stripe changes nothing here: the order stays \"paid\" and in the production queue");
     const noMeta = await h.webhook(h.completed({ id: "cs_other_product", amount_total: 500, metadata: {} }));
     r.note(`checkout.session.completed with no orderId (a payment link or another site on the same Stripe account): ${noMeta.status} — Stripe retries non-2xx for days and can disable the endpoint`);
+    r.finding(noMeta.status !== 200, "I-1: a completed checkout that is not one of our orders is answered with an error, so Stripe keeps retrying it");
 
     // ── the other ways to "paid" ──
     o = await newPendingOrder(h, buyer);
@@ -108,18 +114,35 @@ async function newPendingOrder(h, buyer, qty = 2) {
     r.finding(c3.body.status === "paid", "confirm-payment accepts a session paid for a different amount");
 
     // a second session for the same order: both stay payable
+    // (Checks updated with the order-lifecycle fixes, 2026-11-11: the script now counts OPEN sessions and looks
+    //  at what happens to a second, different payment, instead of assuming a second session was made.)
     o = await newPendingOrder(h, buyer);
     const reuse = await h.post("/api/orders/checkout-session", { quoteId: o.quoteId, ...SHIP }, buyer);
-    const s2 = h.lastSession();
-    r.note(`"pay" clicked twice: same order reused (${reuse.body.orderId === o.orderId}), two open Stripe sessions (${o.session.id}, ${s2.id})`);
+    const open = () => h.sessions().filter((x) => x.metadata && x.metadata.orderId === o.orderId && x.status === "open" && x.payment_status !== "paid");
+    r.note(`"pay" clicked twice: same order reused (${reuse.body.orderId === o.orderId}); open Stripe sessions for it: ${open().map((x) => x.id).join(", ")}`);
+    r.finding(open().length > 1, "F-08: pressing pay twice leaves two payable Stripe sessions for one order");
+    // Force the situation anyway: the order is paid, and then a second, different payment for it arrives.
     await h.webhook(h.completed(o.session));
-    const second = await h.webhook(h.completed(s2));
-    r.finding(second.status === 200 && (await status(o.orderId)) === "paid", "F-08: the first session is not expired when a second is created; if the buyer pays both, the second payment is acknowledged and ignored (taken by Stripe, recorded nowhere, nobody told)");
+    const attentionBefore = h.s.mail(null, /needs attention/i).length;
+    const second = await h.webhook(h.completed({ ...o.session, id: "cs_test_review_second_payment", payment_intent: "pi_review_second" }));
+    const after = (await h.get(`/api/orders/${o.orderId}`, admin)).body;
+    r.note(`a second payment for the paid order: webhook ${second.status} ${second.text}; order "${after.status}", flagged "${after.attention}"; "needs attention" emails to the shop: ${h.s.mail(null, /needs attention/i).length - attentionBefore}`);
+    r.finding(!after.attention || h.s.mail(null, /needs attention/i).length - attentionBefore !== 1, "F-08: a second payment for an order that is already paid is acknowledged and ignored (taken by Stripe, recorded nowhere, nobody told)");
     await h.stop();
 
     // ── no secret / empty secret, production ──
     for (const [label, secret] of [["no STRIPE_WEBHOOK_SECRET", null], ["STRIPE_WEBHOOK_SECRET=\"\"", ""]]) {
-      h = await start({ webhookSecret: secret, env: secret === "" ? { STRIPE_WEBHOOK_SECRET: "" } : {} });
+      // (Updated with the order-lifecycle fixes: the server no longer starts in this configuration; the script says so and moves on.)
+      try {
+        h = await start({ webhookSecret: secret, env: secret === "" ? { STRIPE_WEBHOOK_SECRET: "" } : {} });
+      } catch (err) {
+        h = null;
+        const line = String(err.output || err.message).split("\n").find((l) => /FATAL: Missing required/.test(l)) || "";
+        r.note(`${label}, NODE_ENV=production: the server does not start (exit ${err.exitCode}): ${line.trim()}`);
+        r.finding(err.exitCode !== 1 || !/STRIPE_WEBHOOK_SECRET/.test(line), `F-18: ${label}: the server starts in production without a webhook secret`);
+        continue;
+      }
+      r.finding(true, `F-18: ${label}: the server starts in production without a webhook secret`);
       const b = await h.register("hook2@example.test");
       const p = await newPendingOrder(h, b);
       const unsigned = await h.webhook(h.completed(p.session), { sign: false });
