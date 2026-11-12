@@ -79,7 +79,7 @@ export default function MaterialsEditor({ materials, onChanged }) {
             <h3>{PROCESS_LABELS[process] || process}</h3>
             <span>{items.filter((m) => m.active).length} of {items.length} active</span>
           </div>
-          <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="card table-scroll" tabIndex={0} role="region" aria-label="Materials table" style={{ overflow: 'hidden' }}>
             <table className="mat-tbl">
               <thead>
                 <tr>
@@ -94,7 +94,7 @@ export default function MaterialsEditor({ materials, onChanged }) {
                 {items.map((m) => [
                   <tr key={m.id} className={m.active ? '' : 'off'} style={{ cursor: 'pointer' }} onClick={(e) => { if (e.target.closest('button')) return; setOpenId(openId === m.id ? null : m.id); }}>
                     <td><span className={`tag ${m.active ? 'tag-pass' : 'tag-fail'}`}>{m.active ? 'on' : 'off'}</span></td>
-                    <td style={{ fontWeight: 600, color: m.active ? 'var(--text-primary)' : undefined }}><span className="swatch" style={{ background: m.color || '#ddd' }} />{m.name}<div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-ghost)', fontWeight: 400 }}>{m.slug}</div></td>
+                    <td style={{ fontWeight: 600, color: m.active ? 'var(--text-primary)' : undefined }}><span className="swatch" style={{ background: m.color || '#ddd' }} />{m.name}<div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 400 }}>{m.slug}</div></td>
                     <td>{m.category || '—'}</td>
                     {process === '3d-printing' ? (
                       <><td className="num">{m.pricePerCm3 != null ? `$${Number(m.pricePerCm3).toFixed(2)}` : '—'}</td><td className="num">{m.density ?? '—'} g/cm³</td><td className="num">{(m.layerHeights || []).join(' / ') || '—'}</td></>

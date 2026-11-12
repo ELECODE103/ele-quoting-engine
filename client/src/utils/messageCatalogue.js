@@ -101,7 +101,7 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'model-too-large': { '*': { text: `This model is more detailed than the instant quote reads. Export it at a coarser resolution and upload it again, or send it to us and a person prices it${within}.`, keep: true, action: 'rfq' } },
     'parse-timeout': { '*': { text: `This model took longer to read than the instant quote allows. Simplify it or export it at a coarser resolution, or send it to us and a person prices it${within}.`, keep: true, action: 'rfq' } },
     'file-damaged': { '*': { text: 'This file is damaged or incomplete. Export it again from your CAD program and upload it.', keep: true } },
-    busy: { '*': { text: 'We are reading a lot of files right now, so this one is waiting its turn. Nothing is wrong with your file: give it a minute and try again.', action: 'retry' } },
+    busy: { '*': { text: 'We are reading a lot of files right now and could not take this one yet. Nothing is wrong with your file: give it a minute and try again.', action: 'retry' } },
     'storage-full': { '*': { text: `We can't take new files right now. That is a fault on our side. Email them to ${EMAIL} or call ${PHONE} and a person quotes them.` } },
     'store-failed': { '*': { text: `We read this file but couldn't keep it. Try again in a minute, or email it to ${EMAIL}.`, action: 'retry' } },
     'dxf-routing-only': { '*': { text: 'A DXF is a flat outline with no thickness, so we cut it from sheet on the router. Switch to CNC routing to price it, or upload a STEP of the part.', keep: true } },

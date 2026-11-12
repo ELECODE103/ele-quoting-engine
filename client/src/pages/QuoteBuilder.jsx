@@ -269,7 +269,7 @@ export default function QuoteBuilder() {
     } catch (err) {
       // The whole upload was refused (or never arrived). `err.message` is already the buyer's wording.
       if (err.action === 'retry' || err.status === 0) setRetryFiles(files);
-      setUploadErrors([...wrongErrors, { fileName: files.length === 1 ? files[0].name : `${files.length} files`, error: err.message, code: err.code, action: err.data?.offerRfq ? 'rfq' : err.action }]);
+      setUploadErrors([...wrongErrors, { fileName: files.length === 1 ? files[0].name : `${files.length} files`, count: files.length, error: err.message, code: err.code, action: err.data?.offerRfq ? 'rfq' : err.action }]);
     }
     setUploading(false);
     if (fileRef.current) fileRef.current.value = ''; // so the same file can be chosen again
@@ -494,7 +494,7 @@ export default function QuoteBuilder() {
         {uploadErrors.length > 0 && (
           <div className="card fade-up upload-problems" role="alert" tabIndex={-1} ref={errorBox}>
             <div className="upload-problems-head">
-              {uploadErrors.length === 1 ? 'This file was not priced' : `${uploadErrors.length} files were not priced`}
+              {(() => { const n = uploadErrors.reduce((sum, e) => sum + (e.count || 1), 0); return n === 1 ? 'This file was not priced' : `${n} files were not priced`; })()}
               {parts.length > 0 ? '. The parts already in your quote are untouched.' : ''}
             </div>
             <ul>

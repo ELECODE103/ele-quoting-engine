@@ -72,7 +72,7 @@ export default function RfqQueue() {
   }
 
   return (
-    <div className="card" style={{ overflow: 'hidden' }}>
+    <div className="card table-scroll" tabIndex={0} role="region" aria-label="Quote requests table" style={{ overflow: 'hidden' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}>

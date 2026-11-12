@@ -205,9 +205,9 @@ export default function PricingConsole({ initialChanges = null, onConsumedInitia
           <p>{view === 'simple' ? `The ${simpleRules.length} rules that move prices most. Switch to Everything for the full rate card.` : 'Every rule the engine uses, by area. Changes preview on the right before you save.'}</p>
         </div>
         <div className="pc-actions">
-          <div className="seg" role="tablist" aria-label="View">
-            <button className={view === 'simple' ? 'on' : ''} onClick={() => setView('simple')}>Simple</button>
-            <button className={view === 'everything' ? 'on' : ''} onClick={() => setView('everything')}>Everything</button>
+          <div className="seg" role="group" aria-label="View">
+            <button type="button" aria-pressed={view === 'simple'} className={view === 'simple' ? 'on' : ''} onClick={() => setView('simple')}>Simple</button>
+            <button type="button" aria-pressed={view === 'everything'} className={view === 'everything' ? 'on' : ''} onClick={() => setView('everything')}>Everything</button>
           </div>
           <button className="btn btn-ghost" onClick={() => setHistoryOpen(true)}>History</button>
           <button className="btn btn-ghost" onClick={resetAll} disabled={saving}>Reset to defaults</button>

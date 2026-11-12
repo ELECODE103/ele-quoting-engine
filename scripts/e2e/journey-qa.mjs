@@ -260,7 +260,7 @@ async function shot(page, name, { mask = [], note = '', fullPage = true, settle 
       if (window.innerWidth < 500) {
         for (const el of document.querySelectorAll('a, button, input:not([type=hidden]), select, textarea, [role=button], label.lead-option, label.check-row')) {
           const r = el.getBoundingClientRect();
-          if (!r.width || !el.offsetParent || el.closest('.hp-field') || el.closest('.sr-only') || el.classList.contains('sr-only')) continue;
+          if (!r.width || !el.offsetParent || el.closest('.hp-field') || el.closest('.sr-only') || el.classList.contains('sr-only') || el.classList.contains('skip-link')) continue;
           // WCAG 2.2 AA 2.5.8: 24 × 24 CSS px, links inside a sentence excepted.
           const inline = el.tagName === 'A' && getComputedStyle(el).display === 'inline' && el.parentElement && el.parentElement.innerText.trim().length > el.innerText.trim().length + 12;
           const inlineButton = el.classList.contains('linklike-inline');

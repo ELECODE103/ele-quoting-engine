@@ -754,7 +754,7 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
 .upload-problems .btn-outline { border-width: 1px; border-color: var(--error-text); color: var(--error-text); background: #fff; }
 .upload-problems .btn-ghost { background: #fff; color: var(--text-secondary); }
 .upload-problems-reach { font-size: 12px; }
-.upload-problems-reach a { color: inherit; font-weight: 600; }
+.upload-problems-reach a { color: inherit; font-weight: 600; display: inline-block; padding: 4px 0; }
 
 /* 3D preview */
 .viewer-meta { pointer-events: none; color: #CBD5E1; }
@@ -815,8 +815,10 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
 .admin-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 24px; }
 .tf-setup { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 8px; }
 .tf-steps { margin: 0 0 12px 18px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+/* A wide table scrolls inside its own box (which the keyboard can reach), never the page. */
+.table-scroll:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; box-shadow: none; }
 @media (max-width: 1100px) {
-  .admin-page .card { overflow-x: auto !important; }
+  .admin-page .card, .admin-page .table-scroll { overflow-x: auto !important; }
 }
 @media (max-width: 768px) {
   .admin-page { padding: 20px 16px 40px; }
