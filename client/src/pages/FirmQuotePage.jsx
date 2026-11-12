@@ -4,6 +4,7 @@ import PublicLayout from '../components/PublicLayout';
 import { api } from '../utils/api';
 import { formatCurrency, formatDate, formatShipDate, orderStatusLabel } from '../utils/format';
 import brand, { PROCESS_LABELS } from '../brand';
+import { DeliveryChoice, TaxExemption, deliveryPayload } from '../components/DeliveryOptions';
 
 /**
  * The firm quote behind the link we email when an RFQ is quoted. No account:
@@ -23,6 +24,10 @@ export default function FirmQuotePage() {
   const [form, setForm] = useState({ shippingName: '', shippingAddress: '', shippingCity: '', shippingState: '', shippingZip: '', poNumber: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Delivery choice and tax exemption: shown only when the shop offers a choice or collects tax.
+  const [option, setOption] = useState('ship');
+  const [carrier, setCarrier] = useState({ carrier: 'UPS', account: '', service: '' });
+  const [exempt, setExempt] = useState({ declared: false, reason: '' });
 
   const load = useCallback(async () => {
     try {
@@ -42,13 +47,19 @@ export default function FirmQuotePage() {
   async function accept(e) {
     e.preventDefault();
     setError('');
-    if (!form.shippingName.trim() || !form.shippingAddress.trim() || !form.shippingCity.trim() || !form.shippingState.trim() || !form.shippingZip.trim()) {
-      return setError('Add the full ship-to address.');
+    const co = quote.checkout;
+    const pickup = Boolean(co?.showOptions) && option === 'pickup';
+    if (pickup ? !form.shippingName.trim() : (!form.shippingName.trim() || !form.shippingAddress.trim() || !form.shippingCity.trim() || !form.shippingState.trim() || !form.shippingZip.trim())) {
+      return setError(pickup ? 'Tell us who is picking the order up.' : 'Add the full ship-to address.');
     }
     if (method === 'po' && !form.poNumber.trim()) return setError('Enter your purchase order number.');
     setBusy(true);
     try {
-      const r = await api.acceptFirmQuote(token, { method, ...form });
+      const r = await api.acceptFirmQuote(token, {
+        method, ...form,
+        // Which delivery choice, a carrier account, a declared exemption. The quoted total is the total either way.
+        ...deliveryPayload({ showOptions: Boolean(co?.showOptions), option, carrier, exemption: co?.tax?.exemption, declared: exempt.declared, reason: exempt.reason }),
+      });
       if (r.sessionUrl) { window.location.href = r.sessionUrl; return; }
       await load();
       window.scrollTo(0, 0);
@@ -101,6 +112,10 @@ export default function FirmQuotePage() {
   const accepted = quote.status === 'accepted';
   const awaitingCard = accepted && order?.status === 'pending_payment';
   const days = quote.quotedLeadDays;
+  const co = quote.checkout;
+  const showOptions = Boolean(co?.showOptions);
+  const pickup = showOptions && option === 'pickup';
+  const taxOn = co?.tax?.mode === 'stripe';
 
   return (
     <PublicLayout title="Your firm quote">
@@ -171,8 +186,22 @@ export default function FirmQuotePage() {
                       </p>
                     )}
                     <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 10 }}>
-                      {order.shippedAt ? `Shipped ${formatDate(order.shippedAt)}.` : `Ships by ${formatShipDate(order.shipBy, { year: true })}.`}
+                      {order.shippingMethod === 'pickup'
+                        ? (order.shippedAt ? `Ready for pickup since ${formatDate(order.shippedAt)}.` : `Ready by ${formatShipDate(order.shipBy, { year: true })}.`)
+                        : (order.shippedAt ? `Shipped ${formatDate(order.shippedAt)}.` : `Ships by ${formatShipDate(order.shipBy, { year: true })}.`)}
                     </p>
+                    {/* Delivery and tax, as the server states them for this order. */}
+                    {order.deliveryLine && <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 10 }} data-testid="order-delivery">{order.deliveryLine}.</p>}
+                    {order.pickupAddress && (
+                      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 10 }} data-testid="pickup-address">
+                        Pick up at: {order.pickupAddress.name}, {order.pickupAddress.lines.join(', ')}. Call {brand.phone} before you come.
+                      </p>
+                    )}
+                    {order.taxLine && (
+                      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 10 }} data-testid="order-tax">
+                        Sales tax: {order.taxLine.valueText || formatCurrency(order.taxLine.amount)}.{order.tax > 0 ? ` Total paid ${formatCurrency(order.total)}.` : ''}
+                      </p>
+                    )}
                     {order.trackingNumber && (
                       <p style={{ fontSize: 13, marginTop: 10 }}>
                         {order.carrier} tracking:{' '}
@@ -200,14 +229,20 @@ export default function FirmQuotePage() {
               </div>
             ) : quote.status === 'quoted' ? (
               <form className="card" style={{ padding: 24 }} onSubmit={accept} noValidate aria-label="Accept this quote">
-                <div className="field-label" style={{ marginBottom: 10 }}>Ship to</div>
+                {showOptions && (
+                  <DeliveryChoice options={co.options} carriers={co.carriers} value={option} onChange={setOption} carrier={carrier} onCarrierChange={setCarrier} showTotals={false} />
+                )}
+                <div className="field-label" style={{ marginBottom: 10 }}>{pickup ? 'Pickup' : 'Ship to'}</div>
                 <div className="rfq-grid">
-                  <label className="full"><span className="field-label">Name / company</span><input className="input" value={form.shippingName} onChange={set('shippingName')} autoComplete="name" required /></label>
+                  <label className="full"><span className="field-label">{pickup ? 'Who is picking it up' : 'Name / company'}</span><input className="input" value={form.shippingName} onChange={set('shippingName')} autoComplete="name" required /></label>
+                  {!pickup && (<>
                   <label className="full"><span className="field-label">Street address</span><input className="input" value={form.shippingAddress} onChange={set('shippingAddress')} autoComplete="street-address" required /></label>
                   <label><span className="field-label">City</span><input className="input" value={form.shippingCity} onChange={set('shippingCity')} autoComplete="address-level2" required /></label>
                   <label><span className="field-label">State</span><input className="input" value={form.shippingState} onChange={set('shippingState')} autoComplete="address-level1" required /></label>
                   <label><span className="field-label">ZIP</span><input className="input" value={form.shippingZip} onChange={set('shippingZip')} autoComplete="postal-code" required /></label>
+                  </>)}
                 </div>
+                {pickup && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>We confirm the pickup address and a time with you once the order is in.</div>}
 
                 <fieldset style={{ border: 'none', padding: 0, margin: '20px 0 0' }}>
                   <legend className="field-label">How would you like to pay?</legend>
@@ -232,10 +267,30 @@ export default function FirmQuotePage() {
                   </label>
                 )}
 
+                {/* Sales tax, when the shop collects it: added on the payment page for a card, per invoice for a PO. */}
+                {taxOn && (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 14, lineHeight: 1.5 }} data-testid="firm-tax-note">
+                    {method === 'card' ? co.tax.note : co.tax.poNote}
+                  </div>
+                )}
+                {taxOn && (
+                  <div style={{ marginTop: 14 }}>
+                    <TaxExemption
+                      info={method === 'card' ? co.tax.exemption : { ...co.tax.exemption, note: 'Tick the box and attach your certificate. We read it before we invoice.' }}
+                      declared={exempt.declared}
+                      reason={exempt.reason}
+                      onChange={setExempt}
+                      certFileName={quote.taxCertFileName}
+                      onUpload={async (file) => { const r = await api.uploadFirmQuoteCertificate(token, file); setQuote((q) => ({ ...q, taxCertFileName: r.taxCertFileName })); setError(''); }}
+                      onRemove={async () => { await api.removeFirmQuoteCertificate(token); setQuote((q) => ({ ...q, taxCertFileName: '' })); }}
+                    />
+                  </div>
+                )}
+
                 {cancelled && <div className="gate-box" role="status" style={{ marginTop: 14 }}>The card payment was cancelled. Nothing was charged.</div>}
                 {error && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{error}</div>}
                 <button className="btn btn-primary btn-lg" type="submit" disabled={busy} style={{ width: '100%', justifyContent: 'center', marginTop: 18 }}>
-                  {busy ? 'Working…' : method === 'card' ? `Accept and pay ${formatCurrency(quote.quotedTotal)}` : 'Accept on this PO'}
+                  {busy ? 'Working…' : method === 'card' ? `Accept and pay ${formatCurrency(quote.quotedTotal)}${taxOn && !(exempt.declared && co.tax.exemption.trusted) ? ' plus tax' : ''}` : 'Accept on this PO'}
                 </button>
                 <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 10, textAlign: 'center' }}>
                   The ship date counts from the day you accept. Weekends and federal holidays don't count.

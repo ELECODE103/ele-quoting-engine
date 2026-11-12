@@ -117,6 +117,16 @@ export default function JobTravelerPage() {
                     </div>
                   </div>
 
+                  {/* How it leaves the shop when we are not shipping it ourselves (the account by its last four only). */}
+                  {order.deliveryLine && (
+                    <div style={{ marginBottom: 12 }} data-testid="traveler-delivery">
+                      <div className="field-label" style={{ marginBottom: 4 }}>Delivery</div>
+                      <div style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>
+                        {order.shippingMethod === 'pickup' ? 'Customer pickup: do not ship' : `${order.deliveryLine}: ship collect (full account number on the order)`}
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <div className="field-label" style={{ marginBottom: 4 }}>Placed Date</div>
                     <div style={{ color: 'var(--text-primary)', fontSize: 12 }}>

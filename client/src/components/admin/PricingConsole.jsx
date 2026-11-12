@@ -40,6 +40,9 @@ function roundTo(n, places) { const f = 10 ** places; return Math.round(n * f) /
 
 function formatRuleValue(desc, value) {
   if (value === undefined || value === null) return '—';
+  // Named settings read as their label; a short text setting as itself.
+  if (desc.type === 'choice') return (desc.options || []).find((o) => o.value === value)?.label || String(value);
+  if (desc.type === 'text') return value === '' ? '(empty)' : String(value);
   if (desc.type === 'table') {
     if (Array.isArray(value)) return `${value.length} rows`;
     return Object.entries(value).map(([k, v]) => `${k} ${v}`).join(' · ');
@@ -67,6 +70,8 @@ function scalarError(desc, value) {
   return null;
 }
 function ruleError(desc, value) {
+  if (desc.type === 'choice') return (desc.options || []).some((o) => o.value === value) ? null : 'Choose one';
+  if (desc.type === 'text') return typeof value === 'string' && new RegExp(desc.pattern || '^.*$').test(value.trim()) ? null : 'Not in the expected form';
   if (desc.type !== 'table') return scalarError(desc, value);
   if (desc.shape === 'map') {
     for (const [k, v] of Object.entries(value || {})) { const e = scalarError(desc, v); if (e) return `${k}: ${e}`; }
@@ -202,7 +207,7 @@ export default function PricingConsole({ initialChanges = null, onConsumedInitia
       <div className="pc-head">
         <div>
           <h2>Pricing console</h2>
-          <p>{view === 'simple' ? `The ${simpleRules.length} rules that move prices most. Switch to Everything for the full rate card.` : 'Every rule the engine uses, by area. Changes preview on the right before you save.'}</p>
+          <p>{view === 'simple' ? `The ${simpleRules.length} settings that matter most: the rules that move prices, and the shipping and tax switches. Switch to Everything for the full rate card.` : 'Every rule the engine uses, by area. Changes preview on the right before you save.'}</p>
         </div>
         <div className="pc-actions">
           <div className="seg" role="tablist" aria-label="View">
@@ -250,6 +255,7 @@ export default function PricingConsole({ initialChanges = null, onConsumedInitia
                 <h3>{g.label}</h3>
                 {g.blurb && <p>{g.blurb}</p>}
               </div>
+              {g.key === 'checkout' && <ShippingPreview draft={draft} descriptors={descriptors} dirtyKeys={dirtyKeys} errors={errors} />}
               {rulesFor(g).map((desc) => (
                 <RuleField key={desc.key} desc={desc} value={draft[desc.key]} savedValue={saved[desc.key]}
                   dirty={dirtyKeys.includes(desc.key)} error={errors[desc.key]}
@@ -285,11 +291,57 @@ function RuleField({ desc, value, dirty, error, onChange, onReset }) {
     </button>
   );
 
-  if (desc.type === 'table') {
+  // A named setting: one of a short list, each with its own line of explanation.
+  if (desc.type === 'choice') {
     return (
-      <div className={cls}>
+      <div className={`${cls} rule-table`} data-rule={desc.key}>
         <div>
           <div className="rule-label">{desc.label}<span className="rule-key">{desc.key}</span>{defaultChip}</div>
+          <div className="rule-help">{desc.help}</div>
+          <div role="radiogroup" aria-label={desc.label} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+            {(desc.options || []).map((o) => (
+              <label key={o.value} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 10px', border: `1px solid ${value === o.value ? 'var(--accent)' : 'var(--border-primary)'}`, borderRadius: 'var(--radius-md)', background: value === o.value ? 'var(--accent-bg)' : 'transparent', cursor: 'pointer' }}>
+                <input type="radio" name={`rule-${desc.key}`} value={o.value} checked={value === o.value} onChange={() => onChange(o.value)} style={{ marginTop: 3, accentColor: 'var(--accent)' }} />
+                <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: value === o.value ? 600 : 500 }}>
+                  {o.label}
+                  {o.help && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--text-dim)', fontWeight: 400, marginTop: 2 }}>{o.help}</span>}
+                </span>
+              </label>
+            ))}
+          </div>
+          {error && <div className="rule-error" style={{ marginTop: 6 }}>{error}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  // A short text setting (a Stripe tax code).
+  if (desc.type === 'text') {
+    return (
+      <div className={cls} data-rule={desc.key}>
+        <div>
+          <div className="rule-label">{desc.label}<span className="rule-key">{desc.key}</span></div>
+          <div className="rule-help">{desc.help}</div>
+        </div>
+        <div className="rule-ctl">
+          <div className="rule-input">
+            <input type="text" value={value ?? ''} maxLength={desc.maxLength || 40} spellCheck={false} aria-label={desc.label} placeholder="empty: Stripe's preset" style={{ textAlign: 'left' }}
+              onChange={(e) => onChange(e.target.value.trim())} />
+          </div>
+          <div className="rule-meta">{defaultChip}</div>
+          {error && <div className="rule-error">{error}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (desc.type === 'table') {
+    return (
+      <div className={cls} data-rule={desc.key}>
+        <div>
+          <div className="rule-label">{desc.label}<span className="rule-key">{desc.key}</span>{defaultChip}
+            {desc.placeholder && isDefault && <span className="tag tag-warn" data-testid="placeholder-tag" style={{ marginLeft: 8 }}>Placeholder numbers: set your own</span>}
+          </div>
           <div className="rule-help">{desc.help}</div>
           {desc.shape === 'map'
             ? <MapTable desc={desc} value={value || {}} onChange={onChange} />
@@ -388,6 +440,61 @@ function RowsTable({ desc, value, onChange }) {
         </tbody>
       </table>
       <button type="button" className="chip" style={{ marginTop: 6 }} onClick={addRow} disabled={desc.maxRows && value.length >= desc.maxRows}>+ add row</button>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+/**
+ * "A 3 lb order to Ohio would be charged $X shipping": the shipping and tax settings as they
+ * stand on screen (saved or not), applied by the server to an example order the owner can change.
+ */
+function ShippingPreview({ draft, descriptors, dirtyKeys, errors }) {
+  const [example, setExample] = useState({ weightLb: 3, state: 'OH', subtotal: 150, longestIn: 12 });
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState(null);
+  const seq = useRef(0);
+  const keys = descriptors.filter((d) => d.group === 'checkout' || d.key === 'shippingBaseRate' || d.key === 'shippingPerKg').map((d) => d.key);
+  const candidate = {};
+  for (const k of keys) if (dirtyKeys.includes(k) && !errors[k]) candidate[k] = draft[k];
+  const signature = JSON.stringify([candidate, example]);
+  useEffect(() => {
+    const n = ++seq.current;
+    const t = setTimeout(() => {
+      api.previewShipping({ rules: candidate, ...example })
+        .then((r) => { if (n === seq.current) { setResult(r); setErr(null); } })
+        .catch((e) => { if (n === seq.current) setErr(e.message); });
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+  const num = (k) => (e) => setExample((x) => ({ ...x, [k]: e.target.value === '' ? '' : Number(e.target.value) }));
+  const field = { width: 84, padding: '5px 8px', fontSize: 13, border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', color: 'var(--text-primary)' };
+  const unsaved = Object.keys(candidate).length > 0;
+  return (
+    <div data-testid="shipping-preview" style={{ margin: '0 14px 12px', padding: '12px 14px', border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+        What a buyer would be charged {unsaved ? '(with the changes on screen, not saved yet)' : '(with the settings as saved)'}
+      </div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+        <label>Parts weigh <input type="number" min="0" step="0.5" style={field} value={example.weightLb} onChange={num('weightLb')} aria-label="Example weight in pounds" /> lb</label>
+        <label>longest side <input type="number" min="0" step="1" style={field} value={example.longestIn} onChange={num('longestIn')} aria-label="Example longest side in inches" /> in</label>
+        <label>parts total $ <input type="number" min="0" step="10" style={field} value={example.subtotal} onChange={num('subtotal')} aria-label="Example parts total in dollars" /></label>
+        <label>shipped to <input type="text" maxLength={20} style={{ ...field, width: 64 }} value={example.state} onChange={(e) => setExample((x) => ({ ...x, state: e.target.value }))} aria-label="Example destination state" /></label>
+      </div>
+      {err && <div className="rule-error">{err}</div>}
+      {result && (
+        <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.55 }}>
+          <div data-testid="shipping-preview-sentence">{result.sentence}</div>
+          {(result.extras || []).map((x) => <div key={x} style={{ color: 'var(--text-muted)' }}>{x}</div>)}
+          <div style={{ color: 'var(--text-muted)', marginTop: 4 }} data-testid="tax-preview-sentence">
+            {result.tax.mode === 'stripe'
+              ? `Sales tax: Stripe works it out from the address and adds it on its payment page. A purchase order's tax is per invoice.${result.tax.exemption.offered ? (result.tax.exemption.trusted ? ' A buyer who declares an exemption and uploads a certificate is charged no tax.' : ' A buyer who declares an exemption is still charged tax; you refund it after reading the certificate.') : ''}`
+              : 'Sales tax: off. Nothing is added at checkout and no page mentions tax.'}
+          </div>
+          {result.placeholderTable && <div className="rule-error" style={{ marginTop: 6 }} data-testid="placeholder-warning">The rate table still holds the placeholder numbers. Put in your own before you save this.</div>}
+        </div>
+      )}
     </div>
   );
 }

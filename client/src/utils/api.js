@@ -114,6 +114,16 @@ export const api = {
     return request(`/quote/${id}`);
   },
 
+  // A tax-exemption certificate attached to a quote before checkout (PDF, JPG or PNG).
+  async uploadTaxCertificate(quoteId, file) {
+    return gated(() => {
+      const form = new FormData();
+      form.append('certificate', file);
+      return postForm(`/quote/${quoteId}/tax-certificate`, form, 'Could not attach the certificate');
+    });
+  },
+  async removeTaxCertificate(quoteId) { return request(`/quote/${quoteId}/tax-certificate`, { method: 'DELETE' }); },
+
   // Config (public)
   async getProcesses() { return request('/processes'); },
   async getMaterials(process) {
@@ -157,6 +167,10 @@ export const api = {
   },
   async previewPricing(rules) {
     return request('/admin/pricing/preview', { method: 'POST', body: JSON.stringify({ rules }) });
+  },
+  /** "A 3 lb order to Ohio would be charged $X shipping", under the rules on screen (saved or not). */
+  async previewShipping(body) {
+    return request('/admin/shipping/preview', { method: 'POST', body: JSON.stringify(body) });
   },
   async getPricingHistory(limit = 50) { return request(`/admin/pricing/history?limit=${limit}`); },
   async restorePricing(id) {
@@ -223,6 +237,19 @@ export const api = {
     const a = document.createElement('a');
     a.href = url;
     a.download = fileName || 'drawing.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+  /** Admin: the exemption certificate a buyer attached to an order. */
+  async downloadTaxCertificate(id, fileName) {
+    const res = await fetch(`${BASE}/orders/${id}/tax-certificate`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('Could not download the certificate');
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'certificate.pdf';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -295,12 +322,20 @@ export const api = {
   async getFirmQuote(token) { return request(`/rfq/quote/${token}`); },
   async acceptFirmQuote(token, data) { return request(`/rfq/quote/${token}/accept`, { method: 'POST', body: JSON.stringify(data) }); },
   async confirmFirmQuotePayment(token) { return request(`/rfq/quote/${token}/confirm-payment`, { method: 'POST', body: '{}' }); },
+  async uploadFirmQuoteCertificate(token, file) {
+    const form = new FormData();
+    form.append('certificate', file);
+    return postForm(`/rfq/quote/${token}/tax-certificate`, form, 'Could not attach the certificate');
+  },
+  async removeFirmQuoteCertificate(token) { return request(`/rfq/quote/${token}/tax-certificate`, { method: 'DELETE' }); },
 
   // Stripe Checkout
-  async createCheckoutSession(quoteId, shippingFields) {
+  // `fields`: the ship-to address, the delivery choice (shippingOption), a carrier account, and
+  // whether a tax exemption is declared. No amount is sent: the server works every figure out.
+  async createCheckoutSession(quoteId, fields) {
     return request('/orders/checkout-session', {
       method: 'POST',
-      body: JSON.stringify({ quoteId, ...shippingFields }),
+      body: JSON.stringify({ quoteId, ...fields }),
     });
   },
 };
