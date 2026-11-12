@@ -114,8 +114,11 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, async (req
     const account = usersDB.getById(req.user.userId);
 
     // How the order is delivered and what that comes to. The request says which choice (and, for
-    // the buyer's own carrier, the account); every amount comes from the stored quote and the
-    // admin's settings (services/checkout.js). A choice that is switched off is refused.
+    // the buyer's own carrier, the account); no amount is read from it. Shipping is worked out
+    // here, now, from the quote's priced lines under the settings in force (services/checkout.js,
+    // shipping.shippingFor): the shipping figure stored on the quote is never the charge. Where
+    // the quote is priced again before this point, hand that result in as `priced`.
+    // A choice that is switched off is refused.
     const resolved = checkout.resolve(quote, req.body, {
       certificate: quote.taxCertPath ? { fileName: quote.taxCertFileName || "certificate", path: quote.taxCertPath } : null,
     });
@@ -154,7 +157,7 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, async (req
 
     // What the total is made of, so the order page, emails and documents can show it: each in
     // whole cents, as the customer saw them on the quote, with the shipping of the delivery choice
-    // (services/checkout.js: the quote's own shipping line when we ship; none on the buyer's
+    // (services/checkout.js: shipping as worked out above when we ship; none on the buyer's
     // carrier account or for a pickup).
     // Inspection paperwork (first-article report + certificate of conformance) rides on the
     // stored quote, which the server priced: the request body cannot switch it on or change
@@ -560,7 +563,7 @@ router.get("/:id/drawing", authenticate, (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 router.get("/:id/tax-certificate", authenticate, requireAdmin, (req, res) => {
   const order = ordersDB.getById(req.params.id);
-  if (!order || !order.taxCertPath || !fs.existsSync(order.taxCertPath)) return res.status(404).json({ error: "No certificate on this order" });
+  if (!order || !order.taxCertPath || !fs.existsSync(order.taxCertPath)) return res.status(404).json({ error: "No certificate on this order", code: "no-certificate" });
   require("../services/fileCrypto").sendDownload(res, order.taxCertPath, order.taxCertFileName); // decrypts when stored encrypted; always an attachment
 });
 

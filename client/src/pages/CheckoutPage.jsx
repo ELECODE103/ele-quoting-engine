@@ -300,12 +300,13 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
-                {/* Shipping: as priced by the server for the delivery choice. With the shop's original
-                    settings this is the one "Shipping $x" line it has always been. */}
+                {/* Shipping and the total: what the server works out now for the delivery choice (never
+                    a figure kept from when the quote was priced). With the shop's original settings
+                    this is the one "Shipping $x" line it has always been. */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: plainShipping ? 12 : 4 }} data-testid="summary-shipping">
                   <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Shipping</span>
                   <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>
-                    {!quoteData ? '...' : plainShipping ? formatCurrency(quoteData.shippingEstimate) : selected.shippingText}
+                    {!quoteData ? '...' : plainShipping ? formatCurrency(selected?.shippingCost ?? quoteData.shippingEstimate) : selected.shippingText}
                   </span>
                 </div>
                 {!plainShipping && (
@@ -327,7 +328,7 @@ export default function CheckoutPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}>{taxOn ? 'Total before tax' : 'Total'}</span>
                     <span style={{ color: 'var(--accent)', fontSize: 16, fontWeight: 700 }} data-testid="summary-total">
-                      {!quoteData ? '...' : plainShipping ? formatCurrency(quoteData.orderTotal) : (selected.total != null ? formatCurrency(selected.total) : 'To be confirmed')}
+                      {!quoteData ? '...' : plainShipping ? formatCurrency(selected?.total ?? quoteData.orderTotal) : (selected.total != null ? formatCurrency(selected.total) : 'To be confirmed')}
                     </span>
                   </div>
                   {taxOn && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }} data-testid="summary-tax-note">{co.tax.note}</div>}

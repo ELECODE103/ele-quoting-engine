@@ -14,13 +14,20 @@
  * The total for a choice:
  *
  *   goods    = parts subtotal + lead-time fee            (as priced on the quote, to the cent)
- *   shipping = the quote's own shipping line for "ship"; 0 for a carrier account or pickup
+ *   shipping = for "ship": worked out NOW from the quote's priced lines under the current
+ *              settings (shipping.shippingFor); 0 for a carrier account or pickup
  *   total    = max(goods + shipping, order minimum) + inspection paperwork
  *
- * For "ship" that is the quote's total, to the cent, by the same arithmetic the pricing engine
- * used: with every switch at its default nothing here changes a number.
+ * The shipping amount stored on a quote is what the buyer was shown when it was priced. It is
+ * never the charge: the charge is computed here, at checkout, every time. When the two agree to
+ * the cent (always, unless the settings or a part changed since the quote was priced) the total
+ * is the quote's own total, by the same arithmetic the pricing engine used: with every switch at
+ * its default nothing here changes a number.
+ *
+ * Every function that prices takes an optional `priced` ({ lineItems, subtotal }): the same
+ * configuration priced again at checkout. Without it the stored quote's lines are used.
  */
-const { pricingDB } = require("../models");
+const { pricingDB, partsDB, materialsDB } = require("../models");
 const ruleSchema = require("../config/ruleSchema");
 const shipping = require("./shipping");
 const tax = require("./tax");
@@ -35,8 +42,25 @@ function currentRules() {
   return ruleSchema.mergeRules(row && row.rules && typeof row.rules === "object" ? row.rules : {});
 }
 
-/** The fixed parts of a stored quote's total, each in whole cents. */
-function quoteParts(quote, rules) {
+/** The database as shipping.shippingFor reads it: the part a line points at, the material it was priced in. */
+function dbLookup() {
+  let materials = null;
+  return {
+    part: (id) => { try { return partsDB.getById(id) || null; } catch { return null; } },
+    material: (slug) => { materials = materials || materialsDB.getAll(); return materials.find((m) => m.slug === slug) || null; },
+  };
+}
+
+/** The "we ship it" line for a quote, computed now (see the file header). */
+function shipmentFor(quote, rules = currentRules(), priced = null) {
+  const lines = priced && Array.isArray(priced.lineItems) ? priced : quote;
+  const block = shipping.shippingFor({ lineItems: lines.lineItems, subtotal: lines.subtotal }, rules, dbLookup());
+  // Whole cents, as the pricing engine settles the same figure into the quote's total.
+  return { ...block, amount: Math.max(0, cents(block.amount)) };
+}
+
+/** The fixed parts of a stored quote's total, each in whole cents, and the shipment computed now. */
+function quoteParts(quote, rules, priced = null) {
   // As stored (the engine settles it to the cent; a quote from before it did may carry a fraction,
   // and the order route has always passed that through as it is).
   const total = Number(quote.orderTotal || quote.subtotal || 0);
@@ -44,20 +68,23 @@ function quoteParts(quote, rules) {
   const lead = Math.max(0, cents(quote.leadTimeSurcharge));
   const paperwork = Boolean(quote.paperwork);
   const paperworkFee = paperwork ? Math.max(0, Number(quote.paperworkFee) || 0) : 0;
+  // What the quote showed for shipping when it was priced: used to recognise "nothing has changed"
+  // and to tell whether the order minimum set the quoted price. Never used as the charge.
   const stored = shipping.storedFor(quote);
+  const fresh = shipmentFor(quote, rules, priced);
   const floor = cents(total - paperworkFee);             // what the minimum-order rule was applied to
   const minimumApplied = floor > subtotal + lead + stored.amount + 0.005;
   // The minimum the quote was priced under: its own floor when the minimum set the price, else
   // today's rule, never more than the quote's own floor (a held price does not go up).
   const minimum = minimumApplied ? floor : Math.min(Math.max(0, Number(rules.minimumOrderTotal) || 0), floor);
-  return { total, subtotal, lead, paperwork, paperworkFee, stored, floor, minimum };
+  return { total, subtotal, lead, paperwork, paperworkFee, stored, fresh, floor, minimum };
 }
 
 /** What a delivery choice comes to. `shippingCost` is null when "ship" has no price (freight to be confirmed). */
 function totalFor(method, q, shipBlock) {
   const shippingCost = method === "ship" ? (shipBlock.manual ? null : shipBlock.amount) : 0;
   if (shippingCost === null) return { shippingCost: null, total: null };
-  // "ship" at the quote's own shipping line is the quote's own total, exactly.
+  // Shipping computed now is what the quote showed: the total is the quote's own total, exactly.
   if (method === "ship" && Math.abs(shippingCost - q.stored.amount) < 0.005 && !q.stored.manual) return { shippingCost, total: q.total };
   return { shippingCost, total: cents(Math.max(q.subtotal + q.lead + shippingCost, q.minimum) + q.paperworkFee) };
 }
@@ -67,10 +94,10 @@ function totalFor(method, q, shipBlock) {
  * `destination` ({ country, state }) is optional: before the buyer has typed an address the
  * "we ship it" line is shown as priced on the quote.
  */
-function optionsFor(quote, rules = currentRules(), destination = null) {
+function optionsFor(quote, rules = currentRules(), destination = null, priced = null) {
   const s = shipping.settings(rules);
-  const q = quoteParts(quote, rules);
-  const ship = destination ? shipping.atDestination(q.stored, destination, rules) : q.stored;
+  const q = quoteParts(quote, rules, priced);
+  const ship = destination ? shipping.atDestination(q.fresh, destination, rules) : q.fresh;
   const words = shipping.describe(ship, rules);
   const shipTotal = totalFor("ship", q, ship);
   const options = [{
@@ -98,8 +125,8 @@ function optionsFor(quote, rules = currentRules(), destination = null) {
  * What the quote and checkout pages are told about shipping and tax. With every switch at its
  * default this says: one choice (we ship), the shipping line as priced, no tax note.
  */
-function viewFor(quote, rules = currentRules()) {
-  const { options, ship } = optionsFor(quote, rules);
+function viewFor(quote, rules = currentRules(), priced = null) {
+  const { options, ship } = optionsFor(quote, rules, null, priced);
   const words = shipping.describe(ship, rules);
   return {
     shipping: { mode: ship.mode, label: words.label, valueText: words.valueText, note: words.note, manual: ship.manual, packedLb: ship.packedLb },
@@ -136,10 +163,11 @@ function requestedMethod(body) {
  * Resolve a checkout request against a stored quote.
  * @param {object} quote  the stored quote
  * @param {object} body   the request body (only the fields named above are read)
- * @param {object} [o]    { rules, certificate: { fileName, path } | null }
+ * @param {object} [o]    { rules, certificate: { fileName, path } | null,
+ *                          priced: { lineItems, subtotal } | null  the configuration priced again now }
  * @returns {{ ok:false, status, error, code } | { ok:true, ...everything the order row needs }}
  */
-function resolve(quote, body = {}, { rules = currentRules(), certificate = null } = {}) {
+function resolve(quote, body = {}, { rules = currentRules(), certificate = null, priced = null } = {}) {
   const s = shipping.settings(rules);
   const method = requestedMethod(body);
   if (!method) return { ok: false, status: 400, code: "shipping-option", error: "Choose how you want the order delivered." };
@@ -166,8 +194,8 @@ function resolve(quote, body = {}, { rules = currentRules(), certificate = null 
     Object.assign(address, { shippingAddress: "", shippingCity: "", shippingState: "", shippingZip: "", shippingCountry: "US" });
   }
 
-  const q = quoteParts(quote, rules);
-  const ship = method === "ship" ? shipping.atDestination(q.stored, { country: address.shippingCountry, state: address.shippingState }, rules) : q.stored;
+  const q = quoteParts(quote, rules, priced);
+  const ship = method === "ship" ? shipping.atDestination(q.fresh, { country: address.shippingCountry, state: address.shippingState }, rules) : q.fresh;
   const sum = totalFor(method, q, ship);
   if (sum.total === null) {
     return { ok: false, status: 409, code: "shipping-manual", error: `${ship.reason} ${s.carrierAccount || s.pickup ? "Choose another delivery option, or request a firm quote." : "Request a firm quote and we will price the freight."}`, reasonCode: ship.reasonCode };
@@ -291,4 +319,4 @@ function pickupDisclosed(order) {
   return order.shippingMethod === "pickup" && Boolean(order.paidAt) && !["pending_payment", "pending_po", "cancelled", "paid_amount_mismatch"].includes(order.status);
 }
 
-module.exports = { currentRules, quoteParts, totalFor, optionsFor, viewFor, gateWithShipping, resolve, firmView, resolveFirm, orderFields, orderView, pickupDisclosed, money };
+module.exports = { currentRules, shipmentFor, quoteParts, totalFor, optionsFor, viewFor, gateWithShipping, resolve, firmView, resolveFirm, orderFields, orderView, pickupDisclosed, money };

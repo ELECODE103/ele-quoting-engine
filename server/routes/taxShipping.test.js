@@ -137,11 +137,10 @@ const cents = (n) => Math.round(n * 100) / 100;
     assert.strictEqual(sumLines(lastArgs()), Math.round(q.body.orderTotal * 100));
   });
 
-  test("a quote saved before the shipping block existed checks out at the shipping it holds", async () => {
+  test("a quote saved before the shipping block existed checks out at its own total: shipping is worked out from its lines", async () => {
     const q = await price(4);
     require("../models/database").getDatabase().run("UPDATE quotes SET shipping_json = NULL WHERE id = ?", [q.body.quoteId]);
     assert.strictEqual(quotesDB.getById(q.body.quoteId).shipping, null);
-    await settings({ shippingMethod: "table", shippingRateTable: TABLE }); // even after the owner changes how shipping is charged
     const view = (await h.get(`/api/quote/${q.body.quoteId}`, buyer)).body;
     assert.strictEqual(view.checkout.options[0].total, q.body.orderTotal);
     const c = await checkout(q.body.quoteId);
@@ -149,6 +148,45 @@ const cents = (n) => Math.round(n * 100) / 100;
     const order = ordersDB.getById(c.body.orderId);
     assert.deepStrictEqual([order.total, order.shippingCost, order.shippingMode], [q.body.orderTotal, cents(q.body.shippingEstimate), "formula"]);
     assert.strictEqual(lastArgs().line_items.length, 1, "and is sent to Stripe as the one line it always was");
+  });
+
+  test("the shipping amount stored on a quote is not the charge: it is worked out again at checkout from the lines", async () => {
+    const q = await price(4);
+    const real = cents(q.body.shippingEstimate);
+    // Whatever the stored figure says (here: a cent, as if the row had been altered), the order is charged the computed one.
+    quotesDB.update(q.body.quoteId, { shippingEstimate: 0.01, shipping: { mode: "formula", method: "ship", amount: 0.01, manual: false } });
+    const view = (await h.get(`/api/quote/${q.body.quoteId}`, buyer)).body;
+    assert.strictEqual(view.checkout.options[0].shippingCost, real);
+    const c = await checkout(q.body.quoteId);
+    assert.strictEqual(c.status, 200, c.text);
+    const order = ordersDB.getById(c.body.orderId);
+    assert.strictEqual(order.shippingCost, real);
+    assert.strictEqual(order.total, q.body.orderTotal);
+    assert.strictEqual(sumLines(lastArgs()), Math.round(q.body.orderTotal * 100));
+  });
+
+  test("a line with no weight is never shipped for the base rate alone: the order is not priced", async () => {
+    const q = await price(2);
+    const stored = quotesDB.getById(q.body.quoteId);
+    quotesDB.update(q.body.quoteId, { lineItems: stored.lineItems.map((li) => ({ ...li, weight: undefined })) });
+    const c = await checkout(q.body.quoteId);
+    assert.deepStrictEqual([c.status, c.body.code], [409, "shipping-manual"]);
+    assert.strictEqual(ordersDB.query((o) => o.quoteId === q.body.quoteId).length, 0);
+  });
+
+  test("the owner changes how shipping is charged after a quote was priced: the checkout page and the charge follow the settings as they are now", async () => {
+    const q = await price(2); // priced under the weight formula
+    await settings({ shippingMethod: "table", shippingRateTable: [{ maxLb: 50, price: 99 }] });
+    const view = (await h.get(`/api/quote/${q.body.quoteId}`, buyer)).body;
+    const expected = cents(q.body.subtotal + cents(q.body.leadTimeSurcharge) + 99);
+    assert.deepStrictEqual([view.checkout.shipping.mode, view.checkout.options[0].shippingCost, view.checkout.options[0].total], ["table", 99, expected]);
+    const c = await checkout(q.body.quoteId);
+    assert.strictEqual(c.status, 200, c.text);
+    const order = ordersDB.getById(c.body.orderId);
+    assert.deepStrictEqual([order.shippingCost, order.shippingMode, order.total], [99, "table", expected]);
+    const args = lastArgs();
+    assert.strictEqual(sumLines(args), Math.round(expected * 100), "Stripe is asked for what the page showed");
+    assert.strictEqual(args.line_items[args.line_items.length - 1].price_data.unit_amount, 9900, "with shipping as its own line");
     await settings();
   });
 
@@ -185,12 +223,13 @@ const cents = (n) => Math.round(n * 100) / 100;
     assert.ok(/Shipping\s+\$14\.50/.test(mail.text));
   });
 
-  test("rate table: the shipping on a held quote is held with it when the owner changes the table", async () => {
+  test("rate table: when the owner changes the table, an open quote is charged the table as it is now", async () => {
     const q = await price(2);
+    assert.strictEqual(q.body.shippingEstimate, 14.5);
     await settings({ shippingMethod: "table", shippingRateTable: [{ maxLb: 50, price: 99 }] });
     const c = await checkout(q.body.quoteId);
-    assert.strictEqual(ordersDB.getById(c.body.orderId).shippingCost, 14.5);
-    assert.strictEqual((await price(2)).body.shippingEstimate, 99, "a new quote gets the new table");
+    assert.strictEqual(ordersDB.getById(c.body.orderId).shippingCost, 99);
+    assert.strictEqual((await price(2)).body.shippingEstimate, 99, "and so is a new quote");
     await settings({ shippingMethod: "table", shippingRateTable: TABLE });
   });
 

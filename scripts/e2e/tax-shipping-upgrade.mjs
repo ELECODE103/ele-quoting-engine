@@ -10,7 +10,7 @@
  * Checks: the server starts on the old file and adds the columns; the old paid order and the old
  * purchase-order order read as they did (same totals, a Shipping line, no tax, no new words); the
  * old order's page renders in a browser; Reorder rebuilds a quote and it checks out; the old
- * draft quote checks out at the total it held. Stripe is stubbed in the server process.
+ * draft quote checks out at its own total (shipping is worked out at checkout from its lines and comes to what it showed). Stripe is stubbed in the server process.
  */
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -95,7 +95,7 @@ try {
   check('the old draft quote: same total, one delivery choice at that total, no tax note', draft.orderTotal === ids.draftTotal && draft.checkout.showOptions === false && draft.checkout.options[0].total === ids.draftTotal && draft.checkout.tax.mode === 'off');
   const co = await call('POST', '/api/orders/checkout-session', { quoteId: ids.draftId, shippingName: 'Dana Buyer', shippingAddress: '100 Main St', shippingCity: 'Elgin', shippingState: 'IL', shippingZip: '60120' }, buyer);
   const paid = co.status === 200 ? (await call('GET', `/api/orders/${co.body.orderId}`, undefined, buyer)).body : {};
-  check('the old draft quote checks out at the total and shipping it held, paperwork line included', co.status === 200 && paid.total === ids.draftTotal && Math.abs(paid.shippingCost - Math.round(ids.draftShipping * 100) / 100) < 0.001 && paid.paperwork === true, co.text);
+  check('the old draft quote checks out at its own total: shipping worked out now from its lines is what it showed, paperwork line included', co.status === 200 && paid.total === ids.draftTotal && Math.abs(paid.shippingCost - Math.round(ids.draftShipping * 100) / 100) < 0.001 && paid.paperwork === true, co.text);
   await context.close();
 } finally {
   await browser.close();

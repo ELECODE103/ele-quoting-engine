@@ -30,7 +30,7 @@ async function makeBefore() {
   await database.ready;
   require("../config/seed").seedDatabase();
   const { quotesDB, ordersDB, orderItemsDB, rfqsDB } = require("./index");
-  const quote = quotesDB.insert({ lineItems: [{ partId: "p1", fileName: "bracket.step", quantity: 4, lineTotal: 180, perUnit: { final: 45 }, meta: { process: "cnc", materialSlug: "cnc-delrin" } }], subtotal: 180, leadTimeSlug: "standard", leadTimeMultiplier: 1, leadTimeSurcharge: 0, shippingEstimate: 14.3478, orderTotal: 194.35, status: "ordered", paperwork: false, paperworkFee: 0, expiresAt: new Date(Date.now() + 20 * 864e5).toISOString() });
+  const quote = quotesDB.insert({ lineItems: [{ partId: "p1", fileName: "bracket.step", quantity: 4, lineTotal: 180, perUnit: { final: 45 }, weight: { perUnit: 0.23478, total: 0.93912, units: "kg" }, meta: { process: "cnc", materialSlug: "cnc-delrin" } }], subtotal: 180, leadTimeSlug: "standard", leadTimeMultiplier: 1, leadTimeSurcharge: 0, shippingEstimate: 14.3478, orderTotal: 194.35, status: "ordered", paperwork: false, paperworkFee: 0, expiresAt: new Date(Date.now() + 20 * 864e5).toISOString() });
   const draft = quotesDB.insert({ lineItems: quote.lineItems, subtotal: 180, leadTimeSlug: "standard", leadTimeMultiplier: 1, leadTimeSurcharge: 0, shippingEstimate: 14.3478, orderTotal: 194.35, status: "draft", expiresAt: new Date(Date.now() + 20 * 864e5).toISOString() });
   const order = ordersDB.insert({ quoteId: quote.id, status: "paid", shippingName: "Dana Buyer", shippingAddress: "100 Main St", shippingCity: "Elgin", shippingState: "IL", shippingZip: "60120", shippingCountry: "US", shippingMethod: "standard", shippingCost: 14.35, subtotal: 180, leadTimeSurcharge: 0, paperwork: false, paperworkFee: 0, tax: 0, total: 194.35, paymentMethod: "card", customerEmail: "dana@buyer.test", customerName: "Dana Buyer", leadTimeName: "Standard", leadDays: 10, shipBy: "2026-11-25", paidAt: new Date().toISOString() });
   orderItemsDB.insert({ orderId: order.id, partId: "p1", fileName: "bracket.step", process: "cnc", materialSlug: "cnc-delrin", materialName: "Delrin / Acetal (POM)", quantity: 4, unitPrice: 45, lineTotal: 180, config: {} });
@@ -135,7 +135,9 @@ test("the old order displays, emails and prints as it did: a Shipping line, no t
   assert.ok(first.pdfBytes > 2000 && /Shipping/.test(first.pdfText) && /194\.35/.test(first.pdfText) && !/Sales tax|Pickup|Per invoice/.test(first.pdfText));
 });
 
-test("the old draft quote checks out at the total and the shipping it holds", () => {
+// Shipping is never read back from a quote: it is worked out at checkout from the quote's lines
+// (the weight formula over the line weights, here). For an old quote that comes to what it showed.
+test("the old draft quote checks out at its own total: shipping worked out now from its lines is what it showed", () => {
   const view = first.quoteView;
   assert.deepStrictEqual([view.showOptions, view.options.length, view.options[0].total, view.shipping.mode, view.tax.mode], [false, 1, 194.35, "formula", "off"]);
   const r = first.resolved;
