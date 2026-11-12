@@ -480,7 +480,7 @@ test("digest contents: new orders, every status including ones this code has nev
   assert.ok(/firm quote · waiting 2 days/.test(t) && /send-us-the-part · waiting 4 h/.test(t));
   assert.ok(/Quotes lapsing within 3 days —: 1 firm · 1 instant/.test(t));
   assert.ok(/\$1,800\.00 · until Nov 13/.test(t));
-  assert.ok(/Customer files: \d+ MB of 2048 MB/.test(t) && /Database: \d+ MB of 256 MB/.test(t));
+  assert.ok(/Customer files: \d+ MB of 2048 MB/.test(t) && /Database: \d+ MB of 16 MB/.test(t)); // 16: the default ceiling since the availability fixes (DB_MAX_MB)
   assert.ok(/Emails sent \/ failed: 9 \/ 2/.test(t));
   assert.ok(/Stripe webhooks ok \/ bad signature \/ other failure: 1 \/ 1 \/ 0/.test(t));
   assert.ok(/Server errors \(5xx\): 1/.test(t));
@@ -525,7 +525,7 @@ test("status report: build, uptime, hosts, protections, sizes, counts — and ne
   assert.deepStrictEqual(report.hosts, { canonical: "straightedgemfg.com", redirects: ["www.straightedgemfg.com", "nordmfg.com"], noindex: [], hstsAllHosts: false, frontendUrlHost: "straightedgemfg.com", seen: [], problems: [] });
   assert.ok(report.protections.every((p) => typeof p.on === "boolean" && typeof p.label === "string"));
   assert.ok(report.protections.filter((p) => p.critical).every((p) => p.on), JSON.stringify(report.protections.filter((p) => !p.on)));
-  assert.ok(report.storage.files.maxBytes === 2048 * MB && report.storage.database.maxBytes === 256 * MB && report.storage.warnPercent === 80);
+  assert.ok(report.storage.files.maxBytes === 2048 * MB && report.storage.database.maxBytes === 16 * MB && report.storage.warnPercent === 80); // 16 MB: DB_MAX_MB's default since the availability fixes
   assert.ok(report.business.orders.total >= 8 && report.business.requests.open === 2);
   assert.ok(Array.isArray(report.resetsOnRestart) && report.resetsOnRestart.length >= 2 && Array.isArray(report.survivesRestart));
   assert.ok(report.digest.hourCentral === 7 && report.digest.timeZone === "America/Chicago");

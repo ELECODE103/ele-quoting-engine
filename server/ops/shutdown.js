@@ -29,7 +29,10 @@
  *   2. requests already being served get up to SHUTDOWN_GRACE_MS (default
  *      10 000) to finish — a checkout, a webhook from Stripe, an upload
  *   3. the database is saved once more and flushed to the disk (fsync of the
- *      file and of its folder), so the bytes are on the volume, not in a cache
+ *      file and of its folder), so the bytes are on the volume, not in a cache.
+ *      Writes that were waiting for the file (a re-priced draft quote may wait up
+ *      to DB_DRAFT_FLUSH_MS) go with it: models/database.js stops deferring the
+ *      moment the signal arrives, and database.flush() is called here
  *   4. the stop is recorded (ops/state.js) and the process exits 0
  *
  * Railway's draining time defaults to 0 seconds, which leaves no room for
@@ -51,6 +54,9 @@ function graceMs(env = process.env) {
 function flushDatabase(database = require("../models/database")) {
   const out = { saved: false, synced: false, bytes: 0 };
   try {
+    // Changes that were allowed to wait a moment for the file (a re-priced draft quote: models/database.js
+    // deferred()) are written now, and then the whole database once more, whatever state it is in.
+    if (typeof database.flush === "function") database.flush();
     database.saveToDisk();
     out.saved = true;
   } catch (err) {

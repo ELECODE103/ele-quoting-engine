@@ -15,6 +15,17 @@ const { test, run } = runner("Price integrity");
 const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shippingCity: "Springfield", shippingState: "IL", shippingZip: "62701" };
 
 (async () => {
+  // (relaunch merge 2) This suite prices well over a hundred new quotes on a handful of accounts inside a minute. Since
+  // the availability fixes one account may start 60 new quotes an hour and 240 a day (security/quoteGuards.js; those
+  // limits have their own suite, services/senderQuotas.test.js), so they are lifted here, and so is the allowance of
+  // stored drafts just below. Nothing else is.
+  process.env.QUOTE_NEW_PER_ACCOUNT_HOUR = "100000";
+  process.env.QUOTE_NEW_PER_ACCOUNT_DAY = "100000";
+  process.env.QUOTE_NEW_PER_CLIENT_HOUR = "100000";
+  process.env.QUOTE_NEW_PER_CLIENT_DAY = "100000";
+  // The same for what one account may keep as saved drafts (512 kB as stored, about 100 to 250 ordinary quotes).
+  process.env.QUOTE_DRAFT_KB_PER_ACCOUNT = "1048576";
+  process.env.QUOTE_DRAFT_KB_PER_CLIENT = "1048576";
   const h = await start({ mailer: "configured" });
   const { quotesDB, ordersDB, orderItemsDB, partsDB, materialsDB, finishesDB } = h.models;
   const registry = require("../processes/registry");
@@ -378,7 +389,7 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
     const up = await h.put("/api/admin/pricing", { rules: { cncMachineRatePerHour: 130, marginPercent: 0.55 }, note: "test: raise prices" }, owner);
     assert.strictEqual(up.status, 200, up.text);
     const today = await quote([config]);
-    assert.ok(today.body.orderTotal > held.body.orderTotal + 1, `${held.body.orderTotal} → ${today.body.orderTotal}`);
+    assert.ok(today.body.orderTotal > held.body.orderTotal + 1, `${held.body.orderTotal} → ${today.body.orderTotal} (${today.status} ${today.text.slice(0, 200)})`);
     // Same parts, same setup, same gate answer, inside 30 days: the price the buyer was given is honoured.
     const a = await checkout(held.body.quoteId);
     assert.strictEqual(a.status, 200, a.text);

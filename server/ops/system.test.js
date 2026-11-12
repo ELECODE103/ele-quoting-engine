@@ -148,7 +148,11 @@ test("restore drill: full backup → wipe → restore → start → the order, t
     const up = await s.upload([{ name: "gear_disc.stl", data: stl }], { token: buyer });
     assert.strictEqual(up.status, 200, up.text);
     const part = up.body.parts[0];
-    assert.ok(part.meshPreview && part.meshPreview.positions.length > 1000, "the upload came back with a 3D preview");
+    // (relaunch merge 2) A preview that lives in a file is no longer inside the upload answer: the answer says where it
+    // is and the browser fetches it (routes/partPayloadRoutes.js). The drill follows the browser.
+    assert.ok(part.mesh && part.mesh.url, "the upload answer says where the 3D preview is");
+    const previewBefore = await s.get(part.mesh.url, { token: buyer });
+    assert.ok(previewBefore.status === 200 && previewBefore.body.positions.length > 1000, "and the preview is there");
     const mats = await s.get("/api/materials?process=cnc");
     const mat = mats.body[0];
     const quote = await s.post("/api/quote", { parts: [{ partId: part.partId, materialSlug: mat.slug, quantity: 250, process: "cnc", subProcess: "milling" }] }, { token: buyer });
@@ -249,8 +253,10 @@ test("restore drill: full backup → wipe → restore → start → the order, t
     // Quotes, with the 3D preview read back from its (encrypted) file.
     const sessionAfter = await s2.get(`/api/quote/${quoteId}/session`, { token: buyer2 });
     assert.strictEqual(sessionAfter.status, 200, sessionAfter.text);
-    assert.deepStrictEqual(sessionAfter.body.parts[0].meshPreview, sessionBefore.parts[0].meshPreview, "the preview is the same vertices");
-    assert.strictEqual(sessionAfter.body.parts[0].previewUnavailable, undefined);
+    assert.deepStrictEqual(sessionAfter.body.partsById[part.partId].mesh, sessionBefore.partsById[part.partId].mesh, "the reopened quote names the same preview");
+    const previewAfter = await s2.get(sessionAfter.body.partsById[part.partId].mesh.url, { token: buyer2 });
+    assert.strictEqual(previewAfter.status, 200, previewAfter.text && previewAfter.text.slice(0, 200));
+    assert.deepStrictEqual(previewAfter.body.positions, previewBefore.body.positions, "the preview is the same vertices");
     const requote = await s2.post("/api/quote", { parts: [{ partId: part.partId, materialSlug: mat.slug, quantity: 250, process: "cnc", subProcess: "milling" }] }, { token: buyer2 });
     assert.strictEqual(requote.status, 200, requote.text);
     assert.strictEqual(requote.body.orderTotal, quote.body.orderTotal, "the part prices exactly as before");

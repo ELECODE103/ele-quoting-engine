@@ -110,16 +110,20 @@ test("RR-02: one-line drafts grown to 25 different lines by re-pricing are held 
   const tag = guards.clientTag(A);
   const startBytes = models.quotesDB.draftBytesHeld({ clientTag: tag }).client;
   const grown = (n) => Array.from({ length: 25 }, (_, i) => line(parts[i % 5], 1 + i + n * 3));
-  // QUOTE_DRAFT_KB_PER_CLIENT is 256 by default; 96 here so that thirty drafts of 25 lines do not fit (they are about 6 kB each as stored).
-  await withEnv({ QUOTE_DRAFT_KB_PER_CLIENT: 96, QUOTE_NEW_PER_CLIENT_HOUR: 100 }, async () => {
+  // QUOTE_DRAFT_KB_PER_CLIENT is 512 by default; 128 here so that thirty drafts of 25 lines do not fit.
+  // (relaunch merge 2: it was 96, sized for a stored draft of 2.3 kB at one line and 5.9 kB at 25. With the record of
+  // what was priced kept in each quote (services/quoteIntegrity.js) a draft is 2.8 kB at one line and 7.8 kB at 25,
+  // measured on the merged tree, so thirty one-line drafts already came to 84 kB of the 96 and only two re-prices fitted.)
+  const ALLOWANCE_KB = 128;
+  await withEnv({ QUOTE_DRAFT_KB_PER_CLIENT: ALLOWANCE_KB, QUOTE_NEW_PER_CLIENT_HOUR: 100 }, async () => {
     const statuses = [];
     for (let n = 0; n < small.length; n++) statuses.push(await from(A, () => h.post("/api/quote", { quoteId: small[n], parts: grown(n) })));
     const ok = statuses.filter((r) => r.status === 200).length;
     const refused = statuses.filter((r) => r.status !== 200);
-    assert.ok(ok >= 3 && refused.length >= 5, `${ok} re-prices accepted, ${refused.length} refused`);
+    assert.ok(ok >= 3 && refused.length >= 5, `${ok} re-prices accepted, ${refused.length} refused (${[...new Set(refused.map((r) => `${r.status} ${r.body && r.body.code}`))].join(", ")})`);
     assert.ok(refused.every((r) => r.status === 429 && r.body.code === "drafts-full"), refused.map((r) => `${r.status} ${r.body && r.body.code}`).join(", "));
     const held = models.quotesDB.draftBytesHeld({ clientTag: tag }).client;
-    assert.ok(held <= 96 * KB, `the address holds ${(held / KB).toFixed(0)} kB (it started at ${(startBytes / KB).toFixed(0)} kB)`);
+    assert.ok(held <= ALLOWANCE_KB * KB, `the address holds ${(held / KB).toFixed(0)} kB (it started at ${(startBytes / KB).toFixed(0)} kB)`);
     const untouched = models.quotesDB.getById(small[small.length - 1]);
     assert.strictEqual(untouched.lineItems.length, 1, "a refused re-price changes nothing: the quote is as it was");
     // A visitor somewhere else is not affected by this address being at its allowance.
@@ -130,7 +134,7 @@ test("RR-02: one-line drafts grown to 25 different lines by re-pricing are held 
     const later = await from(A, () => h.post("/api/quote", { parts: grown(200) }));
     assert.strictEqual(later.status, 200, later.text.slice(0, 200));
     assert.ok(models.quotesDB.ownAnonymousDrafts(tag).length <= countBefore, "room was made from this address's own idle drafts");
-    assert.ok(models.quotesDB.draftBytesHeld({ clientTag: tag }).client <= 96 * KB);
+    assert.ok(models.quotesDB.draftBytesHeld({ clientTag: tag }).client <= ALLOWANCE_KB * KB);
   });
 });
 

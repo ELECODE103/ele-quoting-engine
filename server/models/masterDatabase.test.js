@@ -71,7 +71,9 @@ test("this code starts on it; the old quote reads, reopens and re-prices; old pa
   assert.ok(mesh.body.positions.length >= 108);
   // It re-prices in place (an id that names an existing quote still resumes it) and its lines are then stored compactly.
   const mats = (await s.get("/api/materials?process=cnc", { ip })).body;
-  const line = { partId: cubeId, materialSlug: mats[0].slug, quantity: 3, process: "cnc", subProcess: "milling" };
+  // (relaunch merge 2) A part belongs to whoever uploaded it (security/partAccess.js). Master's parts have no account,
+  // so they are used with their edit key, which the reopened quote hands to the browser that holds the quote.
+  const line = { partId: cubeId, editKey: session.body.partsById[cubeId].editKey, materialSlug: mats[0].slug, quantity: 3, process: "cnc", subProcess: "milling" };
   const again = await s.post("/api/quote", { quoteId: CLIENT_CHOSEN, parts: [line, line, { ...line, quantity: 10 }] }, { ip });
   assert.strictEqual(again.status, 200, again.text.slice(0, 200));
   assert.strictEqual(again.body.quoteId, CLIENT_CHOSEN);
@@ -81,13 +83,20 @@ test("this code starts on it; the old quote reads, reopens and re-prices; old pa
   // Master's DXF part prices for routing.
   const dxfId = before.parts.find((p) => /\.dxf$/.test(p.file_name)).id;
   const rmat = (await s.get("/api/materials?process=routing", { ip })).body[0];
-  const dq = await s.post("/api/quote", { parts: [{ partId: dxfId, materialSlug: rmat.slug, quantity: 2, process: "routing", thicknessMm: rmat.thicknesses[0].mm }] }, { ip });
+  // (relaunch merge 2) This drawing is on none of master's quotes, so no browser was ever handed a key for it: after
+  // the upgrade a visitor who only knows its id is told it is not there (they upload it again), and the owner can
+  // still price it (a phone order). Its measurements, as master stored them, price for routing.
+  const dxfLine = { partId: dxfId, materialSlug: rmat.slug, quantity: 2, process: "routing", thicknessMm: rmat.thicknesses[0].mm };
+  const stranger = await s.post("/api/quote", { parts: [dxfLine] }, { ip });
+  assert.deepStrictEqual([stranger.status, stranger.body.code], [400, "part-not-found"], stranger.text.slice(0, 200));
+  const admin = await s.admin();
+  const dq = await s.post("/api/quote", { parts: [dxfLine] }, { ip, token: admin });
   assert.strictEqual(dq.status, 200, dq.text.slice(0, 200));
   // New work: an upload and a quote; the admin lists show old and new together.
   const cube = fs.readFileSync(path.join(live.ROOT, "tools", "vet-quotes", "parts", "cube_20mm.stl"));
   const up = await s.upload([{ name: "new.stl", data: cube }], { ip });
   assert.strictEqual(up.body.parts.length, 1);
-  const fresh = await s.post("/api/quote", { parts: [{ ...line, partId: up.body.parts[0].partId }] }, { ip });
+  const fresh = await s.post("/api/quote", { parts: [{ ...line, partId: up.body.parts[0].partId, editKey: up.body.parts[0].editKey }] }, { ip });
   assert.strictEqual(fresh.status, 200);
 });
 
@@ -98,7 +107,8 @@ test("after it: every row master wrote is still there, and the new columns have 
     for (const c of cols) assert.ok(columns(db, table).includes(c), `${table}.${c} was added`);
   }
   const count = (t) => rows(db, `SELECT COUNT(*) AS n FROM ${t}`)[0].n;
-  for (const t of ["users", "rfqs", "orders"]) assert.strictEqual(count(t), before.counts[t], `${t}: nothing lost, nothing added`);
+  for (const t of ["rfqs", "orders"]) assert.strictEqual(count(t), before.counts[t], `${t}: nothing lost, nothing added`);
+  assert.strictEqual(count("users"), before.counts.users + 1, "master's account, plus the owner's admin account made by the one-time setup in the case above");
   // The catalog is re-seeded at every start (rows the current catalog adds appear; none goes missing).
   for (const t of ["materials", "finishes", "lead_times", "pricing_rules"]) assert.ok(count(t) >= before.counts[t], `${t}: ${count(t)} rows, was ${before.counts[t]}`);
   assert.strictEqual(count("quotes"), before.counts.quotes + 2, "master's two quotes plus the two made here");

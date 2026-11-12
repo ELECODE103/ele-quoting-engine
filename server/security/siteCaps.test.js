@@ -106,7 +106,8 @@ test("M1: the token has a use ceiling, and reopening a quote or fetching a previ
     const ip = "203.0.113.2";
     const token = (await h.raw("POST", "/api/human/verify", { json: { turnstileToken: "pass-quote" }, ip })).body.humanToken;
     const partId = await h.uploadCube();
-    const body = { parts: [h.cncConfig(partId, 1)] };
+    // (relaunch merge 2) as the page sends it: with the edit key the upload gave the browser (security/partAccess.js)
+    const body = { parts: [{ ...h.cncConfig(partId, 1), editKey: h.editKeys[partId] }] };
     const statuses = [];
     for (let i = 0; i < 12; i++) statuses.push((await h.raw("POST", "/api/quote", { json: body, ip, headers: { "X-Human-Token": token } })).status);
     assert.deepStrictEqual(statuses, [...Array(10).fill(200), 403, 403], "ten uses, then the check is asked for again");

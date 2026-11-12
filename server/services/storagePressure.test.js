@@ -177,8 +177,12 @@ test("database nearly full: visitors without an account are asked to sign in fir
   require("../security/quoteGuards").resetForTests();
   const partIds = [];
   for (let i = 0; i < 4; i++) partIds.push(await h.uploadCube());
+  // (relaunch merge 2) The customer prices parts of their own: a part priced by a signed-in account becomes that
+  // account's (security/partAccess.js), and the visitor's requests below would then be refused for that, not for the database.
+  const custParts = [];
+  for (let i = 0; i < 2; i++) { const up = await h.form("/api/upload", {}, { files: { name: "cube.stl", data: cubeFile } }, buyer); assert.strictEqual(up.status, 200, up.text.slice(0, 200)); custParts.push(up.body.parts[0].partId); }
   const mine = await h.post("/api/quote", { parts: [cncLine(partIds[0], 2)] });           // a real visitor's draft…
-  const customers = await h.post("/api/quote", { parts: [cncLine(partIds[0], 4)] }, buyer); // …and a customer's saved quote
+  const customers = await h.post("/api/quote", { parts: [cncLine(custParts[0], 4)] }, buyer); // …and a customer's saved quote
   assert.strictEqual(mine.status, 200);
   // The visitor priced it six hours ago and has not been back: by idle time theirs is the oldest row there is.
   database.getDatabase().run("UPDATE quotes SET created_at = ?, updated_at = ? WHERE id = ?", [new Date(Date.now() - 6 * HOUR).toISOString(), new Date(Date.now() - 6 * HOUR).toISOString(), mine.body.quoteId]);
@@ -201,7 +205,7 @@ test("database nearly full: visitors without an account are asked to sign in fir
   assert.deepStrictEqual([grow.status, grow.body.code], [503, "quotes-paused"], "but not grow it from one line to twenty-five: a re-price that makes the row bigger is asked what a new row is asked");
   const custUpload = await h.form("/api/upload", {}, { files: { name: "cube.stl", data: cubeFile } }, buyer);
   assert.strictEqual(custUpload.status, 200, "a customer with a confirmed email still uploads");
-  assert.strictEqual((await h.post("/api/quote", { parts: [cncLine(partIds[1], 1)] }, buyer)).status, 200, "and starts a new quote");
+  assert.strictEqual((await h.post("/api/quote", { parts: [cncLine(custParts[1], 1)] }, buyer)).status, 200, "and starts a new quote");
   assert.strictEqual(typeof (await h.login("customer@example.test")), "string", "sign-in works");
   const checkout = await h.post("/api/orders/checkout-session", { quoteId: customers.body.quoteId, shippingName: "A Buyer", shippingAddress: "1 Test St", shippingCity: "Elgin", shippingState: "IL", shippingZip: "60120" }, buyer);
   assert.strictEqual(checkout.status, 200, `checkout works: ${checkout.text.slice(0, 120)}`);
@@ -221,8 +225,14 @@ test("database nearly full: visitors without an account are asked to sign in fir
   // levelled from the top: the senders that lost rows are left holding the same, and none was emptied
   const left = holders.map((who) => (who.userId ? draftsLeft("user_id = ?", who.userId) : draftsLeft("client_tag = ?", who.tag)));
   const each = made / holders.length;
-  const cut = left.filter((n) => n < each);
-  assert.ok(cut.length >= holders.length - 2 && Math.max(...cut) - Math.min(...cut) <= 1 && Math.min(...left) >= 1, `drafts left per flood sender (each had ${each}): ${left.join(" ")}`);
+  // (relaunch merge 2) Rows are whole: taking each sender to the level frees a little more than was needed, so the
+  // last sender reached may be cut only part of the way (storagePressure.js levelDown says so). The assertion used to
+  // require that every sender that lost anything ended within one row of the others, which held only while the amount
+  // to free happened to divide evenly; with the merged database a few rows larger it left "6 6 6 6 6 6 6 10". What is
+  // held: all but at most two senders are at the same level, nobody was emptied, and nobody was left with more than they had.
+  const lowest = Math.min(...left);
+  const atLevel = left.filter((n) => n - lowest <= 1);
+  assert.ok(atLevel.length >= holders.length - 2 && lowest >= 1 && lowest < each && Math.max(...left) <= each, `drafts left per flood sender (each had ${each}): ${left.join(" ")}`);
   assert.ok(models.quotesDB.getById(mine.body.quoteId), "the visitor's quote, idle for six hours, is still there");
   assert.strictEqual((await h.get(`/api/quote/${mine.body.quoteId}`)).status, 200);
   assert.ok(models.quotesDB.getById(customers.body.quoteId), "so is the customer's");
@@ -253,8 +263,9 @@ test("admin: 'clear old drafts' deletes idle no-account drafts and nothing else"
   const partId = await h.uploadCube();
   const idle = await h.post("/api/quote", { parts: [cncLine(partId, 7)] });
   const fresh = await h.post("/api/quote", { parts: [cncLine(partId, 8)] });
-  const customers = await h.post("/api/quote", { parts: [cncLine(partId, 9)] }, buyer);
   const sent = await h.post("/api/quote", { parts: [cncLine(partId, 10)] });
+  // (relaunch merge 2: the customer comes after the visitor's last request; pricing the part signed in makes it the customer's.)
+  const customers = await h.post("/api/quote", { parts: [cncLine(partId, 9)] }, buyer);
   const rfq = await h.form("/api/rfq", { quoteId: sent.body.quoteId, contactName: "Lead", email: "lead@example.test", notes: "quote please" });
   assert.strictEqual(rfq.status, 201, rfq.text);
   // age the idle one by three days

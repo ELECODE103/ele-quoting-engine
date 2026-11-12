@@ -98,7 +98,11 @@ test("every save the app makes goes through it: a row written through the model 
   const src = fs.readFileSync(path.join(__dirname, "database.js"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   assert.ok(!/writeFileSync\s*\(/.test(src), "database.js has no unflushed write");
   assert.strictEqual((src.match(/renameSync\s*\(/g) || []).length, 1, "and one rename, inside writeDurably");
-  assert.ok(/function saveToDisk\(\)[\s\S]{0,300}writeDurably\(DB_PATH, buffer\)/.test(src));
+  // (relaunch merge 2) saveToDisk grew when re-priced drafts were allowed to wait a moment for the file (deferred()):
+  // what is held is that the function's own body ends in writeDurably, not how many characters come before it.
+  const body = (/function saveToDisk\(\) \{([\s\S]*?)\n\}/.exec(src) || [])[1] || "";
+  assert.ok(/writeDurably\(DB_PATH, buffer\);\s*dirty = false;\s*$/.test(body), "saveToDisk writes through writeDurably and nothing else");
+  assert.strictEqual((src.match(/writeDurably\(/g) || []).length, 2, "one definition, one call");
 });
 
 test("what it costs: one flushed save of a 5 MB database, measured here (the full table is scripts/dev/fsync-cost.js)", () => {

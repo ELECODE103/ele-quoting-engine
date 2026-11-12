@@ -158,6 +158,32 @@ test("live server: a request in progress when SIGTERM arrives is answered before
   } finally { await s.stop(); }
 });
 
+test("live server: a re-priced draft that was still waiting for the file is on disk after SIGTERM (the deferred write is flushed, not lost)", async () => {
+  // DB_DRAFT_FLUSH_MS=10000: a re-price waits ten seconds for the file, far longer than this test lives.
+  const s = await live.start({ env: { SHUTDOWN_GRACE_MS: "4000", DB_DRAFT_FLUSH_MS: "10000" } });
+  try {
+    const cube = fs.readFileSync(path.join(live.ROOT, "tools", "vet-quotes", "parts", "cube_20mm.stl"));
+    const up = await s.upload([{ name: "cube.stl", data: cube }]);
+    assert.strictEqual(up.status, 200, up.text);
+    const part = up.body.parts[0];
+    const mat = (await s.get("/api/materials?process=cnc")).body[0];
+    const line = { partId: part.partId, editKey: part.editKey, materialSlug: mat.slug, quantity: 1, process: "cnc", subProcess: "milling" };
+    const first = await s.post("/api/quote", { parts: [line] });
+    assert.strictEqual(first.status, 200, first.text);
+    const dbFile = path.join(s.dataDir, "quoting.db");
+    const unitsOnDisk = async () => (await readDb(dbFile, `SELECT total_units FROM quotes WHERE id = '${first.body.quoteId}'`))[0][0];
+    assert.strictEqual(await unitsOnDisk(), 1, "a new quote is written at once");
+    const again = await s.post("/api/quote", { quoteId: first.body.quoteId, parts: [{ ...line, quantity: 7 }] });
+    assert.strictEqual(again.status, 200, again.text);
+    assert.strictEqual(await unitsOnDisk(), 1, "the re-price is in memory and still waiting for the file");
+    const exited = new Promise((resolve) => s.child.once("exit", (code, signal) => resolve({ code, signal })));
+    s.child.kill("SIGTERM");
+    assert.deepStrictEqual(await exited, { code: 0, signal: null }, s.log().slice(-400));
+    assert.strictEqual(await unitsOnDisk(), 7, "after the stop the file holds the re-priced quote");
+    assert.ok(!fs.existsSync(`${dbFile}.tmp`));
+  } finally { await s.stop(); }
+});
+
 // A process that saves a multi-megabyte database in a tight loop, the way the server does on every write.
 const HAMMER = `
 const fs = require("fs");
@@ -220,19 +246,26 @@ test("SIGTERM during back-to-back saves of a 12 MB database: with the handler, t
   assert.ok(saves >= 8, `the loop was really saving while it was stopped (${saves} saves across the runs)`);
 });
 
-test("without a handler the process dies wherever it is; the rename still leaves a whole (if older) database", async () => {
-  let leftovers = 0;
+// (relaunch merge 2) This case used to read "without a handler the process dies wherever it is; the rename still
+// leaves a whole (if older) database". Since the availability fixes the database module has a stop handler of its
+// own (models/database.js onStop: write what is waiting, stop deferring, and exit when no other handler is
+// installed), so a process WITHOUT server/ops no longer dies mid-save either. What is held now is stronger.
+test("without the ops handler the database's own stop handler still finishes the save in progress and exits 0: a whole database, nothing half-written", async () => {
+  let saves = 0;
   for (const delayMs of [20, 55, 95, 140, 190, 240]) {
     const r = await hammer({ hook: false, delayMs });
-    assert.strictEqual(r.signal, "SIGTERM", "killed by the signal: nothing ran, nothing was flushed, no exit code");
-    assert.strictEqual(r.stoppedAt, null);
+    assert.deepStrictEqual({ code: r.code, signal: r.signal }, { code: 0, signal: null }, `delay ${delayMs}: a clean exit, not a kill (${r.err})`);
+    assert.strictEqual(r.stoppedAt, null, "the ops handler was not installed in this process");
     const file = path.join(r.dir, "quoting.db");
-    assert.ok(isSqlite(file), `delay ${delayMs}: the previous save is still a whole file`);
+    assert.ok(isSqlite(file), `delay ${delayMs}: a whole SQLite file`);
+    assert.ok(!fs.existsSync(`${file}.tmp`), `delay ${delayMs}: no temporary file left behind (a handler runs between two saves, never inside one)`);
     const [[n]] = await readDb(file, "SELECT n FROM hammer_marker WHERE id = 1");
     assert.ok(Number.isInteger(n) && n >= 0);
-    if (fs.existsSync(`${file}.tmp`)) leftovers++; // a save was cut off mid-write
+    const [[bulk]] = await readDb(file, "SELECT COUNT(*) FROM hammer_bulk");
+    assert.strictEqual(bulk, 12);
+    saves += n;
   }
-  console.log(`       (${leftovers} of 6 kills landed inside a save and left a partial quoting.db.tmp behind)`);
+  assert.ok(saves >= 6, `the loop was really saving while it was stopped (${saves} saves across the runs)`);
 });
 
 run(() => fs.rmSync(tmp, { recursive: true, force: true }));
