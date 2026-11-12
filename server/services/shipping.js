@@ -211,6 +211,52 @@ function forQuote({ parts = [], totalWeightKg = 0, subtotal = 0 }, rules = {}) {
 }
 
 /** measure() that never throws; for the formula, where the figures are only shown, never charged on. */
+/**
+ * The parts of a priced quote as `measure` wants them, rebuilt from its LINES and the records
+ * the lines point at: geometry from the part, density from the material, grade, stock thickness
+ * and quantity from the line as the pricing engine priced it. `lookup` is the database, passed
+ * in ({ part(id), material(slug) }): this module reads nothing itself. A part or material that
+ * is no longer there comes back without geometry or density, which `measure` reports as unknown.
+ */
+function partsFromLines(lineItems = [], lookup = {}) {
+  return (Array.isArray(lineItems) ? lineItems : []).map((li) => {
+    const meta = (li && li.meta) || {};
+    const part = (li && li.partId && typeof lookup.part === "function" && lookup.part(li.partId)) || null;
+    const material = (meta.materialSlug && typeof lookup.material === "function" && lookup.material(meta.materialSlug)) || null;
+    return {
+      partId: li && li.partId,
+      fileName: (li && li.fileName) || (part && part.fileName) || "",
+      geometry: part && !part.payloadError ? part.geometry : null,
+      material,
+      grade: meta.grade || "",
+      thicknessMm: Number(meta.thicknessMm) > 0 ? Number(meta.thicknessMm) : 0,
+      quantity: li && li.quantity,
+    };
+  });
+}
+
+/**
+ * The "we ship it" line for a priced quote, worked out NOW under the given settings. This is
+ * what checkout charges: the shipping amount stored on a quote is what the buyer was shown when
+ * it was priced, and is never read back as the charge.
+ *
+ * Pure: `priced` is { lineItems, subtotal } as the pricing engine returns them (a stored quote,
+ * or the same configuration priced again at checkout); `lookup` is { part(id), material(slug) }.
+ * The weight the formula uses is the sum of the lines' own weights, added in line order, which
+ * is the pricing engine's `totalWeight` to the last bit. A line with no weight makes the order
+ * manual: an unknown weight is never zero, in any mode.
+ */
+function shippingFor(priced = {}, rules = {}, lookup = {}) {
+  const lines = Array.isArray(priced.lineItems) ? priced.lineItems : [];
+  const parts = partsFromLines(lines, lookup);
+  const s = settings(rules);
+  const weights = lines.map((li) => Number(li && li.weight && li.weight.total));
+  if (!lines.length || weights.some((w) => !Number.isFinite(w) || w < 0)) {
+    return manual(s.mode, "unknown-weight", softMeasure(parts, rules), s);
+  }
+  return forQuote({ parts, totalWeightKg: weights.reduce((sum, w) => sum + w, 0), subtotal: Number(priced.subtotal) || 0 }, rules);
+}
+
 function softMeasure(parts, rules) {
   try { return measure(parts, rules); } catch { return { partsLb: null, packedLb: null, longestIn: null, pieces: 0, unknown: ["not measured"] }; }
 }
@@ -276,6 +322,23 @@ function methodLine(order) {
 }
 
 // ─── Carrier account ─────────────────────────────────────────────────────────
+
+/**
+ * Shipping on Stripe's page, in cents: 0 when shipping stays inside the order's one line (the
+ * weight formula with tax off, which is how the site has always sent it), else the order's
+ * shipping charge as its own line. `roomCents` is what is left of the pre-tax total after the
+ * paperwork line, so the lines can never add up to more than the order.
+ */
+function stripeShippingCents(order = {}, roomCents = Infinity) {
+  const ownLine = (order.shippingMode && order.shippingMode !== "formula") || order.taxMode === "stripe";
+  if (!ownLine) return 0;
+  return Math.max(0, Math.min(roomCents, Math.round((Number(order.shippingCost) || 0) * 100)));
+}
+
+/** The words on the shipping line of Stripe's page. */
+function stripeShippingLine(order = {}) {
+  return { name: "Shipping", description: order.packedWeightLb ? `Ground, about ${Math.ceil(order.packedWeightLb)} lb packed` : "Ground" };
+}
 
 /**
  * The carrier account a buyer typed, checked. An account number is letters and digits (UPS: six
@@ -352,6 +415,7 @@ function preview(rules = {}, { weightLb = 3, longestIn = 12, subtotal = 150, sta
 }
 
 module.exports = {
+  shippingFor, partsFromLines, stripeShippingCents, stripeShippingLine,
   METHODS, CARRIERS, LB_PER_KG,
   settings, densityGcm3, longestSideMm, measure, priceShipment, forQuote, storedFor,
   stateCode, destinationCovered, atDestination, describe, methodLine,

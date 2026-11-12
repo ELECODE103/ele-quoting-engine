@@ -269,4 +269,66 @@ test("settings read defensively: junk in the stored rules is the default, not a 
   assert.strictEqual(shipping.settings().mode, "formula");
 });
 
+// ─── From priced lines (what checkout calls) ─────────────────────
+// shippingFor is a pure function of the priced lines, the settings and a lookup: no stored
+// shipping amount goes in, so none can come out.
+const pricedWith = (parts, r = rules()) => new PricingEngine(r).calculateOrderQuote({ parts, leadTimeMultiplier: 1 });
+const lookupFor = (parts, materials = [delrin, pla, hdpeSheet]) => ({
+  part: (id) => { const p = parts.find((x) => x.partId === id); return p ? { id, fileName: p.fileName, geometry: p.geometry } : null; },
+  material: (slug) => materials.find((m) => m.slug === slug) || null,
+});
+
+test("shippingFor: from a priced quote's lines it gives exactly what the pricing engine gave, under the formula and under the table", () => {
+  const parts = [part(block(100, 100, 50), delrin, 4, { partId: "a" }), part(block(60, 40, 20), delrin, 2, { partId: "b", fileName: "small.step" })];
+  for (const r of [rules(), rules({ shippingMethod: "table" }), rules({ shippingMethod: "included" }), rules({ shippingMethod: "table", shippingFreeOverSubtotal: 1 })]) {
+    const q = pricedWith(parts, r);
+    const again = shipping.shippingFor(JSON.parse(JSON.stringify({ lineItems: q.lineItems, subtotal: q.subtotal })), r, lookupFor(parts));
+    assert.deepStrictEqual(again, q.shipping, r.shippingMethod);
+    assert.strictEqual(again.amount, q.shippingEstimate, "to the last bit, after a trip through JSON as a stored quote makes");
+  }
+});
+
+test("shippingFor: the settings in force now decide, not the ones the quote was priced under", () => {
+  const parts = [part(block(100, 100, 50), delrin, 4, { partId: "a" })];
+  const q = pricedWith(parts, rules());
+  const now = shipping.shippingFor(q, rules({ shippingMethod: "table", shippingRateTable: [{ maxLb: 50, price: 99 }] }), lookupFor(parts));
+  assert.deepStrictEqual([now.mode, now.amount, now.manual], ["table", 99, false]);
+  const dearer = shipping.shippingFor(q, rules({ shippingBaseRate: 20 }), lookupFor(parts));
+  assert.strictEqual(dearer.amount, 20 + q.totalWeight * rules().shippingPerKg);
+});
+
+test("shippingFor: a line with no weight, a part that is gone or a material that is gone is never priced as weightless", () => {
+  const parts = [part(block(100, 100, 50), delrin, 4, { partId: "a" })];
+  const q = pricedWith(parts, rules());
+  const noWeight = { lineItems: q.lineItems.map((li) => ({ ...li, weight: undefined })), subtotal: q.subtotal };
+  for (const r of [rules(), rules({ shippingMethod: "table" }), rules({ shippingMethod: "included" })]) {
+    const s = shipping.shippingFor(noWeight, r, lookupFor(parts));
+    assert.deepStrictEqual([s.manual, s.reasonCode, s.amount], [true, "unknown-weight", 0], r.shippingMethod);
+  }
+  assert.strictEqual(shipping.shippingFor({ lineItems: [], subtotal: 0 }, rules(), lookupFor(parts)).manual, true, "no lines");
+  const table = rules({ shippingMethod: "table" });
+  assert.strictEqual(shipping.shippingFor(q, table, lookupFor([])).manual, true, "the part record is gone");
+  assert.strictEqual(shipping.shippingFor(q, table, lookupFor(parts, [])).manual, true, "the material is gone");
+  assert.strictEqual(shipping.shippingFor(q, table, {}).manual, true, "no lookup at all");
+  // Under the formula the lines' own weights are enough, as they always were.
+  assert.strictEqual(shipping.shippingFor(q, rules(), {}).amount, q.shippingEstimate);
+});
+
+test("shippingFor: a DXF line is measured at the stock thickness the line was priced at", () => {
+  const lines = [{ partId: "d", fileName: "plate.dxf", quantity: 3, weight: { total: 1.2 }, meta: { materialSlug: "rt-hdpe", grade: "", thicknessMm: 12.7 } }];
+  const built = shipping.partsFromLines(lines, { part: () => ({ fileName: "plate.dxf", geometry: { any: 1 } }), material: () => hdpeSheet });
+  assert.deepStrictEqual([built[0].thicknessMm, built[0].quantity, built[0].material.slug], [12.7, 3, "rt-hdpe"]);
+  assert.strictEqual(shipping.partsFromLines(lines, { part: () => ({ payloadError: true, geometry: { volume: 1 } }), material: () => hdpeSheet })[0].geometry, null, "measurements that could not be read are unknown");
+});
+
+test("Stripe: shipping is its own line for the table, included and whenever tax is on; never more than the order has room for", () => {
+  assert.strictEqual(shipping.stripeShippingCents({ shippingMode: "formula", shippingCost: 14.35 }, 20000), 0, "the formula with tax off stays inside the one line, as before");
+  assert.strictEqual(shipping.stripeShippingCents({ shippingCost: 14.35 }, 20000), 0, "an order from before the setting existed");
+  assert.strictEqual(shipping.stripeShippingCents({ shippingMode: "table", shippingCost: 16 }, 20000), 1600);
+  assert.strictEqual(shipping.stripeShippingCents({ shippingMode: "formula", taxMode: "stripe", shippingCost: 14.35 }, 20000), 1435);
+  assert.strictEqual(shipping.stripeShippingCents({ shippingMode: "table", shippingCost: 16 }, 900), 900);
+  assert.strictEqual(shipping.stripeShippingCents({ shippingMode: "table", shippingCost: -5 }, 900), 0);
+  assert.deepStrictEqual(shipping.stripeShippingLine({ packedWeightLb: 2.2 }), { name: "Shipping", description: "Ground, about 3 lb packed" });
+});
+
 console.log(`\n${passed} checks passed`);
