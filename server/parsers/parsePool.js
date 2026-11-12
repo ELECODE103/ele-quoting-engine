@@ -124,7 +124,7 @@ class ParsePool {
     this.budget = new ParseBudget();
     this.suspects = new Map();  // client → time its last parse was stopped
     this.lastTurn = new Map();  // client → when it last got a worker (round-robin)
-    this.counters = { completed: 0, failed: 0, timedOut: 0, outOfMemory: 0, busy: 0, cancelled: 0, workersStarted: 0, overBudget: 0, queueFullForClient: 0 };
+    this.counters = { completed: 0, failed: 0, timedOut: 0, outOfMemory: 0, busy: 0, cancelled: 0, workersStarted: 0, overBudget: 0, queueFullForClient: 0, rerunAlone: 0 };
   }
 
   _opt(name) {
@@ -232,6 +232,11 @@ class ParsePool {
   _canStart(entry) {
     const concurrency = this._opt("parseConcurrency");
     if (this.running.size >= concurrency) return false;
+    // A parse that was stopped for memory while others were running gets one run on its own:
+    // it starts when nothing else is running, and nothing else starts until it is done.
+    if (entry.solo) return this.running.size === 0;
+    for (const e of this.running) if (e.solo) return false;
+    for (const e of this.queue) if (e.solo) return false;
     // Each client address has its own lane; callers with no address share one.
     if (this._runningFor(entry.client) >= this._opt("parsePerClient")) return false;
     // A client whose parse was stopped recently does not get the last free worker.
@@ -411,6 +416,37 @@ class ParsePool {
   }
 
   /**
+   * Stop a running parse without answering it, and put it at the head of the
+   * line to run by itself. The time it used is charged to its client; the wait
+   * is bounded like any other wait in the line.
+   */
+  _rerunAlone(entry) {
+    clearTimeout(entry.timer);
+    this.running.delete(entry);
+    if (entry.startedAt) this.budget.charge(entry.client, Date.now() - entry.startedAt);
+    const slot = entry.slot;
+    if (slot) {
+      slot.entry = null;
+      slot.dead = true;
+      this._forget(slot);
+      slot.worker.terminate().catch(() => {});
+    }
+    entry.slot = null;
+    entry.startedAt = 0;
+    entry.solo = true;
+    entry.id = this.nextId++; // an answer still on its way from the stopped worker is not this run's
+    this.queue.unshift(entry);
+    entry.waitTimer = setTimeout(() => {
+      const i = this.queue.indexOf(entry);
+      if (i >= 0) this.queue.splice(i, 1);
+      this.counters.busy++;
+      this._settle(entry, busy(this._retryAfter()));
+      this._drain();
+    }, Math.max(this._opt("parseQueueWaitMs"), this._opt("parseTimeoutMs")));
+    this._drain();
+  }
+
+  /**
    * While anything is running, check the process's memory twice a second. What
    * is limited is the growth since the parsers started work — the memory they
    * added — so the size of the rest of the server (the in-memory database
@@ -422,10 +458,14 @@ class ParsePool {
     if (!limitMb) return;
     const rss = () => (this.opts.rssProbe ? this.opts.rssProbe() : process.memoryUsage().rss) / (1024 * 1024);
     const baselineMb = rss();
+    let settling = false;
     this.watchdog = setInterval(() => {
       if (this.running.size === 0) return this._unwatch();
+      // A worker that was just stopped takes a moment to give its memory back: one check is skipped.
+      if (settling) { settling = false; return; }
       const rssMb = rss() - baselineMb;
       if (rssMb <= limitMb) return;
+      settling = true;
       // Warm workers hold memory too: let them go first. Then stop one parse. Memory is not known
       // per worker, so the choice is by who is most likely to be the cause and least likely to be
       // a customer: a client whose parse was already stopped this hour first, then the largest
@@ -439,9 +479,18 @@ class ParsePool {
         if (a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] > b[2]) oldest = e;
       }
       if (!oldest) return;
+      const kind = path.extname(oldest.job.filePath || "") || "file";
+      // Memory is not known per parse. If others were running too, this one may only have been
+      // unlucky in its company: it is stopped now (the ceiling holds) and run once more by itself.
+      // Stopped while alone, or a second time, it is refused.
+      if (this.running.size > 1 && !oldest.solo) {
+        this.counters.rerunAlone++;
+        console.warn(`Parse pool: parsing has added ${Math.round(rssMb)} MB to the process, over the ${limitMb} MB ceiling (PARSE_RSS_LIMIT_MB); stopped a parse (${kind}) to run it again on its own`);
+        return this._rerunAlone(oldest);
+      }
       this.counters.outOfMemory++;
       this._markSuspect(oldest.client);
-      console.warn(`Parse pool: parsing has added ${Math.round(rssMb)} MB to the process, over the ${limitMb} MB ceiling (PARSE_RSS_LIMIT_MB); stopped a parse (${path.extname(oldest.job.filePath || "") || "file"})`);
+      console.warn(`Parse pool: parsing has added ${Math.round(rssMb)} MB to the process, over the ${limitMb} MB ceiling (PARSE_RSS_LIMIT_MB); stopped a parse (${kind})`);
       this._finish(oldest, this._memoryError(), undefined, { kill: true });
     }, this.opts.watchIntervalMs || 500);
     if (this.watchdog.unref) this.watchdog.unref();

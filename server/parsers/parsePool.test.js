@@ -152,18 +152,45 @@ test("memory ceiling: a worker that outgrows its heap limit is stopped; the serv
   assert.ok(Math.abs((await make({}).run({ filePath: cube })).geometry.volume - 8000) < 1, "this process is alive and can still parse");
 });
 
-test("memory watchdog: when parsing has added more than PARSE_RSS_LIMIT_MB to the process, the longest-running parse is stopped", async () => {
+test("memory watchdog: over PARSE_RSS_LIMIT_MB with two parses running, the longest-running one is stopped at once and run again on its own", async () => {
+  let rss = 100 * 1024 * 1024;
+  const pool = make({ parseConcurrency: 2, parsePerClient: 2, parseRssLimitMb: 500, watchIntervalMs: 50, rssProbe: () => rss, testDelayMs: 700 });
+  const first = settle(pool.run({ filePath: cube }));
+  await new Promise((r) => setTimeout(r, 100));
+  const second = settle(pool.run({ filePath: cube }));
+  const third = settle(pool.run({ filePath: cube, client: "someone-else" }));
+  await new Promise((r) => setTimeout(r, 100));
+  rss = 900 * 1024 * 1024; // +800 MB of WASM / typed-array memory the V8 heap limit does not see
+  await new Promise((r) => setTimeout(r, 80));
+  const st = pool.stats();
+  assert.strictEqual(st.running, 1, "one parse was stopped the moment the line was crossed");
+  assert.strictEqual(st.rerunAlone, 1);
+  assert.strictEqual(st.outOfMemory, 0, "nobody has been refused: memory is not known per parse, and it may only have been unlucky in its company");
+  rss = 100 * 1024 * 1024;
+  const b = await second;
+  assert.ok(b.value, "the other parse finishes once memory is back under the line");
+  await new Promise((r) => setTimeout(r, 60));
+  assert.strictEqual(pool.stats().running, 1, "the stopped parse runs by itself: the file that was waiting does not start beside it");
+  const a = await first;
+  assert.ok(a.value && Math.abs(a.value.geometry.volume - 8000) < 1, "the stopped parse was run again and answered");
+  assert.ok((await third).value, "and the line moves on after it");
+});
+
+test("memory watchdog: a parse that is over the line by itself, or again on its run alone, is refused", async () => {
   let rss = 100 * 1024 * 1024;
   const pool = make({ parseConcurrency: 2, parsePerClient: 2, parseRssLimitMb: 500, watchIntervalMs: 50, rssProbe: () => rss, testDelayMs: 1500 });
   const first = settle(pool.run({ filePath: cube }));
   await new Promise((r) => setTimeout(r, 100));
   const second = settle(pool.run({ filePath: cube }));
   await new Promise((r) => setTimeout(r, 100));
-  rss = 900 * 1024 * 1024; // +800 MB of WASM / typed-array memory the V8 heap limit does not see
+  rss = 900 * 1024 * 1024; // and it stays there
+  const b = await second;
+  assert.strictEqual(b.error && b.error.code, "parse-memory", "still over the line with one parse running: that one is refused");
   const a = await first;
-  assert.strictEqual(a.error && a.error.code, "parse-memory", "the oldest parse is the one stopped");
-  rss = 100 * 1024 * 1024;
-  assert.ok((await second).value, "the other parse finishes once memory is back under the line");
+  assert.strictEqual(a.error && a.error.code, "parse-memory", "the parse given a run alone is refused when it crosses the line again");
+  assert.ok(/memory/i.test(a.error.message) && /firm quote/i.test(a.error.message), a.error.message);
+  assert.strictEqual(pool.stats().outOfMemory, 2);
+  assert.strictEqual(pool.stats().running, 0);
 });
 
 test("fairness: one client's files queue behind each other, not in front of everyone else", async () => {
