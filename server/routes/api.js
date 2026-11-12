@@ -513,7 +513,8 @@ function cleanConfig(raw) {
   for (const key of ["thicknessMm", "quantity", "layerHeight", "infill"]) {
     const v = raw[key];
     if (v === undefined || v === null || v === "") continue;
-    const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+    // A number, or the plain decimal a form field holds ("25", "6.35"): not "1e2", "0x10" or " 12 ".
+    const n = typeof v === "number" ? v : (typeof v === "string" && /^-?\d{1,9}(\.\d{1,6})?$/.test(v) ? Number(v) : NaN);
     if (!Number.isFinite(n)) return null;
     out[key] = n;
   }
@@ -671,7 +672,7 @@ function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, proc
     throw quoteError(400, `An instant quote holds up to ${MAX_QUOTE_LINES} lines. For a larger job, send us the files for a firm quote.`, { code: "too-many-lines", offerRfq: true });
   }
   const partConfigs = rawConfigs.map(cleanConfig);
-  if (partConfigs.some((c) => !c || !c.partId)) throw quoteError(400, "The quote request is not in the expected format.");
+  if (partConfigs.some((c) => !c || !c.partId)) throw quoteError(400, "The quote request is not in the expected format.", { code: "config-invalid" });
   if (typeof leadTimeSlug !== "string") throw quoteError(400, "Invalid lead time", { code: "lead-time-not-offered", field: "leadTime" });
   // The only thing the client says about the paperwork is yes or no. The fee is
   // worked out here from the rate card and the number of lines; any amount sent

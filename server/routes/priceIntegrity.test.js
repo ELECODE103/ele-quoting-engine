@@ -153,6 +153,9 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
     assert.strictEqual((await quote([{ ...pla, layerHeight: 0.3, infill: 0.2 }])).status, 200);
     // quantity
     for (const quantity of [0, -5, 0.5, 2.7, 1e300, 1000001]) await refused(peek(block.partId, { quantity }), "quantity-invalid");
+    // A form field's plain number is read ("25"); anything cleverer is not a number at all.
+    assert.strictEqual((await quote([peek(block.partId, { quantity: "5" })])).status, 200);
+    for (const quantity of ["1e2", "0x10", " 12 ", "5 pieces", "Infinity", [5], { valueOf: 5 }, true]) await refused(peek(block.partId, { quantity }), "config-invalid");
     const { quantity: _q, ...noQuantity } = peek(block.partId);
     await refused(noQuantity, "quantity-invalid");
     // lead time
@@ -255,6 +258,17 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
       }
     } finally { cnc.calculate = real; }
     assert.strictEqual((await quote([peek(block.partId)])).body.orderTotal, honest.body.orderTotal, "the engine is itself again");
+
+    // F-12 (payments review): every rate-card value at its legal minimum at once — margin 0, floors 0, the lowest
+    // rates and a 90% quantity break. Each is inside its own range; together they price under the material. Not sold.
+    reported.length = 0;
+    const low = await h.put("/api/admin/pricing", { note: "test: every floor at its legal minimum", rules: { marginPercent: 0, minimumPartPrice: 0, minimumOrderTotal: 0, shippingBaseRate: 0, shippingPerKg: 0, cncMachineRatePerHour: 20, laborRatePerHour: 10, nestingEfficiencyBonus: 0.9, volumeDiscounts: [{ minQty: 1, discount: 0.9 }] } }, owner);
+    assert.strictEqual(low.status, 200, low.text);
+    const under = await quote([peek(block.partId, { quantity: 25 })]);
+    assert.deepStrictEqual([under.status, under.body.code, under.body.orderTotal], [422, "price-check-failed", undefined], under.text);
+    assert.ok(reported.some((l) => /below its own material cost/.test(l)), reported.join("\n"));
+    assert.strictEqual((await h.post("/api/admin/pricing/reset", { note: "test: defaults" }, owner)).status, 200);
+    assert.strictEqual((await quote([peek(block.partId)])).body.orderTotal, honest.body.orderTotal, "and at the shipped rules the same part prices as before");
   });
 
   test("F1: a cheat quote saved by the old code cannot be checked out, reopened into an order, or reordered", async () => {
@@ -553,6 +567,14 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
     const fair = await h.put(`/api/rfq/admin/${rfq.body.rfqId}`, { quotedTotal: 33712.126 }, owner);
     assert.strictEqual(fair.body.quotedTotal, 33712.13, "stored in whole cents");
     assert.strictEqual(fair.body.priceWarning, undefined);
+    // F-09b (payments review): once the quote is out, its link is live at whatever is saved — so not at nothing.
+    const out = await h.put(`/api/rfq/admin/${rfq.body.rfqId}`, { status: "quoted", quotedLeadDays: 10 }, owner);
+    assert.strictEqual(out.status, 200, out.text);
+    for (const quotedTotal of [0, "0", 0.004]) {
+      const nothing = await h.put(`/api/rfq/admin/${rfq.body.rfqId}`, { quotedTotal }, owner);
+      assert.deepStrictEqual([nothing.status, nothing.body.code], [400, "quoted-total-invalid"], `${quotedTotal}: ${nothing.text}`);
+    }
+    assert.strictEqual(h.models.rfqsDB.getById(rfq.body.rfqId).quotedTotal, 33712.13, "the amount that is out is unchanged");
   });
 
   await run(async () => { console.error = realError; await h.stop(); });

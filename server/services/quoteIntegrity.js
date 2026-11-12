@@ -472,6 +472,10 @@ function assertSane(quote, lines, parts, rules) {
     if (!Number.isFinite(cost) || cost < 0) throw fail("line cost is not a number", { ...ident, cost });
     if (unit + 1e-6 < cost) throw fail("line price is below its computed cost", { ...ident, unit, cost });
     costTotal += cost * line.quantity;
+    // Whatever the rate card's margin and quantity breaks are set to, a piece is not sold for less than
+    // the engine's own figure for the material in it (payments review F-12).
+    const material = Number(li.perUnit.material);
+    if (Number.isFinite(material) && material > 0 && unit + 1e-6 < material) throw fail("line price is below its own material cost", { ...ident, unit, material: Number(material.toFixed(4)) });
 
     // An independent look at the material in the part.
     let raw;

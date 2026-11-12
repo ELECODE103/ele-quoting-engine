@@ -372,8 +372,10 @@ router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
   if (b.quotedTotal !== undefined) {
     // The owner's amount is the owner's, honoured as typed — but it has to be an amount of money:
     // a finite number of dollars and cents within reason (services/quoteIntegrity.js).
-    const amount = quoteIntegrity.firmQuoteAmount(b.quotedTotal);
-    if (!amount.ok) return res.status(400).json({ error: amount.error, code: "quoted-total-invalid" });
+    // A quote that is already out with the customer is live at whatever is saved here, so it cannot be
+    // saved at nothing (payments review F-09b): the same rule as sending it.
+    const amount = quoteIntegrity.firmQuoteAmount(b.quotedTotal, { sending: rfq.status === "quoted" });
+    if (!amount.ok) return res.status(400).json({ error: rfq.status === "quoted" && amount.error !== "Invalid quoted total" ? "This quote is out with the customer: enter the amount it should be, or withdraw it." : amount.error, code: "quoted-total-invalid" });
     updates.quotedTotal = amount.total;
   }
   if (b.quotedLeadDays !== undefined && b.quotedLeadDays !== null && b.quotedLeadDays !== "") {
