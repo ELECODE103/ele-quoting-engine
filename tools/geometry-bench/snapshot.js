@@ -16,6 +16,12 @@
  * applied: the point is to learn what the present code answers, however long
  * it takes. Existing entries for cases not selected are kept, so the corpus can
  * be recorded in several sittings.
+ *
+ * --cap-minutes N stops a case after N minutes and records it as unfinished
+ * ({ unfinished: "time" }); a case the code cannot finish for lack of memory or
+ * because it outgrows a built-in container is recorded the same way
+ * ({ unfinished: "resource" }, with the message). The comparer reports such
+ * cases separately: there is no baseline answer to compare with.
  */
 const fs = require("fs");
 const path = require("path");
@@ -48,10 +54,21 @@ const MAX_COMMITTED_SNAPSHOT = 400 * 1024; // gzip bytes; a bigger result is kep
   };
   let failed = 0, done = 0;
   await runMany(list, {
-    jobs: Number(args.jobs) || 1, heap: Number(args.heap) || 4096,
+    jobs: Number(args.jobs) || 1, heap: Number(args.heap) || 4096, capMs: args["cap-minutes"] ? Number(args["cap-minutes"]) * 60000 : 0,
     onResult: (c, r, full, err) => {
       done++;
+      if (err && err.code === "CAP") {
+        save(c.id, { size: c.size, family: c.family, ext: c.ext, n: c.n, unfinished: "time", note: err.message });
+        console.log(`[${done}/${list.length}] ${c.id.padEnd(38)} UNFINISHED: ${err.message}`);
+        return;
+      }
       if (err) { failed++; console.error(`✗ ${c.id}: ${err.message}`); return; }
+      const resource = lib.resourceFailure(r.summary);
+      if (resource) {
+        save(c.id, { size: c.size, family: c.family, ext: c.ext, n: c.n, input: r.input, unfinished: "resource", note: resource, timing: r.timing });
+        console.log(`[${done}/${list.length}] ${c.id.padEnd(38)} UNFINISHED: ${resource}`);
+        return;
+      }
       const gz = zlib.gzipSync(full, { level: 9 });
       const committed = c.size !== "large" && gz.length <= MAX_COMMITTED_SNAPSHOT;
       const snap = path.join(lib.BASELINE_DIR, "snapshots", c.id + ".json.gz"), cache = path.join(lib.CACHE_DIR, "full", c.id + ".json.gz");

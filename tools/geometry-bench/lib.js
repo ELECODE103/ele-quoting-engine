@@ -160,9 +160,19 @@ async function runInProcess(c) {
 /** One-line description of a result for tables: triangles or contours, or the refusal. */
 function summarise(sec) {
   const g = sec.geometry;
-  if (g.error) return { status: "refused", code: g.error.code || null, message: g.error.message.slice(0, 90) };
+  if (g.error) return { status: "refused", code: g.error.code || null, message: g.error.message.slice(0, 90), fullMessage: g.error.message.slice(0, 300) };
   if (g.profile2d) return { status: "ok", loops: g.profile2d.loops.length, holes: g.profile2d.holes.length, problems: g.profile2d.problems.length };
   return { status: "ok", triangles: g.triangleCount, holes: g.estimatedHoles, kind: g.features && g.features.shape ? g.features.shape.kind : null, recognised: !(g.features && g.features.error) };
+}
+
+/**
+ * A refusal that is the code running out of something (memory, the size of a Set or an array,
+ * the call stack) rather than an answer about the file: the message, or null.
+ */
+function resourceFailure(summary) {
+  if (!summary || summary.status !== "refused") return null;
+  const m = summary.fullMessage || summary.message || "";
+  return /maximum size exceeded|out of memory|invalid (array|string|typed array) length|maximum call stack|allocation failed/i.test(m) ? m : null;
 }
 
 /** { geometry, dfm, price } → canonical text and hash per section. */
@@ -284,5 +294,5 @@ function select(cases, args) {
 
 module.exports = {
   ROOT, HERE, BASELINE_DIR, CACHE_DIR, STANDARD, QUANTITIES,
-  sha256, canonical, inputFile, generatorKey, sections, digest, summarise, pricingFingerprint, runInWorker, runInProcess, differences, short, parseArgs, select,
+  sha256, canonical, inputFile, generatorKey, sections, digest, summarise, resourceFailure, pricingFingerprint, runInWorker, runInProcess, differences, short, parseArgs, select,
 };

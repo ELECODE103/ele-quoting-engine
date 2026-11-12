@@ -10,7 +10,8 @@ const lib = require("./lib");
 
 /**
  * @param {object[]} list cases
- * @param {{jobs?:number, heap?:number, onResult:(c, result|null, fullText|null, error|null)=>void}} o
+ * @param {{jobs?:number, heap?:number, capMs?:number, onResult:(c, result|null, fullText|null, error|null)=>void}} o
+ *        capMs: stop a case that runs longer than this (the error passed to onResult has code "CAP")
  */
 async function runMany(list, o) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "geometry-bench-"));
@@ -26,10 +27,13 @@ async function runMany(list, o) {
     if (!c) return resolve(false);
     const out = path.join(tmp, c.id + ".json");
     const child = spawn(process.execPath, ["--expose-gc", path.join(__dirname, "run-case.js"), c.id, out, "--heap", String(o.heap || 768)], { stdio: ["ignore", "inherit", "pipe"] });
-    let err = "";
+    let err = "", timedOut = false;
     child.stderr.on("data", (d) => { err += d; });
+    const cap = o.capMs ? setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, o.capMs) : null;
     child.on("close", (code) => {
-      if (code !== 0 || !fs.existsSync(out)) o.onResult(c, null, null, new Error(`run-case exited ${code}: ${err.trim().split("\n").slice(-3).join(" | ")}`));
+      if (cap) clearTimeout(cap);
+      if (timedOut) o.onResult(c, null, null, Object.assign(new Error(`not finished after ${Math.round(o.capMs / 60000)} minutes`), { code: "CAP" }));
+      else if (code !== 0 || !fs.existsSync(out)) o.onResult(c, null, null, new Error(`run-case exited ${code}: ${err.trim().split("\n").slice(-3).join(" | ")}`));
       else {
         const result = JSON.parse(fs.readFileSync(out, "utf8"));
         const full = zlib.gunzipSync(fs.readFileSync(out + ".full")).toString("utf8");

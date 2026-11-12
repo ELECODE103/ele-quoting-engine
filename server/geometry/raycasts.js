@@ -225,54 +225,71 @@ function overhangAnalysis(mesh, bvh, sample, patches) {
   };
 }
 
-/** Sampled self-intersection test: does any triangle edge pierce a non-adjacent triangle? */
+/**
+ * Sampled self-intersection test: does any triangle edge pierce a non-adjacent triangle?
+ *
+ * For each sampled triangle the BVH leaves overlapping its bounding box are
+ * visited (the walk of queryBox(), right child first) and each of their
+ * triangles is tested as it is met — the same pairs, in the same order and
+ * with the same arithmetic as collecting the candidates into a list and
+ * testing them afterwards. Written as one loop because slender triangles make
+ * hundreds of candidates per sample (tens of millions of edge tests).
+ */
 function selfIntersections(mesh, bvh, maxTris = 60000) {
-  const { queryBox } = require("./bvh");
   const n = mesh.n;
   const stride = Math.max(1, Math.ceil(n / maxTris));
-  const out = [];
   const eps = 1e-7 * mesh.diag;
+  const pos = mesh.pos, vidx = mesh.vidx;
+  const { nmin, nmax, left, right, start, count, order } = bvh;
+  const stack = new Int32Array(256);
+  const lo = 1e-6, hi = 1 - 1e-6;
   for (let t = 0; t < n; t += stride) {
     const o = t * 9;
     let bx0 = Infinity, by0 = Infinity, bz0 = Infinity, bx1 = -Infinity, by1 = -Infinity, bz1 = -Infinity;
     for (let c = 0; c < 3; c++) {
-      const x = mesh.pos[o + c * 3], y = mesh.pos[o + c * 3 + 1], z = mesh.pos[o + c * 3 + 2];
+      const x = pos[o + c * 3], y = pos[o + c * 3 + 1], z = pos[o + c * 3 + 2];
       if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; if (z < bz0) bz0 = z; if (z > bz1) bz1 = z;
     }
-    out.length = 0;
-    queryBox(bvh, bx0 - eps, by0 - eps, bz0 - eps, bx1 + eps, by1 + eps, bz1 + eps, out);
-    const va = mesh.vidx[t * 3], vb = mesh.vidx[t * 3 + 1], vc = mesh.vidx[t * 3 + 2];
-    for (const s of out) {
-      if (s === t) continue;
-      const sa = mesh.vidx[s * 3], sb = mesh.vidx[s * 3 + 1], sc = mesh.vidx[s * 3 + 2];
-      if (sa === va || sa === vb || sa === vc || sb === va || sb === vb || sb === vc || sc === va || sc === vb || sc === vc) continue;
-      // edges of t against triangle s
-      for (let e = 0; e < 3; e++) {
-        const p = o + e * 3, q = o + ((e + 1) % 3) * 3;
-        const dx = mesh.pos[q] - mesh.pos[p], dy = mesh.pos[q + 1] - mesh.pos[p + 1], dz = mesh.pos[q + 2] - mesh.pos[p + 2];
-        const h = raySingle(mesh, s, mesh.pos[p], mesh.pos[p + 1], mesh.pos[p + 2], dx, dy, dz);
-        if (h !== null && h > 1e-6 && h < 1 - 1e-6) return { found: true, sampled: stride > 1, tri: t, other: s };
+    bx0 -= eps; by0 -= eps; bz0 -= eps; bx1 += eps; by1 += eps; bz1 += eps;
+    const va = vidx[t * 3], vb = vidx[t * 3 + 1], vc = vidx[t * 3 + 2];
+    let sp = 0;
+    stack[sp++] = 0;
+    while (sp > 0) {
+      const node = stack[--sp];
+      const n3 = node * 3;
+      if (nmax[n3] < bx0 || nmin[n3] > bx1 || nmax[n3 + 1] < by0 || nmin[n3 + 1] > by1 || nmax[n3 + 2] < bz0 || nmin[n3 + 2] > bz1) continue;
+      if (left[node] >= 0) { stack[sp++] = left[node]; stack[sp++] = right[node]; continue; }
+      for (let i = start[node], end = i + count[node]; i < end; i++) {
+        const s = order[i];
+        if (s === t) continue;
+        const sa = vidx[s * 3], sb = vidx[s * 3 + 1], sc = vidx[s * 3 + 2];
+        if (sa === va || sa === vb || sa === vc || sb === va || sb === vb || sb === vc || sc === va || sc === vb || sc === vc) continue;
+        // edges of t against triangle s (Möller–Trumbore with the segment as the ray)
+        const q0 = s * 9;
+        const s0x = pos[q0], s0y = pos[q0 + 1], s0z = pos[q0 + 2];
+        const e1x = pos[q0 + 3] - s0x, e1y = pos[q0 + 4] - s0y, e1z = pos[q0 + 5] - s0z;
+        const e2x = pos[q0 + 6] - s0x, e2y = pos[q0 + 7] - s0y, e2z = pos[q0 + 8] - s0z;
+        for (let e = 0; e < 3; e++) {
+          const p = o + e * 3, q = o + ((e + 1) % 3) * 3;
+          const ox = pos[p], oy = pos[p + 1], oz = pos[p + 2];
+          const dx = pos[q] - ox, dy = pos[q + 1] - oy, dz = pos[q + 2] - oz;
+          const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x;
+          const det = e1x * px + e1y * py + e1z * pz;
+          if (Math.abs(det) < 1e-14) continue;
+          const inv = 1 / det;
+          const tx = ox - s0x, ty = oy - s0y, tz = oz - s0z;
+          const u = (tx * px + ty * py + tz * pz) * inv;
+          if (u < lo || u > hi) continue;
+          const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x;
+          const w = (dx * qx + dy * qy + dz * qz) * inv;
+          if (w < lo || u + w > hi) continue;
+          const h = (e2x * qx + e2y * qy + e2z * qz) * inv;
+          if (h > lo && h < hi) return { found: true, sampled: stride > 1, tri: t, other: s };
+        }
       }
     }
   }
   return { found: false, sampled: stride > 1 };
-}
-
-function raySingle(mesh, tri, ox, oy, oz, dx, dy, dz) {
-  const pos = mesh.pos, o = tri * 9;
-  const e1x = pos[o + 3] - pos[o], e1y = pos[o + 4] - pos[o + 1], e1z = pos[o + 5] - pos[o + 2];
-  const e2x = pos[o + 6] - pos[o], e2y = pos[o + 7] - pos[o + 1], e2z = pos[o + 8] - pos[o + 2];
-  const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x;
-  const det = e1x * px + e1y * py + e1z * pz;
-  if (Math.abs(det) < 1e-14) return null;
-  const inv = 1 / det;
-  const tx = ox - pos[o], ty = oy - pos[o + 1], tz = oz - pos[o + 2];
-  const u = (tx * px + ty * py + tz * pz) * inv;
-  if (u < 1e-6 || u > 1 - 1e-6) return null;
-  const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x;
-  const w = (dx * qx + dy * qy + dz * qz) * inv;
-  if (w < 1e-6 || u + w > 1 - 1e-6) return null;
-  return (e2x * qx + e2y * qy + e2z * qz) * inv;
 }
 
 module.exports = { sampleTriangles, wallThickness, tallThinAspect, accessAnalysis, overhangAnalysis, selfIntersections, pointInside };

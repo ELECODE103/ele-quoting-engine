@@ -34,6 +34,7 @@ function baselineFull(id) {
 function check(c, base, now, fullText, opts = {}) {
   const problems = [];
   if (!base) return [`no baseline recorded for ${c.id} (run snapshot.js on the baseline commit)`];
+  if (base.unfinished) return [];
   if (base.input.sha256 !== now.input.sha256) {
     return [`the INPUT differs from the one the baseline was recorded with (${base.input.bytes} → ${now.input.bytes} bytes): a generator or the Node version changed, so results are not comparable`];
   }
@@ -57,9 +58,18 @@ async function main(argv) {
   const skipPrice = index.pricingFingerprint !== lib.pricingFingerprint();
   if (skipPrice) console.log("NOTE: pricing rules or the material catalog changed since the baseline was recorded — prices are not compared (geometry and DFM still are). Re-record the baseline to compare prices again.");
   const results = {};
-  let bad = 0, n = 0;
+  let bad = 0, n = 0, unfinished = 0;
   const report = (c, now, fullText, err) => {
     n++;
+    const base0 = index.cases[c.id];
+    if (!err && base0 && base0.unfinished) {
+      // The baseline code never produced an answer for this input (it ran out of time or memory),
+      // so there is nothing to be identical to. Shown, counted apart, not a failure.
+      unfinished++;
+      if (now) results[c.id] = { timing: now.timing || null, stages: now.stages || null, summary: now.summary, identical: null, baselineUnfinished: base0.note };
+      console.log(`  no baseline answer  ${c.id.padEnd(30)} baseline: ${base0.note}; now: ${now.summary.status}${now.summary.message ? " — " + now.summary.message : ""}`);
+      return;
+    }
     const problems = err ? [err.message] : check(c, index.cases[c.id], now, fullText, { skipPrice });
     if (now) results[c.id] = { timing: now.timing || null, stages: now.stages || null, summary: now.summary, identical: problems.length === 0 };
     const base = index.cases[c.id];
@@ -82,8 +92,8 @@ async function main(argv) {
     await runMany(list, { jobs: Number(args.jobs) || 1, heap: Number(args.heap) || 768, onResult: (c, r, full, err) => report(c, r, full, err) });
   }
   if (args.out) fs.writeFileSync(String(args.out), JSON.stringify({ node: process.version, cases: results }, null, 1) + "\n");
-  console.log(`\n${n - bad}/${n} cases identical to the baseline${bad ? ` — ${bad} DIFFER` : ""}`);
-  return { bad, n, results };
+  console.log(`\n${n - bad - unfinished}/${n - unfinished} cases identical to the baseline${bad ? ` — ${bad} DIFFER` : ""}${unfinished ? ` (${unfinished} more have no baseline answer: the old code did not finish them)` : ""}`);
+  return { bad, n, unfinished, results };
 }
 
 if (require.main === module) main(process.argv.slice(2)).then((r) => process.exit(r.bad ? 1 : 0)).catch((err) => { console.error(err.stack || err.message); process.exit(1); });
