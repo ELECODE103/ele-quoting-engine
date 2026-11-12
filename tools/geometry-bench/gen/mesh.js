@@ -445,6 +445,20 @@ function shattered(n, seed = 21) {
   for (let i = 0; i < base.a.length; i++) s.a.push(base.a[i] + (R() - 0.5) * 0.02);
   return s;
 }
+/**
+ * Random triangle soup: `n` unrelated triangles in a 100 mm cube. `reach` is the size of a
+ * triangle: small (2 mm) for local slivers, or the whole cube when every corner is anywhere.
+ * Nothing is connected to anything — no adjacency, no inside or outside.
+ */
+function randomSoup(n, reach = 2, seed = 31) {
+  const R = rng(seed), s = new Soup();
+  for (let t = 0; t < n; t++) {
+    if (reach >= 100) { for (let k = 0; k < 9; k++) s.a.push(R() * 100); continue; }
+    const cx = R() * 100, cy = R() * 100, cz = R() * 100;
+    for (let k = 0; k < 3; k++) s.a.push(cx + (R() - 0.5) * reach, cy + (R() - 0.5) * reach, cz + (R() - 0.5) * reach);
+  }
+  return s;
+}
 /** Box whose top face is finely subdivided while its neighbours are not (T-junctions, open edges). */
 function tJunctionBox(m = 20) {
   const s = new Soup(), W = 40, D = 30, Hh = 12;
@@ -475,6 +489,6 @@ module.exports = {
   rng, Soup, fromPositions, translate, rotation, compose,
   uvSphere, lobes, roughLobes, torus, icosphere, lathe, cup, shaft, vase, box, prism,
   featurePlate, featurePlateFor, heightGrid, textPlate, textPlateFor, waffle, relief, openSheet,
-  lattice, multiBody, hollowSphere, nonManifold, mixedWinding, withDefects, shattered, tJunctionBox, intersecting, bracket,
+  lattice, multiBody, hollowSphere, nonManifold, mixedWinding, withDefects, shattered, randomSoup, tJunctionBox, intersecting, bracket,
   testMesh,
 };

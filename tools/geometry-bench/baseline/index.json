@@ -1341,27 +1341,17 @@
     "bytes": 3807913,
     "sha256": "470f4f9226d6781bf0d35e52563f4e0fea09c523977fb639c7239b33cf065243"
    },
-   "hash": {
-    "geometry": "fb24289151d255e8caaae3747beb0e1b74c432638101d47d6c1a5e6a2a7a5ef3",
-    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
-   },
-   "snapshot": true,
-   "summary": {
-    "status": "refused",
-    "code": null,
-    "message": "Set maximum size exceeded"
-   },
+   "unfinished": "resource",
+   "note": "Set maximum size exceeded",
    "timing": {
-    "wallMs": 92890,
-    "cpuMs": 23744,
-    "peakHeapMb": 1811.4,
-    "peakRssMb": 1943.8,
-    "baseRssMb": 78.3,
-    "afterParseMs": 0,
-    "load": 15.2
-   },
-   "stages": null
+    "wallMs": 43687,
+    "cpuMs": 26272,
+    "peakHeapMb": 1811.3,
+    "peakRssMb": 1947.7,
+    "baseRssMb": 78.4,
+    "afterParseMs": 1,
+    "load": 2.1
+   }
   },
   "dxf-mixed-cutouts-4k": {
    "size": "medium",
@@ -6344,6 +6334,186 @@
     "total": 2
    }
   },
+  "soup-10k": {
+   "size": "small",
+   "family": "soup",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 500084,
+    "sha256": "cc3ea27aec929f2e2ff3b0e7565f7f893a8cef3e66463a4ee2f396fd2b610af3"
+   },
+   "hash": {
+    "geometry": "08abaf1a7397ad5de37ec4f3327b77b5b95e0b7bf0f60f26e118d24cc1955a11",
+    "dfm": "370b333f40b0f56d6423dee4fd39ec2939ca1face297766e713076f44944fd31",
+    "price": "f45191fd5b62285e7a33c73aaf26fb05f85da662fa4c1d93256035d2eebff874"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 10000,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1038,
+    "cpuMs": 672,
+    "peakHeapMb": 75.7,
+    "peakRssMb": 178.1,
+    "baseRssMb": 75.3,
+    "afterParseMs": 87,
+    "load": 1.7
+   },
+   "stages": {
+    "mesh": 50,
+    "segment": 50,
+    "bvh": 55,
+    "shape": 249,
+    "outline": 281,
+    "features": 26,
+    "thickness": 65,
+    "access": 176,
+    "overhang": 15,
+    "selfIntersect": 2,
+    "total": 969
+   }
+  },
+  "soup-1k": {
+   "size": "small",
+   "family": "soup",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 50084,
+    "sha256": "158130fc2dfc4614baec5bf4b05a685c827263cbe98fc7bf799c059be3442816"
+   },
+   "hash": {
+    "geometry": "4198fe5df20c6917c922b90c9a9acaf6c801cb0ee5b2edb6aeb85d43fb68021c",
+    "dfm": "51595337005d235cba1bb61ce41f8568533c690b3b1ced6316a69656c00c03fb",
+    "price": "9641424ea7307ca9a8648e588b6b9318cf51f8bd2985987ab6ed724837ffcc3d"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 1000,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 208,
+    "cpuMs": 103,
+    "peakHeapMb": 22.5,
+    "peakRssMb": 96.9,
+    "baseRssMb": 74.2,
+    "afterParseMs": 131,
+    "load": 1.7
+   },
+   "stages": {
+    "mesh": 4,
+    "segment": 5,
+    "bvh": 6,
+    "shape": 56,
+    "outline": 44,
+    "features": 18,
+    "thickness": 27,
+    "access": 24,
+    "overhang": 1,
+    "selfIntersect": 12,
+    "total": 197
+   }
+  },
+  "soup-wide-10k": {
+   "size": "small",
+   "family": "soup-wide",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 500084,
+    "sha256": "17a11bdae5bd412dba74ce18b6edf75f12071e038d5c4cda65a8c75b8539052d"
+   },
+   "hash": {
+    "geometry": "3dc526121a31a287d6d3df9c7a0f8e5058c59afb768ffb6ad51b47940114ec74",
+    "dfm": "544588b10370b8243f399703843b6336720a7c3b0868bee89f371c400d1b076d",
+    "price": "14b9dfdebc12bac22768ca90d62bab10e18e468eeaaf9a3611a742e51e5bacb9"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 10000,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 25005,
+    "cpuMs": 18836,
+    "peakHeapMb": 180.5,
+    "peakRssMb": 310.9,
+    "baseRssMb": 75.2,
+    "afterParseMs": 78,
+    "load": 1.7
+   },
+   "stages": {
+    "mesh": 36,
+    "segment": 54,
+    "bvh": 53,
+    "shape": 191,
+    "outline": 587,
+    "features": 23,
+    "thickness": 4256,
+    "access": 19113,
+    "overhang": 589,
+    "selfIntersect": 2,
+    "total": 24913
+   }
+  },
+  "soup-wide-1k": {
+   "size": "small",
+   "family": "soup-wide",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 50084,
+    "sha256": "631c3fe5b27a41e6bb9c3fa876422ae809ca1bc75f93795fe6f023811de6ce20"
+   },
+   "hash": {
+    "geometry": "f2b62a40a5b39e7ea5428169c3653f90a017220e981770d6d3c94f963bcb4144",
+    "dfm": "7141509fdfa3117fb9ba72e50a35cdf3fc6881ef5444ce9d57094f98611a9c32",
+    "price": "686146793b070d80d253d1e51307539f66db1a2fe16511db48b5ffcec5ba5170"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 1000,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 352,
+    "cpuMs": 275,
+    "peakHeapMb": 24.3,
+    "peakRssMb": 97,
+    "baseRssMb": 74.6,
+    "afterParseMs": 83,
+    "load": 1.7
+   },
+   "stages": {
+    "mesh": 4,
+    "segment": 5,
+    "bvh": 6,
+    "shape": 47,
+    "outline": 30,
+    "features": 4,
+    "thickness": 55,
+    "access": 175,
+    "overhang": 13,
+    "selfIntersect": 1,
+    "total": 341
+   }
+  },
   "sphere-100k": {
    "size": "medium",
    "family": "sphere",
@@ -7427,6 +7597,6 @@
  },
  "node": "v22.23.4",
  "platform": "linux-x64",
- "generatorKey": "598d332abb4f",
+ "generatorKey": "3b4c2c8de357",
  "pricingFingerprint": "da3a4d1a6e4e5800"
 }

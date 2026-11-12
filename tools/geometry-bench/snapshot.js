@@ -3,7 +3,8 @@
  * Record the baseline: run the code as it stands over the corpus and save what
  * it returned.
  *
- *   node tools/geometry-bench/snapshot.js [--size small,medium,large] [--only id,…] [--match re] [--jobs 1] [--heap 4096]
+ *   node tools/geometry-bench/snapshot.js [--size small,medium,large] [--only id,…] [--match re] [--missing]
+ *                                         [--jobs 1] [--heap 4096] [--cap-minutes N]
  *
  * Writes tools/geometry-bench/baseline/
  *   index.json                 per case: input hash, result hashes (geometry / dfm / price), summary,
@@ -34,7 +35,7 @@ const MAX_COMMITTED_SNAPSHOT = 400 * 1024; // gzip bytes; a bigger result is kep
 
 (async () => {
   const args = lib.parseArgs(process.argv.slice(2));
-  const list = lib.select(cases, args);
+  let list = lib.select(cases, args);
   const indexFile = path.join(lib.BASELINE_DIR, "index.json");
   fs.mkdirSync(path.join(lib.BASELINE_DIR, "snapshots"), { recursive: true });
   fs.mkdirSync(path.join(lib.CACHE_DIR, "full"), { recursive: true });
@@ -52,6 +53,7 @@ const MAX_COMMITTED_SNAPSHOT = 400 * 1024; // gzip bytes; a bigger result is kep
     fs.writeFileSync(tmp, JSON.stringify(index, null, 1) + "\n");
     fs.renameSync(tmp, indexFile);
   };
+  if (args.missing) { const have = load().cases; list = list.filter((c) => !have[c.id]); } // --missing: only cases not recorded yet
   let failed = 0, done = 0;
   await runMany(list, {
     jobs: Number(args.jobs) || 1, heap: Number(args.heap) || 4096, capMs: args["cap-minutes"] ? Number(args["cap-minutes"]) * 60000 : 0,

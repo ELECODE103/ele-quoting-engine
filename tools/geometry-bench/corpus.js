@@ -80,6 +80,8 @@ meshFamily("open-sphere", (n) => { const st = Math.max(3, Math.round(Math.sqrt(n
 meshFamily("open-sheet", under((n) => M.openSheet(n)), K);
 meshFamily("mixed-winding", (n) => M.mixedWinding(n), [1000, 10000, 100000]);
 meshFamily("shattered", (n) => M.shattered(n), [1000, 10000, 100000]);
+meshFamily("soup", (n) => M.randomSoup(n, 2), K);
+meshFamily("soup-wide", (n) => M.randomSoup(n, 100), K);
 add({ id: "nonmanifold-boxes", ext: ".stl", size: "small", family: "defect", n: 25, build: () => F.binaryStl(M.nonManifold().a) });
 add({ id: "tjunction-box", ext: ".stl", size: "small", family: "defect", n: 810, build: () => F.binaryStl(M.tJunctionBox(20).a) });
 add({ id: "plate-defects-10k", ext: ".stl", size: "small", family: "defect", n: 10000, build: () => F.binaryStl(M.withDefects(M.featurePlateFor(10000)).a) });
