@@ -9,7 +9,7 @@ import ThreeViewer from '../components/ThreeViewer';
 import DxfPreview from '../components/DxfPreview';
 import DFMPanel from '../components/DFMPanel';
 import PartConfigurator, { finishFits } from '../components/PartConfigurator';
-import OrderSummary from '../components/OrderSummary';
+import OrderSummary, { totalLabel } from '../components/OrderSummary';
 import ProcessPicker from '../components/ProcessPicker';
 import { when, SENT_OUT_FINISHES } from '../facts';
 import brand, { PROCESS_LABELS } from '../brand';
@@ -907,7 +907,10 @@ export default function QuoteBuilder() {
       {parts.length > 0 && quote && (
         <div className="qb-bar" role="region" aria-label={needsRfq ? 'Budgetary total' : 'Total and checkout'}>
           <a href="#order-summary" className="qb-bar-total">
-            <span className="price-label">{needsRfq ? 'Budgetary' : 'Total'}{quoteLoading ? ' · updating' : quoteError ? ' · not updated, see details' : ''}</span>
+            {/* The same name for the figure as the summary gives it: "Total", or what is still to be added to it
+                (sales tax on the payment page; shipping, for an order with no parcel price). While the price is
+                being worked out, or could not be, the bar says that instead: there is room for one or the other. */}
+            <span className="price-label" data-testid="bar-total-label">{quoteLoading ? `${needsRfq ? 'Budgetary' : 'Total'} · updating` : quoteError ? `${needsRfq ? 'Budgetary' : 'Total'} · not updated, see details` : needsRfq ? 'Budgetary' : totalLabel(quote)}</span>
             <b>{formatCurrency(quote.orderTotal)}</b>
             <span className="qb-bar-sub">{quote.shipBy ? `Ships by ${formatShipDate(quote.shipBy)} · ` : ''}details</span>
           </a>

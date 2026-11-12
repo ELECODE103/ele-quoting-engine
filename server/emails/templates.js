@@ -26,6 +26,9 @@
 const brand = require("../../shared/brand.json");
 const shopFacts = require("../shopFacts");
 const { formatShipBy, SHOP_TZ } = require("../services/shipBy");
+// How an order is delivered and what it says about tax (carrier account masked; the pickup address only for a paid order).
+const shippingService = require("../services/shipping");
+const taxService = require("../services/tax");
 
 const INK = "#101C33";
 const BRASS = "#A8834E";
@@ -271,8 +274,17 @@ function chargeRows(order) {
   const paperworkFee = Number(order.paperworkFee) || 0;
   if (fee > 0.004) rows.push({ name: `${order.leadTimeName || "Faster"} lead time`, amount: fee });
   if (order.paperwork) rows.push(paperworkFee > 0.004 ? { name: PAPERWORK_LABEL, amount: paperworkFee } : { name: PAPERWORK_LABEL, detail: order.rfqId ? "included in the quoted price" : "included", amount: null });
-  if (shipping > 0.004) rows.push({ name: "Shipping", amount: shipping });
-  if (order.returnPart) rows.push({ name: "Your original part, returned with this order", detail: "return shipping included in the quoted price", amount: null });
+  // Delivery: a pickup or the buyer's own carrier account has no shipping charge and says so; a
+  // shipping charge is its own line; shipping that is in the price or free on this order says that.
+  if (isPickup(order)) rows.push({ name: "Pickup at our shop", detail: "no shipping charge", amount: null });
+  else if (order.shippingMethod === "carrier-account") rows.push({ name: shippingService.methodLine(order), detail: "no shipping charge from us", amount: null });
+  else if (shipping > 0.004) rows.push({ name: "Shipping", amount: shipping });
+  else if (order.shippingMode === "included") rows.push({ name: "Shipping", detail: "included in the price", amount: null });
+  else if (order.shippingMode === "table") rows.push({ name: "Shipping", detail: "free on this order", amount: null });
+  if (order.returnPart) rows.push({ name: "Your original part, returned with this order", detail: returnDetail(order), amount: null });
+  // Sales tax: the amount Stripe added, or what is true while there is no amount (a purchase order, an exemption).
+  const taxLine = taxService.orderLine(order);
+  if (taxLine) rows.push(taxLine.amount !== null && taxLine.valueText === null ? { name: taxLine.label, amount: taxLine.amount } : { name: taxLine.label, detail: taxLine.valueText.toLowerCase(), amount: null });
   return rows;
 }
 
@@ -293,6 +305,29 @@ function amountPaidOf(order) {
 function discountRows(order) {
   const d = discountOf(order);
   return d > 0 ? [{ name: "Order total before the promotion code", amount: Number(order.total) || 0 }, { name: "Promotion code", detail: `${money(d)} off`, amount: null }] : [];
+}
+
+const isPickup = (order) => order.shippingMethod === "pickup";
+/** How the customer's original part gets back to them, for the delivery choice on the order. */
+function returnDetail(order) {
+  if (isPickup(order)) return "handed back with your parts at pickup";
+  if (order.shippingMethod === "carrier-account") return "in the box with the finished parts, on your carrier account";
+  return "return shipping included in the quoted price";
+}
+/** "Ship to" for an order we or the buyer's carrier ship; who is collecting, for a pickup. */
+function deliveryFacts(order) {
+  if (isPickup(order)) {
+    // The street address is given only for an order that has been paid for (services/checkout.js).
+    const where = require("../services/checkout").pickupDisclosed(order) ? shippingService.pickupAddress() : null;
+    return [
+      ["Pickup by", order.shippingName],
+      ["Pick up at", where ? [where.name, ...where.lines].join(", ") : "Our shop. The address and a time are confirmed with you before pickup."],
+    ];
+  }
+  return [
+    ["Ship to", shipTo(order)],
+    ["Carrier account", order.shippingMethod === "carrier-account" ? `${order.shipCarrier} ${shippingService.maskAccount(order.shipAccountLast4)}${order.shipService ? `, ${order.shipService}` : ""}` : ""],
+  ];
 }
 
 const DRAWING_NOTE = "We review drawings before cutting; we'll contact you before work starts if anything changes the price.";
@@ -471,14 +506,16 @@ function rfqAcceptedShop({ rfq, order, adminUrl }) {
         ? "The customer accepted and gave a PO number. Nothing has been charged and no terms have been set up: confirm the PO with them before starting work."
         : "The customer accepted and was sent to card checkout. You'll get a separate email when the payment clears.",
       ...(rfq.paperwork ? [`${PAPERWORK_SHORT} ORDERED: the quoted price includes a first-article inspection report and a certificate of conformance. Do both before this ships.`] : []),
-      ...(rfq.returnPart ? ["RETURN THE ORIGINAL: the customer's part goes back in the box with the finished parts. The quoted price includes that shipping."] : []),
+      ...(rfq.returnPart ? [isPickup(order) ? "RETURN THE ORIGINAL: the customer's part is handed back with the finished parts at pickup." : "RETURN THE ORIGINAL: the customer's part goes back in the box with the finished parts. The quoted price includes that shipping."] : []),
+      ...shopDeliveryNotes(order),
     ],
     facts: [
       ["Quoted total", money(order.total)],
       [PAPERWORK_SHORT, rfq.paperwork ? "ORDERED (in the quoted price)" : "Not ordered"],
       ["Original part", isPartRequest(rfq) ? (rfq.returnPart ? "Return it with the order" : "Not being returned") : ""],
       ["PO number", po ? order.poNumber : ""],
-      ["Ship to", shipTo(order)],
+      ...shopTaxFacts(order),
+      ...deliveryFacts(order),
       ["Ships by", formatShipBy(order.shipBy)],
       ["Order", shortId(order.id)],
       ["RFQ", shortId(rfq.id)],
@@ -489,6 +526,23 @@ function rfqAcceptedShop({ rfq, order, adminUrl }) {
 }
 
 // ─── Orders ────────────────────────────────────────────────────
+
+/** To the shop: what to do about delivery and a declared exemption. Never the full carrier account number: that is on the order in admin. */
+function shopDeliveryNotes(order) {
+  const out = [];
+  if (isPickup(order)) out.push("PICKUP: the customer collects this order at the shop. Do not ship it.");
+  if (order.shippingMethod === "carrier-account") out.push(`SHIP COLLECT on the customer's ${order.shipCarrier} account (ends ${String(order.shipAccountLast4 || "").slice(-4)})${order.shipService ? `, ${order.shipService}` : ""}. The full account number is on the order in admin. No shipping was charged.`);
+  const exemption = taxService.exemptionLine(order);
+  if (exemption) out.push(`TAX EXEMPTION DECLARED. ${exemption} The certificate is on the order in admin.`);
+  return out;
+}
+function shopTaxFacts(order) {
+  const line = taxService.orderLine(order);
+  return [
+    ["Sales tax", line ? (line.valueText === null ? money(line.amount) : line.valueText) : ""],
+    ["Tax exemption", order.taxExempt ? `${taxService.reasonLabel(order.taxExemptReason) || "Declared"} (${order.taxExemptStatus === "untaxed" ? "no tax charged" : "tax charged, refund after review"})` : ""],
+  ];
+}
 
 /** To the customer: order confirmed (card paid, or PO on file). */
 function orderConfirmation({ order, items, orderUrl }) {
@@ -504,14 +558,18 @@ function orderConfirmation({ order, items, orderUrl }) {
         : "Thanks. Your payment went through and your parts are in the queue.",
       ...(order.drawingFileName ? [DRAWING_NOTE] : []),
       ...(order.paperwork ? ["You ordered the inspection paperwork: the first piece of each part number is measured against your drawing, and the report ships with the parts, with a signed certificate of conformance listing material and lot."] : []),
-      ...(order.returnPart ? ["Your original part comes back in the box with the finished parts."] : []),
+      ...(order.returnPart ? [isPickup(order) ? "Your original part is handed back with the finished parts at pickup." : "Your original part comes back in the box with the finished parts."] : []),
+      ...(isPickup(order) ? [`You chose to pick the order up. We'll tell you when it is ready; call ${brand.phone} before you come so someone is at the door.`] : []),
+      ...(order.shippingMethod === "carrier-account" ? [`We ship this order collect on your ${order.shipCarrier} account ${shippingService.maskAccount(order.shipAccountLast4)}. There is no shipping charge from us.`] : []),
+      ...(order.taxMode === "stripe" && po ? ["Sales tax on a purchase order is per invoice: any tax due is on the invoice we send, not in the total below."] : []),
+      ...(order.taxExempt ? [order.taxExemptStatus === "untaxed" ? "You declared this order tax-exempt and attached a certificate, so no sales tax was charged. We keep the certificate with the order." : (po ? "You declared this order tax-exempt and attached a certificate. We read it before we invoice." : "You declared this order tax-exempt and attached a certificate. Tax was charged today; once we have read the certificate we refund the tax to your card.")] : []),
     ],
     items: [...itemRows(items), ...chargeRows(order), ...discountRows(order)],
     total: { label: po ? "Order total" : "Total paid", value: money(po ? order.total : amountPaidOf(order)) },
     facts: [
       ["Order", shortId(order.id)],
-      ["Ships by", formatShipBy(order.shipBy)],
-      ["Ship to", shipTo(order)],
+      [isPickup(order) ? "Ready by" : "Ships by", formatShipBy(order.shipBy)],
+      ...deliveryFacts(order),
       ["PO number", po ? order.poNumber : ""],
       [order.rfqId ? "Quote notes" : "Your notes", order.customerNotes],
       ["Drawing", order.drawingFileName],
@@ -534,7 +592,8 @@ function newOrderShop({ order, items, adminUrl, warning }) {
       ...(warning ? [warning] : []),
       ...(order.drawingFileName ? [`Drawing attached to the order: ${order.drawingFileName}. Review it before cutting.`] : []),
       ...(order.paperwork ? [`${PAPERWORK_SHORT} ORDERED: measure the first piece of each part number against the drawing and write the first-article report, then fill in and sign the certificate of conformance with material and lot. Both ship with the parts.`] : []),
-      ...(order.returnPart ? ["RETURN THE ORIGINAL: the customer's part goes back in the box with the finished parts."] : []),
+      ...(order.returnPart ? [isPickup(order) ? "RETURN THE ORIGINAL: the customer's part is handed back with the finished parts at pickup." : "RETURN THE ORIGINAL: the customer's part goes back in the box with the finished parts."] : []),
+      ...shopDeliveryNotes(order),
     ],
     items: [...itemRows(items), ...chargeRows(order)],
     total: { label: "Total", value: money(order.total) },
@@ -543,9 +602,10 @@ function newOrderShop({ order, items, adminUrl, warning }) {
       [PAPERWORK_SHORT, order.paperwork ? (Number(order.paperworkFee) > 0 ? `ORDERED (${money(order.paperworkFee)})` : "ORDERED (in the quoted price)") : "Not ordered"],
       ["Payment", po ? `PO ${order.poNumber} (not charged)` : discountOf(order) > 0 ? `Card, ${money(amountPaidOf(order))} collected` : "Card, paid"],
       ["Promotion code", discountOf(order) > 0 ? `${money(discountOf(order))} off the order total of ${money(order.total)}` : ""],
+      ...shopTaxFacts(order),
       ["Lead time", order.leadTimeName],
-      ["Ships by", formatShipBy(order.shipBy)],
-      ["Ship to", shipTo(order)],
+      [isPickup(order) ? "Ready by" : "Ships by", formatShipBy(order.shipBy)],
+      ...deliveryFacts(order),
       ["Customer notes", order.customerNotes],
     ],
     cta: adminUrl ? { label: "Open admin", url: adminUrl } : undefined,
@@ -554,6 +614,23 @@ function newOrderShop({ order, items, adminUrl, warning }) {
 
 /** To the customer: the order shipped. */
 function orderShipped({ order, items, orderUrl }) {
+  // A pickup order does not ship: the same step in admin means "ready to collect".
+  if (isPickup(order)) {
+    return layout({
+      subject: `${brand.name}: order ${shortId(order.id)} is ready for pickup`,
+      preheader: "Your parts are ready to collect.",
+      heading: "Your order is ready for pickup",
+      paragraphs: [
+        greeting(order.customerName || order.shippingName),
+        `Your parts are ready to collect. Call ${brand.phone} before you come so someone is at the door.`,
+        ...(order.returnPart ? ["Your original part is with the order."] : []),
+      ],
+      facts: [["Order", shortId(order.id)], ...deliveryFacts(order)],
+      items: itemRows(items).map((it) => ({ ...it, amount: null })),
+      cta: orderUrl ? { label: "View your order", url: orderUrl } : undefined,
+      after: [`Anything wrong when you check the parts? Tell us on the spot, or call ${brand.phone}.`],
+    });
+  }
   const url = trackingUrl(order.carrier, order.trackingNumber);
   return layout({
     subject: `${brand.name}: order ${shortId(order.id)} has shipped`,
@@ -706,5 +783,5 @@ module.exports = {
   esc, safeHref, greeting, LAYOUT_STYLE,
   layout, trackingUrl, shortId, money, DRAWING_NOTE,
   PAPERWORK_LABEL, PAPERWORK_SHORT, PAPERWORK_INCLUDED, PAPERWORK_NOT_INCLUDED, RETURN_INCLUDED, RETURN_NOT_INCLUDED, RETURN_REMINDER, PAPERWORK_REMINDER,
-  chargeRows, quoteCovers, isPartRequest, discountOf, amountPaidOf,
+  chargeRows, quoteCovers, isPartRequest, discountOf, amountPaidOf, deliveryFacts,
 };

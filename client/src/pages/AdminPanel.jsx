@@ -232,6 +232,10 @@ function AdminConsole() {
                           {String(o.id).slice(0, 8)}
                         </a>
                         {o.paperwork && <div style={{ marginTop: 4 }}><span className="tag tag-warn" title="The customer ordered a first-article inspection report and a certificate of conformance">FAI + CoC</span></div>}
+                        {/* How it leaves the shop, and a declared tax exemption, at a glance (details on the order). */}
+                        {o.shippingMethod === 'pickup' && <div style={{ marginTop: 4 }}><span className="tag tag-warn" title="The customer collects this order at the shop: do not ship">Pickup</span></div>}
+                        {o.shippingMethod === 'carrier-account' && <div style={{ marginTop: 4 }}><span className="tag tag-warn" title="Ship collect on the customer's carrier account: the account number is on the order">Collect {o.shipCarrier}</span></div>}
+                        {o.taxExempt && <div style={{ marginTop: 4 }}><span className="tag tag-warn" title={o.taxExemptionLine || 'The customer declared a tax exemption'}>Tax exempt?</span></div>}
                       </td>
                       <td style={{ padding: '10px 14px' }}>{o.shippingName || '—'}</td>
                       <td style={{ padding: '10px 14px' }}>{o.itemCount}</td>

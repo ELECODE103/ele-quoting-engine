@@ -69,6 +69,12 @@ export default function JobTravelerPage() {
                   {order.shipBy ? ` · ships by ${formatShipDate(order.shipBy, { year: true })}${order.leadTimeName ? ` (${order.leadTimeName})` : ''}` : ''}
                   {po ? ` · purchase order ${oneLine(order.poNumber) || '(number not recorded)'}, not charged: confirm the PO before starting` : ''}
                 </p>
+                {/* How it leaves the shop when we are not shipping it ourselves (the account by its last four only). */}
+                {order.deliveryLine && (
+                  <p data-testid="traveler-delivery" style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, marginTop: 4 }}>
+                    {order.shippingMethod === 'pickup' ? 'Customer pickup: do not ship' : `${oneLine(order.deliveryLine)}: ship collect (full account number on the order)`}
+                  </p>
+                )}
               </div>
               <button type="button" className="btn btn-primary" onClick={() => { setPdfError(''); api.openPdf(`traveler/${order.id}`).catch((e) => setPdfError(e.message)); }}>
                 Print the traveler (PDF)

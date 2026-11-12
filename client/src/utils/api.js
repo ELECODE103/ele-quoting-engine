@@ -157,6 +157,16 @@ export const api = {
     return request(`/quote/${id}`);
   },
 
+  // A tax-exemption certificate attached to a quote before checkout (PDF, JPG or PNG).
+  async uploadTaxCertificate(quoteId, file) {
+    return gated(() => {
+      const form = new FormData();
+      form.append('certificate', file);
+      return postForm(`/quote/${quoteId}/tax-certificate`, form);
+    });
+  },
+  async removeTaxCertificate(quoteId) { return request(`/quote/${quoteId}/tax-certificate`, { method: 'DELETE' }); },
+
   // Config (public)
   async getProcesses() { return request('/processes'); },
   async getMaterials(process) {
@@ -200,6 +210,10 @@ export const api = {
   },
   async previewPricing(rules) {
     return request('/admin/pricing/preview', { method: 'POST', body: JSON.stringify({ rules }) });
+  },
+  /** "A 3 lb order to Ohio would be charged $X shipping", under the rules on screen (saved or not). */
+  async previewShipping(body) {
+    return request('/admin/shipping/preview', { method: 'POST', body: JSON.stringify(body) });
   },
   async getPricingHistory(limit = 50) { return request(`/admin/pricing/history?limit=${limit}`); },
   async restorePricing(id) {
@@ -282,6 +296,19 @@ export const api = {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
+  /** Admin: the exemption certificate a buyer attached to an order. */
+  async downloadTaxCertificate(id, fileName) {
+    const res = await fetch(`${BASE}/orders/${id}/tax-certificate`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('Could not download the certificate');
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'certificate.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
   async downloadPart(partId, fileName) {
     const res = await send(`/parts/${partId}/download`, { credentials: 'same-origin' });
     const blob = await res.blob();
@@ -355,15 +382,25 @@ export const api = {
   /** Back from the card page: ask where the order stands, with the return token from the address bar. */
   async confirmFirmQuoteReturn(order, token) { return request('/rfq/return/confirm', { method: 'POST', body: JSON.stringify({ order, token }) }); },
 
+  async uploadFirmQuoteCertificate(token, file) {
+    const form = new FormData();
+    form.append('certificate', file);
+    return postForm(`/rfq/quote/${token}/tax-certificate`, form);
+  },
+  async removeFirmQuoteCertificate(token) { return request(`/rfq/quote/${token}/tax-certificate`, { method: 'DELETE' }); },
+
   // Stripe Checkout
   /**
-   * `confirmedTotal` is the total the page is showing: if it is not what the server would charge,
-   * the server answers `quote-changed` with the quote at today's price instead of charging.
+   * `fields`: the ship-to address, the delivery choice (shippingOption), a carrier account, and
+   * whether a tax exemption is declared. No amount is charged from what is sent here: the server
+   * works every figure out.
+   * `confirmedTotal` is the total the page is showing for that delivery choice: if it is not what the
+   * server would charge, the server answers `quote-changed` with the quote at today's price instead of charging.
    */
-  async createCheckoutSession(quoteId, shippingFields, confirmedTotal) {
+  async createCheckoutSession(quoteId, fields, confirmedTotal) {
     return request('/orders/checkout-session', {
       method: 'POST',
-      body: JSON.stringify({ quoteId, ...shippingFields, ...(Number.isFinite(confirmedTotal) ? { confirmedTotal } : {}) }),
+      body: JSON.stringify({ quoteId, ...fields, ...(Number.isFinite(confirmedTotal) ? { confirmedTotal } : {}) }),
     });
   },
 };

@@ -14,8 +14,10 @@
  * values carry over; keys for models that no longer exist are simply ignored.
  *
  * Rule record:
- *   { key, group, label, help, unit, type: "number"|"percent"|"currency"|"table",
- *     min, max, default, tableSpec? }
+ *   { key, group, label, help, unit, type: "number"|"percent"|"currency"|"table"|"choice"|"text",
+ *     min, max, default, tableSpec?, options?, pattern?, maxLength? }
+ * `choice` is one of a fixed list of named settings (`options: [{ value, label, help? }]`); `text`
+ * is a short string held to `pattern` (both are settings, not prices: the Checkout group).
  * `tableSpec` describes a table rule for the UI:
  *   { kind: "map", keys: [...], valueType, unit, min, max }   — fixed-key lookup
  *   { kind: "rows", columns: [{ key, label, type, min, max }] } — list of rows
@@ -32,6 +34,7 @@ const GROUPS = [
   { id: "printing", label: "Printing", help: "FDM, SLA and SLS printer rates, speeds and post-processing." },
   { id: "discounts", label: "Discounts", help: "Quantity breaks and multi-part order savings." },
   { id: "gate", label: "Gate", help: "When a quote goes to a person instead of straight to checkout." },
+  { id: "checkout", label: "Shipping & tax", help: "How shipping is charged and whether sales tax is collected at checkout. Every switch here starts where the site was before the switch existed: nothing changes until you change it. Background and the decision sheet: docs/launch/tax-and-shipping.md." },
   { id: "sheetmetal", label: "Sheet Metal (inactive)", help: "Kept for the inactive sheet-metal process; nothing on the live site reads these." },
 ];
 
@@ -45,6 +48,15 @@ const money = (key, group, label, help, unit, def, min, max) =>
   ({ key, group, label, help, unit, type: "currency", min, max, default: def });
 const pct = (key, group, label, help, def, min, max) =>
   ({ key, group, label, help, unit: "%", type: "percent", min, max, default: def });
+/** One of a fixed list of named settings. Stored as the option's `value` (a short string). */
+const choice = (key, group, label, help, options, def) =>
+  ({ key, group, label, help, unit: "", type: "choice", min: 0, max: 0, default: def, options });
+/** An on/off switch, stored as "off" | "on" (said in words so the history reads plainly). */
+const toggle = (key, group, label, help, { off = "Off", on = "On" } = {}) =>
+  choice(key, group, label, help, [{ value: "off", label: off }, { value: "on", label: on }], "off");
+/** A short string held to a pattern ("" allowed when the pattern allows it). */
+const text = (key, group, label, help, def, pattern, maxLength = 40) =>
+  ({ key, group, label, help, unit: "", type: "text", min: 0, max: maxLength, default: def, pattern, maxLength });
 const map = (key, group, label, help, unit, keys, def, min, max) =>
   ({ key, group, label, help, unit, type: "table", min, max, default: def, tableSpec: { kind: "map", keys, valueType: "number", unit, min, max } });
 
@@ -206,6 +218,40 @@ const RULES = [
   num("gateReviewOnLegacyFeatures", "gate", "Review blocks without features", "Set to 1 to send machined blocks priced without a feature list (legacy geometry only) to a person; flat and turned parts price well without one.", "0/1", 1, 0, 1),
   num("gateReviewThinWallMm", "gate", "Thin-wall review", "CNC parts with walls thinner than this go to review.", "mm", 1.0, 0, 20),
 
+  // ─── Shipping & tax (server/services/shipping.js, server/services/tax.js) ─────────────
+  // Every default below is the behaviour the site had before these switches existed (2026-11-11):
+  // shipping = "Shipping base" + weight × "Shipping per kg" (Shop group), no tax collected.
+  choice("shippingMethod", "checkout", "How shipping is charged", "Weight formula is how the site has always charged: the Shop group's shipping base plus so much per kilogram, shown as a shipping line on every quote. Included means no shipping line at all: your part prices have to carry the freight. Rate table charges the row of the table below that the packed order weight falls in.",
+    [
+      { value: "formula", label: "Weight formula (as today)", help: "Shipping base + Shipping per kg × part weight, from the Shop group." },
+      { value: "included", label: "Included in the price", help: "No shipping line. The order summary says shipping is included." },
+      { value: "table", label: "Rate table by packed weight", help: "The table below, by packed order weight. Oversize and overweight orders go to a person." },
+    ], "formula"),
+  { key: "shippingRateTable", group: "checkout", label: "Shipping rate table", help: "Used when shipping is charged by rate table. Each row: orders packed up to this many pounds pay this much. PLACEHOLDER NUMBERS, not your rates: put in your own from your UPS or FedEx account before you switch the table on.", unit: "", type: "table", min: 0, max: 5000, placeholder: true,
+    default: [{ maxLb: 1, price: 12 }, { maxLb: 5, price: 16 }, { maxLb: 10, price: 22 }, { maxLb: 20, price: 32 }, { maxLb: 35, price: 48 }, { maxLb: 50, price: 65 }],
+    tableSpec: { kind: "rows", sortBy: "maxLb", minRows: 1, maxRows: 20, columns: [{ key: "maxLb", label: "Packed weight up to", unit: "lb", type: "number", min: 0.1, max: 2000 }, { key: "price", label: "Shipping charge", type: "currency", min: 0, max: 5000 }] } },
+  pct("shippingPackagingPercent", "checkout", "Packaging allowance, share of part weight", "Added to the weight of the parts for the box and the padding: 0.10 means 10% more. Used by the rate table and the parcel weight limit.", 0.10, 0, 2),
+  num("shippingPackagingLb", "checkout", "Packaging allowance, per order", "Pounds added to every order for the carton itself, on top of the percentage above.", "lb", 1, 0, 100),
+  num("shippingOversizeLongestIn", "checkout", "Longest side we ship by parcel", "A part longer than this on its longest side is not given a parcel price: the order goes to a firm quote so freight is confirmed by a person. Applies to the rate table and to shipping included in the price. UPS and FedEx add handling charges past 48 inches.", "in", 48, 6, 240),
+  num("shippingMaxParcelLb", "checkout", "Heaviest order we ship by parcel", "A packed order heavier than this is not given a parcel price: it goes to a firm quote so freight is confirmed by a person. Applies to the rate table and to shipping included in the price. UPS and FedEx add handling charges past 50 pounds.", "lb", 50, 1, 2000),
+  money("shippingFreeOverSubtotal", "checkout", "Free shipping over", "When the parts on an order come to this much or more, the shipping line is zero and reads free shipping. 0 switches it off. Does not apply to oversize or overweight orders.", "$", 0, 0, 1000000),
+  toggle("shippingCarrierAccount", "checkout", "Let buyers ship on their own carrier account", "Adds a choice at checkout: the buyer names the carrier and gives the account number, and pays no shipping line. The number is stored encrypted and shown in full only on the order in admin.", { off: "Off (as today)", on: "On" }),
+  toggle("shippingLocalPickup", "checkout", "Let buyers pick up at the shop", "Adds a choice at checkout: pick up at the shop, no shipping line. The street address is given to the buyer only after payment, in the order confirmation.", { off: "Off (as today)", on: "On" }),
+  choice("taxMode", "checkout", "Sales tax at checkout", "Off is how the site runs today: no tax is added and none is mentioned. Stripe Tax asks Stripe to work out and add sales tax on card payments. Before you switch it on: register with the Illinois Department of Revenue, switch Tax on in your Stripe dashboard, check the head office address there and add your Illinois registration. With no registration in Stripe the tax comes out as zero.",
+    [
+      { value: "off", label: "Off (as today)", help: "No tax line. Orders are charged the quoted total." },
+      { value: "stripe", label: "Stripe Tax, automatic", help: "Stripe adds tax on its payment page for places where you are registered." },
+    ], "off"),
+  text("taxProductCode", "checkout", "Stripe product tax code for parts", "Leave empty to use the preset product tax code in your Stripe tax settings. To pin one, paste the code from Stripe's list exactly, for example txcd_99999999 (General - Tangible Goods). Your accountant decides which code fits.", "", "^(txcd_[0-9]{8})?$", 13),
+  choice("taxShipping", "checkout", "Tax on the shipping line", "Used only with Stripe Tax and only when an order has its own shipping line. Whether a shipping charge is taxable in Illinois depends on how it is offered (ask your accountant; the brief has the rule).",
+    [
+      { value: "goods", label: "Tax shipping like the parts", help: "The shipping line carries the same product tax code as the parts." },
+      { value: "nontaxable", label: "Do not tax shipping", help: "The shipping line is sent to Stripe as nontaxable (txcd_00000000)." },
+    ], "goods"),
+  toggle("taxIdCollection", "checkout", "Ask for a business tax ID on Stripe's page", "Stripe shows a tax ID field where it supports one (VAT and GST numbers abroad; it does not collect a United States number). Used only with Stripe Tax."),
+  toggle("taxExemptDeclare", "checkout", "Let buyers declare a tax exemption", "Adds a box at checkout, with Stripe Tax on: the buyer says the order is exempt (resale, manufacturing machinery, exempt organisation) and uploads the certificate. You see the declaration and the certificate on the order."),
+  toggle("taxTrustDeclaredExemptions", "checkout", "Trust declared exemptions", "Off: an order with a declared exemption is still charged tax, and you refund the tax in Stripe once you have read the certificate. On: an order with a declaration and an uploaded certificate is charged with no tax. You are the one who answers for a certificate that turns out to be no good.", { off: "Off: charge tax, refund after review", on: "On: no tax when a certificate is uploaded" }),
+
   // ─── Sheet metal (inactive process) ───────────────────────────────────────
   money("laserCutRatePerMm", "sheetmetal", "Laser cut rate", "Dollars per millimetre of laser cut at 1 mm thickness.", "$/mm", 0.0035, 0, 10),
   num("laserThicknessExponent", "sheetmetal", "Laser thickness exponent", "How fast cut cost grows with thickness.", "", 1.6, 0, 5),
@@ -249,6 +295,22 @@ function defaultRules() {
 const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), hi);
 
 /**
+ * A named setting (choice) or a short string (text). Nothing is clamped or guessed: a value that is
+ * not one of the options, or does not match the pattern, is refused (mergeRules then keeps the default).
+ */
+function sanitizeSetting(rule, raw) {
+  const name = rule.label || rule.key;
+  if (rule.type === "choice") {
+    if (typeof raw !== "string" || !rule.options.some((o) => o.value === raw)) return { ok: false, error: `${name} must be one of: ${rule.options.map((o) => o.label).join(", ")}` };
+    return { ok: true, value: raw };
+  }
+  if (typeof raw !== "string") return { ok: false, error: `${name} must be text` };
+  const value = raw.trim();
+  if (value.length > (rule.maxLength || 40) || !new RegExp(rule.pattern || "^.*$").test(value)) return { ok: false, error: `${name} is not in the expected form` };
+  return { ok: true, value };
+}
+
+/**
  * Validate and clamp one value against its rule. Returns { ok, value, error }.
  * Scalars: finite number clamped to [min, max]. Map tables: every known key
  * clamped, unknown keys dropped, missing keys filled from the default. Row
@@ -256,6 +318,7 @@ const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), hi);
  */
 function sanitizeValue(rule, raw) {
   if (!rule) return { ok: false, error: "unknown rule" };
+  if (rule.type === "choice" || rule.type === "text") return sanitizeSetting(rule, raw);
   if (rule.type !== "table") {
     const n = Number(raw);
     if (!Number.isFinite(n)) return { ok: false, error: `${rule.key} must be a number` };
@@ -292,7 +355,8 @@ function sanitizeValue(rule, raw) {
       }
       value.push(clean);
     }
-    if (rule.key === "volumeDiscounts") value.sort((a, b) => a.minQty - b.minQty);
+    const sortKey = spec.sortBy || (rule.key === "volumeDiscounts" ? "minQty" : null);
+    if (sortKey) value.sort((a, b) => a[sortKey] - b[sortKey]);
     return { ok: true, value };
   }
   return { ok: false, error: `${rule.key} has no table spec` };
@@ -354,6 +418,8 @@ const SIMPLE_KEYS = new Set([
   "paperworkFeePerPart", "paperworkFeePerOrder",
   "cncSetupMinutesFirst", "routerSetupMinutes", "fdmMachineRatePerHour",
   "rfqQuantityThreshold", "bigTicketLineTotal",
+  "shippingMethod", "shippingFreeOverSubtotal", "shippingCarrierAccount", "shippingLocalPickup",
+  "taxMode", "taxExemptDeclare", "taxTrustDeclaredExemptions",
 ]);
 
 // role: "rate" = time per unit of work (inverse: higher rate → less time);
@@ -407,6 +473,8 @@ function adaptDescriptor(r) {
       d.shape = "rows";
       d.columns = (spec.columns || []).map((c) => ({ ...c, label: c.label || c.key }));
       if (spec.sortBy) d.sortBy = spec.sortBy;
+      if (spec.minRows) d.minRows = spec.minRows;
+      if (spec.maxRows) d.maxRows = spec.maxRows;
       if (r.key === "volumeDiscounts") { d.sortBy = d.sortBy || "minQty"; d.minRows = 1; d.maxRows = 20; }
     }
   }
@@ -505,7 +573,9 @@ function validateRules(candidate, { partial = true } = {}) {
       if (!partial) errors.push({ key: desc.key, message: `${desc.label} is missing` });
       continue;
     }
-    const r = desc.type === "table" ? validateTable(desc, candidate[desc.key]) : validateScalar(desc, candidate[desc.key]);
+    const r = desc.type === "table" ? validateTable(desc, candidate[desc.key])
+      : desc.type === "choice" || desc.type === "text" ? sanitizeSetting(desc, candidate[desc.key])
+        : validateScalar(desc, candidate[desc.key]);
     if (!r.ok) errors.push({ key: desc.key, message: r.error });
     else values[desc.key] = r.value;
   }

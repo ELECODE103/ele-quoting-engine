@@ -38,6 +38,9 @@ const INVENTORY = {
   "GET /api/quote/:id/session": "open",
   "POST /api/quote/:id/drawing": "open",
   "DELETE /api/quote/:id/drawing": "open",
+  // A tax-exemption certificate on a quote: same rule as its drawing (the quote's id, and its owner when it has one). taxShipping.test.js
+  "POST /api/quote/:id/tax-certificate": "open",
+  "DELETE /api/quote/:id/tax-certificate": "open",
   "GET /api/processes": "open",
   "GET /api/materials": "open",
   "GET /api/finishes": "open",
@@ -54,6 +57,7 @@ const INVENTORY = {
   "GET /api/admin/pricing": "admin",
   "PUT /api/admin/pricing": "admin",
   "POST /api/admin/pricing/preview": "admin",
+  "POST /api/admin/shipping/preview": "admin",
   "GET /api/admin/pricing/history": "admin",
   "POST /api/admin/pricing/restore/:id": "admin",
   "POST /api/admin/pricing/reset": "admin",
@@ -109,6 +113,7 @@ const INVENTORY = {
   "POST /api/orders/:id/reorder": "auth",
   "GET /api/orders/:id/drawing": "auth",
   "GET /api/orders/:id/traveler": "admin",
+  "GET /api/orders/:id/tax-certificate": "admin", // the buyer's exemption certificate: the shop only
   "GET /api/orders/admin/queue": "admin",
   // routes/rfq.js
   "POST /api/rfq/": "open", // bot-checked: botCheck.test.js
@@ -119,6 +124,9 @@ const INVENTORY = {
   "POST /api/rfq/quote/:token/accept": "open",
   "POST /api/rfq/quote/:token/confirm-payment": "open",
   "POST /api/rfq/return/confirm": "open", // needs a return token for that one order: orderLifecycle.test.js
+  // The signed link is the credential, as for accepting; only an open quote can be changed. taxShipping.test.js
+  "POST /api/rfq/quote/:token/tax-certificate": "open",
+  "DELETE /api/rfq/quote/:token/tax-certificate": "open",
   "GET /api/rfq/:id": "open",
   // routes/pdf.js
   "GET /api/pdf/traveler/:orderId": "admin",

@@ -224,6 +224,7 @@ const NOT_REFUSALS = {
   // why a quote goes to a person (gate.reasons[].code): worded by the server with its numbers; see gateReason
   quantity: 'gate reason', 'big-ticket': 'gate reason', 'dfm-fail': 'gate reason', envelope: 'gate reason', 'turning-review': 'gate reason',
   'complex-geometry': 'gate reason', 'legacy-features': 'gate reason', 'thin-wall': 'gate reason',
+  'shipping-freight': 'gate reason (the order has no parcel price: worded by the server with the weight or size)',
   'order-quantity': 'gate reason (catalogue: gateReason)', 'big-ticket-order': 'gate reason (catalogue: gateReason)', 'stock-thinner-than-model': 'gate reason (catalogue: gateReason)',
   // Stripe webhook answers and the admin's payment flags: never shown to a buyer
   'no-order-id': 'webhook answer', 'late-payment': 'payment flag (admin)', 'payment-mismatch': 'payment flag (admin)', 'zero-payment': 'payment flag (admin)',

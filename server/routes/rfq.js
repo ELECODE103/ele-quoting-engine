@@ -28,7 +28,12 @@
  *                                          Marking it "quoted" emails the customer the firm
  *                                          quote with a signed accept link.
  *   GET  /api/rfq/quote/:token             customer: the firm quote behind an emailed link
- *   POST /api/rfq/quote/:token/accept      customer: accept → card checkout, or PO number
+ *   POST /api/rfq/quote/:token/accept      customer: accept → card checkout, or PO number.
+ *                                          shippingOption ("ship" | "carrier-account" | "pickup") is honoured
+ *                                          only when the admin has switched that choice on; the quoted
+ *                                          total never changes with it. A purchase order's tax is per invoice.
+ *   POST|DELETE /api/rfq/quote/:token/tax-certificate   customer: attach / remove an exemption certificate
+ *                                          before accepting (same guards as a drawing)
  *   POST /api/rfq/quote/:token/confirm-payment   customer: settle on return from Stripe
  *   POST /api/rfq/return/confirm           the page Stripe sends a firm-quote buyer back to: "has this
  *                                          order been paid?" for one order, by a short-lived return token.
@@ -56,6 +61,9 @@ const turnstile = require("../security/turnstile");
 const { singleLine, singleLines, poNumber: checkPoNumber, SHIPPING_RULES } = require("../middleware/singleLine");
 const returnToken = require("../services/returnToken");
 const lifecycle = require("../services/orderLifecycle");
+const checkout = require("../services/checkout");           // delivery choices and tax settings
+const shippingService = require("../services/shipping");
+const taxCertificates = require("../services/taxCertificates");
 // Where a buyer ships a worn part. Server-side only: it is given out after a
 // request is sent by someone who passed the bot check (response + email),
 // never on a public page and never to an unverified sender.
@@ -397,7 +405,7 @@ function stampSentTerms(rfq) {
 
 /** What the admin queue shows: the RFQ, its live accept link while open, and its order once accepted. */
 function adminView(rfq, base) {
-  const { drawingPath, ...safe } = rfq;
+  const { drawingPath, taxCertPath, ...safe } = rfq;
   const order = rfq.orderId ? ordersDB.getById(rfq.orderId) : null;
   return {
     ...safe,
@@ -572,10 +580,15 @@ function customerView(rfq, claim) {
     acceptedAt: rfq.acceptedAt || null,
     acceptedVia: rfq.acceptedVia || null,
     poNumber: rfq.poNumber || "",
+    // While the quote is open: the delivery choices the shop offers and what it says about tax.
+    checkout: rfq.status === "quoted" ? checkout.firmView() : null,
+    taxCertFileName: rfq.taxCertFileName || "",
     order: order ? {
       reference: templates.shortId(order.id),
       status: order.status,
       total: order.total,
+      // How it is delivered (carrier account masked), the tax line, and for a paid pickup order the address.
+      ...(({ shippingMethod, deliveryLine, taxLine, pickupAddress, tax, taxExempt, taxExemptStatus }) => ({ shippingMethod: shippingMethod || "standard", deliveryLine, taxLine, pickupAddress: pickupAddress || null, tax: tax || 0, taxExempt: Boolean(taxExempt), taxExemptStatus: taxExemptStatus || "" }))(checkout.orderView(order)),
       shipBy: order.shipBy || null,
       carrier: order.carrier || "",
       trackingNumber: order.trackingNumber || "",
@@ -659,6 +672,7 @@ router.post("/quote/:token/accept", async (req, res) => {
           return res.json({ status: "accepted", method, sessionUrl: session.url, order: reference, repeat: true });
         } catch (err) {
           if (err.code === "order-not-payable") return res.status(409).json({ error: "This quote has already been accepted", code: "already-accepted" });
+          if (err.code === "tax-address") return res.status(400).json({ error: err.message, code: "tax-address" });
           console.error("RFQ accept: checkout session failed:", err.code || err.message);
           return res.status(502).json({ error: `We couldn't start the card payment. Try again, or call ${brand.phone}.`, code: err.code === "payment-session-busy" ? err.code : "card-unavailable" });
         }
@@ -686,8 +700,13 @@ router.post("/quote/:token/accept", async (req, res) => {
     // Ship-to and PO number: one printable line each, refused (not rewritten) when they are not.
     const ship = singleLines({ ...b, shippingCountry: b.shippingCountry || "US" }, SHIPPING_RULES);
     if (!ship.ok) return res.status(400).json({ error: ship.error, code: ship.code, field: ship.field });
-    const shipping = { ...ship.values, shippingCountry: sanitizeString(ship.values.shippingCountry || "US", 5) };
-    if (!shipping.shippingName || !shipping.shippingAddress || !shipping.shippingCity || !shipping.shippingState || !shipping.shippingZip) {
+    // How the order is delivered, and whether an exemption is declared (services/checkout.js). A choice
+    // is honoured only if the admin has switched it on; the quoted total is the total whatever is chosen.
+    // The ship-to fields it reads are the ones checked just above.
+    const firm = checkout.resolveFirm({ ...b, ...ship.values }, { certificate: rfq.taxCertPath ? { fileName: rfq.taxCertFileName || "certificate", path: rfq.taxCertPath } : null });
+    if (!firm.ok) return res.status(firm.status).json({ error: firm.error, code: firm.code });
+    const shipping = firm.address;
+    if (firm.method !== "pickup" && (!shipping.shippingName || !shipping.shippingAddress || !shipping.shippingCity || !shipping.shippingState || !shipping.shippingZip)) {
       return res.status(400).json({ error: "Add the full ship-to address", code: "address-required" });
     }
     let poNumber = "";
@@ -700,13 +719,13 @@ router.post("/quote/:token/accept", async (req, res) => {
 
     // ── The claim. Everything from here to the end of this block is synchronous. ──
     const days = rfq.quotedLeadDays;
-    const order = ordersDB.insert({
+    let order = ordersDB.insert({
       userId: rfq.userId || null,
       quoteId: rfq.quoteId || null,
       rfqId: rfq.id,
       status: method === "po" ? "pending_po" : "pending_payment",
-      ...shipping,
-      shippingMethod: "standard",
+      // Ship-to, delivery choice ("standard" = we ship it), carrier account (masked), tax mode, exemption.
+      ...checkout.orderFields(firm),
       shippingCost: 0,
       subtotal: total,
       // Asked for on the request and priced into the firm quote: flagged on the order so the
@@ -729,6 +748,8 @@ router.post("/quote/:token/accept", async (req, res) => {
       drawingFileName: rfq.drawingFileName || "",
       drawingPath: rfq.drawingPath || "",
     });
+    // The carrier account number is sealed to this order's id, so it is stored once the id exists.
+    if (firm.carrier) order = ordersDB.update(order.id, { shipAccountEnc: shippingService.sealAccount(firm.carrier.account, order.id) });
     const items = orderItemsFor(rfq).map((it) => orderItemsDB.insert({ orderId: order.id, ...it }));
     const accepted = rfqsDB.update(rfq.id, {
       status: "accepted",
@@ -753,6 +774,8 @@ router.post("/quote/:token/accept", async (req, res) => {
           ordersDB.delete(order.id);
           rfqsDB.update(rfq.id, { status: "quoted", acceptedAt: null, acceptedVia: null, poNumber: "", orderId: null });
         }
+        // Stripe could not place the address for sales tax: the buyer corrects it and accepts again.
+        if (err.code === "tax-address") return res.status(400).json({ error: err.message, code: "tax-address" });
         console.error("RFQ accept: checkout session failed:", err.code || err.message);
         return res.status(502).json({ error: `We couldn't start the card payment. Try again, or call ${brand.phone}.`, code: err.code === "payment-session-busy" ? err.code : "card-unavailable" });
       }
@@ -772,6 +795,30 @@ router.post("/quote/:token/accept", async (req, res) => {
     console.error("RFQ accept error:", err.message);
     res.status(500).json({ error: `Something went wrong on our side. Call ${brand.phone} and we'll take the order by phone.` });
   }
+});
+
+// A tax-exemption certificate, attached on the quote page before the quote is accepted.
+// The link is the credential (as for accepting); only an open quote can be changed.
+function openQuoteFromToken(req, res, next) {
+  const rfq = rfqFromToken(req, res);
+  if (!rfq) return;
+  if (rfq.status !== "quoted") return res.status(409).json({ error: "This quote can no longer be changed", code: "not-open" });
+  req.rfq = rfq;
+  next();
+}
+router.post("/quote/:token/tax-certificate", openQuoteFromToken, taxCertificates.admit(), async (req, res) => {
+  const stored = await taxCertificates.receive(req, res);
+  if (!stored) return;
+  const previous = req.rfq.taxCertPath;
+  const updated = rfqsDB.update(req.rfq.id, { taxCertFileName: stored.fileName, taxCertPath: stored.path });
+  await taxCertificates.discardIfUnused(previous, require("../models"), { rfqId: req.rfq.id });
+  res.json({ taxCertFileName: updated.taxCertFileName });
+});
+router.delete("/quote/:token/tax-certificate", openQuoteFromToken, async (req, res) => {
+  const previous = req.rfq.taxCertPath;
+  rfqsDB.update(req.rfq.id, { taxCertFileName: "", taxCertPath: "" });
+  await taxCertificates.discardIfUnused(previous, require("../models"), { rfqId: req.rfq.id });
+  res.json({ taxCertFileName: "" });
 });
 
 router.post("/quote/:token/confirm-payment", async (req, res) => {
@@ -831,7 +878,7 @@ router.get("/:id", optionalAuth, (req, res) => {
   const admin = req.user && req.user.role === "admin";
   const owner = req.user && rfq.userId && req.user.userId === rfq.userId;
   if (admin || owner) {
-    const { drawingPath, senderCheck, buyerEmailed, ...safe } = rfq;
+    const { drawingPath, taxCertPath, senderCheck, buyerEmailed, ...safe } = rfq;
     return res.json(admin ? { ...safe, senderCheck, buyerEmailed } : safe);
   }
   if (rfq.userId) return res.status(404).json({ error: "RFQ not found" });

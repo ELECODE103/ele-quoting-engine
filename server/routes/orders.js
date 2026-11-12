@@ -21,6 +21,8 @@ const pricingMemo = require("../services/pricingMemo");   // the site's one pric
 const lifecycle = require("../services/orderLifecycle"); // what happens after a Stripe session exists
 const orderState = require("../services/orderState");
 const { singleLine, singleLines, SHIPPING_RULES } = require("../middleware/singleLine");
+const checkout = require("../services/checkout");   // delivery choices, totals and tax settings for a quote
+const shippingService = require("../services/shipping");
 
 const QUOTE_VALID_DAYS = 30; // same hold as routes/api.js
 
@@ -39,26 +41,17 @@ function requireConfirmedEmail(req, res, next) {
   });
 }
 
-/** Shipping fields from a request body, sanitized. */
-function shippingFields(body = {}) {
-  return {
-    shippingName: sanitizeString(body.shippingName || "", 200),
-    shippingAddress: sanitizeString(body.shippingAddress || "", 500),
-    shippingCity: sanitizeString(body.shippingCity || "", 100),
-    shippingState: sanitizeString(body.shippingState || "", 100),
-    shippingZip: sanitizeString(body.shippingZip || "", 20),
-    shippingCountry: sanitizeString(body.shippingCountry || "US", 5),
-  };
-}
-
 /**
  * An order as its customer (or an admin) may see it. Internal notes and server paths stay out of
  * customer responses, and so does why an order is flagged: the customer sees what was paid, any
  * discount, anything refunded, and whether a payment is being checked by hand; the reason, the
  * dispute state and the owner's own note on a manual payment are the shop's.
+ * Delivery and tax fields: no sealed value and no server path leave here; the full carrier
+ * account number is opened only for the admin's view of one order (`account`).
  */
-function orderView(order, { admin = false } = {}) {
-  const { drawingPath, notes, attention, attentionNote, attentionAt, manualPaidReason, manualPaidBy, disputeStatus, disputeAt, ...safe } = order;
+function orderView(order, { admin = false, account = false } = {}) {
+  const { drawingPath, notes, attention, attentionNote, attentionAt, manualPaidReason, manualPaidBy, disputeStatus, disputeAt, ...safe } = checkout.orderView(order, { admin: admin && account });
+  if (admin && !account) safe.taxExemptionLine = require("../services/tax").exemptionLine(order);
   const payment = lifecycle.paymentView(order);
   return {
     ...safe,
@@ -129,7 +122,9 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
     // every order except one that lapsed unpaid ("expired" — its quote was given back when it lapsed).
     // A cancelled order keeps its quote: the owner can still mark a cancelled order paid.
     const taken = ordersDB.query((o) => o.quoteId === quoteId && orderState.holdsQuote(o));
-    const resumable = taken.find((o) => o.userId === req.user.userId && o.status === "pending_payment" && !o.rfqId && Math.abs((o.total || 0) - Number(quote.orderTotal)) < 0.005);
+    // (Its total is not compared with the quote's here: the delivery choice may differ, or change on the
+    // way back from the card page. Its amounts are brought up to date below, from this same check.)
+    const resumable = taken.find((o) => o.userId === req.user.userId && o.status === "pending_payment" && !o.rfqId);
     if (taken.length > 0 && !resumable) {
       const mine = taken.find((o) => o.userId === req.user.userId);
       return res.status(409).json({
@@ -197,11 +192,29 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
       res.set("Retry-After", String(spent.retryAfterSeconds));
       return res.status(spent.status).json(spent.body);
     }
+    // How the order is delivered and what that comes to (services/checkout.js). The request says
+    // which choice (and, for the buyer's own carrier, the account); no amount is read from it.
+    // Shipping is worked out here, now, from the lines as they have just been priced again under the
+    // settings in force: the shipping figure stored on the quote is never the charge. The parts are
+    // charged at the quote's own subtotal (today's price, or the held one), so that is the subtotal a
+    // "free over" threshold is judged on. A choice that is switched off is refused.
+    let resolved = null;
+    const resolveDelivery = (current, priced) => checkout.resolve(current, req.body, {
+      certificate: current.taxCertPath ? { fileName: current.taxCertFileName || "certificate", path: current.taxCertPath } : null,
+      // (`parts`: the records those lines were just priced from, so they are not read a second time.)
+      priced: { lineItems: priced.quote.lineItems, subtotal: current.subtotal, parts: priced.parts },
+    });
     const pricingStarted = Date.now();
-    const checked = require("./api").verifyQuoteForOrder(quote, req.user, { confirmedTotal: req.body.confirmedTotal });
+    const checked = require("./api").verifyQuoteForOrder(quote, req.user, {
+      confirmedTotal: req.body.confirmedTotal,
+      // The total the buyer's page was showing is the total for the delivery choice they made.
+      totalShown: (current, priced) => { resolved = resolveDelivery(current, priced); return resolved.ok ? resolved.total : null; },
+    });
     pricingGate.charge(req, Date.now() - pricingStarted);
     if (!checked.ok) return res.status(checked.status).json(resumable ? { ...checked.body, reopen: true, orderId: resumable.id } : checked.body);
     quote = checked.quote;
+    if (!resolved) resolved = resolveDelivery(quote, checked.priced);
+    if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error, code: resolved.code });
 
     // An order is never taken (or paid for) for a part whose file the shop no longer has. Retention keeps
     // the files of a quote that can still be ordered, so this should not fire; it is the check that it did.
@@ -210,7 +223,9 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
 
     const leadDays = leadTime ? shipBy.leadDays(leadTime) : null;
     const account = usersDB.getById(req.user.userId);
-    const shipping = shippingFields(req.body);
+    const shipping = resolved.address;
+    const delivery = checkout.orderFields(resolved);
+    const sealed = (orderId) => (resolved.carrier ? { shipAccountEnc: shippingService.sealAccount(resolved.carrier.account, orderId) } : {});
 
     const baseUrl = orderEvents.baseUrl(req);
     const stripeUrls = (orderId) => ({
@@ -225,50 +240,58 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
 
     // Back from a cancelled or abandoned Stripe page: pay for the same order
     // (with the address as now entered) instead of stacking a second one.
-    const pending = ordersDB.query((o) => o.quoteId === quoteId && o.userId === req.user.userId && o.status === "pending_payment" && !o.rfqId)[0];
-    if (pending && Math.abs((pending.total || 0) - orderTotal) < 0.005) {
-      const reused = ordersDB.update(pending.id, { ...shipping, shipBy: leadDays !== null ? shipBy.shipByDate(leadDays) : pending.shipBy });
+    // The delivery choice may have changed on the way back too (ship → pickup, say): the same order
+    // is brought up to date, amounts included, never left behind for a second one.
+    // Only while it is still waiting: it is read again here, in the same step as the write.
+    const pending = resumable ? ordersDB.getById(resumable.id) : null;
+    if (resumable && (!pending || pending.status !== "pending_payment")) {
+      return res.status(409).json({ error: "This order is not waiting for a card payment.", code: "order-not-payable", orderId: resumable.id });
+    }
+    if (pending) {
+      const reused = ordersDB.update(pending.id, {
+        ...delivery, ...sealed(pending.id),
+        shippingCost: resolved.shippingCost, leadTimeSurcharge: resolved.leadTimeSurcharge, subtotal: resolved.subtotal,
+        tax: 0, total: resolved.total,
+        shipBy: leadDays !== null ? shipBy.shipByDate(leadDays) : pending.shipBy,
+      });
       const items = orderItemsDB.query((i) => i.orderId === reused.id);
       // The session this order already has, while it is still open for the same amount; a new one only when it is not.
       const again = await checkoutGuard.sessionFor(reused, { itemCount: items.length, description: describe(items), ...stripeUrls(reused.id) });
       return res.json({ sessionUrl: again.paid ? stripeUrls(reused.id).successUrl : again.session.url, orderId: reused.id });
     }
 
-    // What the total is made of, so the order page, emails and documents can show it.
-    // Each in whole cents, as the customer saw them on the quote.
-    const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
-    const partsSubtotal = cents(quote.subtotal);
-    const leadTimeSurcharge = Math.max(0, cents(quote.leadTimeSurcharge));
-    const shippingCost = Math.max(0, cents(quote.shippingEstimate));
+    // What the total is made of, so the order page, emails and documents can show it: each in
+    // whole cents, as the customer saw them on the quote, with the shipping of the delivery choice
+    // (services/checkout.js: shipping as worked out above when we ship; none on the buyer's
+    // carrier account or for a pickup).
     // Inspection paperwork (first-article report + certificate of conformance) rides on the
     // stored quote, which the server priced: the request body cannot switch it on or change
     // the fee. A quote saved before the option existed has neither column and reads as "no".
-    const paperwork = Boolean(quote.paperwork);
-    const paperworkFee = paperwork ? Math.max(0, Number(quote.paperworkFee) || 0) : 0;
+    const paperwork = resolved.paperwork;
+    const paperworkFee = resolved.paperworkFee;
     if (paperworkFee > orderTotal + 0.005) {
       return res.status(409).json({ error: "This quote's total does not add up. Reopen the quote to get today's price.", code: "quote-inconsistent" });
     }
-    // (0.02: a quote priced before amounts were settled to the cent can sit a cent or so off its rounded parts.)
-    const itemized = partsSubtotal > 0 && Math.abs(partsSubtotal + leadTimeSurcharge + shippingCost + paperworkFee - orderTotal) < 0.02;
 
     // Create the order with pending_payment status
-    const order = ordersDB.insert({
+    let order = ordersDB.insert({
       userId: req.user.userId,
       quoteId,
       status: "pending_payment",
-      ...shipping,
-      shippingMethod: "standard",
+      // Ship-to, delivery choice ("standard" = we ship it), carrier account (masked), tax mode, exemption.
+      ...delivery,
       // When the parts, the lead-time fee and shipping add up to the total they are
       // stored separately; otherwise (order minimum applied, older quote) one line.
       // The paperwork fee is its own line either way, so subtotal + lead-time fee +
-      // paperwork + shipping always equals the total.
-      shippingCost: itemized ? shippingCost : 0,
-      leadTimeSurcharge: itemized ? leadTimeSurcharge : 0,
-      subtotal: itemized ? partsSubtotal : Math.round((orderTotal - paperworkFee) * 100) / 100,
+      // paperwork + shipping always equals the total (sales tax, when Stripe adds it, joins
+      // both sides once the payment reports it).
+      shippingCost: resolved.shippingCost,
+      leadTimeSurcharge: resolved.leadTimeSurcharge,
+      subtotal: resolved.subtotal,
       paperwork,
       paperworkFee,
       tax: 0,
-      total: orderTotal,
+      total: resolved.total,
       notes: "",
       paymentMethod: "card",
       customerEmail: account?.email || req.user.email || "",
@@ -282,6 +305,8 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
       drawingFileName: quote.drawingFileName || "",
       drawingPath: quote.drawingPath || "",
     });
+    // The carrier account number is sealed to this order's id, so it is stored once the id exists.
+    if (resolved.carrier) order = ordersDB.update(order.id, sealed(order.id));
 
     // Create order items from quote line items
     const lineItems = quote.lineItems || [];
@@ -511,7 +536,8 @@ router.get("/:id", authenticate, (req, res) => {
     });
     const admin = req.user.role === "admin";
     res.json({
-      ...orderView(order, { admin }),
+      // The one place the admin sees a buyer's full carrier account number.
+      ...orderView(order, { admin, account: true }),
       items: enrichedItems,
       // The money history of the order (payments, refunds, disputes, manual changes), for the shop.
       ...(admin ? { paymentEvents: lifecycle.eventsFor(order.id).filter((e) => e.kind !== "event").map((e) => ({ kind: e.kind, at: e.createdAt, amount: Number.isInteger(e.amountCents) ? e.amountCents / 100 : null, detail: e.detail || "" })) } : {}),
@@ -740,6 +766,15 @@ router.get("/:id/drawing", authenticate, (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// GET /api/orders/:id/tax-certificate — the exemption certificate the buyer attached (admin only)
+// ═══════════════════════════════════════════════════════════════
+router.get("/:id/tax-certificate", authenticate, requireAdmin, (req, res) => {
+  const order = ordersDB.getById(req.params.id);
+  if (!order || !order.taxCertPath || !fs.existsSync(order.taxCertPath)) return res.status(404).json({ error: "No certificate on this order", code: "no-certificate" });
+  require("../services/fileCrypto").sendDownload(res, order.taxCertPath, order.taxCertFileName); // decrypts when stored encrypted; always an attachment
+});
+
+// ═══════════════════════════════════════════════════════════════
 // GET /api/orders/:id/traveler — Generate job traveler data
 // ═══════════════════════════════════════════════════════════════
 // Admin only, checked before the lookup so the answer does not say whether an order id exists.
@@ -771,6 +806,11 @@ router.get("/:id/traveler", authenticate, requireAdmin, (req, res) => {
         createdAt: order.createdAt,
         shippingName: order.shippingName,
         total: order.total,
+        // How it leaves the shop: pickup, or the buyer's carrier and account (last four only).
+        shippingMethod: order.shippingMethod || "standard",
+        deliveryLine: shippingService.methodLine(order),
+        packedWeightLb: order.packedWeightLb || null,
+        returnPart: Boolean(order.returnPart),
       },
       items: enrichedItems,
     });
@@ -815,8 +855,9 @@ router.get("/admin/queue", authenticate, requireAdmin, (req, res) => {
     // Enrich with items
     const result = orders.map((order) => {
       const items = orderItemsDB.query((i) => i.orderId === order.id);
+      const { shipAccountEnc, taxCertPath, ...row } = order; // the sealed account number and the certificate's path stay on the server
       return {
-        ...order,
+        ...row,
         items: items.map((item) => ({
           fileName: item.fileName,
           process: item.process,

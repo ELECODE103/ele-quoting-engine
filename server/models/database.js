@@ -355,6 +355,8 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
     require("./orderLifecycleMigration").apply(dbInstance);
     // The admin change log: one table for both of the above (2026-11-12 merge). See ./auditMigration.js.
     require("./auditMigration").apply(dbInstance);
+    // Shipping method, carrier account, tax and exemption fields (2026-11-11). Additive; see ./taxShippingMigration.js.
+    require("./taxShippingMigration").apply(dbInstance);
 
     // Part payloads (2026-11-11): preview meshes and large geometry detail move out of the rows into
     // files under data/part-payloads. One batch in memory, VACUUM, then the single save below.

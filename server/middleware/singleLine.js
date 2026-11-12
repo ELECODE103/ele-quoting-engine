@@ -72,6 +72,9 @@ const SHIPPING_RULES = {
   shippingState: { label: "The state", max: 100 },
   shippingZip: { label: "The ZIP code", max: 20 },
   shippingCountry: { label: "The country", max: 60 }, // typed freely on the checkout page; the routes keep their own short form of it
+  // "Ship on my carrier account": the service level is free text and is printed on the traveler.
+  // (The carrier is one of a list and the account number is letters and digits: services/shipping.js.)
+  carrierService: { label: "The carrier service", max: 60 },
 };
 
 /** One-line text for a place that prints stored data as it is (rows written before these checks existed). */

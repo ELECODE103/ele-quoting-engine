@@ -116,8 +116,8 @@ function partFilesPresent(partIds, opt = {}) {
 }
 
 /**
- * File names (basenames) of every drawing a quote, an order or a firm-quote
- * request still points at. Anything else in data/quote-drawings and
+ * File names (basenames) of every drawing, and every tax-exemption certificate,
+ * a quote, an order or a firm-quote request still points at. Anything else in data/quote-drawings and
  * data/rfq-drawings is an orphan: an attachment whose request was refused
  * after the file was written, a drawing the buyer replaced or removed, or the
  * drawing of a draft quote that lapsed and was deleted.
@@ -125,7 +125,11 @@ function partFilesPresent(partIds, opt = {}) {
 function referencedDrawings({ quotesDB, ordersDB, rfqsDB }) {
   const names = new Set();
   for (const db of [quotesDB, ordersDB, rfqsDB]) {
-    for (const row of db.getAll()) if (row.drawingPath) names.add(path.basename(row.drawingPath));
+    for (const row of db.getAll()) {
+      if (row.drawingPath) names.add(path.basename(row.drawingPath));
+      // A tax-exemption certificate is stored beside the drawings (services/taxCertificates.js) and is kept the same way.
+      if (row.taxCertPath) names.add(path.basename(row.taxCertPath));
+    }
   }
   return names;
 }

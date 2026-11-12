@@ -8,6 +8,7 @@
  *   h.sent      → emails captured: [{ to, subject, text, html, replyTo }]
  *   h.stripe    → { created: [...sessions.create args], sessions: { id: session }, expired: [ids], failNext, failExpire, delayMs }
  *   h.pay(id) / h.completed(id) / h.webhook(type, object) / h.sweep()   payments, Stripe events and the expiry sweep
+ *                   customers: [...customers.create args], taxRate (for sessions with automatic_tax), failCustomer
  *   await h.stop();
  *
  * Bot check: Cloudflare Turnstile is switched on with throwaway keys made at
@@ -100,9 +101,21 @@ async function start(opts = {}) {
   //   stripe.failNext  the next create throws              stripe.failExpire  the next expire throws (network)
   //   stripe.delayMs   every create waits this long first (stands in for the network; for race tests)
   //   stripe.charges   { id: charge } for charges.retrieve
-  const stripe = { created: [], sessions: {}, expired: [], charges: {}, failNext: false, failExpire: false, delayMs: 0, seq: 0 };
+  // Stripe Tax, as far as this code can tell: a session created with automatic_tax gets tax at
+  // stripe.taxRate (7% unless a test sets another) on every line that is not sent as nontaxable,
+  // and none for a Customer marked exempt. stripe.customers holds the Customers "created";
+  // stripe.failCustomer makes the next one fail the way Stripe refuses an address it cannot place.
+  const stripe = { created: [], sessions: {}, expired: [], charges: {}, failNext: false, failExpire: false, delayMs: 0, seq: 0, customers: [], taxRate: 0.07, failCustomer: false };
   const stripeError = (message, code, statusCode) => Object.assign(new Error(message), { code, statusCode });
   require("../services/stripeClient").setForTests({
+    customers: {
+      create: async (args) => {
+        if (stripe.failCustomer) { stripe.failCustomer = false; throw Object.assign(new Error("customer location invalid"), { code: "customer_tax_location_invalid" }); }
+        const customer = { id: `cus_test_${stripe.customers.length + 1}`, ...args };
+        stripe.customers.push(customer);
+        return customer;
+      },
+    },
     checkout: {
       sessions: {
         create: async (args) => {
@@ -117,6 +130,12 @@ async function start(opts = {}) {
             amount_total: amount, amount_subtotal: amount, total_details: { amount_discount: 0 }, metadata: args.metadata,
             payment_intent: null, expires_at: args.expires_at || null, success_url: args.success_url, cancel_url: args.cancel_url,
           };
+          if (args.automatic_tax && args.automatic_tax.enabled) {
+            const customer = stripe.customers.find((c) => c.id === args.customer);
+            const taxable = args.line_items.filter((li) => li.price_data.product_data.tax_code !== "txcd_00000000").reduce((sum, li) => sum + li.price_data.unit_amount * (li.quantity || 1), 0);
+            const tax = customer && customer.tax_exempt === "exempt" ? 0 : Math.round(taxable * stripe.taxRate);
+            Object.assign(stripe.sessions[id], { amount_total: amount + tax, customer: args.customer, total_details: { amount_tax: tax, amount_discount: 0, amount_shipping: 0 } });
+          }
           return stripe.sessions[id];
         },
         retrieve: async (id) => stripe.sessions[id],

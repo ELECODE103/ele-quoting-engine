@@ -41,6 +41,8 @@ const { clientKey } = require("../security/clientKey");
 const brand = require("../../shared/brand.json");
 
 const shopFacts = require("../shopFacts");
+const checkout = require("../services/checkout");           // shipping choices, totals and the tax note for a quote
+const taxCertificates = require("../services/taxCertificates");
 const { offeredLayerHeight } = require("../services/layerHeight"); // hides catalog options the owner has not confirmed
 const router = express.Router();
 
@@ -669,7 +671,9 @@ function priceQuote(partConfigs, leadTimeSlug = "standard", { paperwork = false,
   // Each line is judged on its own DFM result; quantities and totals are summed over the lines
   // of a part, over identical geometry, and over the order (services/quoteGate.js).
   const geometryKeys = parts.map((p) => geometryHashOf(p.geometry));
-  const gate = quoteIntegrity.withIntegrityReasons(quoteGate.evaluate(quote.lineItems, dfmByLine, rules, { geometryKeys }), lines, parts);
+  // An order that cannot be given a shipping price (oversize, overweight, weight unknown) and has
+  // no other way to be delivered goes to a firm quote too (services/checkout.js gateWithShipping).
+  const gate = quoteIntegrity.withIntegrityReasons(checkout.gateWithShipping(quoteGate.evaluate(quote.lineItems, dfmByLine, rules, { geometryKeys }), quote.shipping, rules), lines, parts);
   // For the page, which shows one DFM panel per part: when a part is on several lines, the
   // result of the line that needs the most attention (never the last one's by accident).
   const dfmByPartId = {};
@@ -823,13 +827,14 @@ function repriceStoredQuote(quote, user) {
  * The check in front of every order and every Stripe session made from an
  * instant quote: price the stored quote again and compare (quoteIntegrity.judgeCheckout).
  *
+ * @param {{confirmedTotal?: number, totalShown?: (quote, priced) => number|null}} [seen]
  * @returns {{ok: true, quote, priced, basis} | {ok: false, status: number, body: object}}
  *   ok: `quote` is the row to build the order from (refreshed when today's price is the stored
  *   price), `priced.integrity` is the snapshot to keep with the order.
  *   not ok: the refusal to send — `quote-changed` (with the quote at today's price, already
  *   saved for the buyer to confirm), `quote-needs-update`, `rfq-required`, `price-check-failed`.
  */
-function verifyQuoteForOrder(quote, user, { confirmedTotal } = {}) {
+function verifyQuoteForOrder(quote, user, { confirmedTotal, totalShown } = {}) {
   let priced;
   try {
     priced = repriceStoredQuote(quote, user);
@@ -845,14 +850,14 @@ function verifyQuoteForOrder(quote, user, { confirmedTotal } = {}) {
   if (verdict.action === "review") {
     return { ok: false, status: 409, body: { error: "This quote needs a firm quote from us before it can be ordered", code: "rfq-required", reasons: verdict.reasons } };
   }
-  const changed = (current, previousTotal) => ({
+  const changed = (current, previousTotal, newTotal = current.orderTotal) => ({
     ok: false,
     status: 409,
     body: {
       error: "The price of this quote has changed since it was last priced. Check the new total, then continue to payment.",
       code: "quote-changed",
       previousTotal,
-      newTotal: current.orderTotal,
+      newTotal,
       // A quote that is no longer a draft cannot be re-priced in place: the builder makes a new one from it.
       reopen: current.status !== "draft",
       quote: quoteView(current),
@@ -875,10 +880,14 @@ function verifyQuoteForOrder(quote, user, { confirmedTotal } = {}) {
   // The stored row is left as it is: its total is today's price (or a held one), and the checks the
   // order routes make on a stored quote still see exactly what was stored.
   const current = quote;
-  // The total the buyer's page was showing when they pressed pay, when the page says so.
+  // The total the buyer's page was showing when they pressed pay, when the page says so. That is
+  // the quote's total, or, where the caller works out a total for the delivery choice the buyer made
+  // (routes/orders.js, services/checkout.js), that one: `totalShown` answers it, or null when the
+  // choice itself is refused (the caller then says why).
   if (confirmedTotal !== undefined && confirmedTotal !== null) {
     const seen = Number(confirmedTotal);
-    if (!Number.isFinite(seen) || Math.abs(seen - Number(current.orderTotal)) > 0.01) return changed(current, Number.isFinite(seen) ? seen : null);
+    const shown = typeof totalShown === "function" ? totalShown(current, priced) : Number(current.orderTotal);
+    if (shown !== null && (!Number.isFinite(seen) || Math.abs(seen - Number(shown)) > 0.01)) return changed(current, Number.isFinite(seen) ? seen : null, Number(shown));
   }
   return { ok: true, quote: current, priced, basis: verdict.basis };
 }
@@ -926,7 +935,7 @@ router.post("/quote", optionalAuth, pricingGate.admit(), async (req, res) => {
     }
 
     const ctx = pricingGate.context(req);
-    const { saved, quote, gate, dfmByPartId, dfmByLine, leadTime } = await pricingMemo.run(() => saveQuote(req.body, req.user, ctx), pricingGate.job(req));
+    const { saved, quote, gate, dfmByPartId, dfmByLine, leadTime, parts: pricedParts } = await pricingMemo.run(() => saveQuote(req.body, req.user, ctx), pricingGate.job(req));
 
     res.json({
       quoteId: saved.id,
@@ -935,6 +944,9 @@ router.post("/quote", optionalAuth, pricingGate.admit(), async (req, res) => {
       expiresAt: saved.expiresAt,
       notes: saved.notes || "",
       drawingFileName: saved.drawingFileName || "",
+      // What the summary says about shipping and tax under the current settings (from the lines and the
+      // parts this request has just priced: nothing is read from the database again for it).
+      checkout: checkout.viewFor(saved, pricingEngine.rules, { lineItems: quote.lineItems, subtotal: quote.subtotal, parts: pricedParts }),
       shipBy: shipBy.shipByDate(leadTime),
       leadTimeOptions: leadTimeOptions(quote.subtotal, (req.body.parts || []).map((c) => c && c.finishSlug)),
       dfmByPartId: Object.fromEntries(
@@ -955,10 +967,13 @@ router.post("/quote", optionalAuth, pricingGate.admit(), async (req, res) => {
 
 /** A stored quote as the customer may see it: no server paths, plus the live ship-by date. */
 function quoteView(quote) {
-  const { drawingPath, ...safe } = quote;
+  const { drawingPath, taxCertPath, ...safe } = quote;
   const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === quote.leadTimeSlug);
   return {
     ...safe,
+    // Delivery choices with their totals, and the tax note, worked out here: the page shows them, it does not compute them.
+    checkout: checkout.viewFor(quote, pricingEngine.rules),
+    taxCertFileName: quote.taxCertFileName || "",
     // Quotes saved before the paperwork option existed have neither column.
     paperwork: Boolean(quote.paperwork),
     paperworkFee: Number(quote.paperworkFee) || 0,
@@ -1108,6 +1123,43 @@ router.delete("/quote/:id/drawing", optionalAuth, async (req, res) => {
   // Removed means removed: the file goes too, unless something else still points at it.
   if (previous && path.dirname(path.resolve(previous)) === path.resolve(quoteDrawingDir) && !drawingInUseElsewhere(previous, quote.id)) await discard(previous);
   res.json({ drawingFileName: "" });
+});
+
+// ─── Tax-exemption certificate on a quote ────────────────────
+// A buyer who declares an order tax-exempt attaches the certificate before paying. It rides to
+// the order for the owner to read; it never changes a price by itself (services/tax.js decides
+// what a declaration does, from the admin's settings).
+router.post(
+  "/quote/:id/tax-certificate",
+  optionalAuth,
+  // A file written to disk from an open route: the same verified-human gate as the quote's drawing (security/index.js).
+  require("../security/botGuard").requireHuman({ action: "quote" }),
+  (req, res, next) => {
+    const quote = readableQuote(req, res);
+    if (!quote) return;
+    if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed", code: "quote-locked" });
+    req.quote = quote;
+    next();
+  },
+  taxCertificates.admit(),
+  async (req, res) => {
+    const stored = await taxCertificates.receive(req, res);
+    if (!stored) return;
+    const previous = req.quote.taxCertPath;
+    const updated = quotesDB.update(req.quote.id, { taxCertFileName: stored.fileName, taxCertPath: stored.path });
+    await taxCertificates.discardIfUnused(previous, require("../models"), { quoteId: req.quote.id });
+    res.json({ taxCertFileName: updated.taxCertFileName });
+  }
+);
+
+router.delete("/quote/:id/tax-certificate", optionalAuth, async (req, res) => {
+  const quote = readableQuote(req, res);
+  if (!quote) return;
+  if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed", code: "quote-locked" });
+  const previous = quote.taxCertPath;
+  quotesDB.update(quote.id, { taxCertFileName: "", taxCertPath: "" });
+  await taxCertificates.discardIfUnused(previous, require("../models"), { quoteId: quote.id });
+  res.json({ taxCertFileName: "" });
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1360,6 +1412,22 @@ router.post("/admin/pricing/preview", authenticate, requireAdmin, (req, res) => 
     console.error("Pricing preview error:", err);
     res.status(500).json({ error: "Preview failed" });
   }
+});
+
+// "A 3 lb order to Ohio would be charged $X shipping", under the rules on screen (saved or not).
+// Body: { rules: {candidate changes}, weightLb, longestIn, subtotal, state }.
+router.post("/admin/shipping/preview", authenticate, requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const candidate = b.rules && typeof b.rules === "object" ? ruleSchema.validateRules(b.rules, { partial: true }) : { ok: true, values: {} };
+  if (!candidate.ok) return res.status(400).json({ error: candidate.errors[0].message, errors: candidate.errors, code: "invalid-settings" });
+  const rules = { ...pricingAdmin.currentRules(), ...candidate.values };
+  const n = (v, lo, hi, d) => { const x = Number(v); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
+  const shipping = require("../services/shipping");
+  const tax = require("../services/tax");
+  res.json({
+    ...shipping.preview(rules, { weightLb: n(b.weightLb, 0, 5000, 3), longestIn: n(b.longestIn, 0, 1000, 12), subtotal: n(b.subtotal, 0, 1e7, 150), state: sanitizeString(String(b.state || "OH"), 30) }),
+    tax: tax.publicInfo(rules),
+  });
 });
 
 router.get("/admin/pricing/history", authenticate, requireAdmin, (req, res) => {

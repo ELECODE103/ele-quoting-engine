@@ -160,12 +160,12 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
         <Row label="Subtotal" value={formatCurrency(quote.subtotal)} />
         {quote.leadTimeSurcharge > 0 && <Row label={`${leadTimes.find((lt) => lt.slug === selectedLeadTime)?.name || 'Faster'} lead time`} value={`+${formatCurrency(quote.leadTimeSurcharge)}`} color="var(--warn-text)" />}
         {quote.paperwork && <Row label="Inspection paperwork" value={`+${formatCurrency(quote.paperworkFee)}`} />}
-        <Row label="Shipping estimate" value={formatCurrency(quote.shippingEstimate)} />
+        <ShippingRows quote={quote} />
         {quote.nestingApplied && <Row label="Multi-part savings" value="Applied" color="var(--success-text)" />}
         <Row label="Ship weight" value={formatWeight(quote.totalWeight)} muted />
         {quote.shipBy && <Row label="Ships by" value={formatShipDate(quote.shipBy, { year: true })} />}
         <div className="flex-between" style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-display)', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-primary)' }}>
-          <span>{needsRfq ? 'Budgetary' : 'Total'}</span>
+          <span data-testid="summary-total-label">{needsRfq ? 'Budgetary' : totalLabel(quote)}</span>
           <span>{formatCurrency(quote.orderTotal)}</span>
         </div>
         <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
@@ -202,6 +202,38 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
         </>
       )}
     </aside>
+  );
+}
+
+/**
+ * What the total is called. It is "Total" when it is everything the buyer pays (as it has always
+ * been). When something is still to be added it says what: sales tax (added on the payment page)
+ * and, for an order with no parcel price, shipping.
+ */
+export function totalLabel(quote) {
+  const co = quote?.checkout;
+  const missing = [co?.shipping?.manual && 'shipping', co?.tax?.mode === 'stripe' && 'tax'].filter(Boolean);
+  return missing.length ? `Total before ${missing.join(' and ')}` : 'Total';
+}
+
+/**
+ * The shipping line, and a tax line when tax is collected, as the server describes them
+ * (quote.checkout). With the shop's original settings (weight formula, no tax, we ship) this is
+ * the one "Shipping estimate" row it has always been.
+ */
+function ShippingRows({ quote }) {
+  const co = quote.checkout;
+  const plain = !co || (co.shipping.mode === 'formula' && co.shipping.valueText !== 'Free');
+  const others = (co?.options || []).filter((o) => o.method !== 'ship').map((o) => (o.method === 'pickup' ? 'pickup at our shop' : 'your own carrier account'));
+  return (
+    <>
+      {plain
+        ? <Row label="Shipping estimate" value={formatCurrency(quote.shippingEstimate)} />
+        : <Row label="Shipping" value={co.shipping.valueText} />}
+      {!plain && co.shipping.note && <div data-testid="shipping-note" style={{ fontSize: 10, color: 'var(--text-dim)', margin: '-2px 0 8px', lineHeight: 1.5 }}>{co.shipping.note}</div>}
+      {others.length > 0 && <div data-testid="delivery-alternatives" style={{ fontSize: 10, color: 'var(--text-dim)', margin: '-2px 0 8px', lineHeight: 1.5 }}>Also at checkout, with no shipping charge: {others.join(', or ')}.</div>}
+      {co?.tax?.mode === 'stripe' && <Row label="Sales tax" value="Added at checkout" muted />}
+    </>
   );
 }
 

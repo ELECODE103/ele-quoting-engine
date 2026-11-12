@@ -306,6 +306,26 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'geometry-out-of-range': { '*': { text: `This model's size doesn't come out as a real part: it is far larger than anything we make, or it sits very far from the origin. Check the export units and upload it again, or send it to us and a person prices it${within}.`, action: 'rfq' } },
     'geometry-too-small': { '*': { text: `This model comes out smaller than anything we can hold or measure. Check the export units (millimetres or inches) and upload it again, or send it to us and a person prices it${within}.`, action: 'rfq' } },
 
+    // Delivery choice, carrier account and sales tax at checkout and on the firm-quote page (shipping and tax, 2026-11-12).
+    // The server's sentence says which case it is (which choice is not offered, what is wrong with the account number,
+    // why this order has no parcel price), so it is kept; these words stand in when it sends none.
+    'shipping-option': { '*': { text: 'Choose how you want the order delivered, then continue.', keep: true } },
+    'carrier-account': { '*': { text: 'Check the carrier and the account number: the number is 5 to 20 letters and digits. Then continue.', keep: true } },
+    'pickup-name': { '*': { text: 'Tell us who is picking the order up, then continue.' } },
+    'shipping-manual': { '*': { text: `We can't give this order a shipping price online, so nothing was charged. Choose another delivery option if one is offered, or ask for a firm quote and we price the freight${within}.`, keep: true, action: 'rfq' } },
+    'tax-address': { '*': { text: `We couldn't work out sales tax for that address, so nothing was charged. Check the street, city, state and ZIP code and try again, or call ${PHONE}.` } },
+    'exemption-reason': { '*': { text: 'Choose the reason this order is tax-exempt, then continue.' } },
+    'certificate-required': { '*': { text: 'Attach your exemption certificate, or untick the tax-exempt box. Then continue.' } },
+    'certificate-missing': { '*': { text: 'No file came through. Choose your certificate again: a PDF, or a JPG or PNG scan.' } },
+    'certificate-type': { '*': { text: 'Send the certificate as a PDF, or a JPG or PNG scan.' } },
+    'certificate-too-large': { '*': { text: 'That file is too large for a certificate. Send a smaller PDF or scan.', keep: true } },
+    'certificate-unreadable': { '*': { text: 'That upload didn\'t come through whole. Choose the file and try again.', action: 'retry' } },
+    'certificate-failed': { '*': { text: `We couldn't keep the certificate. That is a fault on our side. Try again in a minute, or email it to ${EMAIL} and say which order it is for.`, action: 'retry' } },
+    'quote-locked': { '*': { text: 'This quote has already been ordered or sent to us, so it can\'t be changed from this page. Open the order, or start a new quote.' } },
+    // The owner's screens: the order view and the shipping preview in the pricing console.
+    'no-certificate': { '*': { text: 'There is no exemption certificate on this order.', keep: true } },
+    'invalid-settings': { '*': { text: 'One of the settings on screen is not valid, so the example could not be worked out. The message beside the setting says which.', keep: true } },
+
     // The part file behind a quote is gone (checkout checks before it charges)
     'part-file-missing': { '*': { text: `We no longer hold one of the files on this quote, so we have not charged you. Reopen the quote and upload the file again: it picks up where it left off. Questions: ${PHONE}.`, action: 'reopen-quote' } },
 

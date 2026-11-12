@@ -9,8 +9,9 @@
  *     one cannot be used, and the old one is closed at Stripe first.
  *   - An order is marked paid only by a payment that passes every check (checkSession):
  *     a session we made for this order, payment_status "paid", an integer amount that equals
- *     the expected charge (services/expectedCharge.js) less the discount Stripe reports, and
- *     the order's currency.
+ *     the expected charge (services/expectedCharge.js: the order's total before tax) less the
+ *     discount Stripe reports plus the sales tax Stripe reports, and the order's currency.
+ *     Sales tax is accepted only on an order that was checked out with Stripe Tax on.
  *   - A payment is never dropped. One that cannot settle its order (already paid, cancelled,
  *     expired, not matching, nothing collected) is recorded, the order is flagged, and the
  *     shop is emailed once.
@@ -30,6 +31,7 @@ const shipBy = require("./shipBy");
 const audit = require("./audit");
 const orderState = require("./orderState");
 const expectedChargeModule = require("./expectedCharge");
+const tax = require("./tax"); // what a taxed order adds to its session, and what a paid session says about tax
 const paymentTemplates = require("../emails/paymentTemplates");
 const { money } = require("../emails/templates");
 
@@ -157,6 +159,22 @@ function returnKey(opts) {
   return crypto.createHash("sha256").update(source).digest("hex").slice(0, 32);
 }
 
+/**
+ * Names everything a session was made with besides its amount: the return pages, the lines the
+ * buyer sees on Stripe's page, and for an order checked out with Stripe Tax the address it is
+ * taxed at, the exemption and the tax settings. A session is handed out again only while all of
+ * it still holds: an order whose address or delivery choice was changed on the way back from the
+ * card page gets a new session (and the old one is closed), never the old one's tax.
+ */
+function sessionKey(opts, order, rules) {
+  const orderEvents = require("./orderEvents");
+  const lines = orderEvents.orderLines(order, { itemCount: opts.itemCount, description: opts.description });
+  const shape = tax.taxed(order)
+    ? { customer: tax.customerParams(order, orderEvents.customerEmail(order)), options: tax.sessionOptions(order, rules, "customer"), lines: lines.map(({ kind, line }) => tax.decorateLine(line, kind, order, rules)) }
+    : { lines: lines.map((l) => l.line) };
+  return crypto.createHash("sha256").update(`${returnKey(opts)}\n${JSON.stringify(shape)}`).digest("hex").slice(0, 32);
+}
+
 function markSession(id, updates) {
   return paymentSessionsDB.update(id, updates);
 }
@@ -205,19 +223,29 @@ const inFlight = new Map(); // orderId → Promise of the session being opened f
  * The Checkout session to send the buyer to for an unpaid order.
  *
  * Two requests for the same order at the same moment (a double click) share one call and get
- * the same session. An order's open session is handed out again while it is still good (same
- * amount, same return pages, not about to expire); otherwise it is closed at Stripe and a new
- * one is made. If Stripe says the old session was paid, the order is settled here and the
+ * the same session; a request that arrives while another is in flight for the same order with
+ * something different (another address, another delivery choice) waits for it and is then
+ * handled on its own. An order's open session is handed out again while it is still good (same
+ * amount, same lines, same return pages, same tax address, not about to expire); otherwise it is
+ * closed at Stripe and a new one is made. If Stripe says the old session was paid, the order is settled here and the
  * answer carries `alreadyPaid` with the success page as its url: nobody is sent to pay twice.
  *
  * @returns {Promise<{id: string, url: string, alreadyPaid?: boolean, reused?: boolean}>}
  */
 function checkoutSession(order, opts) {
   const existing = inFlight.get(order.id);
-  if (existing) return existing;
-  const work = openSession(order, opts).finally(() => inFlight.delete(order.id));
-  inFlight.set(order.id, work);
-  return work;
+  const row = ordersDB.getById(order.id);
+  let key = null;
+  try { key = row ? sessionKey(opts, row, require("./checkout").currentRules()) : null; } catch { key = null; }
+  if (existing && existing.key === key) return existing.work;
+  // Something about the order changed while a session was being opened for it: let that finish
+  // (whatever it comes to), then open this one, which closes the other's session if it differs.
+  const entry = { key };
+  entry.work = (existing ? existing.work.then(() => null, () => null) : Promise.resolve())
+    .then(() => openSession(order, opts))
+    .finally(() => { if (inFlight.get(order.id) === entry) inFlight.delete(order.id); });
+  inFlight.set(order.id, entry);
+  return entry.work;
 }
 
 async function openSession(orderRef, opts) {
@@ -229,7 +257,8 @@ async function openSession(orderRef, opts) {
 
   const expected = expectedCents(order);
   const promo = promotionCodesAllowed();
-  const key = returnKey(opts);
+  const rules = require("./checkout").currentRules();
+  const key = sessionKey(opts, order, rules);
   let reuse = null;
 
   // An order made before sessions were recorded has only the id on its row.
@@ -257,16 +286,33 @@ async function openSession(orderRef, opts) {
   }
   if (reuse) return { id: reuse.id, url: reuse.url, reused: true };
 
+  // An order checked out with Stripe Tax on is tied to a Stripe Customer that carries the address
+  // it is taxed at (services/tax.js). null for any other order, whose session is made exactly as
+  // it always was. An address Stripe cannot place is the buyer's to correct: nothing is opened.
+  let taxed = null;
+  try {
+    taxed = await tax.stripeParams(stripe, order, orderEvents.customerEmail(order), rules);
+  } catch (err) {
+    if (err && err.code === "tax-address") throw refusal(400, "tax-address", err.message);
+    throw err;
+  }
+
   // The awaits above may have taken a while: look at the order again before opening anything.
   order = ordersDB.getById(order.id);
   if (!order || order.status !== "pending_payment") throw refusal(409, "order-not-payable", "This order is not waiting for a card payment.");
+  // The session is made for the order as it was when this call began (its amount, its lines, its
+  // tax address). If the row was changed meanwhile, the request that changed it opens its own.
+  if (sessionKey(opts, order, rules) !== key || expectedCents(order) !== expected) {
+    throw refusal(409, "payment-session-busy", "We couldn't start the card payment just now. Try again in a minute.");
+  }
 
   const expiresAt = new Date(Date.now() + sessionMinutes() * 60 * 1000);
+  const lines = orderEvents.orderLines(order, { itemCount: opts.itemCount, description: opts.description }).map(({ kind, line }) => (taxed ? taxed.decorate(line, kind) : line));
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     mode: "payment",
-    customer_email: orderEvents.customerEmail(order) || undefined,
-    line_items: orderEvents.stripeLineItems(order, { itemCount: opts.itemCount, description: opts.description }),
+    ...(taxed ? taxed.session : { customer_email: orderEvents.customerEmail(order) || undefined }),
+    line_items: lines,
     metadata: { orderId: order.id, ...(opts.metadata || {}) },
     // The charge carries the order id too, so a refund or a dispute can be matched to its order.
     payment_intent_data: { metadata: { orderId: order.id } },
@@ -312,13 +358,16 @@ const OUTCOMES = ["order-paid", "duplicate-payment", "late-payment", "payment-mi
 
 /**
  * Compare what Stripe reports with what this order should have been charged.
- * @returns {{problems: string[], total: number|null, discount: number, zero: boolean}}
+ * @returns {{problems: string[], total: number|null, discount: number, tax: number, zero: boolean}}  amounts in cents
  */
 function checkSession(order, session, rec) {
   const problems = [];
   const total = session.amount_total;
   const rawDiscount = session.total_details ? session.total_details.amount_discount : 0;
   const discount = rawDiscount === undefined || rawDiscount === null ? 0 : rawDiscount;
+  // Sales tax Stripe added on its page, on top of our lines (Stripe Tax). Our prices never include it.
+  const rawTax = session.total_details ? session.total_details.amount_tax : 0;
+  const taxCents = rawTax === undefined || rawTax === null ? 0 : rawTax;
   const expected = expectedCents(order);
   const currency = typeof session.currency === "string" ? session.currency.toLowerCase() : "";
   const ours = Boolean(rec && rec.orderId === order.id);
@@ -326,18 +375,23 @@ function checkSession(order, session, rec) {
   if (!ours) problems.push("the checkout session named in the payment is not one we opened for this order");
   if (!Number.isInteger(total) || total < 0) {
     problems.push("the payment report carries no amount");
-    return { problems, total: null, discount: 0, zero: false };
+    return { problems, total: null, discount: 0, tax: 0, zero: false };
   }
+  const taxOk = Number.isInteger(taxCents) && taxCents >= 0 && taxCents <= total;
+  if (!taxOk) problems.push("the sales tax in the payment report is not an amount");
+  // Tax is only ever added by a session we opened with Stripe Tax on, for an order checked out that way.
+  else if (taxCents > 0 && !tax.taxed(order)) problems.push(`sales tax of ${money(taxCents / 100)} was added although this order was checked out with sales tax off`);
   if (!Number.isInteger(discount) || discount < 0) problems.push("the discount in the payment report is not an amount");
   else {
     if (discount > 0 && !(rec && rec.promoAllowed)) problems.push(`a discount of ${money(discount / 100)} was applied although promotion codes are switched off`);
-    if (total + discount !== expected) {
-      problems.push(`Stripe reports ${money(total / 100)}${discount > 0 ? ` after a discount of ${money(discount / 100)}` : ""}; the order comes to ${money(expected / 100)}`);
+    // What our lines came to: what was charged, less the tax Stripe added, plus the discount it took off.
+    if (taxOk && total - taxCents + discount !== expected) {
+      problems.push(`Stripe reports ${money(total / 100)}${taxCents > 0 ? ` including ${money(taxCents / 100)} sales tax` : ""}${discount > 0 ? ` after a discount of ${money(discount / 100)}` : ""}; the order comes to ${money(expected / 100)}${taxCents > 0 ? " before tax" : ""}`);
     }
   }
   if (currency !== currencyOf(order)) problems.push(`the payment is in ${currency ? currency.toUpperCase().slice(0, 8) : "an unnamed currency"}; the order is in ${currencyOf(order).toUpperCase()}`);
   if (!(expected > 0)) problems.push("the order has no amount to pay");
-  return { problems, total, discount: Number.isInteger(discount) && discount > 0 ? discount : 0, zero: total === 0 };
+  return { problems, total, discount: Number.isInteger(discount) && discount > 0 ? discount : 0, tax: taxOk ? taxCents : 0, zero: total === 0 };
 }
 
 /**
@@ -384,10 +438,13 @@ function applySession(orderId, session, { eventId, source } = {}) {
         amountPaid: check.total / 100,
         discountAmount: check.discount / 100,
         currency: currencyOf(order),
+        // Sales tax Stripe added: stored on the order and added to its total, so the order's lines
+        // still add up to what was paid; and any business tax IDs it collected (services/tax.js).
+        ...tax.paidUpdates(order, { taxCents: check.tax, taxIds: tax.taxFromSession(session).taxIds }),
       });
       if (!paid) return { order, changed: false, outcome: "replay" };
       closeRec("settled");
-      recordEvent({ ...base, order: paid, kind: "order-paid", detail: `${source || "stripe"}${check.discount ? `; discount ${check.discount} cents` : ""}`, notified: true });
+      recordEvent({ ...base, order: paid, kind: "order-paid", detail: `${source || "stripe"}${check.discount ? `; discount ${check.discount} cents` : ""}${check.tax ? `; sales tax ${check.tax} cents` : ""}`, notified: true });
       return { order: paid, changed: true, outcome: "paid", after: { emails: "paid", closeOthers: sid } };
     }
     // Nothing collected (a 100% promotion code): never released without the owner.

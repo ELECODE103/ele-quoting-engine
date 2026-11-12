@@ -30,6 +30,8 @@ const PT_PER_MM = 72 / 25.4;
 // Inspection paperwork is an option the customer asks for (owner, 2026-11-11). The wording is the
 // emails' wording, so a document and the message it rides with cannot disagree.
 const { PAPERWORK_LABEL, quoteCovers } = require("../emails/templates");
+const shippingService = require("./shipping");
+const taxService = require("./tax");
 
 // ─── small helpers ──────────────────────────────────────────────────────────
 // Helvetica is WinAnsi-encoded: keep what it can print, replace what it cannot.
@@ -450,9 +452,10 @@ async function buildQuotePdf({ quote, customer, rfq, options = {} } = {}) {
       ["Subtotal", money(src.subtotal)],
       Number(src.leadTimeSurcharge) > 0 ? ["Expedite", money(src.leadTimeSurcharge)] : null,
       src.paperwork ? ["Inspection paperwork", money(src.paperworkFee)] : null,
-      Number.isFinite(Number(src.shippingEstimate)) ? ["Shipping (estimate)", money(src.shippingEstimate)] : null,
+      quoteShippingRow(src),
       ["Total", money(src.orderTotal ?? src.subtotal), true],
     ]);
+  if (!isRfq) y = paragraph(doc, y, "Shipping", quoteShippingNote(src));
   if (isRfq) {
     y = facts(doc, y, [["Quantities requested", rfq.quantities], ["Tolerance", rfq.tolerance], ["Finish", rfq.finishNotes], ["Needed by", rfq.dueDate]]);
     // A firm price always says whether it covers the inspection paperwork and, for a part that
@@ -468,6 +471,47 @@ async function buildQuotePdf({ quote, customer, rfq, options = {} } = {}) {
   return finish(doc);
 }
 
+/**
+ * The shipping line of a quote, as the quote was priced. A quote priced by the weight formula
+ * (every quote before the shipping settings existed, and the default since) prints as it always did.
+ */
+function quoteShippingRow(src) {
+  const block = src.shipping && typeof src.shipping === "object" ? shippingService.storedFor(src) : null;
+  if (!block || block.mode === "formula") {
+    if (block && block.freeApplied) return ["Shipping", "Free"];
+    return Number.isFinite(Number(src.shippingEstimate)) ? ["Shipping (estimate)", money(src.shippingEstimate)] : null;
+  }
+  if (block.manual) return ["Shipping", "To be confirmed"];
+  if (block.freeApplied) return ["Shipping", "Free"];
+  if (block.mode === "included") return ["Shipping", "Included"];
+  return ["Shipping", money(block.amount)];
+}
+function quoteShippingNote(src) {
+  const block = src.shipping && typeof src.shipping === "object" ? shippingService.storedFor(src) : null;
+  if (!block || block.mode === "formula") return "";
+  if (block.manual) return block.reason;
+  if (block.mode === "included") return "Shipping within the contiguous United States is included in the price.";
+  return `Ground shipping within the contiguous United States${block.packedLb ? `, by packed weight (about ${Math.ceil(block.packedLb)} lb)` : ""}.`;
+}
+/** The delivery and tax rows of an order's totals: what was charged, or what is true when nothing was. */
+function orderDeliveryRows(order) {
+  const rows = [];
+  if (order.shippingMethod === "pickup") rows.push(["Shipping", "Pickup"]);
+  else if (order.shippingMethod === "carrier-account") rows.push(["Shipping", "Your account"]);
+  else if (Number(order.shippingCost) > 0) rows.push(["Shipping", money(order.shippingCost)]);
+  else if (order.shippingMode === "included") rows.push(["Shipping", "Included"]);
+  else if (order.shippingMode === "table") rows.push(["Shipping", "Free"]);
+  const taxLine = taxService.orderLine(order);
+  if (taxLine) rows.push([taxLine.label, taxLine.valueText === null ? money(taxLine.amount) : taxLine.valueText.replace(" (certificate on file)", "")]);
+  return rows;
+}
+/** "Ship to" for a shipped order; who collects, and where once it is paid for, for a pickup. */
+function deliveryParty(order) {
+  if (order.shippingMethod !== "pickup") return { title: "Ship to", lines: shipTo(order) };
+  const where = require("./checkout").pickupDisclosed(order) ? shippingService.pickupAddress() : null;
+  return { title: "Pickup", lines: [order.shippingName, "Collected at our shop", ...(where ? where.lines : ["Address confirmed before pickup"])] };
+}
+
 // ─── 2 · Order confirmation ─────────────────────────────────────────────────
 async function buildOrderConfirmationPdf({ order, items = [], customer, options = {} } = {}) {
   const number = options.number || docNumber("SO", order.id);
@@ -478,12 +522,12 @@ async function buildOrderConfirmationPdf({ order, items = [], customer, options 
     ["Your PO", oneLine(order.poNumber, 60)],
     ["Quote", order.quoteId ? docNumber("Q", order.quoteId) : ""],
     ["Lead time", order.leadTimeName],
-    ["Ships by", options.shipBy || order.shipBy ? shipByText(options.shipBy || order.shipBy) : ""],
+    [order.shippingMethod === "pickup" ? "Ready by" : "Ships by", options.shipBy || order.shipBy ? shipByText(options.shipBy || order.shipBy) : ""],
     ["Status", titleFromSlug(order.status)],
   ]);
   // Orders taken from a firm quote have no account: fall back to the contact stored on the order.
   const orderedBy = customer || (order.customerName || order.customerEmail ? { name: order.customerName, email: order.customerEmail } : null);
-  y = parties(doc, y, [{ title: "Ordered by", lines: customerLines(orderedBy) }, { title: "Ship to", lines: shipTo(order) }]);
+  y = parties(doc, y, [{ title: "Ordered by", lines: customerLines(orderedBy) }, deliveryParty(order)]);
   const rows = items.map((it, i) => ({ n: String(i + 1), part: partName(it), desc: describe(it), qty: String(it.quantity ?? ""), unit: money(it.unitPrice), ext: money(it.lineTotal) }));
   y = table(doc, y, [
     { key: "n", label: "Line", w: 5 }, { key: "part", label: "Part / file", w: 27, bold: true }, { key: "desc", label: "Process · material · finish", w: 32 },
@@ -493,17 +537,27 @@ async function buildOrderConfirmationPdf({ order, items = [], customer, options 
     ["Subtotal", money(order.subtotal)],
     Number(order.leadTimeSurcharge) > 0 ? [`${order.leadTimeName || "Faster"} lead time`, money(order.leadTimeSurcharge)] : null,
     order.paperwork ? ["Inspection paperwork", Number(order.paperworkFee) > 0 ? money(order.paperworkFee) : "Included"] : null,
-    Number(order.shippingCost) > 0 ? ["Shipping", money(order.shippingCost)] : null,
-    Number(order.tax) > 0 ? ["Sales tax", money(order.tax)] : null,
+    ...orderDeliveryRows(order),
     ["Order total", money(order.total), true],
     // A promotion code lowers what was collected, not the order total: both are stated.
     ...(Number(order.discountAmount) > 0.004 ? [["Promotion code", `-${money(order.discountAmount)}`], ["Amount paid", money(Number(order.amountPaid) || 0), true]] : []),
     Number(order.refundedAmount) > 0.004 ? ["Refunded", money(order.refundedAmount)] : null,
   ]);
+  // How the order is delivered when it is not our own shipment, and what was declared about tax.
+  if (order.shippingMethod === "carrier-account") y = paragraph(doc, y, "Shipping", `${shippingService.methodLine(order)}. We ship collect; there is no shipping charge from us.`);
+  if (order.shippingMethod === "pickup") y = paragraph(doc, y, "Pickup", `You collect this order at our shop. Call ${brand.phone} before you come so someone is at the door.`);
+  if (order.taxMode === "stripe" && order.paymentMethod === "po") y = paragraph(doc, y, "Sales tax", "Per invoice: any sales tax due is on the invoice we send, not in the total above.");
+  if (order.taxExempt) y = paragraph(doc, y, "Tax exemption", order.taxExemptStatus === "untaxed"
+    ? `Declared exempt (${taxService.reasonLabel(order.taxExemptReason)}); certificate on file. No sales tax charged.`
+    : `Declared exempt (${taxService.reasonLabel(order.taxExemptReason)}); certificate on file. ${order.paymentMethod === "po" ? "We read the certificate before we invoice." : "Tax was charged at payment and is refunded once the certificate has been read."}`);
   y = paragraph(doc, y, "Inspection paperwork", order.paperwork
     ? `${PAPERWORK_LABEL}: ordered${Number(order.paperworkFee) > 0 ? "" : ", included in the quoted price"}. The first piece of each part number is measured against your drawing and the report ships with the parts, with a signed certificate of conformance listing material and lot.`
     : `${PAPERWORK_LABEL}: not ordered.`);
-  if (order.returnPart) y = paragraph(doc, y, "Your original part", "Returned to you in the box with the finished parts. Return shipping is included in the quoted price.");
+  if (order.returnPart) y = paragraph(doc, y, "Your original part", order.shippingMethod === "pickup"
+    ? "Handed back to you with the finished parts at pickup."
+    : order.shippingMethod === "carrier-account"
+      ? "Returned to you in the box with the finished parts, on your carrier account."
+      : "Returned to you in the box with the finished parts. Return shipping is included in the quoted price.");
   // The buyer's own notes. `order.notes` is the shop's internal note and never prints on a customer document.
   // (On an order taken from a firm quote that field holds the note the quote carried.)
   y = paragraph(doc, y, order.rfqId ? "Quote notes" : "Your notes (as typed)", oneLine(order.customerNotes, 2000));
@@ -520,9 +574,9 @@ async function buildPackingSlipPdf({ order, items = [], customer, options = {} }
     ["Order", docNumber("SO", order.id)],
     ["Your PO", oneLine(order.poNumber, 60)],
     ["Ship date", fmtDate(options.shipDate || order.shippedAt || new Date())],
-    ["Ship via", [titleFromSlug(order.shippingMethod), order.trackingNumber].filter(Boolean).join(" · ")],
+    ["Ship via", [order.shippingMethod === "pickup" ? "Customer pickup" : order.shippingMethod === "carrier-account" ? `${order.shipCarrier} collect, account ${shippingService.maskAccount(order.shipAccountLast4)}${order.shipService ? `, ${order.shipService}` : ""}` : titleFromSlug(order.shippingMethod), order.trackingNumber].filter(Boolean).join(" · ")],
   ]);
-  y = parties(doc, y, [{ title: "Ship to", lines: shipTo(order) }, { title: "Ship from", lines: shipFrom() }]);
+  y = parties(doc, y, [order.shippingMethod === "pickup" ? { title: "Pickup by", lines: [order.shippingName, "Collected at our shop"] } : { title: "Ship to", lines: shipTo(order) }, { title: "Ship from", lines: shipFrom() }]);
   const shipped = options.shipped || {};   // { [itemId]: qtyShipped } for partial shipments
   const rows = items.map((it, i) => {
     const s = shipped[it.id] ?? it.quantityShipped ?? it.quantity;

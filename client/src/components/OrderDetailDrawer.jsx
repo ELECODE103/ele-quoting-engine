@@ -197,7 +197,38 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
             )}
             {order.returnPart && (
               <div role="status" style={{ marginBottom: 16, padding: '10px 14px', border: '2px solid #B45309', borderRadius: 6, background: '#FFFBEB', color: '#78350F', fontSize: 13, fontWeight: 600 }}>
-                Return the customer's original part in the box with this order. The quoted price covers that shipping.
+                {order.shippingMethod === 'pickup'
+                  ? "Hand the customer's original part back with this order at pickup."
+                  : "Return the customer's original part in the box with this order. The quoted price covers that shipping."}
+              </div>
+            )}
+            {/* How it leaves the shop when it is not our own shipment. */}
+            {order.shippingMethod === 'pickup' && (
+              <div role="status" data-testid="pickup-flag" style={{ marginBottom: 16, padding: '10px 14px', border: '2px solid #B45309', borderRadius: 6, background: '#FFFBEB', color: '#78350F', fontSize: 13, fontWeight: 600 }}>
+                Customer pickup: do not ship. Mark the order "Shipped" when it is ready and the customer is told it is ready to collect.
+              </div>
+            )}
+            {order.shippingMethod === 'carrier-account' && (
+              <div role="status" data-testid="collect-flag" style={{ marginBottom: 16, padding: '10px 14px', border: '2px solid #B45309', borderRadius: 6, background: '#FFFBEB', color: '#78350F', fontSize: 13, lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 700 }}>Ship collect on the customer's {order.shipCarrier} account. No shipping was charged.</div>
+                {/* The one place the full account number is shown. */}
+                Account number:{' '}
+                <span data-testid="carrier-account-number" style={{ fontFamily: 'monospace', fontWeight: 700, userSelect: 'all' }}>
+                  {order.shipAccountNumber || (order.shipAccountUnreadable ? 'could not be read (the server key changed): ask the customer' : order.shipAccountMasked)}
+                </span>
+                {order.shipService ? <> · Service: <b>{order.shipService}</b></> : null}
+              </div>
+            )}
+            {order.taxExempt && (
+              <div role="status" data-testid="exemption-flag" style={{ marginBottom: 16, padding: '10px 14px', border: '2px solid #B45309', borderRadius: 6, background: '#FFFBEB', color: '#78350F', fontSize: 13, lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 700 }}>Tax exemption declared</div>
+                {order.taxExemptionLine}{' '}
+                {order.hasTaxCertificate ? (
+                  <button type="button" className="btn btn-primary" style={{ fontSize: 11, padding: '5px 10px', marginTop: 6, display: 'block' }}
+                    onClick={() => api.downloadTaxCertificate(order.id, order.taxCertFileName).catch((e) => alert(e.message))}>
+                    Open the certificate ({order.taxCertFileName})
+                  </button>
+                ) : <b>No certificate is on file.</b>}
               </div>
             )}
 
@@ -242,7 +273,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
             </div>
 
             {/* Shipping address */}
-            <Section title="Ship To">
+            <Section title={order.shippingMethod === 'pickup' ? 'Pickup By' : 'Ship To'}>
               <div style={{ fontSize: 13, lineHeight: 1.5 }}>
                 <div style={{ fontWeight: 600 }}>{order.shippingName || '—'}</div>
                 <div>{order.shippingAddress || ''}</div>
@@ -300,6 +331,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                   order.leadTimeSurcharge > 0 && [`${order.leadTimeName || 'Faster'} lead time`, order.leadTimeSurcharge],
                   order.paperwork && ['FAI + CoC', order.paperworkFee > 0 ? order.paperworkFee : 'in the quoted price'],
                   order.shippingCost > 0 && ['Shipping', order.shippingCost],
+                  order.taxLine && [order.taxLine.label, order.taxLine.valueText || order.taxLine.amount],
                   ['Total', order.total],
                 ].filter(Boolean).map(([label, amount]) => (
                   <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontWeight: label === 'Total' ? 700 : 400 }}>
@@ -307,6 +339,22 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                   </div>
                 ))}
               </div>
+            </Section>
+
+            {/* Shipping method, shipping charged, tax charged, exemption: one place to read them. */}
+            <Section title="Shipping & tax">
+              <dl data-testid="shipping-tax" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 16px', fontSize: 13, margin: 0 }}>
+                <dt style={{ color: '#666' }}>Shipping method</dt>
+                <dd style={{ margin: 0 }}>{shippingMethodLabel(order)}</dd>
+                <dt style={{ color: '#666' }}>Shipping charged</dt>
+                <dd style={{ margin: 0 }}>{shippingChargedLabel(order)}</dd>
+                {order.packedWeightLb ? <><dt style={{ color: '#666' }}>Packed weight (est.)</dt><dd style={{ margin: 0 }}>{Math.ceil(order.packedWeightLb)} lb</dd></> : null}
+                <dt style={{ color: '#666' }}>Tax charged</dt>
+                <dd style={{ margin: 0 }}>{order.taxLine ? (order.taxLine.valueText || formatCurrency(order.taxLine.amount)) : 'None (tax is not collected at checkout)'}</dd>
+                <dt style={{ color: '#666' }}>Exemption</dt>
+                <dd style={{ margin: 0 }}>{order.taxExempt ? `${order.taxExemptStatus === 'untaxed' ? 'Declared, no tax charged' : order.paymentMethod === 'po' ? 'Declared, read before invoicing' : 'Declared, tax charged: refund after review'}${order.hasTaxCertificate ? ', certificate on file' : ', NO certificate'}` : 'None declared'}</dd>
+                {order.customerTaxIds ? <><dt style={{ color: '#666' }}>Tax ID given</dt><dd style={{ margin: 0 }}>{order.customerTaxIds}</dd></> : null}
+              </dl>
             </Section>
 
             {/* What the buyer attached on the quote: notes + drawing (price unaffected) */}
@@ -439,6 +487,20 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
       </div>
     </div>
   );
+}
+
+function shippingMethodLabel(order) {
+  if (order.shippingMethod === 'pickup') return 'Customer pickup at the shop';
+  if (order.shippingMethod === 'carrier-account') return `Customer's ${order.shipCarrier || 'carrier'} account ${order.shipAccountMasked || ''}${order.shipService ? `, ${order.shipService}` : ''}`;
+  return 'We ship';
+}
+function shippingChargedLabel(order) {
+  if (order.shippingCost > 0) return formatCurrency(order.shippingCost);
+  if (order.shippingMethod === 'pickup' || order.shippingMethod === 'carrier-account') return 'None';
+  if (order.shippingMode === 'included') return 'None: shipping is included in the price';
+  if (order.shippingMode === 'firm') return 'In the quoted price';
+  if (order.shippingMode === 'table') return 'None: free shipping applied';
+  return 'Not itemized (inside the total)';
 }
 
 function Section({ title, children }) {

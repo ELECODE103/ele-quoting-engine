@@ -198,6 +198,11 @@ function addFooter(doc, orderId, pageNum) {
   });
 }
 
+/** Helvetica (WinAnsi) has no "•" outside its own range mapping here: the masked account prints as "xxxx1234". */
+function pdfSafe(text) {
+  return String(text || "").replace(/•/g, "x");
+}
+
 // ============================================================================
 // MAIN PDF GENERATION FUNCTIONS
 // ============================================================================
@@ -309,7 +314,12 @@ function generateJobTraveler(order, items) {
   y = addInfoBlock(doc, "Ship To:", line(order.shippingName, 80) || "Not specified", y);
   y = addInfoBlock(doc, "Company:", line(order.company, 80) || "Not specified", y);
   const address = [order.shippingAddress, order.shippingCity, order.shippingState, order.shippingZip].map((v) => line(v, 80)).filter(Boolean).join(", ");
-  y = addInfoBlock(doc, "Address:", address || "Not specified", y);
+  y = addInfoBlock(doc, "Address:", address || (order.shippingMethod === "pickup" ? "Customer pickup" : "Not specified"), y);
+  // How it leaves the shop when it is not our own shipment: a pickup, or the buyer's carrier
+  // account (last four characters only; the full number is on the order in admin).
+  const delivery = require("./shipping").methodLine(order);
+  if (delivery) y = addInfoBlock(doc, "Delivery:", pdfSafe(order.shippingMethod === "pickup" ? "CUSTOMER PICKUP - do not ship" : `${line(delivery, 80)} - ship collect, see the order in admin for the full account number`), y);
+  if (Number(order.packedWeightLb) > 0) y = addInfoBlock(doc, "Packed wt (est.):", `${Math.ceil(Number(order.packedWeightLb))} lb`, y);
   y += 10;
 
   // ---------- What to make ----------
@@ -435,7 +445,7 @@ function generateJobTraveler(order, items) {
   y = addSectionHeader(doc, "ORDER DETAILS", y);
 
   const subtotal = items.reduce((sum, item) => sum + (item.lineTotal || 0), 0);
-  const tax = Number(order.tax) || 0;
+  const tax = Number(order.tax) || 0; // what Stripe added at payment (0 when tax is not collected)
   // The order's own total is the amount charged (it can include a lead-time fee and the paperwork fee); the sum is only a fallback for old records.
   const fee = Number(order.leadTimeSurcharge) || 0;
   const total = Number(order.total) > 0 ? Number(order.total) : subtotal + fee + paperworkFee + tax + (order.shippingCost || 0);
@@ -451,7 +461,8 @@ function generateJobTraveler(order, items) {
     y,
     170,
   );
-  y = addInfoBlock(doc, "Tax:", usd(tax), y, 170);
+  y = addInfoBlock(doc, "Tax:", order.taxMode === "stripe" && order.paymentMethod === "po" ? "Per invoice" : usd(tax), y, 170);
+  if (order.taxExempt) y = addInfoBlock(doc, "Tax exemption:", order.taxExemptStatus === "untaxed" ? "Declared, no tax charged" : "Declared, tax charged", y, 170);
   y += 5;
   y = addInfoBlock(doc, "TOTAL:", usd(total), y, 170);
 
@@ -541,8 +552,8 @@ function generatePackingList(order, items) {
 
   y += 20;
 
-  // Ship-to address block
-  y = addSectionHeader(doc, "SHIP TO", y);
+  // Ship-to address block (a pickup order has no address: it is handed over at the shop)
+  y = addSectionHeader(doc, order.shippingMethod === "pickup" ? "CUSTOMER PICKUP" : "SHIP TO", y);
 
   doc
     .fontSize(11)
@@ -566,9 +577,12 @@ function generatePackingList(order, items) {
     .fontSize(10)
     .font("Helvetica")
     .fillColor("#000000")
-    .text(address || "Not specified", margin + 10, y, {
+    .text(address || (order.shippingMethod === "pickup" ? "Handed over at the shop" : "Not specified"), margin + 10, y, {
       width: pageWidth - 2 * margin - 20,
     });
+  if (order.shippingMethod === "carrier-account") {
+    doc.text(pdfSafe(require("./shipping").methodLine(order)), margin + 10, doc.y + 4, { width: pageWidth - 2 * margin - 20 });
+  }
 
   y = doc.y + 15;
 

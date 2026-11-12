@@ -11,11 +11,21 @@
  * owner's firm-quote amount (routes/rfq.js), and already contains every line the
  * order has (parts, lead-time fee, shipping, inspection paperwork).
  *
- * TAX AND SHIPPING: when an order gains amounts that are charged on top of
- * `order.total` (sales tax, a shipping line worked out at checkout), add them
- * HERE, in `components`, and nowhere else — the session, the webhook check and
- * session reuse all read this function.
+ * SHIPPING is inside `order.total`: it is worked out at checkout, on the server, for the
+ * delivery choice the buyer made (services/checkout.js) and written into the total with
+ * the order. It is its own line on Stripe's page; it is not added here a second time.
+ *
+ * SALES TAX is the one amount that is not ours to compute: with Stripe Tax on, Stripe adds
+ * it on its page, on top of the lines we send. So the expected charge is the order's total
+ * BEFORE tax (services/tax.js preTaxCents). Before payment an order carries no tax and this
+ * is `order.total`; after payment the tax Stripe reported is stored on the order and added
+ * to its total, and this is still what the lines came to. The settle check takes Stripe's
+ * tax back out of what was charged before comparing (orderLifecycle.checkSession).
+ *
+ * Anything else that is ever charged on top goes HERE, in `components`, and nowhere else:
+ * the session, the webhook check and session reuse all read this function.
  */
+const tax = require("./tax");
 
 /** A dollar amount as whole cents; anything that is not a finite number is 0. */
 function toCents(dollars) {
@@ -26,8 +36,8 @@ function toCents(dollars) {
 /** The parts of the expected charge, in cents. Their sum is the charge. */
 function components(order) {
   return {
-    orderTotal: toCents(order && order.total),
-    // tax: toCents(order.taxCharged), shipping: toCents(order.shippingCharged), …
+    // The order's total before tax, in whole cents; anything that is not an amount of money is 0.
+    orderTotal: order ? toCents(tax.preTaxCents(order) / 100) : 0,
   };
 }
 

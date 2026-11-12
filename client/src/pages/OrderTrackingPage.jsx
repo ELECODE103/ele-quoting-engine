@@ -104,7 +104,7 @@ export default function OrderTrackingPage() {
             {justPaid && paid && (
               <div role="status" className="auth-ok" style={{ padding: 16, marginBottom: 24, fontSize: 14 }}>
                 <b>Payment received. Thank you.</b>{' '}
-                {order.shipBy ? `Your parts ship by ${formatShipDate(order.shipBy, { year: true })}.` : ''}{' '}
+                {order.shipBy ? (order.shippingMethod === 'pickup' ? `Your parts will be ready to pick up by ${formatShipDate(order.shipBy, { year: true })}.` : `Your parts ship by ${formatShipDate(order.shipBy, { year: true })}.`) : ''}{' '}
                 {order.customerEmail ? `A confirmation is on its way to ${order.customerEmail}.` : ''}
               </div>
             )}
@@ -165,9 +165,11 @@ export default function OrderTrackingPage() {
             {/* Summary */}
             <div style={card}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 24 }}>
-                <Fact label="Status" value={orderStatusLabel(order.status)} />
+                <Fact label="Status" value={order.shippingMethod === 'pickup' && order.status === 'shipped' ? 'Ready for pickup' : order.shippingMethod === 'pickup' && order.status === 'delivered' ? 'Picked up' : orderStatusLabel(order.status)} />
                 {!closed && (
-                  <Fact label={order.status === 'shipped' || order.status === 'delivered' ? 'Shipped' : 'Ships by'}
+                  <Fact label={order.shippingMethod === 'pickup'
+                    ? (order.status === 'shipped' || order.status === 'delivered' ? 'Ready for pickup' : 'Ready by')
+                    : (order.status === 'shipped' || order.status === 'delivered' ? 'Shipped' : 'Ships by')}
                     value={order.status === 'shipped' || order.status === 'delivered'
                       ? formatDate(order.shippedAt)
                       : (order.shipBy ? formatShipDate(order.shipBy, { year: true }) : '—')}
@@ -183,7 +185,7 @@ export default function OrderTrackingPage() {
             </div>
 
             {/* Tracking */}
-            {(order.trackingNumber || order.status === 'shipped' || order.status === 'delivered') && (
+            {order.shippingMethod !== 'pickup' && (order.trackingNumber || order.status === 'shipped' || order.status === 'delivered') && (
               <div style={card}>
                 <h2 style={h2}>Tracking</h2>
                 {order.trackingNumber ? (
@@ -216,14 +218,16 @@ export default function OrderTrackingPage() {
                   </div>
                 </div>
               ))}
-              {(order.leadTimeSurcharge > 0 || order.shippingCost > 0 || order.paperwork) && (
-                <div style={{ fontSize: 13, paddingTop: 10 }}>
+              {(order.leadTimeSurcharge > 0 || order.shippingCost > 0 || order.paperwork || shippingWords(order) || order.taxLine) && (
+                <div style={{ fontSize: 13, paddingTop: 10 }} data-testid="order-totals">
                   {[
                     ['Parts', order.subtotal],
                     order.leadTimeSurcharge > 0 && [`${order.leadTimeName || 'Faster'} lead time`, order.leadTimeSurcharge],
                     // On an order from a firm quote the paperwork is inside the quoted price.
                     order.paperwork && [PAPERWORK_LABEL, order.paperworkFee > 0 ? order.paperworkFee : 'Included'],
-                    order.shippingCost > 0 && ['Shipping', order.shippingCost],
+                    order.shippingCost > 0 ? ['Shipping', order.shippingCost] : (shippingWords(order) && ['Shipping', shippingWords(order)]),
+                    // Sales tax: the amount charged at payment, or what is true when there is none.
+                    order.taxLine && [order.taxLine.label, order.taxLine.valueText || order.taxLine.amount],
                     ['Total', order.total],
                   ].filter(Boolean).map(([label, amount]) => (
                     <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '3px 0', color: label === 'Total' ? 'var(--text-primary)' : 'var(--text-muted)', fontWeight: label === 'Total' ? 700 : 400 }}>
@@ -239,7 +243,17 @@ export default function OrderTrackingPage() {
               )}
               {order.returnPart && (
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
-                  <b>Your original part</b> comes back in the box with the finished parts.
+                  <b>Your original part</b> {order.shippingMethod === 'pickup' ? 'is handed back with the finished parts at pickup.' : 'comes back in the box with the finished parts.'}
+                </p>
+              )}
+              {order.taxExempt && (
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }} data-testid="order-exemption">
+                  <b>Tax exemption declared.</b>{' '}
+                  {order.taxExemptStatus === 'untaxed'
+                    ? 'Your certificate is with the order and no sales tax was charged.'
+                    : order.paymentMethod === 'po'
+                      ? 'Your certificate is with the order. We read it before we invoice.'
+                      : 'Your certificate is with the order. Tax was charged at payment; once we have read the certificate we refund the tax to your card.'}
                 </p>
               )}
               {order.customerNotes && (
@@ -280,7 +294,8 @@ export default function OrderTrackingPage() {
                         </div>
                         <div style={{ paddingLeft: 16 }}>
                           <div style={{ color: isActive ? 'var(--accent)' : 'var(--text-muted)', fontSize: 12, fontWeight: 600 }}>
-                            {orderStatusLabel(status)}
+                            {/* A pickup order is not shipped or delivered: the same two steps mean ready, then collected. */}
+                            {order.shippingMethod === 'pickup' && status === 'shipped' ? 'Ready for pickup' : order.shippingMethod === 'pickup' && status === 'delivered' ? 'Picked up' : orderStatusLabel(status)}
                           </div>
                           <div style={{ color: isActive ? 'var(--text-secondary)' : 'var(--text-dim)', fontSize: 11, marginTop: 4 }}>
                             {isCompleted ? 'Completed' : isActive ? 'Current' : 'Pending'}
@@ -294,7 +309,24 @@ export default function OrderTrackingPage() {
             )}
 
             {/* Shipping Info */}
-            {(order.shippingName || order.shippingAddress) && (
+            {order.shippingMethod === 'pickup' ? (
+              <div style={card} data-testid="pickup-card">
+                <h2 style={h2}>Pickup</h2>
+                <div style={{ color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.8 }}>
+                  <div>Picked up by {order.shippingName || 'you'}. No shipping charge.</div>
+                  {/* The address is in the server's answer only for a pickup order that has been paid for. */}
+                  {order.pickupAddress ? (
+                    <div data-testid="pickup-address">
+                      <div style={{ marginTop: 6 }}>{order.pickupAddress.name}</div>
+                      {order.pickupAddress.lines.map((l) => <div key={l}>{l}</div>)}
+                      <div style={{ marginTop: 6, color: 'var(--text-muted)' }}>We tell you when the order is ready. Call {brand.phone} before you come so someone is at the door.</div>
+                    </div>
+                  ) : (
+                    <div style={{ color: 'var(--text-muted)' }}>The pickup address comes with your order confirmation, once the order is paid for.</div>
+                  )}
+                </div>
+              </div>
+            ) : (order.shippingName || order.shippingAddress) && (
               <div style={card}>
                 <h2 style={h2}>Shipping address</h2>
                 <div style={{ color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.8 }}>
@@ -302,6 +334,7 @@ export default function OrderTrackingPage() {
                   {order.shippingAddress && <div>{order.shippingAddress}</div>}
                   <div>{[order.shippingCity, order.shippingState].filter(Boolean).join(', ')} {order.shippingZip || ''}</div>
                   {order.shippingCountry && <div>{order.shippingCountry}</div>}
+                  {order.deliveryLine && <div style={{ marginTop: 6 }} data-testid="order-delivery">{order.deliveryLine}. No shipping charge from us.</div>}
                 </div>
               </div>
             )}
@@ -316,6 +349,15 @@ export default function OrderTrackingPage() {
       </div>
     </div>
   );
+}
+
+/** What the shipping row says when nothing was charged for it and that needs saying (else ""). */
+function shippingWords(order) {
+  if (order.shippingMethod === 'pickup') return 'Pickup';
+  if (order.shippingMethod === 'carrier-account') return 'On your account';
+  if (order.shippingMode === 'included') return 'Included';
+  if (order.shippingMode === 'table') return 'Free';
+  return '';
 }
 
 function Fact({ label, value, note, accent }) {

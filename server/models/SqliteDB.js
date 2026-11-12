@@ -6,6 +6,7 @@ const { getDatabase, saveToDisk } = require("./database");
 const { randomUUID: uuidv4 } = require("crypto"); // RFC 4122 v4, same format the uuid package produced
 const orderLifecycle = require("./orderLifecycleMigration"); // order lifecycle (2026-11-11): tables, columns and their names in one place
 const auditTable = require("./auditMigration"); // the admin change log: one table, one definition
+const taxShipping = require("./taxShippingMigration"); // shipping and tax fields (2026-11-11): columns and their names in one place
 
 // Mapping of JS field names → SQLite JSON column names per table
 const JSON_COLUMNS = {
@@ -13,7 +14,7 @@ const JSON_COLUMNS = {
   finishes: {},
   lead_times: {},
   pricing_rules: { rules: "rules_json" },
-  quotes: { lineItems: "line_items_json", gate: "gate_json", config: "config_json" },
+  quotes: { lineItems: "line_items_json", gate: "gate_json", config: "config_json", ...taxShipping.JSON_FIELDS.quotes },
   parts: { geometry: "geometry_json", dfm: "dfm_json" },
   orders: {},
   order_items: { geometry: "geometry_json", dfm: "dfm_json", config: "config_json" },
@@ -140,11 +141,14 @@ const FIELD_TO_COLUMN = {
   attachmentRemovedAt: "attachment_removed_at",
   partIds: "part_ids",
   ownerId: "owner_id",
+  // Shipping method, carrier account, tax and exemption fields (2026-11-11)
+  ...taxShipping.FIELD_MAP,
 };
 
 // 0/1 columns that read back as booleans (SQLite has no boolean type).
 const BOOLEAN_COLUMNS = new Set(["active", "paperwork", "return_part", "buyer_emailed"]);
 for (const column of orderLifecycle.BOOLEAN_COLUMNS) BOOLEAN_COLUMNS.add(column);
+for (const column of taxShipping.BOOLEAN_COLUMNS) BOOLEAN_COLUMNS.add(column);
 
 // Reverse mapping for deserialization
 const COLUMN_TO_FIELD = {};

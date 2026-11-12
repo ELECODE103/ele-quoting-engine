@@ -19,6 +19,7 @@ const { expectedCharge } = require("./expectedCharge");
 // Sessions, settling, refunds, disputes and expiry live in services/orderLifecycle.js, which
 // uses this module for the emails; it is loaded on first use so neither waits on the other.
 const lifecycle = () => require("./orderLifecycle");
+const shipping = require("./shipping");
 
 const ORDER_LINK_DAYS = 180; // how long an emailed order link for an account-less (RFQ) buyer keeps working
 
@@ -57,21 +58,29 @@ function orderUrl(order, base) {
 // ─── Stripe boundary ───────────────────────────────────────────
 
 /**
- * What the buyer sees on Stripe's page: the order, and the inspection paperwork
- * as its own line when it was ordered with a fee. The lines always sum to
- * order.total in cents, which is what settleFromSession checks the payment against.
+ * What the buyer sees on Stripe's page, as [{ kind, line }]: the order, the inspection paperwork
+ * as its own line when it was ordered with a fee, and shipping as its own line when it is
+ * charged by a method other than the original weight formula (or whenever Stripe Tax is on, so
+ * the shipping line can carry its own tax treatment). With every switch at its default this is
+ * the one or two lines it always was. The lines always sum, in cents, to the order's total
+ * before tax, which is what settleFromSession checks the payment against.
  */
-function stripeLineItems(order, { itemCount, description }) {
-  const charge = expectedCharge(order); // the one "expected charge" (services/expectedCharge.js)
+function orderLines(order, { itemCount, description }) {
+  const charge = expectedCharge(order); // the one "expected charge" (services/expectedCharge.js): the order's total before tax
   const totalCents = typeof charge === "number" ? Math.round(charge * 100) : charge.cents;
   const feeCents = order.paperwork ? Math.min(totalCents, Math.max(0, Math.round((Number(order.paperworkFee) || 0) * 100))) : 0;
+  const shipCents = shipping.stripeShippingCents(order, totalCents - feeCents);
   const line = (name, text, cents) => ({
     price_data: { currency: "usd", product_data: { name, description: text }, unit_amount: cents }, // Stripe uses cents
     quantity: 1,
   });
-  const lines = [line(`${brand.name} Order — ${itemCount} part${itemCount !== 1 ? "s" : ""}`, description || "Custom machined and printed parts", totalCents - feeCents)];
-  if (feeCents > 0) lines.push(line(templates.PAPERWORK_LABEL, "Ships with the parts", feeCents));
+  const lines = [{ kind: "goods", line: line(`${brand.name} Order — ${itemCount} part${itemCount !== 1 ? "s" : ""}`, description || "Custom machined and printed parts", totalCents - feeCents - shipCents) }];
+  if (feeCents > 0) lines.push({ kind: "paperwork", line: line(templates.PAPERWORK_LABEL, "Ships with the parts", feeCents) });
+  if (shipCents > 0) { const words = shipping.stripeShippingLine(order); lines.push({ kind: "shipping", line: line(words.name, words.description, shipCents) }); }
   return lines;
+}
+function stripeLineItems(order, opts) {
+  return orderLines(order, opts).map((l) => l.line);
 }
 
 /**
@@ -162,4 +171,4 @@ async function notifyStatusChange(before, after, { base } = {}) {
   return true;
 }
 
-module.exports = { baseUrl, itemsFor, customerEmail, orderUrl, stripeLineItems, createCheckoutSession, transitionToPaid, sendPaidEmails, markPaid, settleFromSession, confirmPayment, notifyStatusChange };
+module.exports = { baseUrl, itemsFor, customerEmail, orderUrl, stripeLineItems, orderLines, createCheckoutSession, transitionToPaid, sendPaidEmails, markPaid, settleFromSession, confirmPayment, notifyStatusChange };

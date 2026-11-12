@@ -8,6 +8,7 @@ import VerifyEmailNotice from '../components/security/VerifyEmailNotice';
 import Notice, { FormError } from '../components/form/Notice';
 import brand from '../brand';
 import { notePendingCheckout, saveCheckoutDraft, loadCheckoutDraft } from '../utils/returnTo';
+import { DeliveryChoice, TaxExemption, deliveryPayload } from '../components/DeliveryOptions';
 
 // Where each "settled somewhere else" refusal leads (the catalogue's `action` for the code, utils/messageCatalogue.js).
 const NEXT_STEP = {
@@ -47,6 +48,11 @@ export default function CheckoutPage() {
   const [priceChange, setPriceChange] = useState(null);
   // Refusals that are settled somewhere else (back in the quote, on the order page, by a firm quote).
   const [next, setNext] = useState(null);
+  // Delivery choice and tax exemption. Shown only when the shop offers more than "we ship it" or
+  // collects tax; what each choice costs comes priced from the server with the quote.
+  const [option, setOption] = useState('ship');
+  const [carrier, setCarrier] = useState({ carrier: 'UPS', account: '', service: '' });
+  const [exempt, setExempt] = useState({ declared: false, reason: '' });
 
   const wasCancelled = searchParams.get('cancelled') === 'true';
   // Paying needs a confirmed email address (when confirmation emails can be sent at all).
@@ -59,9 +65,22 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     api.getQuoteById(quoteId)
-      .then(q => setQuoteData(q))
+      .then(q => {
+        setQuoteData(q);
+        // When "we ship it" has no price for this order, start on the first choice that does.
+        const first = (q.checkout?.options || []).find((o) => o.available !== false);
+        if (first) setOption(first.method);
+      })
       .catch(err => setLoadError(err.message));
   }, [quoteId]);
+
+  const co = quoteData?.checkout;
+  const showOptions = Boolean(co?.showOptions);
+  const selected = co?.options.find((o) => o.method === option) || co?.options[0];
+  const pickup = showOptions && option === 'pickup';
+  const taxOn = co?.tax?.mode === 'stripe';
+  // The summary reads as it always did unless a setting has changed what is true.
+  const plainShipping = !co || (!showOptions && co.shipping.mode === 'formula' && co.shipping.valueText !== 'Free');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -78,7 +97,10 @@ export default function CheckoutPage() {
         shippingState: state,
         shippingZip: zip,
         shippingCountry: country,
-      }, Number(quoteData?.orderTotal));
+        // Which delivery choice, a carrier account, a declared exemption. Never an amount to charge.
+        ...deliveryPayload({ showOptions, option, carrier, exemption: co?.tax?.exemption, declared: exempt.declared, reason: exempt.reason }),
+        // The total this page is showing for that choice: the server charges nothing else without asking again.
+      }, Number(selected?.total ?? quoteData?.orderTotal));
 
       if (result.sessionUrl) {
         // Redirect to Stripe Checkout. The button stays busy until the card page has replaced this one.
@@ -94,7 +116,8 @@ export default function CheckoutPage() {
       else if (err.code === 'quote-changed' && data.quote && !data.reopen) {
         // The price is no longer the one this page was showing. Nothing was charged. Show today's
         // price beside the old one; the same button accepts it.
-        setPriceChange({ was: Number.isFinite(data.previousTotal) ? data.previousTotal : quoteData?.orderTotal, now: data.quote.orderTotal });
+        // (`newTotal` is the total for the delivery choice made on this page; the quote's own total otherwise.)
+        setPriceChange({ was: Number.isFinite(data.previousTotal) ? data.previousTotal : (selected?.total ?? quoteData?.orderTotal), now: Number.isFinite(data.newTotal) ? data.newTotal : data.quote.orderTotal });
         setQuoteData(data.quote);
       } else if (NEXT_STEP[err.action]) {
         // Refusals that are settled somewhere else (back in the quote, by a firm quote, on the order page):
@@ -158,16 +181,25 @@ export default function CheckoutPage() {
           {/* Left: Shipping Form */}
           <div>
             <h1 className="app-h1">Checkout</h1>
-            <p className="app-lede">Where the parts ship, then the card page. Payment is taken by Stripe; we never see the card number.</p>
+            <p className="app-lede">{showOptions ? 'How the order gets to you, then the card page.' : 'Where the parts ship, then the card page.'} Payment is taken by Stripe; we never see the card number.</p>
 
             <form onSubmit={handleSubmit} aria-busy={loading || undefined}>
+              {showOptions && (
+                <DeliveryChoice options={co.options} carriers={co.carriers} value={option} onChange={setOption} carrier={carrier} onCarrierChange={setCarrier} />
+              )}
               <fieldset className="plain-fieldset">
-                <legend className="sr-only">Ship to</legend>
+                <legend className="sr-only">{pickup ? 'Pickup' : 'Ship to'}</legend>
                 <div className="field">
-                  <label className="field-label" htmlFor="co-name">Full name</label>
-                  <input id="co-name" type="text" className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="shipping name" required />
+                  <label className="field-label" htmlFor="co-name">{pickup ? 'Who is picking it up' : 'Full name'}</label>
+                  <input id="co-name" type="text" className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete={pickup ? 'name' : 'shipping name'} required />
                 </div>
 
+                {pickup && (
+                  <p className="field-hint" style={{ marginBottom: 16 }} data-testid="pickup-note">
+                    No shipping address needed. The pickup address comes with your order confirmation, after payment. We tell you when the order is ready.
+                  </p>
+                )}
+                {!pickup && (<>
                 <div className="field">
                   <label className="field-label" htmlFor="co-street">Street address</label>
                   <input id="co-street" type="text" className="input" value={street} onChange={(e) => setStreet(e.target.value)} autoComplete="shipping address-line1" required aria-describedby="co-street-help" />
@@ -199,14 +231,32 @@ export default function CheckoutPage() {
                     </select>
                   </div>
                 </div>
+                </>)}
               </fieldset>
+
+              <TaxExemption
+                info={co?.tax?.exemption}
+                declared={exempt.declared}
+                reason={exempt.reason}
+                onChange={setExempt}
+                certFileName={quoteData?.taxCertFileName}
+                onUpload={async (file) => { const r = await api.uploadTaxCertificate(quoteId, file); setQuoteData((q) => ({ ...q, taxCertFileName: r.taxCertFileName })); setError(null); }}
+                onRemove={async () => { await api.removeTaxCertificate(quoteId); setQuoteData((q) => ({ ...q, taxCertFileName: '' })); }}
+              />
+
+              {selected && selected.available === false && (
+                <div role="status" className="gate-box" style={{ marginBottom: 24 }} data-testid="delivery-unavailable">
+                  {selected.unavailableReason}{' '}
+                  <Link to={`/rfq/${quoteId}`} style={{ color: 'inherit', fontWeight: 600 }}>Request a firm quote</Link>{co.options.length > 1 ? ', or choose another delivery option above.' : '.'}
+                </div>
+              )}
 
               <FormError error={error?.message} at={errorAt} />
 
               <button
                 type="submit"
                 className="btn btn-primary btn-lg btn-block"
-                disabled={loading || !quoteData || quoteData.expired || mustConfirm}
+                disabled={loading || !quoteData || quoteData.expired || mustConfirm || (selected && selected.available === false)}
                 aria-describedby={mustConfirm ? 'pay-needs-email' : 'pay-next'}
               >
                 {loading ? 'Opening the card page…' : 'Pay and place order'}
@@ -268,22 +318,44 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                {/* Shipping and the total: what the server works out now for the delivery choice (never
+                    a figure kept from when the quote was priced). With the shop's original settings
+                    this is the one "Shipping $x" line it has always been. */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: plainShipping ? 12 : 4 }} data-testid="summary-shipping">
                   <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Shipping</span>
-                  <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>{quoteData ? formatCurrency(quoteData.shippingEstimate) : '...'}</span>
+                  <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>
+                    {!quoteData ? '...' : plainShipping ? formatCurrency(selected?.shippingCost ?? quoteData.shippingEstimate) : selected.shippingText}
+                  </span>
                 </div>
+                {!plainShipping && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }} data-testid="summary-shipping-note">
+                    {selected.available === false ? selected.unavailableReason : selected.detail}
+                  </div>
+                )}
+
+                {taxOn && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }} data-testid="summary-tax">
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Sales tax</span>
+                    <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 500 }}>
+                      {exempt.declared && co.tax.exemption.trusted ? 'Exempt with certificate' : 'Added at payment'}
+                    </span>
+                  </div>
+                )}
 
                 <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 12, marginTop: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}>Total</span>
-                    <span style={{ color: 'var(--accent)', fontSize: 16, fontWeight: 700 }}>{quoteData ? formatCurrency(quoteData.orderTotal) : '...'}</span>
+                    <span style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}>{taxOn ? 'Total before tax' : 'Total'}</span>
+                    <span style={{ color: 'var(--accent)', fontSize: 16, fontWeight: 700 }} data-testid="summary-total">
+                      {!quoteData ? '...' : plainShipping ? formatCurrency(selected?.total ?? quoteData.orderTotal) : (selected.total != null ? formatCurrency(selected.total) : 'To be confirmed')}
+                    </span>
                   </div>
+                  {taxOn && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }} data-testid="summary-tax-note">{co.tax.note}</div>}
                 </div>
               </div>
 
               {quoteData?.shipBy && (
                 <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-primary)' }}>
-                  <b>Ships by {formatShipDate(quoteData.shipBy, { year: true })}</b>
+                  <b>{pickup ? 'Ready by' : 'Ships by'} {formatShipDate(quoteData.shipBy, { year: true })}</b>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                     {quoteData.leadTimeName ? `${quoteData.leadTimeName} lead time, ` : ''}if you pay today. Weekends and federal holidays don't count.
                   </div>
