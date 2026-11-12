@@ -29,7 +29,7 @@ Two decisions: how shipping is charged, and whether tax is collected at checkout
 
 If the Illinois and Stripe steps are not done by launch day, switch the shipping half of B on and leave tax off: the two halves are independent.
 
-**Later upgrade (one, when volume justifies it):** live carrier rates from a rating API with the rate table kept as the fallback when the API is slow or down, and label purchase from the order view. The repo names EasyPost in `.env.example` but nothing uses it. Second candidate: filing. Stripe Tax's pay-as-you-go plan does not file returns; your accountant files Form ST-1, or you move to Stripe's subscription plan that includes filings.
+**Later upgrade (one, when volume justifies it):** live carrier rates from a rating API with the rate table kept as the fallback when the API is slow or down, and label purchase from the order view. (The unused EasyPost line that was in `.env.example` is gone; nothing in the code ever read it.) Second candidate: filing. Stripe Tax's pay-as-you-go plan does not file returns; your accountant files Form ST-1, or you move to Stripe's subscription plan that includes filings.
 
 ---
 
@@ -297,3 +297,52 @@ Screenshots: `docs/screenshots/tax-shipping-2026-11-11/`. The pickup address is 
 - A delivery choice on the admin's phone-order route (`POST /api/orders`): unchanged.
 - An owner-set shipping line on a firm quote. A firm quote's price is the total; say what it covers in the quote note, as now.
 - A carrier account number is sealed with a key derived from `JWT_SECRET`. If that secret is ever changed, stored account numbers can no longer be opened: the order view says so and shows the last four.
+
+---
+
+## 8. At the relaunch merge (2026-11-12): what changed from the sections above
+
+This branch was written on an older base. It was merged into the relaunch branch after the payment,
+price-integrity and availability fixes, and those rules won wherever the two met. The settings, the
+defaults and everything in sections 1 to 5 stand. What is different from section 6:
+
+- **What a customer is charged for shipping at the defaults: the weight formula, $12.00 plus $2.50 per
+  kilogram of parts, to any destination, with no size or weight limit.** No tax. One delivery choice (we
+  ship). That is option A in section 1 and is what the site did before; nothing is switched on until you
+  switch it on.
+- **Checkout prices the quote again before it charges** (the price-integrity rule). Shipping is worked
+  out from the lines as they have just been priced again, not from the stored quote's lines. The parts
+  are charged at the quote's own price (today's, or the held one); shipping is charged under the settings
+  as they are at that moment and is not part of the 30-day price hold.
+- **The total the page showed is checked.** The checkout page sends the total it was showing for the
+  delivery choice the buyer made. If that is not what the server would charge (a setting changed after
+  the page loaded), nothing is charged: the buyer is shown the new total and presses pay again.
+- **One quote, one order, whatever the delivery choice.** Back from the card page with another choice or
+  another address, the buyer's unpaid order is brought up to date: it is never a second order. With tax
+  on, a changed address closes the old card page and opens a new one tied to the new address, so an
+  order is never taxed at an address it is not going to.
+- **A payment that does not match is not marked paid.** It used to become "paid, under review". Now the
+  order stays unpaid, is flagged for you with the reason, and you are emailed (the order-lifecycle rule).
+  The check is: what Stripe collected, less the tax Stripe reports, plus any discount, equals the order's
+  total before tax, in whole cents. Tax on a payment for an order that was checked out with tax off is a
+  mismatch too.
+- **Promotion codes are off unless you switch them on** (`STRIPE_PROMOTION_CODES=on`); section 6's
+  "allow_promotion_codes" no longer applies by default.
+- **A material with no density cannot be priced at all** (the pricing whitelist refuses it), so the
+  "unknown weight" shipping answer is now reached only for a part whose size or volume cannot be worked
+  out, not through a material record.
+- **Looking at a quote reads no part from disk under the weight formula.** With a rate table or
+  "included" each part of the quote is read once to weigh it.
+- **Every new refusal has its words in the message catalogue** (delivery choice, carrier account, pickup
+  name, no parcel price, tax address, exemption reason, certificate missing or of the wrong kind).
+
+How it was tested at the merge, on the merged code:
+
+| What | Where | Result |
+|---|---|---|
+| The branch's own end-to-end suite, with four cases rewritten for the rules above (each says why in the file) | `server/routes/taxShipping.test.js` | 50 of 50 |
+| The payment checks with shipping and tax off and on: weight formula and tax off; rate table and Stripe Tax; pickup and Stripe Tax; carrier account and rate table. Expected charge, re-pricing at checkout, the fingerprint, one quote one order, settlement, refunds and disputes, and a changed address on the way back | `server/routes/paymentChecksByDelivery.test.js` | 32 of 32 |
+| Shipping, tax, settings and column suites | `shipping.test.js`, `tax.test.js`, `ruleSchema.test.js`, `taxShippingMigration.test.js` | 25, 13, 15, 8 |
+| The browser pass (Chromium, 1360 px, production mode, the real Content-Security-Policy) | `scripts/e2e/tax-shipping.mjs` | 56 of 56; screenshots refreshed |
+
+Still true, and still not done: nothing here has been run against Stripe itself (section 7).
