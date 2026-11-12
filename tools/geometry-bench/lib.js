@@ -187,12 +187,13 @@ function digest(sec) {
  * Parse `file` in server/parsers/parseWorker.js (the production worker code)
  * and measure it. The time limit is not applied; `heapMb` is the worker's
  * old-generation ceiling (production: 768).
- * @returns {Promise<{parsed, error, wallMs, cpuMs, peakHeapMb, peakRssMb, baseRssMb, stages}>}
+ * @returns {Promise<{parsed, error, wallMs, cpuMs, peakHeapMb, peakV8HeapMb, peakRssMb, baseRssMb, stages}>}
+ *          peakHeapMb = V8 heap in use + typed-array memory; peakV8HeapMb = the V8 heap alone (what the ceiling counts)
  */
 function runInWorker(file, options = {}, { heapMb = 768, warm = true } = {}) {
   return new Promise((resolve) => {
     const worker = new Worker(WORKER, { resourceLimits: { maxOldGenerationSizeMb: heapMb } });
-    let peakHeap = 0, peakRss = 0, baseRss = 0, sampling = false, t0 = 0, cpu0 = null, done = false;
+    let peakHeap = 0, peakV8 = 0, peakRss = 0, baseRss = 0, sampling = false, t0 = 0, cpu0 = null, done = false;
     const sample = async () => {
       if (sampling || done) return;
       sampling = true;
@@ -203,6 +204,7 @@ function runInWorker(file, options = {}, { heapMb = 768, warm = true } = {}) {
           const h = await worker.getHeapStatistics();
           const used = h.used_heap_size + (h.external_memory || 0);
           if (used > peakHeap) peakHeap = used;
+          if (h.used_heap_size > peakV8) peakV8 = h.used_heap_size; // what the worker's heap ceiling counts
         }
       } catch { /* the worker has gone */ }
       sampling = false;
@@ -217,7 +219,7 @@ function runInWorker(file, options = {}, { heapMb = 768, warm = true } = {}) {
       clearInterval(timer);
       await worker.terminate().catch(() => {});
       const mb = (b) => Math.round((b / 1048576) * 10) / 10;
-      const base = { wallMs, cpuMs: cpuMs === null ? null : Math.round(cpuMs), peakHeapMb: mb(peakHeap), peakRssMb: mb(peakRss), baseRssMb: mb(baseRss) };
+      const base = { wallMs, cpuMs: cpuMs === null ? null : Math.round(cpuMs), peakHeapMb: mb(peakHeap), peakV8HeapMb: mb(peakV8), peakRssMb: mb(peakRss), baseRssMb: mb(baseRss) };
       if (fatal) return resolve({ ...base, parsed: null, error: fatal, stages: null });
       if (!msg.ok) return resolve({ ...base, parsed: null, error: Object.assign(new Error(msg.error.message), { code: msg.error.code, offerRfq: msg.error.offerRfq }), stages: null });
       const f = msg.result.geometry && msg.result.geometry.features;

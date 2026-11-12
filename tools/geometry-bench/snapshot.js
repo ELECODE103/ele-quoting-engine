@@ -3,7 +3,7 @@
  * Record the baseline: run the code as it stands over the corpus and save what
  * it returned.
  *
- *   node tools/geometry-bench/snapshot.js [--size small,medium,large] [--only id,…] [--match re] [--missing]
+ *   node tools/geometry-bench/snapshot.js [--size small,medium,large] [--only id,…] [--match re] [--missing] [--unfinished]
  *                                         [--jobs 1] [--heap 4096] [--cap-minutes N]
  *
  * Writes tools/geometry-bench/baseline/
@@ -54,6 +54,7 @@ const MAX_COMMITTED_SNAPSHOT = 400 * 1024; // gzip bytes; a bigger result is kep
     fs.renameSync(tmp, indexFile);
   };
   if (args.missing) { const have = load().cases; list = list.filter((c) => !have[c.id]); } // --missing: only cases not recorded yet
+  if (args.unfinished) { const have = load().cases; list = list.filter((c) => have[c.id] && have[c.id].unfinished === "time"); } // --unfinished: retry cases a time cap stopped
   let failed = 0, done = 0;
   await runMany(list, {
     jobs: Number(args.jobs) || 1, heap: Number(args.heap) || 4096, capMs: args["cap-minutes"] ? Number(args["cap-minutes"]) * 60000 : 0,

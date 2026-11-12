@@ -29,7 +29,7 @@ const lib = require("./lib");
   const d = lib.digest(sec);
   const out = {
     id: c.id, input, hash: d.hash, summary: lib.summarise(sec),
-    timing: { wallMs: m.wallMs, cpuMs: m.cpuMs, peakHeapMb: m.peakHeapMb, peakRssMb: m.peakRssMb, baseRssMb: m.baseRssMb, afterParseMs: Date.now() - t1, load: Math.round(load0 * 10) / 10 },
+    timing: { wallMs: m.wallMs, cpuMs: m.cpuMs, peakHeapMb: m.peakHeapMb, peakV8HeapMb: m.peakV8HeapMb, peakRssMb: m.peakRssMb, baseRssMb: m.baseRssMb, afterParseMs: Date.now() - t1, load: Math.round(load0 * 10) / 10 },
     stages: m.stages,
   };
   fs.writeFileSync(args._[1], JSON.stringify(out));
