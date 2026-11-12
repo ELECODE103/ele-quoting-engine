@@ -145,6 +145,16 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
         ))}
       </div>
 
+      {/* The last change was not priced (a limit, a busy moment, a setting that is no longer offered): say so where
+          the price is, and say that the price on screen is the one from before. Checkout waits until it is settled,
+          so nobody pays for a setup other than the one on the page. */}
+      {quoteError && (
+        <div role="alert" data-testid="summary-refusal" className="gate-box" style={{ marginTop: 12 }}>
+          {quoteError}
+          <div style={{ marginTop: 6 }}>The price below is from before your last change.</div>
+        </div>
+      )}
+
       {/* Totals */}
       <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 16, marginTop: 16 }}>
         <Row label="Subtotal" value={formatCurrency(quote.subtotal)} />
@@ -180,7 +190,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
         </>
       ) : (
         <>
-          <button className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 20, justifyContent: 'center', animation: 'pulseGlow 2.5s infinite' }} onClick={handleCheckout}>
+          <button className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 20, justifyContent: 'center', animation: quoteError ? 'none' : 'pulseGlow 2.5s infinite' }} onClick={handleCheckout} disabled={Boolean(quoteError)}>
             Check out →
           </button>
           <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-dim)', marginTop: 8 }}>

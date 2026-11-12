@@ -134,7 +134,6 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
 
     // Pricing and checkout
     'finish-lead-time': { '*': { text: 'Anodize and powder coat go out to a finisher, so a part with either one ships on the Standard lead time. Choose Standard, or a finish done here.' } },
-    'too-many-lines': { '*': { text: `An instant quote holds up to 100 lines. For a larger job, send us the files and a person prices it${within}.`, keep: true, action: 'rfq' } },
     'quote-expired': {
       '*': { text: 'The hold on this price has run out. Reopen the quote for today\'s price; your parts are still there.', action: 'reopen-quote' },
       'firm-quote': { text: `This quote has passed its date. Reply to the quote email or call ${PHONE} and we'll refresh it.`, keep: true },
@@ -241,9 +240,85 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     // A request the server could not read as a quote at all (price-integrity fixes): nothing for the buyer to fix.
     'config-invalid': { '*': { text: `We couldn't price this as it was sent. That is most likely a page that is out of date: reload the page and try again. If it keeps happening, ask for a firm quote and a person prices it, or call ${PHONE}.`, action: 'rfq' } },
 
-    // Expected from the availability work, not merged yet (names may differ; an unknown code falls back by status, below).
-    'quote-too-large': { '*': { text: `This quote is larger than the instant quote handles. Send us the files and a person prices it${within}.`, keep: true, action: 'rfq' } },
-    'part-reupload-required': { '*': { text: 'We no longer hold what we measured from this file, so it can\'t be priced as it stands. Upload the file again and it is priced as before.', keep: true } },
+    // ─── Limits per sender, a busy moment, and models a person has to price (availability work, 2026-11-12) ───
+    // Every one of these says what happened, that nothing is wrong with the buyer's work where that is true, and
+    // the way on: wait (with the time, when the server gives one), keep working on what is open, sign in, or ask
+    // for a firm quote. `data.retryAfterSeconds` → `minutes`; `data.scope` says whose allowance it was.
+
+    // Pricing (POST /api/quote, reorder, and the price check at checkout)
+    'pricing-budget': {
+      '*': { text: ({ minutes }) => `We have priced as much from this network or account in the last hour as the instant quote allows, so this change was not priced. It prices again in about ${minutes ? plural(minutes, 'minute') : 'an hour'}. For a price sooner, ask for a firm quote and a person prices it${within}, or call ${PHONE}.`, action: 'rfq' },
+      checkout: { text: ({ minutes }) => `We check the price once more before we charge, and this network or account has used the pricing the instant quote allows for the hour, so we have not charged you. Your quote is saved: try again in about ${minutes ? plural(minutes, 'minute') : 'an hour'}, or call ${PHONE} and we'll take the order by phone.`, action: 'retry' },
+      order: { text: ({ minutes }) => `We have priced as much from this network or account in the last hour as the instant quote allows, so the order was not re-quoted and nothing was changed. Try Reorder again in about ${minutes ? plural(minutes, 'minute') : 'an hour'}, or ${REACH}.`, action: 'retry' },
+    },
+    'pricing-busy': {
+      '*': { text: `We are pricing a lot of quotes right now, so this one is waiting its turn. Nothing is wrong with your parts. The price updates by itself in a few seconds; if it doesn't, change anything on the quote or call ${PHONE}.`, action: 'retry' },
+      order: { text: `We are pricing a lot of quotes right now, so the order was not re-quoted yet and nothing was changed. Press Reorder again in a few seconds, or call ${PHONE}.`, action: 'retry' },
+    },
+    'pricing-in-progress': {
+      '*': { text: 'We are still pricing your last change. The price updates by itself in a few seconds.', action: 'retry' },
+      order: { text: 'We are still working on the last reorder from this connection. Give it a few seconds and press Reorder again.', action: 'retry' },
+    },
+    'quote-too-slow': {
+      '*': { text: `This quote is taking longer to price than the instant quote allows, so it was not priced. Ask for a firm quote and a person prices it${within}, or split it into smaller quotes. Questions: ${PHONE}.`, action: 'rfq' },
+      order: { text: `This order has more in it than the instant quote can re-price in one go, so it was not re-quoted and nothing was changed. Start a new quote with fewer lines, or ${REACH} and a person prices it.` },
+    },
+    'reprice-limit': { '*': { text: ({ minutes }) => `This quote has been changed a great many times in the last hour, so this change was not priced. It prices again in ${minutes ? `about ${plural(minutes, 'minute')}` : 'a few minutes'}, or ask for a firm quote and a person prices it${within}.`, action: 'rfq' } },
+    'quote-limit': {
+      '*': { text: ({ minutes }) => `A lot of new quotes have been started from here in a short time, so this one was not started. Keep working on a quote you already have open, or try again in ${minutes ? `about ${plural(minutes, 'minute')}` : 'a while'}. For a big job, ask for a firm quote and a person prices it${within}.`, action: 'rfq' },
+      order: { text: ({ minutes }) => `A lot of new quotes have been started from here in a short time, so the order was not re-quoted and nothing was changed. Open a quote you already have, or try Reorder again in ${minutes ? `about ${plural(minutes, 'minute')}` : 'a while'}. Questions: ${PHONE}.` },
+    },
+    'drafts-full': {
+      '*': {
+        text: ({ data }) => (data && data.scope === 'account'
+          ? `Your account holds as many saved quotes as we keep for one account, so this one was not saved. Open a quote you already have and change it, or email ${EMAIL} and we'll clear out the old ones for you.`
+          : `There are a lot of quotes open from this network, so this one was not saved. Keep working on a quote you already have open, or sign in to save more. For a big job, ask for a firm quote and a person prices it${within}.`),
+        action: 'rfq',
+      },
+      order: { text: `Your account holds as many saved quotes as we keep for one account, so the order was not re-quoted and nothing was changed. Open a quote you already have and change it, or email ${EMAIL} and we'll clear out the old ones for you.` },
+    },
+    'quotes-paused': { '*': { text: `We can't save new quotes for visitors without an account right now. That is a limit on our side, and your files are fine. Sign in, or create an account and confirm your email, and it works. Or email your files to ${EMAIL} and a person quotes them.`, action: 'sign-in' } },
+    'too-many-lines': { '*': { text: `An instant quote holds up to 100 lines. For a larger job, send us the files and a person prices it${within}.`, keep: true, action: 'rfq' } },
+
+    // Uploads
+    'uploads-paused': { '*': { text: `We can't take new files from visitors without an account right now. That is a limit on our side, and nothing is wrong with your file. Sign in, or create an account and confirm your email, and upload again. Or email the files to ${EMAIL} and a person quotes them.`, action: 'sign-in' } },
+    'stored-limit': {
+      '*': {
+        text: ({ data, number }) => {
+          const size = number('MB') ? ` (${number('MB')} MB of files)` : '';
+          return data && data.scope === 'account'
+            ? `Your account has reached what we keep for one account at a time${size}, so this file was not taken. Files that are not on an order are cleared after a few days. Email your files to ${EMAIL} or call ${PHONE} and a person quotes them.`
+            : `You have reached what we keep from one network at a time${size}, so this file was not taken. Files that are not on an order or a saved quote are cleared after a few days. Email your files to ${EMAIL} or call ${PHONE} and a person quotes them.`;
+        },
+        action: 'rfq',
+      },
+    },
+    'parse-budget': { '*': { text: `We have spent as long reading files from this network in the last hour as the instant quote allows, so this one was not read. Try again later, or send us the files and a person quotes them${within}.`, action: 'rfq' } },
+    'parse-memory': { '*': { text: `This model needs more memory to read than the instant quote allows. Simplify it or export it at a coarser resolution, or send it to us and a person prices it${within}.`, action: 'rfq' } },
+    'parse-failed': { '*': { text: `We couldn't read this file. Export it again from your CAD program and upload it, or send it to us and a person prices it${within}.`, keep: true, action: 'rfq' } },
+    'not-read': { '*': { text: 'We stopped reading this upload because another file in it could not be read in time. Nothing is wrong with this file: upload it by itself and it is read.', action: 'retry' } },
+    'file-padded': { '*': { text: `This file is much larger than the model inside it needs, which usually means the export went wrong. Export it again from your CAD program and upload it, or send it to us and a person prices it${within}.`, action: 'rfq' } },
+
+    // A model the instant quote will not put a price on: a person prices it
+    'nested-shells': { '*': { text: `This model has one closed shape inside another: a sealed hollow, or a part inside a part. The instant quote can't tell which, and the price depends on it, so a person prices these. Ask for a firm quote and we reply${within}.`, action: 'rfq' } },
+    'too-thin-to-print': { '*': { text: `This part is too thin or too small for our printers to make reliably, so it was not priced for printing. Thicken it, or ask for a firm quote and a person looks at how it could be made.`, action: 'rfq' } },
+    'geometry-not-measurable': { '*': { text: `We couldn't measure this model: some of its coordinates are not real numbers, it has no solid volume, or its shapes overlap so the volume can't be counted. Export it again from your CAD program as one solid and upload it, or send it to us and a person prices it${within}.`, action: 'rfq' } },
+    'geometry-out-of-range': { '*': { text: `This model's size doesn't come out as a real part: it is far larger than anything we make, or it sits very far from the origin. Check the export units and upload it again, or send it to us and a person prices it${within}.`, action: 'rfq' } },
+    'geometry-too-small': { '*': { text: `This model comes out smaller than anything we can hold or measure. Check the export units (millimetres or inches) and upload it again, or send it to us and a person prices it${within}.`, action: 'rfq' } },
+
+    // The part file behind a quote is gone (checkout checks before it charges)
+    'part-file-missing': { '*': { text: `We no longer hold one of the files on this quote, so we have not charged you. Reopen the quote and upload the file again: it picks up where it left off. Questions: ${PHONE}.`, action: 'reopen-quote' } },
+
+    // 3D previews: the quote and its price never depend on them
+    'preview-limit': { '*': { text: 'A lot of part previews have been loaded from this network in the last hour, so previews are paused for a while. Pricing and ordering are not affected.' } },
+    'preview-rate-limited': { '*': { text: 'A lot of part previews have been loaded in a short time, so previews are paused for a few minutes. Pricing and ordering are not affected.' } },
+    'preview-unavailable': { '*': { text: 'We can\'t show the 3D preview of this part right now. The quote and its price are not affected.' } },
+    'no-preview': { '*': { text: 'This part has no 3D preview. The quote and its price are not affected.' } },
+    'preview-too-large': { '*': { text: 'The 3D preview of this part is too large to show here. The quote and its price are not affected.' } },
+
+    // The request form, and an answer too large to send
+    'requests-paused': { '*': { text: `We are getting more requests than we can read right now, so the form is paused for a little while and this one was not sent. ${REACH_CAP} and we'll take it from there.` } },
+    'answer-too-large': { '*': { text: `That is more than we can show on one page. Reload the page; if it happens again, ${REACH} and we'll sort it out.`, action: 'reload' } },
 
     // Too many requests. One code covers a dozen different limits, so the wording goes by where it happened.
     'rate-limited': {
@@ -251,7 +326,7 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
       login: { text: `Too many sign-in attempts have come from this connection, so sign-in from it is paused for 15 minutes. On a shared office network that can be someone else's doing. Wait, or call ${PHONE}.` },
       register: { text: `Several accounts have been created from this connection in the last hour, so we have paused new ones. Try again later, or ${REACH} and we'll set you up.` },
       'two-factor': { text: 'Too many tries in a short time. Wait 15 minutes, then enter the code the app shows.' },
-      // Two limits share this code (one a minute, five a day); the server's sentence says which.
+      // Three limits share this code (one a minute, five a day per account, five an hour per network); the server's sentence says which.
       resend: { text: `We sent a link a moment ago, and we send a handful a day at most. Check the spam folder first; if nothing has arrived, call ${PHONE}.`, keep: true },
       reset: { text: `Several reset links have been asked for from this connection in the last hour, so we have paused them. Try again in an hour, or call ${PHONE}.` },
       form: { text: `We have had several requests from you in a short time, so this one was not sent. ${REACH_CAP} and we'll take it from there.` },

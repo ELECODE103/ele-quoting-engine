@@ -230,6 +230,10 @@ const NOT_REFUSALS = {
   'dispute-opened': 'payment event (admin)', 'dispute-closed': 'payment event (admin)',
   // why no automatic email went out for a request (`noEmailReason`): the page has its own words for these two
   'account-unconfirmed': 'noEmailReason', 'daily-limit': 'noEmailReason',
+  // the owner's clean-up actions (routes/adminStorage.js): admin screens show the server's own sentence
+  'not-found': 'admin (delete a request)', 'request-has-order': 'admin (delete a request)',
+  // start-up log lines about the owner's one-time setup code (security/adminAccount.js): never an answer to a request
+  'code-too-short': 'start-up log (operator)', 'code-too-simple': 'start-up log (operator)',
   // inside the server: logged, or turned into one of the codes above before it is answered
   'process-unknown': 'internal (answered as process-not-offered)', 'pricing-input-missing': 'internal (answered as material-unavailable or pricing-unavailable)',
   'parts-or-setup-changed': 'internal (why a quote was re-priced; logged)', 'price-moved-too-far': 'internal (why a quote was re-priced; logged)',
@@ -244,7 +248,10 @@ test('every refusal code the server can send is worded here, or is named as some
       else if (e.name.endsWith('.js') && !e.name.endsWith('.test.js')) sources.push(p);
     }
   }(path.join(root, 'server')));
-  const patterns = [/\bcode:\s*"([a-z0-9][a-z0-9-]+)"/g, /\b(?:Refusal|refusal|fail|refuse)\(\s*\d+,\s*"([a-z0-9-]+)"/g, /\bbad\(\s*"([a-z0-9-]+)"/g,
+  // (second integration pass) plus the ways the availability work writes a code: poolError("parse-memory", 422, …),
+  // refusal("geometry-out-of-range"), fail("geometry-not-measurable"), unavailable("preview-unavailable"), and the keys
+  // of a MESSAGES map ("too-thin-to-print": `…`).
+  const patterns = [/\b(?:poolError|refusal|fail|unavailable)\(\s*"([a-z0-9]+-[a-z0-9-]+)"/g, /^\s*"([a-z0-9]+-[a-z0-9-]+)":\s*`/gm, /\bcode:\s*"([a-z0-9][a-z0-9-]+)"/g, /\b(?:Refusal|refusal|fail|refuse)\(\s*\d+,\s*"([a-z0-9-]+)"/g, /\bbad\(\s*"([a-z0-9-]+)"/g,
     /code:[^,\n]*\?\s*"([a-z0-9-]+)"\s*:\s*"([a-z0-9-]+)"/g, /code\s*=\s*"([a-z0-9]+-[a-z0-9-]+)"/g, /\?\s*"([a-z0-9]+-[a-z0-9-]+)"\s*:\s*"([a-z0-9]+-[a-z0-9-]+)"/g];
   const sent = new Map();
   for (const f of sources) {
@@ -257,6 +264,68 @@ test('every refusal code the server can send is worded here, or is named as some
   for (const c of Object.keys(NOT_REFUSALS)) assert.ok(!cat.codes.includes(c), `${c} is listed as "not a refusal" and also has an entry`);
   for (const c of ['order-quantity', 'big-ticket-order', 'stock-thinner-than-model']) assert.ok(cat.gateReasonCodes.includes(c));
   console.log(`       (${sent.size} codes found in the server; ${cat.codes.length} worded here; ${Object.keys(NOT_REFUSALS).length} named as not buyer refusals)`);
+});
+
+// ─── The refusals the availability work added (second integration pass, 2026-11-12) ───
+// Each is worded for every place it can arrive: the quote tool (pricing, upload), the order page (Reorder), checkout,
+// the account pages. The answers below are the server's own, as it sends them.
+test('every refusal the availability work added reads as a sentence with a way on, wherever it arrives', () => {
+  const say = (code, context, data = {}, status = 429) => cat.describe({ status, code, context, data: { code, ...data }, serverMessage: data.error || '' });
+  const places = { quote: 'quote', upload: 'upload', reorder: cat.contextFor('/orders/abc/reorder', 'POST'), checkout: cat.contextFor('/orders/checkout-session', 'POST') };
+  assert.deepStrictEqual([places.reorder, places.checkout], ['order', 'checkout']);
+  const cases = [
+    // code, where it can arrive, the server's extra fields, something the sentence must say
+    ['pricing-budget', ['quote', 'reorder', 'checkout'], { retryAfterSeconds: 1500, offerRfq: true }, /about 25 minutes/],
+    ['pricing-busy', ['quote', 'reorder'], { retryAfterSeconds: 5 }, /few seconds/],
+    ['pricing-in-progress', ['quote', 'reorder'], { retryAfterSeconds: 3 }, /few seconds/],
+    ['quote-too-slow', ['quote', 'reorder'], { offerRfq: true }, /person prices it/],
+    ['reprice-limit', ['quote'], { retryAfterSeconds: 240 }, /about 4 minutes/],
+    ['quote-limit', ['quote', 'reorder'], { retryAfterSeconds: 3000 }, /about 50 minutes/],
+    ['drafts-full', ['quote'], { scope: 'network', retryAfterSeconds: 600 }, /sign in to save more/],
+    ['drafts-full', ['quote', 'reorder'], { scope: 'account' }, /Your account holds as many saved quotes/],
+    ['quotes-paused', ['quote'], {}, /Sign in, or create an account/],
+    ['uploads-paused', ['upload'], {}, /Sign in, or create an account/],
+    ['stored-limit', ['upload'], { scope: 'network', error: "You've reached what we keep for one network at a time (150 MB of files). Files…" }, /one network at a time \(150 MB of files\)/],
+    ['stored-limit', ['upload'], { scope: 'account', error: 'Your account has reached what we keep for one account at a time (150 MB of files). Files…' }, /Your account has reached .* \(150 MB of files\)/],
+    ['parse-budget', ['upload'], { offerRfq: true }, /person quotes them/],
+    ['parse-memory', ['upload'], { offerRfq: true }, /coarser resolution/],
+    ['not-read', ['upload'], {}, /upload it by itself/],
+    ['file-padded', ['upload'], { offerRfq: true }, /Export it again/],
+    ['nested-shells', ['upload'], { offerRfq: true }, /one closed shape inside another/],
+    ['too-thin-to-print', ['quote'], { offerRfq: true }, /Thicken it/],
+    ['geometry-not-measurable', ['upload', 'quote'], { offerRfq: true }, /couldn't measure this model/],
+    ['geometry-out-of-range', ['upload', 'quote'], { offerRfq: true }, /export units/],
+    ['geometry-too-small', ['upload', 'quote'], { offerRfq: true }, /export units/],
+    ['busy', ['upload'], { retryAfterSeconds: 60 }, /give it a minute and try again/],
+    ['part-file-missing', ['checkout'], {}, /have not charged you/],
+    ['requests-paused', ['rfq'], {}, /this one was not sent/],
+  ];
+  for (const [code, where, data, must] of cases) {
+    assert.ok(cat.codes.includes(code), `${code} has an entry`);
+    for (const place of where) {
+      const said = say(code, places[place] || place, data);
+      assert.strictEqual(said.source, 'catalogue', `${code} at ${place}: the words are the catalogue's`);
+      assert.ok(must.test(said.message), `${code} at ${place}: "${said.message}"`);
+      assert.ok(!NEVER.test(said.message) && /[.]$/.test(said.message) && said.message.length > 60, `${code} at ${place}: "${said.message}"`);
+      assert.ok(!said.message.includes(code) && !/something went wrong/i.test(said.message), `${code} at ${place} never shows its code or a shrug`);
+      // Copy rules: nothing about how many people work here, and no certification line.
+      assert.ok(!/one[- ]person|one[- ]man|just me|sole|\bISO\b/i.test(said.message), `${code} at ${place}: "${said.message}"`);
+    }
+  }
+  // A refusal that goes to a person offers the firm quote; one that passes by itself offers a retry.
+  for (const code of ['pricing-budget', 'quote-too-slow', 'reprice-limit', 'nested-shells', 'too-thin-to-print', 'geometry-not-measurable', 'stored-limit', 'parse-budget']) assert.strictEqual(say(code, 'quote').action, 'rfq', code);
+  for (const code of ['pricing-busy', 'pricing-in-progress']) assert.strictEqual(say(code, 'quote').action, 'retry', code);
+  // At checkout nothing was charged, and the order page says nothing was changed.
+  assert.ok(/have not charged you/.test(say('pricing-budget', 'checkout', { retryAfterSeconds: 600 }).message));
+  for (const code of ['pricing-budget', 'pricing-busy', 'quote-too-slow', 'quote-limit', 'drafts-full']) assert.ok(/nothing was changed/.test(say(code, 'order', { scope: 'account' }).message), `${code} on the order page`);
+  // "Send it again" refused per network keeps the server's sentence (it says which of three limits it was)…
+  const resend = cat.describe({ status: 429, code: 'rate-limited', context: cat.contextFor('/auth/verify-email/resend', 'POST'), serverMessage: "We've sent several confirmation emails from this network in the last hour. Check the spam folder, and try again later; if it isn't arriving, call 224-213-6727." });
+  assert.ok(/from this network in the last hour/.test(resend.message) && resend.source === 'server');
+  // …and a confirmation email that is held, not refused, has a sentence of its own.
+  assert.deepStrictEqual(cat.noticeKeys, ['verification-queued']);
+  const held = cat.notice('verification-queued');
+  assert.ok(/within the hour/.test(held) && /don't need to ask again/.test(held) && !NEVER.test(held), held);
+  assert.strictEqual(cat.notice('no-such-notice'), '');
 });
 
 console.log(`\n${passed} passed`);

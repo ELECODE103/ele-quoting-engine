@@ -28,6 +28,8 @@ function pickThickness(mat, geometry) {
   return list.reduce((best, x) => (Math.abs(x.mm - t) < Math.abs(best.mm - t) ? x : best), list[0]).mm;
 }
 
+// Pricing refusals that pass by themselves: the page asks again instead of leaving the buyer to.
+const PRICING_WILL_PASS = new Set(['pricing-in-progress', 'pricing-busy']);
 // Deep link from the material and service pages: /quote?process=cnc&material=cnc-delrin
 // opens the builder on that process with that material preselected for uploaded parts.
 const LINKABLE_PROCESSES = ['cnc', 'routing', '3d-printing'];
@@ -159,6 +161,9 @@ export default function QuoteBuilder() {
   }, [parts, selectedLeadTime, leadTimes]);
   useEffect(() => { if (leadMoved && !parts.some((p) => SENT_OUT_FINISHES.has(p.finishSlug))) setLeadMoved(''); }, [parts, leadMoved]);
 
+  // Refusals that end by themselves in a few seconds (server/security/pricingGate.js, services/pricingMemo.js).
+  const priceRetries = useRef(0);
+  const latestFetch = useRef(null);
   const fetchQuote = useCallback(async () => {
     if (parts.length === 0) return;
     const todo = parts.map(dxfTodo).find(Boolean);
@@ -189,7 +194,20 @@ export default function QuoteBuilder() {
       setDrawingName(q.drawingFileName || '');
       setQuoteError(null);
       lastReset.current = '';
+      priceRetries.current = 0;
     } catch (err) {
+      // "We are still pricing your last change" and "we are pricing a lot of quotes right now" pass by themselves:
+      // the message says the price will update, so ask again when the server said to (a few times, not for ever).
+      // A newer change replaces this timer (the effect below), so only the latest setup is ever asked for.
+      if (PRICING_WILL_PASS.has(err?.code) && priceRetries.current < 4) {
+        priceRetries.current += 1;
+        const seconds = Math.min(15, Math.max(2, Number(err?.data?.retryAfterSeconds) || 3));
+        clearTimeout(quoteTimer.current);
+        quoteTimer.current = setTimeout(() => latestFetch.current && latestFetch.current(), seconds * 1000);
+        setQuoteError(err.message);
+        return; // still "updating": the spinner stays until the answer that settles it
+      }
+      priceRetries.current = 0;
       // The server refused one setting (it is no longer offered, or does not go with the rest):
       // put that one selector back to a value that is offered and say so. The price then refreshes.
       // Once per refusal: if the same one comes back, it is shown and left for the buyer.
@@ -289,8 +307,10 @@ export default function QuoteBuilder() {
   }
 
   useEffect(() => {
+    latestFetch.current = fetchQuote;
     if (parts.length === 0) { setQuote(null); return; }
     clearTimeout(quoteTimer.current);
+    priceRetries.current = 0;
     quoteTimer.current = setTimeout(() => fetchQuote(), 400);
     return () => clearTimeout(quoteTimer.current);
   }, [fetchQuote]);
@@ -595,6 +615,10 @@ export default function QuoteBuilder() {
             </ul>
             <div className="notice-actions">
               {retryFiles && <button type="button" className="btn btn-primary" onClick={() => handleFiles(retryFiles)}>Try again</button>}
+              {/* "Sign in and it works" (uploads and new quotes are paused for visitors without an account): the way there, and back here. */}
+              {!isAuthenticated && uploadErrors.some((e) => e.action === 'sign-in') && (
+                <button type="button" className="btn btn-primary" onClick={() => navigate(authPath('/login', '/quote'))}>Sign in</button>
+              )}
               {uploadErrors.some((e) => e.action === 'rfq') && (
                 <button type="button" className="btn btn-outline" onClick={() => navigate(quote?.quoteId ? `/rfq/${quote.quoteId}` : '/rfq')}>Request a firm quote</button>
               )}
@@ -883,14 +907,14 @@ export default function QuoteBuilder() {
       {parts.length > 0 && quote && (
         <div className="qb-bar" role="region" aria-label={needsRfq ? 'Budgetary total' : 'Total and checkout'}>
           <a href="#order-summary" className="qb-bar-total">
-            <span className="price-label">{needsRfq ? 'Budgetary' : 'Total'}{quoteLoading ? ' · updating' : ''}</span>
+            <span className="price-label">{needsRfq ? 'Budgetary' : 'Total'}{quoteLoading ? ' · updating' : quoteError ? ' · not updated, see details' : ''}</span>
             <b>{formatCurrency(quote.orderTotal)}</b>
             <span className="qb-bar-sub">{quote.shipBy ? `Ships by ${formatShipDate(quote.shipBy)} · ` : ''}details</span>
           </a>
           {needsRfq ? (
             <button type="button" className="btn btn-primary btn-lg" onClick={() => navigate(quote.quoteId ? `/rfq/${quote.quoteId}` : '/rfq')}>Request a firm quote</button>
           ) : (
-            <button type="button" className="btn btn-primary btn-lg" onClick={() => { const to = `/checkout/${quote.quoteId}`; navigate(isAuthenticated ? to : authPath('/login', to)); }}>Check out</button>
+            <button type="button" className="btn btn-primary btn-lg" disabled={Boolean(quoteError)} onClick={() => { const to = `/checkout/${quote.quoteId}`; navigate(isAuthenticated ? to : authPath('/login', to)); }}>Check out</button>
           )}
         </div>
       )}

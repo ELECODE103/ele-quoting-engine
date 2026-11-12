@@ -75,8 +75,12 @@ const MESSAGES = {
   databaseFull: `We can't save new quotes right now. Email your files to ${brand.email} or call ${brand.phone} and we'll quote them by hand.`,
 };
 
-function refusal(status, code, message, retryAfterSeconds) {
-  return Object.assign(new Error(message), { status, expose: true, extra: { code, ...(retryAfterSeconds ? { retryAfterSeconds } : {}) }, retryAfterSeconds });
+/**
+ * `more` goes into the answer beside the code: `scope` ("account" | "network") says whose allowance was
+ * reached, so the page can word the two cases (client/src/utils/messageCatalogue.js).
+ */
+function refusal(status, code, message, retryAfterSeconds, more = {}) {
+  return Object.assign(new Error(message), { status, expose: true, extra: { code, ...(retryAfterSeconds ? { retryAfterSeconds } : {}), ...more }, retryAfterSeconds });
 }
 
 /**
@@ -131,7 +135,7 @@ function assertRoomForDraft({ user = null, clientKey = "", bytes = 0, existing =
   let held = quotesDB.draftBytesHeld({ clientTag, userId, exceptId });
   if (userId && held.account + bytes > limits.quoteDraftBytesPerAccount) {
     counters.refusedBytes++;
-    throw refusal(429, "drafts-full", MESSAGES.draftsFullAccount);
+    throw refusal(429, "drafts-full", MESSAGES.draftsFullAccount, undefined, { scope: "account" });
   }
   if (clientTag && held.client + bytes > limits.quoteDraftBytesPerClient) {
     // Make room with this address's own idle no-account drafts.
@@ -142,7 +146,7 @@ function assertRoomForDraft({ user = null, clientKey = "", bytes = 0, existing =
     for (const d of mine) { if (need <= 0) break; go.push(d.id); need -= d.bytes; }
     if (need > 0) {
       counters.refusedBytes++;
-      throw refusal(429, "drafts-full", userId ? MESSAGES.draftsFullAccount : MESSAGES.draftsFullClient, 600);
+      throw refusal(429, "drafts-full", userId ? MESSAGES.draftsFullAccount : MESSAGES.draftsFullClient, 600, { scope: userId ? "account" : "network" });
     }
     require("../models/database").deferred(() => { for (const id of go) quotesDB.delete(id); });
     counters.replacedOwn += go.length;

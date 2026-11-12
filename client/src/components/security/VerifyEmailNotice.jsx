@@ -19,7 +19,7 @@ const WAIT_SECONDS = 60; // the server sends one link a minute at most
  * when the server cannot send confirmation links at all (no mailer).
  */
 export default function VerifyEmailNotice({ reason = 'before you pay', why = 'Your order confirmation and shipping notice go to that address, so we make sure it reaches you before any money moves.', style }) {
-  const { user, refresh, verificationEnforced } = useAuth();
+  const { user, refresh, verificationEnforced, verificationQueued, setVerificationQueued } = useAuth();
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [note, setNote] = useState(null); // { ok, text }
@@ -54,9 +54,9 @@ export default function VerifyEmailNotice({ reason = 'before you pay', why = 'Yo
     try {
       const r = await api.resendVerification();
       if (r.verified) { await refresh(); return; }
-      if (r.sent) { setNote({ ok: true, text: `Sent again to ${user.email}. Use the newest email (older links stop working), and check the spam folder too.` }); startWait(WAIT_SECONDS); }
+      if (r.sent) { setVerificationQueued(false); setNote({ ok: true, text: `Sent again to ${user.email}. Use the newest email (older links stop working), and check the spam folder too.` }); startWait(WAIT_SECONDS); }
       // queued: the site is over the hour's line for confirmation emails, so this one is held and sent within the hour
-      else if (r.queued) { setNote({ ok: true, text: describeNotice('verification-queued') }); startWait(WAIT_SECONDS); }
+      else if (r.queued) { setVerificationQueued(true); setNote({ ok: true, text: describeNotice('verification-queued') }); startWait(WAIT_SECONDS); }
       else setNote({ ok: false, text: `We couldn't send it just now. Try again in a minute, or call ${brand.phone}.` });
     } catch (err) {
       setNote({ ok: false, text: err.message });
@@ -76,7 +76,9 @@ export default function VerifyEmailNotice({ reason = 'before you pay', why = 'Yo
     <div className="verify-box" role="region" aria-label="Confirm your email address" style={style}>
       <p>
         <b>One step {reason}: confirm your email.</b>{' '}
-        We sent a link to <b>{user.email}</b> when you created the account. Open it on any device and this page carries on by itself; nothing you have entered here is lost.
+        {verificationQueued
+          ? <>The link goes to <b>{user.email}</b>. {describeNotice('verification-queued')} Open it on any device and this page carries on by itself; nothing you have entered here is lost.</>
+          : <>We sent a link to <b>{user.email}</b> when you created the account. Open it on any device and this page carries on by itself; nothing you have entered here is lost.</>}
         {' '}{why}
       </p>
       <div className="cta-row">

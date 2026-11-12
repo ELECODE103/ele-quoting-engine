@@ -25,6 +25,10 @@ export function AuthProvider({ children }) {
   // True from the moment the server says this browser's session is over until the next sign-in:
   // the sign-in page uses it to say why the buyer is looking at it again.
   const [sessionEnded, setSessionEnded] = useState(false);
+  // True when the server said this account's confirmation email is waiting in line (the site was over its
+  // hourly line for such email when the account was made): the confirm-your-email box then says so, where
+  // it would otherwise say "we sent a link". Kept for this visit only; cleared once an email has gone out.
+  const [verificationQueued, setVerificationQueued] = useState(false);
 
   const apply = useCallback((session) => {
     const account = session && (session.authenticated !== false) ? session.user || null : null;
@@ -59,7 +63,7 @@ export function AuthProvider({ children }) {
   }, [apply]);
 
   /** After a successful sign-in or registration: `session` is the server's answer. */
-  const login = useCallback((session) => { setSessionEnded(false); return apply({ ...session, authenticated: true }); }, [apply]);
+  const login = useCallback((session) => { setSessionEnded(false); setVerificationQueued(Boolean(session && session.verificationQueued)); return apply({ ...session, authenticated: true }); }, [apply]);
 
   /** Ends the session on the server (the token stops working everywhere), then here. */
   const logout = useCallback(async () => {
@@ -73,7 +77,7 @@ export function AuthProvider({ children }) {
   const isAuthenticated = !!user;
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, refresh, isAuthenticated, isLoading, verificationEnforced, sessionEnded }}>
+    <AuthContext.Provider value={{ user, login, logout, refresh, isAuthenticated, isLoading, verificationEnforced, sessionEnded, verificationQueued, setVerificationQueued }}>
       {children}
     </AuthContext.Provider>
   );

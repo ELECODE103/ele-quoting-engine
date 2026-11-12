@@ -371,12 +371,12 @@ function admit(opt = {}) {
     }
     // What this client already has on the volume, plus this upload.
     if (storedBytesFor(key) + incoming > limits.uploadStoredBytesPerClient) {
-      return refuse(429, { error: storedLimitMessage(), code: "stored-limit" });
+      return refuse(429, { error: storedLimitMessage(), code: "stored-limit", scope: "network" });
     }
     // An account is not a way round the cap: anyone with a mailbox has one (re-review 2026-11-12, rule D).
     const accountId = req.user && req.user.userId ? req.user.userId : "";
     if (accountId && storedBytesForAccount(accountId) + incoming > limits.uploadStoredBytesPerAccount) {
-      return refuse(429, { error: storedLimitAccountMessage(), code: "stored-limit" });
+      return refuse(429, { error: storedLimitAccountMessage(), code: "stored-limit", scope: "account" });
     }
     req.uploadClientKey = key;
 
@@ -415,7 +415,7 @@ function admit(opt = {}) {
         res.set("Connection", "close");
         res.status(overRoute ? 413 : 429).json(overRoute
           ? { error: `That upload is too large. Send up to ${mb(maxRequest)} MB at a time.`, code: "request-too-large" }
-          : (got > storedLeft ? { error: storedLimitMessage(), code: "stored-limit" } : { error: dailyLimitMessage(), code: "daily-upload-limit" }));
+          : (got > storedLeft ? { error: storedLimitMessage(), code: "stored-limit", scope: "network" } : { error: dailyLimitMessage(), code: "daily-upload-limit" }));
       }
       // This request has its answer. The upload handler is still running and will try to answer too
       // when its stream ends: from here on, setting a header on this response does nothing instead of
