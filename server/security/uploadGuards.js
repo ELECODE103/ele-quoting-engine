@@ -281,7 +281,7 @@ const DISCARD_BYTES = 64 * 1024 * 1024;
  * parsed. If this runtime closes the connection some other way, the old
  * behaviour (an immediate close) is what happens.
  */
-function lingerThenClose(req) {
+function lingerThenClose(req, { key = "" } = {}) {
   const socket = req && req.socket;
   if (!socket || typeof req.on !== "function" || typeof req.resume !== "function" || typeof socket.destroySoon !== "function") return;
   let seen = 0;
@@ -290,17 +290,43 @@ function lingerThenClose(req) {
     clearTimeout(timer);
     try { if (!socket.destroyed) socket.destroy(); } catch { /* already gone */ }
   };
+  // Nothing else is done for this connection: a second request sent on it while it lingers is not
+  // run (independent re-review 2026-11-12, RR-06: one was, and could never be answered). See refuseOnLingering().
+  socket[LINGERING] = true;
   // The server ends a "Connection: close" answer with socket.destroySoon(): finish our half only.
   socket.destroySoon = function finishOurHalf() { try { this.end(); } catch { close(); } };
   timer = setTimeout(close, DISCARD_MS);
   if (timer.unref) timer.unref();
-  req.on("data", (chunk) => { seen += chunk.length; if (seen > DISCARD_BYTES) close(); });
+  req.on("data", (chunk) => {
+    seen += chunk.length;
+    // What is read and thrown away still came from this sender: it counts against their day like any other byte.
+    if (key) budget.add(key, chunk.length);
+    if (seen > DISCARD_BYTES) close();
+  });
   // The whole body has come: the answer is on its way out and our half is being finished. Give the
   // client a moment to finish its own, then close whatever is left.
   req.on("end", () => { clearTimeout(timer); timer = setTimeout(close, 1000); if (timer.unref) timer.unref(); });
   req.on("error", close);
-  req.on("close", () => clearTimeout(timer));
+  // (The request's own "close" event comes right after its "end", long before the connection goes: the timer is tied to the connection.)
+  socket.once("close", () => clearTimeout(timer));
   req.resume();
+}
+
+/** Marks a connection whose request was refused and which is only being drained. */
+const LINGERING = Symbol("refused, lingering");
+
+/**
+ * First middleware of the app: a request that arrives on a connection we are only draining
+ * (its previous request was refused and answered "Connection: close") is not run and not answered.
+ */
+function refuseOnLingering(req, res, next) {
+  if (req.socket && req.socket[LINGERING]) {
+    // Our half was finished when the refusal was answered; a reset tells a client that is still
+    // holding its half open that the connection is over.
+    try { if (typeof req.socket.resetAndDestroy === "function") req.socket.resetAndDestroy(); else req.socket.destroy(); } catch { /* already gone */ }
+    return undefined;
+  }
+  return next();
 }
 
 function admit(opt = {}) {
@@ -313,7 +339,7 @@ function admit(opt = {}) {
       // Answer and close: nothing of the body is kept (see lingerThenClose for how the close is done).
       res.set("Connection", "close");
       for (const [k, v] of Object.entries(headers)) res.set(k, v);
-      lingerThenClose(req);
+      lingerThenClose(req, { key: clientKey(req) });
       return res.status(status).json(body);
     };
 
@@ -442,4 +468,4 @@ function safeFileName(name, fallback = "file") {
   return clean || fallback;
 }
 
-module.exports = { storage, database, budget, admit, account, lingerThenClose, safeFileName, clientTag, storedBytesFor, storedBytesForAccount, isConfirmedCustomer, STORAGE_DIRS, DRAWING_DIRS, PART_PAYLOAD_DIR, DATA_DIR, FULL_MESSAGE, FULL_ANONYMOUS_MESSAGE, NOT_READ_MESSAGE };
+module.exports = { storage, database, budget, admit, account, lingerThenClose, safeFileName, clientTag, storedBytesFor, storedBytesForAccount, refuseOnLingering, isConfirmedCustomer, STORAGE_DIRS, DRAWING_DIRS, PART_PAYLOAD_DIR, DATA_DIR, FULL_MESSAGE, FULL_ANONYMOUS_MESSAGE, NOT_READ_MESSAGE };

@@ -20,7 +20,7 @@ function beforeBody(req, res, next) {
   botGuard.noteUnverifiedRefused();
   res.set("Connection", "close");
   res.set("Retry-After", "1800");
-  require("./uploadGuards").lingerThenClose(req); // the sender is still sending the form: let the answer arrive
+  require("./uploadGuards").lingerThenClose(req, { key: require("./clientKey").clientKey(req) }); // the sender is still sending the form: let the answer arrive
   return res.status(429).json({ error: botGuard.MESSAGES.requestsPaused, code: "requests-paused" });
 }
 

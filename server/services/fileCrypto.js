@@ -316,25 +316,33 @@ function keyOpens(encPath) {
 
 /**
  * At start-up: do the keys we have open the encrypted files that are on disk?
- * Looks at the newest files in each folder (headers only).
+ * Reads the 8-byte header of EVERY encrypted file (each names the key it was written under).
+ * It used to look at the 25 newest per folder, so after a dozen new uploads under a new key the
+ * warning went quiet while every older part was still locked (independent re-review 2026-11-12,
+ * RR-12). Past `perDirMax` files in a folder the oldest and the newest halves are read.
  * @param {string[]} dirs
- * @returns {{ checked: number, locked: number }}
+ * @returns {{ checked: number, locked: number, total: number }}
  */
-function checkKeysAgainst(dirs, perDir = 25) {
+function checkKeysAgainst(dirs, perDirMax = 20000) {
   let checked = 0;
   let locked = 0;
+  let total = 0;
   for (const dir of dirs) {
     let names;
     try { names = fs.readdirSync(dir).filter((n) => n.endsWith(ENC_SUFFIX)); } catch { continue; }
-    const newest = names.map((n) => { try { return { n, t: fs.statSync(path.join(dir, n)).mtimeMs }; } catch { return null; } }).filter(Boolean).sort((a, b) => b.t - a.t).slice(0, perDir);
-    for (const f of newest) {
-      const ok = keyOpens(path.join(dir, f.n));
+    total += names.length;
+    if (names.length > perDirMax) {
+      const dated = names.map((n) => { try { return { n, t: fs.statSync(path.join(dir, n)).mtimeMs }; } catch { return null; } }).filter(Boolean).sort((a, b) => a.t - b.t);
+      names = [...dated.slice(0, perDirMax / 2), ...dated.slice(-perDirMax / 2)].map((f) => f.n);
+    }
+    for (const n of names) {
+      const ok = keyOpens(path.join(dir, n));
       if (ok === null) continue;
       checked++;
       if (!ok) locked++;
     }
   }
-  return { checked, locked };
+  return { checked, locked, total };
 }
 
 /** The bytes of a stored file, whether or not it is encrypted. */

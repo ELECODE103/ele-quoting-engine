@@ -40,6 +40,10 @@ if (process.env.NODE_ENV === "production") {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Before anything else: a request that arrives on a connection whose previous request was refused
+// and is only being drained is not run (security/uploadGuards.js lingerThenClose).
+app.use(require("./security/uploadGuards").refuseOnLingering);
+
 // ─── Trust proxy (required behind Railway/load balancer) ─────────
 if (process.env.NODE_ENV === "production") {
   // Hops whose X-Forwarded-For entry is believed: Railway's edge is one. Behind a second proxy
@@ -234,7 +238,7 @@ async function start() {
     const check = require("./services/fileCrypto").checkKeysAgainst(uploadGuards.STORAGE_DIRS);
     if (check.locked > 0) {
       console.error("════════════════════════════════════════════════════════════════════");
-      console.error(`ERROR: EXISTING FILES CANNOT BE OPENED — ${check.locked} of the ${check.checked} newest encrypted files on the volume were written under a different key than NORD_FILE_ENC_KEY${process.env.NORD_FILE_ENC_KEY ? "" : " (which is not set)"}.`);
+      console.error(`ERROR: EXISTING FILES CANNOT BE OPENED — ${check.locked} of the ${check.checked} encrypted files on the volume were written under a different key than NORD_FILE_ENC_KEY${process.env.NORD_FILE_ENC_KEY ? "" : " (which is not set)"}.`);
       console.error("  Until this is fixed: parts uploaded before the key changed cannot be priced, reopened or downloaded");
       console.error("  (customers are asked to upload again). New uploads are not affected. Nothing has been deleted.");
       console.error("  Fix: put the earlier key in NORD_FILE_ENC_KEY_PREVIOUS (Railway → Variables) and redeploy.");
