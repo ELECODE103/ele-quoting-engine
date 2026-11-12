@@ -322,7 +322,8 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       replyTo: senderVerified ? email : undefined,
       ...templates.rfqReceivedShop({ rfq, adminUrl: `${orderEvents.baseUrl(req)}/admin`, part, unverified: !senderVerified, buyerEmailed: buyerEmail, partPending: sendPart && !partForBuyer }),
     });
-    if (buyerEmail) mailer.send({ to: email, replyTo: mailer.shopNotifyAddress(), ...templates.rfqReceivedBuyer({ rfq, part: partForBuyer }) });
+    // confirmedRecipient: a signed-in customer writing from their own confirmed address (not counted against the site-wide cap on mail to unconfirmed addresses).
+    if (buyerEmail) mailer.send({ to: email, replyTo: mailer.shopNotifyAddress(), confirmedRecipient: sender.method === "account", ...templates.rfqReceivedBuyer({ rfq, part: partForBuyer }) });
 
     const response = {
       rfqId: rfq.id,

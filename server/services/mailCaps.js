@@ -57,12 +57,16 @@ function windowFor(kind, now) {
 /**
  * May this message go out? Counts it when the answer is yes.
  * @param {string} template  the message's template name
+ * @param {number} [now]
+ * @param {{ confirmedRecipient?: boolean }} [opt]  the caller knows the recipient's address is confirmed
  * @returns {{ allowed: boolean, kind: string|null, notify: boolean }}
  *          notify: this is the first message held this hour — tell the owner once
  */
-function admit(template, now = Date.now()) {
+function admit(template, now = Date.now(), { confirmedRecipient = false } = {}) {
   const kind = Object.prototype.hasOwnProperty.call(KIND_BY_TEMPLATE, template) ? KIND_BY_TEMPLATE[template] : null;
   if (!kind) return { allowed: true, kind: null, notify: false };
+  // The same message to an address that IS confirmed (a signed-in customer writing from their own account) is not what the cap is for.
+  if (kind === "unconfirmed" && confirmedRecipient) return { allowed: true, kind: null, notify: false };
   const w = windowFor(kind, now);
   if (w.sent < capFor(kind)) {
     w.sent++;
@@ -84,7 +88,7 @@ function ownerNotice(kind, now = Date.now()) {
     ? [
       `The site has sent ${cap} new-request notices to this inbox in the last hour, which is its hourly limit.`,
       "Requests are still being taken and stored. They are in the admin panel under Requests; they just will not each send an email until the hour is up.",
-      "If this is a run of junk requests, delete them from the admin panel (each has a Delete button).",
+      "If this is a run of junk requests, delete them in the admin panel: open a request and choose Delete request.",
     ]
     : [
       `The site has sent ${cap} confirmation emails to addresses that are not confirmed yet in the last hour, which is its hourly limit.`,

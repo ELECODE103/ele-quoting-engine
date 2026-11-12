@@ -30,6 +30,14 @@ export default function RfqQueue() {
   }
 
   /** Send (or re-send) the firm quote: price, lead time, what it covers. Emails the customer an accept link. */
+  // Junk and finished requests can be removed for good, with their attachment. A request that became an order stays.
+  async function removeRequest(r) {
+    if (!window.confirm(`Delete the request from ${r.contactName || r.email}${r.drawingFileName ? ' and its attachment' : ''}? This cannot be undone.`)) return;
+    setBusy(true);
+    try { await api.deleteRequest(r.id); setOpen(null); await load(); } catch (e) { alert('Could not delete: ' + e.message); }
+    setBusy(false);
+  }
+
   async function sendQuote(r) {
     const val = (name) => document.getElementById(`${name}-${r.id}`)?.value ?? '';
     const partQuantities = {};
@@ -240,6 +248,12 @@ export default function RfqQueue() {
                             <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', marginTop: 10 }}
                               onClick={() => api.openPdf(`rfq-response/${r.id}`).catch((e) => alert(e.message))}>
                               Quote as a PDF
+                            </button>
+                          )}
+                          {!r.orderId && (
+                            <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', marginTop: 10, marginLeft: 8 }} disabled={busy}
+                              onClick={() => removeRequest(r)}>
+                              Delete request
                             </button>
                           )}
                           {r.acceptUrl && (

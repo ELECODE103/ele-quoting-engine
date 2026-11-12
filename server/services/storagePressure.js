@@ -112,7 +112,8 @@ function relieveDatabase(models, opt = {}) {
 function purgeAnonymousDrafts(models, { olderThanHours = 48, now = Date.now(), database = require("../models/database") } = {}) {
   const hours = Math.max(0, Number(olderThanHours) || 0);
   const refs = rowRetention.references(models, { now });
-  const ids = refs.anonymousDrafts.filter((d) => d.lastActivity == null || now - d.lastActivity >= hours * 60 * MIN).map((d) => d.id);
+  // Idle drafts, and the ones that have already lapsed and were only waiting for the next scheduled sweep.
+  const ids = [...refs.expiredQuotes, ...refs.anonymousDrafts.filter((d) => d.lastActivity == null || now - d.lastActivity >= hours * 60 * MIN).map((d) => d.id)];
   const bytesBefore = database.fileSize ? database.fileSize() : 0;
   if (ids.length) {
     database.batch(() => { for (const id of ids) models.quotesDB.delete(id); });
@@ -143,8 +144,10 @@ function relieveStorage(models, opt = {}) {
   const g = guards();
   const now = opt.now || Date.now();
   const max = limits.storageMaxBytes;
-  const bytesBefore = g.storage.scan();
+  let bytesBefore = g.storage.scan();
   if (!opt.force && bytesBefore < max * limits.storageWarnFraction) return null;
+  // Cheapest first: uploads on disk that no part row names at all.
+  if (sweepOrphanUploads(models, { now }).removed > 0) bytesBefore = g.storage.scan();
   const target = max * Math.max(0.1, limits.storageWarnFraction - 0.15);
   const minAgeMs = opt.minAgeMs ?? limits.storageEvictMinAgeMinutes * MIN;
   const database = opt.database || require("../models/database");
@@ -297,8 +300,7 @@ function tick(models, opt = {}) {
   state.running = true;
   try {
     if (models.USE_SQLITE !== false) relieveDatabase(models, opt);
-    const relieved = relieveStorage(models, opt);
-    if (relieved && relieved.removedUploads === 0) sweepOrphanUploads(models, opt);
+    relieveStorage(models, opt);
   } catch (err) {
     console.error("Storage pressure check failed:", err.message);
   } finally {

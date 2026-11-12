@@ -295,50 +295,64 @@ function admit(opt = {}) {
 
     // ── Count what really arrives ──
     // What the request declares is charged at the door (so a burst of parallel uploads cannot all be
-    // admitted against the same remaining budget); what it actually sends beyond that is charged as it
-    // arrives and when it ends. Body bytes that reached us before this middleware ran are waiting in
-    // the request's own buffer (nothing has read it yet); the rest is what the connection reads from here on.
-    const socket = req.socket;
+    // admitted against the same remaining budget). What it actually sends is counted where the bytes
+    // enter the request — each body chunk the HTTP parser hands over — so nothing depends on a header
+    // or a timer: body bytes that arrived before this middleware ran are waiting in the request's own
+    // buffer (nothing has read it yet), and every later chunk passes through push() below.
     const buffered = Number(req.readableLength) || 0;
-    const startRead = socket ? socket.bytesRead : 0;
-    const received = () => buffered + (socket ? Math.max(0, socket.bytesRead - startRead) : 0);
+    let arrived = 0;
+    const received = () => buffered + arrived;
     let chargedBytes = 0;
     const chargeUpTo = (bytes) => { if (bytes > chargedBytes) { budget.add(key, bytes - chargedBytes); chargedBytes = bytes; } };
     chargeUpTo(incoming);
     let ended = false;
-    let watch = null;
+    let cut = false;
     const end = () => {
       if (ended) return;
       ended = true;
-      if (watch) clearInterval(watch);
       chargeUpTo(received());
     };
     req.uploadMeter = { received, charged: () => chargedBytes };
     if (typeof res.on === "function") { res.on("finish", end); res.on("close", end); }
 
-    // No Content-Length (a chunked body): nothing could be judged up front, so it is judged, and
-    // charged, while it arrives; past the route's maximum or the client's budget it is cut off.
-    if (!hasLength && typeof res.on === "function") {
-      const storedLeft = Math.max(0, limits.uploadStoredBytesPerClient - storedBytesFor(key));
-      watch = setInterval(() => {
-        if (ended) return clearInterval(watch);
-        const got = received();
-        chargeUpTo(got);
-        const overRoute = Boolean(maxRequest) && got > maxRequest;
-        if (!overRoute && budget.remaining(key) > 0 && got <= storedLeft) return undefined;
-        clearInterval(watch);
-        if (!res.headersSent) {
-          res.set("Connection", "close");
-          res.status(overRoute ? 413 : 429).json(overRoute
-            ? { error: `That upload is too large. Send up to ${mb(maxRequest)} MB at a time.`, code: "request-too-large" }
-            : (got > storedLeft ? { error: storedLimitMessage(), code: "stored-limit" } : { error: dailyLimitMessage(), code: "daily-upload-limit" }));
+    // A body with no Content-Length (chunked) could not be judged up front, so it is judged, and
+    // charged, as it arrives: past the route's maximum, the client's daily budget or its stored-bytes
+    // cap, the request is answered and cut off. (With a Content-Length the body cannot exceed what was
+    // declared, and that was checked above.)
+    const storedLeft = hasLength ? Infinity : Math.max(0, limits.uploadStoredBytesPerClient - storedBytesFor(key));
+    const stop = () => {
+      cut = true;
+      const got = received();
+      const overRoute = Boolean(maxRequest) && got > maxRequest;
+      if (!res.headersSent) {
+        res.set("Connection", "close");
+        res.status(overRoute ? 413 : 429).json(overRoute
+          ? { error: `That upload is too large. Send up to ${mb(maxRequest)} MB at a time.`, code: "request-too-large" }
+          : (got > storedLeft ? { error: storedLimitMessage(), code: "stored-limit" } : { error: dailyLimitMessage(), code: "daily-upload-limit" }));
+      }
+      // This request has its answer. The upload handler is still running and will try to answer too
+      // when its stream ends: from here on, setting a header on this response does nothing instead of
+      // throwing (an exception in that callback would stop the whole process).
+      res.setHeader = function alreadyAnswered() { return this; };
+      // Stop reading once the answer has had a moment to leave. Whatever the upload handler had
+      // written so far is removed by its own handling of an aborted request.
+      const t = setTimeout(() => { try { req.destroy(); } catch { /* already gone */ } }, 150);
+      if (t.unref) t.unref();
+    };
+    if (typeof req.push === "function") {
+      const push = req.push;
+      req.push = function meteredPush(chunk, encoding) {
+        if (chunk && chunk.length && !ended) {
+          arrived += chunk.length;
+          if (!hasLength) {
+            if (cut) return false; // already refused: the rest is dropped, not handed on
+            chargeUpTo(received());
+            const got = received();
+            if ((maxRequest && got > maxRequest) || budget.remaining(key) <= 0 || got > storedLeft) { stop(); return false; }
+          }
         }
-        // Stop reading: what multer has written so far is removed by its own abort handling.
-        const t = setTimeout(() => { try { req.destroy(); } catch { /* already gone */ } }, 100);
-        if (t.unref) t.unref();
-        return undefined;
-      }, 100);
-      if (watch.unref) watch.unref();
+        return push.call(this, chunk, encoding);
+      };
     }
     next();
   };

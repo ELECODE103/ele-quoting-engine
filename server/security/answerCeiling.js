@@ -28,6 +28,10 @@ function install(app) {
   app.use("/api", (req, res, next) => {
     const send = res.send.bind(res);
     res.json = (body) => {
+      // An answer has already gone out for this request (an upload that was cut off while it was
+      // still arriving is answered at that moment; the upload handler finishes later). A second
+      // answer is dropped here rather than thrown from a callback, where it would stop the process.
+      if (res.headersSent) return res;
       let text;
       try {
         text = JSON.stringify(body);

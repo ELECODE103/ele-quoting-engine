@@ -72,7 +72,7 @@ async function send(message) {
   // Site-wide hourly caps on the mail a stranger can cause (services/mailCaps.js): confirmations to
   // addresses nobody has confirmed, and new-request notices to the shop. Mail about orders, payments
   // and accounts is never capped. When a cap is first reached in an hour the owner gets one notice.
-  const cap = mailCaps.admit(label);
+  const cap = mailCaps.admit(label, Date.now(), { confirmedRecipient: Boolean(message && message.confirmedRecipient) });
   if (!cap.allowed) {
     console.warn(`[mailer] hourly cap reached for ${cap.kind === "shop" ? "new-request notices" : "mail to unconfirmed addresses"}: template ${label} not sent`);
     if (cap.notify) {

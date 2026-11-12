@@ -299,6 +299,12 @@ export const api = {
   async getRfq(id) { return request(`/rfq/${id}`); },
   async getAdminRfqs() { return request('/rfq/admin/list'); },
   async updateRfq(id, data) { return request(`/rfq/admin/${id}`, { method: 'PUT', body: JSON.stringify(data) }); },
+  /** Admin: delete a request and its attachment (refused once the request has become an order). */
+  async deleteRequest(id) { return request(`/admin/requests/${id}`, { method: 'DELETE' }); },
+  /** Admin: delete draft quotes of visitors without an account that nobody has touched for this many hours. */
+  async purgeDrafts(olderThanHours = 48) { return request('/admin/drafts/purge', { method: 'POST', body: JSON.stringify({ olderThanHours }) }); },
+  /** Admin: where the database and the file folders stand against their ceilings. */
+  async getAdminStorage() { return request('/admin/storage'); },
   rfqDrawingUrl(id) { return `${BASE}/rfq/admin/${id}/drawing`; },
   async fetchRfqDrawing(id) {
     const res = await fetch(`${BASE}/rfq/admin/${id}/drawing`, { credentials: 'same-origin' });
