@@ -63,3 +63,6 @@ client/dist-ssr/
 
 # Client content/data modules are source, not the runtime data/ directory
 !client/src/data/
+
+# Geometry benchmark: generated inputs and large-case snapshots (rebuilt on demand)
+tools/geometry-bench/.cache/

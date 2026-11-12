@@ -1,0 +1,5563 @@
+{
+ "cases": {
+  "blob-10k": {
+   "size": "small",
+   "family": "blob",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 490084,
+    "sha256": "79813cb845487061acc495c5c670255a23486606a4dc80aaec315d5088c06871"
+   },
+   "hash": {
+    "geometry": "58f162179c35f94de207a671e1a7a90c3677161e986f2d4c79ca73813e4a24f4",
+    "dfm": "c3270072bdc0ef8731b4776b8fca2d95e64bbdbae4dadd60b810fb7faf79d5a9",
+    "price": "0da762759a16ebc13de2fb56c007a3ce79ad432e37e4be3a74fb065251601e4e"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9800,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 3373,
+    "cpuMs": 1220,
+    "peakHeapMb": 56,
+    "peakRssMb": 153.9,
+    "baseRssMb": 75.2,
+    "afterParseMs": 162,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 33,
+    "segment": 2743,
+    "bvh": 57,
+    "shape": 64,
+    "outline": 22,
+    "features": 0,
+    "thickness": 63,
+    "access": 126,
+    "overhang": 7,
+    "selfIntersect": 137,
+    "total": 3252
+   }
+  },
+  "blob-10k-3mf": {
+   "size": "small",
+   "family": "blob",
+   "ext": ".3mf",
+   "n": 10000,
+   "input": {
+    "bytes": 195769,
+    "sha256": "d559cd849b12f588cacbef772dad731841c6d855de1d8016d8230f85158461f6"
+   },
+   "hash": {
+    "geometry": "93ad0960655d1dd4f75d2530d3c5bb0f667bb1a27ef75a40021225730d05c97f",
+    "dfm": "06b4b264f755c748bee710268a45cb76b289659e424ccf56b00c99b26ec1b145",
+    "price": "554a3996a4eeca3c4e65c1e47f07f6ef4cbe2907f540712240a26fa50714f7c3"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9800,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 4695,
+    "cpuMs": 1327,
+    "peakHeapMb": 56.8,
+    "peakRssMb": 151.9,
+    "baseRssMb": 75.2,
+    "afterParseMs": 149,
+    "load": 7
+   },
+   "stages": {
+    "mesh": 25,
+    "segment": 3670,
+    "bvh": 57,
+    "shape": 76,
+    "outline": 48,
+    "features": 0,
+    "thickness": 96,
+    "access": 159,
+    "overhang": 8,
+    "selfIntersect": 105,
+    "total": 4245
+   }
+  },
+  "blob-10k-ascii": {
+   "size": "small",
+   "family": "blob",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 2863212,
+    "sha256": "b43b6217fca1e16f6fe1e12a3a4ed7468086cd295294402b51857dc3368b0622"
+   },
+   "hash": {
+    "geometry": "498cef2a1d00fce10257e196bbb769bbaa33c1bfbcc9f8cfa4ac86f5bf67a2ee",
+    "dfm": "c3270072bdc0ef8731b4776b8fca2d95e64bbdbae4dadd60b810fb7faf79d5a9",
+    "price": "64a7b060e1b23aafc91db7179d7186b506754ae55b64e1799f363ea6a6719f17"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9800,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 4411,
+    "cpuMs": 1229,
+    "peakHeapMb": 61,
+    "peakRssMb": 158.7,
+    "baseRssMb": 77.4,
+    "afterParseMs": 215,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 24,
+    "segment": 3444,
+    "bvh": 55,
+    "shape": 125,
+    "outline": 102,
+    "features": 0,
+    "thickness": 198,
+    "access": 205,
+    "overhang": 9,
+    "selfIntersect": 157,
+    "total": 4319
+   }
+  },
+  "blob-1k": {
+   "size": "small",
+   "family": "blob",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 48084,
+    "sha256": "544a00c6682b7c1a0c5fe07555d76d74cfe785bd9cc46ecb29d14ec583cc16a2"
+   },
+   "hash": {
+    "geometry": "30e31c3e3e573b0d9d271d45ddcbeb7abd9bbe3acd38d3e3f880b82a2e15dcd4",
+    "dfm": "29fe4282b86672f22c2d6ba9bf98c4c2e3984c27711e0b6a59c4f52bdf931b9d",
+    "price": "917adac93e5ba70ee24e6717c30f7fca3e53730b82131e47164b8ed8606b0a22"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 960,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 192,
+    "cpuMs": 72,
+    "peakHeapMb": 15.6,
+    "peakRssMb": 86,
+    "baseRssMb": 74.6,
+    "afterParseMs": 113,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 2,
+    "segment": 59,
+    "bvh": 3,
+    "shape": 40,
+    "outline": 2,
+    "features": 0,
+    "thickness": 19,
+    "access": 13,
+    "overhang": 0,
+    "selfIntersect": 28,
+    "total": 166
+   }
+  },
+  "box": {
+   "size": "small",
+   "family": "primitive",
+   "ext": ".stl",
+   "n": 12,
+   "input": {
+    "bytes": 684,
+    "sha256": "ea112a3c4253bb73b9187f9e15d5da503eb9c55314c0712e5136c0a9e9003c47"
+   },
+   "hash": {
+    "geometry": "7f39959fc80397711ff8468076d4d5008e88556b519add2f630bdc7ce9f68725",
+    "dfm": "0aa0523b58ac25ae2c3cccd3a10c92f486587439d01b57e940f5d54a7f05af34",
+    "price": "ba6a649a71ccb65ff8bf67be2641c32acd3561272038e84567c5a91511bbfff6"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 12,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 12,
+    "cpuMs": 7,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.7,
+    "afterParseMs": 103,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 0,
+    "bvh": 0,
+    "shape": 8,
+    "outline": 0,
+    "features": 0,
+    "thickness": 1,
+    "access": 0,
+    "overhang": 0,
+    "selfIntersect": 0,
+    "total": 9
+   }
+  },
+  "box-ascii": {
+   "size": "small",
+   "family": "primitive",
+   "ext": ".stl",
+   "n": 12,
+   "input": {
+    "bytes": 1119,
+    "sha256": "768eda157f7bf0df9e8a5505830b4fd7cb34b2d6994c4ace1c04afcc6796b514"
+   },
+   "hash": {
+    "geometry": "33b071c2b877384ac2e67b7d5f0d83228eb1908525e0a40d3ba8fe8c6502f0ed",
+    "dfm": "0aa0523b58ac25ae2c3cccd3a10c92f486587439d01b57e940f5d54a7f05af34",
+    "price": "ba6a649a71ccb65ff8bf67be2641c32acd3561272038e84567c5a91511bbfff6"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 12,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 9,
+    "cpuMs": 5,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.7,
+    "afterParseMs": 73,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 0,
+    "bvh": 0,
+    "shape": 5,
+    "outline": 1,
+    "features": 0,
+    "thickness": 1,
+    "access": 0,
+    "overhang": 0,
+    "selfIntersect": 0,
+    "total": 7
+   }
+  },
+  "bracket-square": {
+   "size": "small",
+   "family": "primitive",
+   "ext": ".stl",
+   "n": 28,
+   "input": {
+    "bytes": 1084,
+    "sha256": "6e80acf007eab66e4371ed7e96908cb2d13a1eafb54dd061b9416e2cf275807d"
+   },
+   "hash": {
+    "geometry": "bb69d9491a67b7d94ebfb2ec350dd584545cad2d95f0f44af217f12b5b515374",
+    "dfm": "61871be17cb0971024adc0be9d42546d6a0841991379091491f3e8630178bed3",
+    "price": "c1ab85b0b02493930db4eef24baf3627c87ed430f078c14bd131ce47b1648af7"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 20,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 15,
+    "cpuMs": 8,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.7,
+    "afterParseMs": 147,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 0,
+    "bvh": 1,
+    "shape": 6,
+    "outline": 0,
+    "features": 1,
+    "thickness": 0,
+    "access": 0,
+    "overhang": 0,
+    "selfIntersect": 1,
+    "total": 9
+   }
+  },
+  "bracket-tilted": {
+   "size": "small",
+   "family": "primitive",
+   "ext": ".stl",
+   "n": 28,
+   "input": {
+    "bytes": 1084,
+    "sha256": "d1c58b8cdda5286bfb7e24a6f4991dedc02a00d32c744df796be2c768d7bf78e"
+   },
+   "hash": {
+    "geometry": "7073c59e85d49914ec55d0c7e4eada92eb97aa2d79a69df99d453da02abfc84b",
+    "dfm": "82dd5243e23ee7b6ef3f5638478065a79e25291e44c99348f5ec9d930d343194",
+    "price": "93978570102d92abbd859d4cd6c0ea63bd06365b74e2798c3fab8cbd0fb51b06"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 20,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 23,
+    "cpuMs": 8,
+    "peakHeapMb": 13.5,
+    "peakRssMb": 78,
+    "baseRssMb": 74.6,
+    "afterParseMs": 168,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 1,
+    "bvh": 0,
+    "shape": 8,
+    "outline": 0,
+    "features": 1,
+    "thickness": 0,
+    "access": 0,
+    "overhang": 0,
+    "selfIntersect": 1,
+    "total": 11
+   }
+  },
+  "ceiling-over-500001": {
+   "size": "small",
+   "family": "ceiling",
+   "ext": ".stl",
+   "n": 500001,
+   "input": {
+    "bytes": 25000134,
+    "sha256": "13a957d580f66702a4494de9e037c109ba323f3f0fb220d18151007a124417cc"
+   },
+   "hash": {
+    "geometry": "36f726280f3dbb44d10554678e91011316320402894a88a33d3c7f3482e8b7ed",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": "model-too-large",
+    "message": "This model has 500,001 triangles, more than the instant quote reads (500,000). Export it a"
+   },
+   "timing": {
+    "wallMs": 45,
+    "cpuMs": 23,
+    "peakHeapMb": 34.9,
+    "peakRssMb": 125.5,
+    "baseRssMb": 98.4,
+    "afterParseMs": 0,
+    "load": 7.2
+   },
+   "stages": null
+  },
+  "cup-10k": {
+   "size": "small",
+   "family": "cup",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 400284,
+    "sha256": "575687e7f7b7ee1cdd1e11f700645a967447fbc3d907337e019f5bf1f45e9747"
+   },
+   "hash": {
+    "geometry": "30e8ed0c394e912ff8c0b908a127249cf24e9597d2b6069aa8dc2e9b1f5eb4ed",
+    "dfm": "266d17d52f9ab1ec388ef6517f4bfdadd44038ffbe212f82db77d20c96c13043",
+    "price": "b61c6574e414f0125ac21d00a37f3bb8dce9c75d0a783a2dcc80bfa8a8795291"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 8004,
+    "holes": 1,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 998,
+    "cpuMs": 283,
+    "peakHeapMb": 35.5,
+    "peakRssMb": 117,
+    "baseRssMb": 75.1,
+    "afterParseMs": 262,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 47,
+    "segment": 48,
+    "bvh": 51,
+    "shape": 169,
+    "outline": 65,
+    "features": 22,
+    "thickness": 102,
+    "access": 147,
+    "overhang": 1,
+    "selfIntersect": 235,
+    "total": 887
+   }
+  },
+  "cup-1k": {
+   "size": "small",
+   "family": "cup",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 43284,
+    "sha256": "84cfd6fb52fb60b555f74c5086ae79236f5f1d76ca58f76f10ad48c8e9ac549c"
+   },
+   "hash": {
+    "geometry": "9ea89fe39a46ca7340dbefb468e546579da94ed745304d153b850447ce800b4b",
+    "dfm": "efd64e3a70e07f3a33a8d2cb4d6f9d4d2a135547e084fe01348bf389be496cd3",
+    "price": "3d58d2664c81c451ca6e8df83ea6de84247345ef1d4bf10f02751c57496496a5"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 864,
+    "holes": 1,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 90,
+    "cpuMs": 49,
+    "peakHeapMb": 17.6,
+    "peakRssMb": 86.7,
+    "baseRssMb": 74.4,
+    "afterParseMs": 61,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 3,
+    "segment": 3,
+    "bvh": 5,
+    "shape": 20,
+    "outline": 2,
+    "features": 1,
+    "thickness": 10,
+    "access": 9,
+    "overhang": 1,
+    "selfIntersect": 28,
+    "total": 82
+   }
+  },
+  "dxf-annotated-as-mm": {
+   "size": "small",
+   "family": "dxf-annotated-as-mm",
+   "ext": ".dxf",
+   "n": 12,
+   "input": {
+    "bytes": 920,
+    "sha256": "fceec09f0396cbe505cd9d23d9faa1c8efbce70b4d4347ee4aebce57f54a339b"
+   },
+   "hash": {
+    "geometry": "0c072fea5aaf724a481789c4601d903e780d95e37a4e892b3c8e207c1b24fd95",
+    "dfm": "75e8228c1e5fc2f7c1c86277a2cfca34cb34a5395f443d2bc464a8ab6063d56b",
+    "price": "4c6e7e24d88d74e62d66a9ca7568ab26f70e439fe933a5dd797a00c6bc5516ca"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 6,
+    "holes": 4,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 44,
+    "cpuMs": 10,
+    "peakHeapMb": 12.3,
+    "peakRssMb": 75.5,
+    "baseRssMb": 75.2,
+    "afterParseMs": 95,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-annotated-inch": {
+   "size": "small",
+   "family": "dxf-annotated-inch",
+   "ext": ".dxf",
+   "n": 12,
+   "input": {
+    "bytes": 920,
+    "sha256": "fceec09f0396cbe505cd9d23d9faa1c8efbce70b4d4347ee4aebce57f54a339b"
+   },
+   "hash": {
+    "geometry": "0468e7ebab8f91ae439f82184283b04812cef477fba9d821a9ffe4eaf067348a",
+    "dfm": "900b7921e94a7dc96bffd58d6cda837be08b4c3b8684ddd768516a4970eaa022",
+    "price": "f6131a8523769dfc1e3070828b25ee6af6c8e17f882c0d6521f4687b0a95d833"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 6,
+    "holes": 4,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 42,
+    "cpuMs": 16,
+    "peakHeapMb": 14.7,
+    "peakRssMb": 80.6,
+    "baseRssMb": 75.1,
+    "afterParseMs": 89,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-crossing-100": {
+   "size": "small",
+   "family": "dxf-crossing",
+   "ext": ".dxf",
+   "n": 100,
+   "input": {
+    "bytes": 9601,
+    "sha256": "a2f3f1f44058ba9bed91d802b93b2a32d30649d4d6e0be46e7e6840e0cb05a70"
+   },
+   "hash": {
+    "geometry": "e4eaf3ef6952e6ef00121ce7c50042c86c73e83f7e6284f3a3fff2d43f79ea9d",
+    "dfm": "02f2612973120e7e362eb0a70bac9a0b4d112d8e5b1bbfced21f3275664f4deb",
+    "price": "37dff6fb19422a612c064b720f5c8493c4aa9d438ef1b15d05d74d6fb02f2ae4"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 100,
+    "holes": 0,
+    "problems": 202
+   },
+   "timing": {
+    "wallMs": 30,
+    "cpuMs": 18,
+    "peakHeapMb": 11.4,
+    "peakRssMb": 80.9,
+    "baseRssMb": 74.6,
+    "afterParseMs": 114,
+    "load": 6.9
+   },
+   "stages": null
+  },
+  "dxf-crossing-2k": {
+   "size": "small",
+   "family": "dxf-crossing",
+   "ext": ".dxf",
+   "n": 2000,
+   "input": {
+    "bytes": 191390,
+    "sha256": "8c581a5a4acd6597844ad4d4d78437145a77b7368250a3ae2a12bb2e894ca5f6"
+   },
+   "hash": {
+    "geometry": "f830d2300d08007faea721f99b7d16235d366a203214cefea094190a5505c4b5",
+    "dfm": "c8d7ecf145335dce4bb63e0a6fced8993ffcb7522e6a578b9996d2566621912a",
+    "price": "654e9482c8940df4c04914521675ba42802e4214681943644409020d81aa73e6"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 2000,
+    "holes": 0,
+    "problems": 2552
+   },
+   "timing": {
+    "wallMs": 6010,
+    "cpuMs": 1653,
+    "peakHeapMb": 87.3,
+    "peakRssMb": 162,
+    "baseRssMb": 75.3,
+    "afterParseMs": 173,
+    "load": 6.9
+   },
+   "stages": null
+  },
+  "dxf-crossing-600": {
+   "size": "small",
+   "family": "dxf-crossing",
+   "ext": ".dxf",
+   "n": 600,
+   "input": {
+    "bytes": 57443,
+    "sha256": "f7ba0ba6b81fb60c6a87d04414e58b0c7e7acfe97b2ab49bd195a99497eef942"
+   },
+   "hash": {
+    "geometry": "51056342cf9beed4ecfc812bfcf24d942ca3d164a14cee3d86f4292d57b99d39",
+    "dfm": "967b2c9ec47c900bed34d8c0ae84520413e389d61dadf0f54412a7a1181ba127",
+    "price": "81daae792aa275b73b560d72767842a7dd425fc8c13db182989385fbd70a370c"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 600,
+    "holes": 0,
+    "problems": 815
+   },
+   "timing": {
+    "wallMs": 320,
+    "cpuMs": 120,
+    "peakHeapMb": 24,
+    "peakRssMb": 95.9,
+    "baseRssMb": 74.7,
+    "afterParseMs": 250,
+    "load": 6.9
+   },
+   "stages": null
+  },
+  "dxf-dense-outline-2k": {
+   "size": "small",
+   "family": "dxf-dense-outline",
+   "ext": ".dxf",
+   "n": 2000,
+   "input": {
+    "bytes": 85853,
+    "sha256": "6706416a9adfde7ab985f463277c3a5b89553e9f65b7c82e30451ca017bd38a8"
+   },
+   "hash": {
+    "geometry": "780b55045e0a6f6511b510a78e706b0ec1f837b140fb2b64b5958cd53ba10e6e",
+    "dfm": "577d08e691d30036c4506f47a697e80a24511c49b9973da7d20b5e6db8cf6f59",
+    "price": "ac3a64f0d24cbd86ecf0d0ffebe33825628df3e94f6b83f81881cbe3cfc36463"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 4,
+    "holes": 1,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 256,
+    "cpuMs": 89,
+    "peakHeapMb": 20.1,
+    "peakRssMb": 95,
+    "baseRssMb": 75,
+    "afterParseMs": 106,
+    "load": 7.2
+   },
+   "stages": null
+  },
+  "dxf-duplicates-100": {
+   "size": "small",
+   "family": "dxf-duplicates",
+   "ext": ".dxf",
+   "n": 200,
+   "input": {
+    "bytes": 20479,
+    "sha256": "c01402e5dabe2fca1b6aebf34b07797652006a7e59f89cd6583ede8c51462dfc"
+   },
+   "hash": {
+    "geometry": "79bcf7575cd46b491b9f51da5c61d887a7daf8c61e8a75adda6117357b5cb805",
+    "dfm": "70bd23ad9aef1f559228a78b91bee9824bf2695321c1e837a3f0efb1138d88f8",
+    "price": "c843e1a8f8890bae06d3c035d1eb112c5517b28af53a98514a40e1016c228270"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 121,
+    "holes": 20,
+    "problems": 194
+   },
+   "timing": {
+    "wallMs": 91,
+    "cpuMs": 28,
+    "peakHeapMb": 14,
+    "peakRssMb": 83.4,
+    "baseRssMb": 75.2,
+    "afterParseMs": 170,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-inserted-holes": {
+   "size": "small",
+   "family": "dxf-inserted-holes",
+   "ext": ".dxf",
+   "n": 20,
+   "input": {
+    "bytes": 807,
+    "sha256": "6ba99e33b5dc0d95b6e13b707526be74cf8810cd802e1de87d94ea485dfcfd35"
+   },
+   "hash": {
+    "geometry": "20859124189bfec6cc8eb2f59043b17d243c66af40a40d7150989d0d60851165",
+    "dfm": "9d4b11c9d89137f98a34e80cfff0bd28031902599d394467cb9c9dee76c10f48",
+    "price": "64d2f7e4ddd87f1891988503c32ec792b912ff2e5cc18e5dbe3bdea878a5d62f"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 20,
+    "holes": 16,
+    "problems": 4
+   },
+   "timing": {
+    "wallMs": 44,
+    "cpuMs": 23,
+    "peakHeapMb": 13.1,
+    "peakRssMb": 83.3,
+    "baseRssMb": 74.9,
+    "afterParseMs": 34,
+    "load": 4.2
+   },
+   "stages": null
+  },
+  "dxf-inserts": {
+   "size": "small",
+   "family": "dxf-inserts",
+   "ext": ".dxf",
+   "n": 10,
+   "input": {
+    "bytes": 698,
+    "sha256": "b3552f119b87748c978fe05d2437baf83419b49c5a72997e1f3910708cada92b"
+   },
+   "hash": {
+    "geometry": "6ad78b592173f4e9324b5c905903cd721eb397a4442c4c28d2ef2e0935ae1cab",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has a closed shape inside a cutout (11 found) — a part within a part. Upload each"
+   },
+   "timing": {
+    "wallMs": 57,
+    "cpuMs": 29,
+    "peakHeapMb": 12.3,
+    "peakRssMb": 82.3,
+    "baseRssMb": 75,
+    "afterParseMs": 1,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-line-grid-10": {
+   "size": "small",
+   "family": "dxf-line-grid",
+   "ext": ".dxf",
+   "n": 220,
+   "input": {
+    "bytes": 7821,
+    "sha256": "7e488728eb9023e6a90c6deb1863e29a47b8df2a40a34dddba8c51e83f677db3"
+   },
+   "hash": {
+    "geometry": "b3169a4379cf75364045602ee898ba852a349c70e31a6480fe26c2b556a7d10c",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 4 separate parts (outlines that are not inside one another). Upload one "
+   },
+   "timing": {
+    "wallMs": 72,
+    "cpuMs": 19,
+    "peakHeapMb": 14,
+    "peakRssMb": 80.8,
+    "baseRssMb": 74.6,
+    "afterParseMs": 1,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-line-grid-long-300": {
+   "size": "small",
+   "family": "dxf-line-grid-long",
+   "ext": ".dxf",
+   "n": 602,
+   "input": {
+    "bytes": 23757,
+    "sha256": "2f3461ffdac2854ed22c410e9734273c5fa424e42e78709c5faaef0df141f065"
+   },
+   "hash": {
+    "geometry": "ec552f0e2be0fc6eadbdd3a6ec769580f15fcf4b2cda3515a1ab3c9c6c294d5e",
+    "dfm": "aed71615df1b3823246ae06cb3959e6f4794e3276e9c3382b590020e00a2adb8",
+    "price": "225485115835616dbf750630a6e8b5fa5a3da43cab5d21c413b17daff9a58fb1"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 599,
+    "holes": 0,
+    "problems": 1232
+   },
+   "timing": {
+    "wallMs": 335,
+    "cpuMs": 95,
+    "peakHeapMb": 21.1,
+    "peakRssMb": 92.1,
+    "baseRssMb": 74.9,
+    "afterParseMs": 137,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-loose-outline-200": {
+   "size": "small",
+   "family": "dxf-loose-outline",
+   "ext": ".dxf",
+   "n": 200,
+   "input": {
+    "bytes": 19865,
+    "sha256": "08dfeece8cb8a157083833990e2ceb50e278d8a2972126487d7ace4f2cf77b8d"
+   },
+   "hash": {
+    "geometry": "af931f6c006a7b2d0da34321b6f2741efbe08f97d88f948e034e19057c708fce",
+    "dfm": "9a4805161cccebac6d3f2655932d1d9e7c251636dfdb0453cbb7c9e5f54bff8d",
+    "price": "4ba38facc313da35e16bbe47cc39e8bfdb9a1be0df3d63cd665919ea11e80fb1"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 13,
+    "holes": 12,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 122,
+    "cpuMs": 47,
+    "peakHeapMb": 15.3,
+    "peakRssMb": 82.8,
+    "baseRssMb": 74.7,
+    "afterParseMs": 140,
+    "load": 7.2
+   },
+   "stages": null
+  },
+  "dxf-mixed-cutouts-20": {
+   "size": "small",
+   "family": "dxf-mixed-cutouts",
+   "ext": ".dxf",
+   "n": 20,
+   "input": {
+    "bytes": 3877,
+    "sha256": "81682fc909dd44f9aab9b713ab86a21dad940be12b1ae32bb6fcdef3878dd64a"
+   },
+   "hash": {
+    "geometry": "07ccab70e795d35cde4915fd4767cc994b378d5c0b8bf23070097d2fe2a000cf",
+    "dfm": "a083003198c593688fa1fa6acc28f719cce956666b3a84fbe24e93c5882c5204",
+    "price": "28a4572d58cdf58101940320bfb05fd0f4654a50a9f8c1e16634d017339998c0"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 21,
+    "holes": 6,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 123,
+    "cpuMs": 51,
+    "peakHeapMb": 15.7,
+    "peakRssMb": 84.1,
+    "baseRssMb": 74.8,
+    "afterParseMs": 120,
+    "load": 7.2
+   },
+   "stages": null
+  },
+  "dxf-mixed-cutouts-500": {
+   "size": "small",
+   "family": "dxf-mixed-cutouts",
+   "ext": ".dxf",
+   "n": 500,
+   "input": {
+    "bytes": 91170,
+    "sha256": "1a581327298e2b9b62e9ddeda70e0b07995e2154debc766c7a0b0ea0debb2833"
+   },
+   "hash": {
+    "geometry": "0f51175bceaa2347bd34eff99f953913ad0d3814ee80b209a032be5f458ddec3",
+    "dfm": "77ddfe4b69b67619e8dc9924c4e85f05959623ad1d7e0be370a9d76a821dc319",
+    "price": "04e827c8c02231f24858d58ce03f9d91e6ce2b7d3a8019c3c6c6bae2e9c26769"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 501,
+    "holes": 143,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 1457,
+    "cpuMs": 480,
+    "peakHeapMb": 80.2,
+    "peakRssMb": 171.7,
+    "baseRssMb": 75,
+    "afterParseMs": 134,
+    "load": 7.2
+   },
+   "stages": null
+  },
+  "dxf-nested-2": {
+   "size": "small",
+   "family": "dxf-nested",
+   "ext": ".dxf",
+   "n": 2,
+   "input": {
+    "bytes": 275,
+    "sha256": "d0e3ff6aa78711a299e92dd376c7148c595207d945a4261d427f24c28b2288c9"
+   },
+   "hash": {
+    "geometry": "36c95e3694e16ac2c9061dd7e59bfc6223d6d7d11372aaf99fd9287c3f20dc41",
+    "dfm": "2466e3746ae9771cbf169bd95bf18a5b50f8b37892696d06cc10b303ca45bd4d",
+    "price": "d921bd143214a6317d6f01512bbaf61dc2c523720a2c992a17671dd299cb46cf"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 2,
+    "holes": 0,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 9,
+    "cpuMs": 7,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.9,
+    "afterParseMs": 66,
+    "load": 7.2
+   },
+   "stages": null
+  },
+  "dxf-nested-4": {
+   "size": "small",
+   "family": "dxf-nested",
+   "ext": ".dxf",
+   "n": 4,
+   "input": {
+    "bytes": 433,
+    "sha256": "5bcc14d81be883923cddbe363e567b81beea7ba86f0cb42bc36701b2ec2fd566"
+   },
+   "hash": {
+    "geometry": "8dd29c87acef46954d2969d317167e2d57a7199acd521e05e1938c8c98c1dfab",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has a closed shape inside a cutout (2 found) — a part within a part. Upload each "
+   },
+   "timing": {
+    "wallMs": 6,
+    "cpuMs": 6,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.5,
+    "afterParseMs": 0,
+    "load": 7.2
+   },
+   "stages": null
+  },
+  "dxf-nested-many": {
+   "size": "small",
+   "family": "dxf-nested-many",
+   "ext": ".dxf",
+   "n": 300,
+   "input": {
+    "bytes": 26013,
+    "sha256": "98eddc0672e4f50fdcab11cf2117a430c9dbe72f74a4fc039d75079110f4e5a6"
+   },
+   "hash": {
+    "geometry": "7e75768f9816c26892350ebb70b9882042c56fd8885565058a5bd1274b3b776c",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 100 separate parts (outlines that are not inside one another). Upload on"
+   },
+   "timing": {
+    "wallMs": 102,
+    "cpuMs": 52,
+    "peakHeapMb": 17.5,
+    "peakRssMb": 93.9,
+    "baseRssMb": 75.2,
+    "afterParseMs": 1,
+    "load": 7.2
+   },
+   "stages": null
+  },
+  "dxf-open-contours-20": {
+   "size": "small",
+   "family": "dxf-open-contours",
+   "ext": ".dxf",
+   "n": 60,
+   "input": {
+    "bytes": 4076,
+    "sha256": "572976097367c7761050effcd8e4ef618b3a6630d5ba3592d509ba966d696a85"
+   },
+   "hash": {
+    "geometry": "1b3fd8887f35da16c123bf601e3e406955a17eb5e72f1b3d49ce2d4f04ac80a9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 2 separate parts (outlines that are not inside one another). Upload one "
+   },
+   "timing": {
+    "wallMs": 54,
+    "cpuMs": 10,
+    "peakHeapMb": 14.4,
+    "peakRssMb": 76.8,
+    "baseRssMb": 74.9,
+    "afterParseMs": 0,
+    "load": 7.2
+   },
+   "stages": null
+  },
+  "dxf-open-inside-20": {
+   "size": "small",
+   "family": "dxf-open-inside",
+   "ext": ".dxf",
+   "n": 60,
+   "input": {
+    "bytes": 4007,
+    "sha256": "22b2d218bb27a48603d1897296ac74b67ab3cc5e9ce8b05beb6ec98591aa5b8a"
+   },
+   "hash": {
+    "geometry": "dfa1d8459b270db62e70effc5be739846c2a77528794766cd8a789d5fedaad2c",
+    "dfm": "5b632dc99b547f5caf6a1e5e73e21775ba07404b2643c3ec8f0a5157efa7909d",
+    "price": "b774423af79f5f471c28efb804ac56a1569943e2a44241da93c04a8a6113aa87"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 35,
+    "holes": 0,
+    "problems": 46
+   },
+   "timing": {
+    "wallMs": 11,
+    "cpuMs": 10,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 75,
+    "afterParseMs": 35,
+    "load": 4.2
+   },
+   "stages": null
+  },
+  "dxf-perforated-100": {
+   "size": "small",
+   "family": "dxf-perforated",
+   "ext": ".dxf",
+   "n": 100,
+   "input": {
+    "bytes": 3172,
+    "sha256": "b2803fefbf0c1262882ab1cea4209a8a2a493542c681b83e09c5fbb2dc251657"
+   },
+   "hash": {
+    "geometry": "fd214e3487248cebcd0792b1b120b66bc6165bf3d47c4a414f6c531d54b7adfe",
+    "dfm": "beed7a57031faba7c1fbad0e198e813e90a80ca25c3f77f1859a42753f6a57ad",
+    "price": "3ce0a1e08051018d1f8a70d8e2ffdd8fc1f9257e3cdde4261aeb4554a0573df8"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 101,
+    "holes": 100,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 67,
+    "cpuMs": 41,
+    "peakHeapMb": 15.3,
+    "peakRssMb": 83.3,
+    "baseRssMb": 74.8,
+    "afterParseMs": 43,
+    "load": 6.9
+   },
+   "stages": null
+  },
+  "dxf-perforated-1k": {
+   "size": "small",
+   "family": "dxf-perforated",
+   "ext": ".dxf",
+   "n": 1000,
+   "input": {
+    "bytes": 31431,
+    "sha256": "92ae2ae701b9a9dbfbf5443b967c22090106e471c17569aaf4e1089b1925035a"
+   },
+   "hash": {
+    "geometry": "256321e20ab9a4a52580f598faf4c0dc98de68c66612b638a999acf04562fbc2",
+    "dfm": "910a0d0932615ac425f559ff169170257e57bf1e1962d2f7b24668da52890504",
+    "price": "dc1a7fc29c82e41bb3410ddc80eb216a2e9c93b469a80fe6339f9dec74763370"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 1001,
+    "holes": 1000,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 1191,
+    "cpuMs": 331,
+    "peakHeapMb": 30.3,
+    "peakRssMb": 114.3,
+    "baseRssMb": 74.6,
+    "afterParseMs": 124,
+    "load": 6.9
+   },
+   "stages": null
+  },
+  "dxf-perforated-tight-1000": {
+   "size": "small",
+   "family": "dxf-perforated-tight",
+   "ext": ".dxf",
+   "n": 1000,
+   "input": {
+    "bytes": 45872,
+    "sha256": "aa21c75e769246694177c411c1f29b19c1c3fa6feebc47923d3db2e5f982b52c"
+   },
+   "hash": {
+    "geometry": "c8a9b2e5b796a0026e4da6489a273f3718602c3d169742727bff5d3fcf4466ac",
+    "dfm": "59fb34d32a108764584a06eb60b413fb84ca8166e49e3b909087256c4915c18f",
+    "price": "9a9cef3db6b0c4c2456bde366eec041f8afe61c1b3389fbdb4c457a29f7c2c37"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 1001,
+    "holes": 1000,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 1010,
+    "cpuMs": 292,
+    "peakHeapMb": 30,
+    "peakRssMb": 113.6,
+    "baseRssMb": 74.9,
+    "afterParseMs": 235,
+    "load": 6.9
+   },
+   "stages": null
+  },
+  "dxf-scattered-rects-1k": {
+   "size": "small",
+   "family": "dxf-scattered-rects",
+   "ext": ".dxf",
+   "n": 1000,
+   "input": {
+    "bytes": 196422,
+    "sha256": "4f71b94e2baae104b672b69f277bcdf1d1f9e617bf893f937f6e7ca5cfd6bc44"
+   },
+   "hash": {
+    "geometry": "6ad78b592173f4e9324b5c905903cd721eb397a4442c4c28d2ef2e0935ae1cab",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has a closed shape inside a cutout (11 found) — a part within a part. Upload each"
+   },
+   "timing": {
+    "wallMs": 1377,
+    "cpuMs": 492,
+    "peakHeapMb": 34.2,
+    "peakRssMb": 115.7,
+    "baseRssMb": 74.8,
+    "afterParseMs": 0,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-scattered-rects-50": {
+   "size": "small",
+   "family": "dxf-scattered-rects",
+   "ext": ".dxf",
+   "n": 50,
+   "input": {
+    "bytes": 10192,
+    "sha256": "bafe2f54cfd9600ca381dedc9482b2a6a129b4bb507212a52f99243b40c6b92b"
+   },
+   "hash": {
+    "geometry": "bf357d1fe9ba0fb0896002e2ed5580f3056aa0515e11d5b180ced89624a12a31",
+    "dfm": "2d0475dcb7b0c1aa946f32de36e46f86fa98bb6c6560dae6a4b6642939c9ed7f",
+    "price": "00de608f3b36cf18aca72138655875c6fb20b79411d6de05e16295930410af15"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 51,
+    "holes": 0,
+    "problems": 28
+   },
+   "timing": {
+    "wallMs": 49,
+    "cpuMs": 17,
+    "peakHeapMb": 14.1,
+    "peakRssMb": 79.9,
+    "baseRssMb": 74.7,
+    "afterParseMs": 90,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-self-crossing": {
+   "size": "small",
+   "family": "dxf-self-crossing",
+   "ext": ".dxf",
+   "n": 4,
+   "input": {
+    "bytes": 381,
+    "sha256": "6ddc4b06cab090339001be5c768218e322d4c8d9c90eff85b090c43ee18d4da6"
+   },
+   "hash": {
+    "geometry": "1b3fd8887f35da16c123bf601e3e406955a17eb5e72f1b3d49ce2d4f04ac80a9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 2 separate parts (outlines that are not inside one another). Upload one "
+   },
+   "timing": {
+    "wallMs": 11,
+    "cpuMs": 10,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.8,
+    "afterParseMs": 0,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-separate-parts-3": {
+   "size": "small",
+   "family": "dxf-separate-parts",
+   "ext": ".dxf",
+   "n": 6,
+   "input": {
+    "bytes": 435,
+    "sha256": "294840f202e90e23abd5a46565850198bbbe6f488ec0d3b8f87f2d293d8fc0c6"
+   },
+   "hash": {
+    "geometry": "2ca6a3ffdba199976a3244d3581a4e4ebe17c3c8506b1a5edc0928a4d5dfbfdd",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 3 separate parts (outlines that are not inside one another). Upload one "
+   },
+   "timing": {
+    "wallMs": 20,
+    "cpuMs": 10,
+    "peakHeapMb": 11.6,
+    "peakRssMb": 78.6,
+    "baseRssMb": 75.2,
+    "afterParseMs": 0,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-splines-9": {
+   "size": "small",
+   "family": "dxf-splines",
+   "ext": ".dxf",
+   "n": 90,
+   "input": {
+    "bytes": 7107,
+    "sha256": "8cee0e110bc95d47cbd2a0193b7cf9b66cd9800575925bb42fbc82ff6c9e996f"
+   },
+   "hash": {
+    "geometry": "12d0a8882f1649378b2572e67a4f526abf5b43d9cb080c46e77fdee2174beff3",
+    "dfm": "da7d6a4cc5e672de0583b0e436fa9e4cae22c7fc544a257a2dba87fc5d5e88c7",
+    "price": "b22d5817e1736e12974faf7b618d0f5b0aff2bfb036aa53a8d00c0a6e5b35e26"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 10,
+    "holes": 0,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 222,
+    "cpuMs": 85,
+    "peakHeapMb": 22.8,
+    "peakRssMb": 95.8,
+    "baseRssMb": 74.8,
+    "afterParseMs": 64,
+    "load": 4.2
+   },
+   "stages": null
+  },
+  "dxf-tight-webs": {
+   "size": "small",
+   "family": "dxf-tight-webs",
+   "ext": ".dxf",
+   "n": 7,
+   "input": {
+    "bytes": 540,
+    "sha256": "c0ad600057b85c924a4dcdcf3469c88d6b7919e2018f0614741a22d3bbb55463"
+   },
+   "hash": {
+    "geometry": "71fd5e0ea48bade6de05e0d58279b686a35c1559c7ff8fa564c2e1355cc110f8",
+    "dfm": "0e126a8c308fe45c206078e5ed6032eb959ed209b49e35a1fb6e7cedfdba0b66",
+    "price": "6c6f99d46706f83cf7a372eb0cdc7ca5950a9d0deeb2bc9556d6c3d099279e9f"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 7,
+    "holes": 3,
+    "problems": 1
+   },
+   "timing": {
+    "wallMs": 18,
+    "cpuMs": 11,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.6,
+    "afterParseMs": 177,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-windows-2k": {
+   "size": "small",
+   "family": "dxf-windows",
+   "ext": ".dxf",
+   "n": 2000,
+   "input": {
+    "bytes": 167776,
+    "sha256": "a887875966575657edf90835e3c6c3265b1a787d275edb250cf78b30b60c36f7"
+   },
+   "hash": {
+    "geometry": "54ea63d8e47177beeb194bea85816df157b71ccc5dcb0fff3e4518eaa530b4f3",
+    "dfm": "12fb668ff70eba3c85647f771bc3907c3c6e89c666490f382bd3127492d9acee",
+    "price": "2fa41ce7e09bbcb593070b7ff1585baf48d476db2ef5aaec1300246f4bf26d36"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 2001,
+    "holes": 0,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 1655,
+    "cpuMs": 506,
+    "peakHeapMb": 43.8,
+    "peakRssMb": 127,
+    "baseRssMb": 75.3,
+    "afterParseMs": 138,
+    "load": 7.2
+   },
+   "stages": null
+  },
+  "dxf-windows-50": {
+   "size": "small",
+   "family": "dxf-windows",
+   "ext": ".dxf",
+   "n": 50,
+   "input": {
+    "bytes": 4170,
+    "sha256": "aca05b78c32212abc6d540c179afc8bfccb2b3550e3d1bf62d5dc0b1e5d361dd"
+   },
+   "hash": {
+    "geometry": "50209d7739e9667891526d7771311c8fd729b2ee25debe4973a7f0a55e3c464d",
+    "dfm": "8d9dc51d87a68a137ce8a755608842959234143458c24cf3ca4a4831f448025e",
+    "price": "835dffe20f8cb9998052ee2553f2e41f828c55728270f790aa99bcb8402dc465"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 51,
+    "holes": 0,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 33,
+    "cpuMs": 18,
+    "peakHeapMb": 11.3,
+    "peakRssMb": 78.4,
+    "baseRssMb": 75.3,
+    "afterParseMs": 56,
+    "load": 7.2
+   },
+   "stages": null
+  },
+  "fixture-boss_plate-step": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".step",
+   "n": null,
+   "input": {
+    "bytes": 24166,
+    "sha256": "7151bfeb9c52504c46c2211f4354dde1433f86122e7f060ab09215528e2b6834"
+   },
+   "hash": {
+    "geometry": "e97af236ded29abe4d39d957137d43f7bad5c7f91764ea7db1acd407f4fded5b",
+    "dfm": "ae60a636b3291fbc14753dfa55639cd6c5b08af4252a1c5eb2cad564eeb57997",
+    "price": "000f5a04d725126873cc66635717ae557cf077d03c14dcf6c549228e49eeedb9"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 304,
+    "holes": 1,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1967,
+    "cpuMs": 211,
+    "peakHeapMb": 46.9,
+    "peakRssMb": 273,
+    "baseRssMb": 74.7,
+    "afterParseMs": 495,
+    "load": 7.3
+   },
+   "stages": {
+    "mesh": 1,
+    "segment": 78,
+    "bvh": 1,
+    "shape": 148,
+    "outline": 34,
+    "features": 11,
+    "thickness": 108,
+    "access": 28,
+    "overhang": 0,
+    "selfIntersect": 152,
+    "total": 561
+   }
+  },
+  "fixture-box_hole-igs": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".igs",
+   "n": null,
+   "input": {
+    "bytes": 17982,
+    "sha256": "eb1ecf1791593b6cda554b807e8953911fbaa34e864db5e006dd54a9ec7976a1"
+   },
+   "hash": {
+    "geometry": "7d8c030310c550ebd707b856457b1fea0d4a0b27ac8e016f0567e6c673c9df5e",
+    "dfm": "c9290c90136c905be1bcb759fbbceae7ebb9a4ab2fc8bd193f7a351cb04c64ea",
+    "price": "5471518f372dea2d2d7181aa51d350f7e065a66b59ab3394164cce0cef08ecc7"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 172,
+    "holes": 1,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 810,
+    "cpuMs": 117,
+    "peakHeapMb": 47,
+    "peakRssMb": 123.5,
+    "baseRssMb": 74.7,
+    "afterParseMs": 333,
+    "load": 7.6
+   },
+   "stages": {
+    "mesh": 1,
+    "segment": 23,
+    "bvh": 21,
+    "shape": 28,
+    "outline": 1,
+    "features": 29,
+    "thickness": 27,
+    "access": 9,
+    "overhang": 0,
+    "selfIntersect": 60,
+    "total": 199
+   }
+  },
+  "fixture-box_zip64-3mf": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".3mf",
+   "n": null,
+   "input": {
+    "bytes": 1100,
+    "sha256": "de02011a8210821ac27025762f75b2cbcadef2098c1ec771156f71ad0a40c1fd"
+   },
+   "hash": {
+    "geometry": "3ad2559333dfac09e80c305c1bd06d4b3b783bf267c96584037ffd19e8a1569f",
+    "dfm": "339c14bd67057e45352983470d80b9b307f6b725e0e92e7cac42591dc76f4194",
+    "price": "8ea2a2e40ee1015f7e8ad9075b9c26b6593dfe094d11a053c0327362ab8b039a"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 12,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 55,
+    "cpuMs": 17,
+    "peakHeapMb": 12,
+    "peakRssMb": 78.6,
+    "baseRssMb": 74.7,
+    "afterParseMs": 227,
+    "load": 7.6
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 1,
+    "bvh": 0,
+    "shape": 16,
+    "outline": 1,
+    "features": 6,
+    "thickness": 1,
+    "access": 0,
+    "overhang": 0,
+    "selfIntersect": 0,
+    "total": 25
+   }
+  },
+  "fixture-bracket_block-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 37684,
+    "sha256": "ef477469464f468508f93b6c9ee0d29a07b972a4dd7267bf715d0a100b7c6b0c"
+   },
+   "hash": {
+    "geometry": "2e69a996c01f7cea2816e202cd85b402c10ef7b47f90e8ba6b3eecd70a6c488f",
+    "dfm": "40edfbe6818c7f32da7d037a4b0b4afcf7bcaf33b91f720fa18eda46dd5681ea",
+    "price": "96264c2b6c69a0f3885f58a33cc536d64d080ebf9232cc1d57935597faf21c7a"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 752,
+    "holes": 4,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 99,
+    "cpuMs": 57,
+    "peakHeapMb": 14.2,
+    "peakRssMb": 85,
+    "baseRssMb": 74.5,
+    "afterParseMs": 74,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 3,
+    "segment": 6,
+    "bvh": 2,
+    "shape": 16,
+    "outline": 6,
+    "features": 14,
+    "thickness": 4,
+    "access": 6,
+    "overhang": 0,
+    "selfIntersect": 36,
+    "total": 93
+   }
+  },
+  "fixture-brand-straightedge-mark-solid-25mm-dxf": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".dxf",
+   "n": null,
+   "input": {
+    "bytes": 938,
+    "sha256": "a8f78bf20cfa138ba049169ee5233057f0e02ad990e721890cc24eb940677b56"
+   },
+   "hash": {
+    "geometry": "1b3fd8887f35da16c123bf601e3e406955a17eb5e72f1b3d49ce2d4f04ac80a9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 2 separate parts (outlines that are not inside one another). Upload one "
+   },
+   "timing": {
+    "wallMs": 6,
+    "cpuMs": 6,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.3,
+    "afterParseMs": 0,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "fixture-brand-straightedge-mark-solid-50mm-dxf": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".dxf",
+   "n": null,
+   "input": {
+    "bytes": 938,
+    "sha256": "19aeed60c351df6c9a3bcd49bd0a8d5cd69697825301629b3e81da164298d863"
+   },
+   "hash": {
+    "geometry": "1b3fd8887f35da16c123bf601e3e406955a17eb5e72f1b3d49ce2d4f04ac80a9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 2 separate parts (outlines that are not inside one another). Upload one "
+   },
+   "timing": {
+    "wallMs": 6,
+    "cpuMs": 6,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 75.3,
+    "afterParseMs": 1,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "fixture-brand-straightedge-mark-stepped-25mm-dxf": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".dxf",
+   "n": null,
+   "input": {
+    "bytes": 1456,
+    "sha256": "d0cd2440e88dc73478863e3f0f9ddaac189ff99db03365f246d0f08d5969013f"
+   },
+   "hash": {
+    "geometry": "1b3fd8887f35da16c123bf601e3e406955a17eb5e72f1b3d49ce2d4f04ac80a9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 2 separate parts (outlines that are not inside one another). Upload one "
+   },
+   "timing": {
+    "wallMs": 12,
+    "cpuMs": 7,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.8,
+    "afterParseMs": 1,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "fixture-brand-straightedge-mark-stepped-50mm-dxf": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".dxf",
+   "n": null,
+   "input": {
+    "bytes": 1458,
+    "sha256": "c3f9ffbc7f7333303b4493e966b54d2bcd84a6fa33b645ae8438530f18308459"
+   },
+   "hash": {
+    "geometry": "1b3fd8887f35da16c123bf601e3e406955a17eb5e72f1b3d49ce2d4f04ac80a9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 2 separate parts (outlines that are not inside one another). Upload one "
+   },
+   "timing": {
+    "wallMs": 7,
+    "cpuMs": 6,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.8,
+    "afterParseMs": 0,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "fixture-bushing-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 35284,
+    "sha256": "b6a231dc1069cdee355524bb512e76b387603ceef48e7c938ae948c119ad818d"
+   },
+   "hash": {
+    "geometry": "e6e2b46dabfcf00cfaaffa711211b13533cc945a34a0bd98ecfc7322baa48791",
+    "dfm": "726a97e4b868a66b7031f854aa91554b9c072894b5191aca43956c7a4957d30c",
+    "price": "591cedb9d019d546c91d106c47f3c956a0477ff2afb9c60e3af005e816cb1696"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 704,
+    "holes": 1,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 201,
+    "cpuMs": 54,
+    "peakHeapMb": 15.7,
+    "peakRssMb": 85.4,
+    "baseRssMb": 74.7,
+    "afterParseMs": 137,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 3,
+    "segment": 13,
+    "bvh": 7,
+    "shape": 21,
+    "outline": 4,
+    "features": 2,
+    "thickness": 28,
+    "access": 53,
+    "overhang": 0,
+    "selfIntersect": 56,
+    "total": 188
+   }
+  },
+  "fixture-conveyor_guide_rail-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 61484,
+    "sha256": "6d62aedf9cb4d78550e6e46d99b5deb666d79557267ae5c502fbc2db122cce70"
+   },
+   "hash": {
+    "geometry": "a9bc2040badef44e00f48088746fe0f92b8caaefb9e44fc5d6a72e8804c330bb",
+    "dfm": "bb83d454f61c40fa92e37e23543d6ca8caaa5c89cadc4fe2b0331d64a9b66a1f",
+    "price": "eb3ce8244c631bce78cfd38b675f17443b7a2ea5ccc61f29af2bf67624664776"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 1228,
+    "holes": 6,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 267,
+    "cpuMs": 76,
+    "peakHeapMb": 18.2,
+    "peakRssMb": 89.6,
+    "baseRssMb": 75.3,
+    "afterParseMs": 145,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 6,
+    "segment": 20,
+    "bvh": 23,
+    "shape": 80,
+    "outline": 26,
+    "features": 9,
+    "thickness": 16,
+    "access": 36,
+    "overhang": 0,
+    "selfIntersect": 38,
+    "total": 254
+   }
+  },
+  "fixture-cube_20mm-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 884,
+    "sha256": "d2661c9dcb131392212766bcd4142d873430d18f4bfc8da9e018133d39ab6ac5"
+   },
+   "hash": {
+    "geometry": "df24c8822b10a6ffaa06150ce74fb2d71d09e2a86b81412277dda16da1b03239",
+    "dfm": "9e64ed896f0de676454d5808c32f3fa62a6891585d495242d339aaa47ccfa8a5",
+    "price": "80fb2fd4858afd82658db84cca882db2a73cf5e399f080736fbc949d8031cd31"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 16,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 11,
+    "cpuMs": 7,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.5,
+    "afterParseMs": 85,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 0,
+    "bvh": 0,
+    "shape": 8,
+    "outline": 0,
+    "features": 1,
+    "thickness": 0,
+    "access": 0,
+    "overhang": 0,
+    "selfIntersect": 0,
+    "total": 9
+   }
+  },
+  "fixture-drill_fixture_plate-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 137884,
+    "sha256": "76bab5474bb79ae14b071c1b98db8cd88ce18e1211444ac476449cc183c3cdef"
+   },
+   "hash": {
+    "geometry": "25d19802654f94652d5f3acc90285a0bf7deb128b41e37dd4b9109f9142811a7",
+    "dfm": "d3b3ab4697271f52c8309ec1061baaf2ffc76165f4ad81968125489a9aa4d04a",
+    "price": "c667f390219a055fa29f21a8eb56672bc2e4dc4486c7e45f32c33f79de85510f"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 2756,
+    "holes": 20,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 320,
+    "cpuMs": 127,
+    "peakHeapMb": 23.5,
+    "peakRssMb": 104.8,
+    "baseRssMb": 74.9,
+    "afterParseMs": 108,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 5,
+    "segment": 27,
+    "bvh": 25,
+    "shape": 93,
+    "outline": 16,
+    "features": 19,
+    "thickness": 21,
+    "access": 36,
+    "overhang": 0,
+    "selfIntersect": 52,
+    "total": 294
+   }
+  },
+  "fixture-dxf_bracket_window-dxf": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".dxf",
+   "n": null,
+   "input": {
+    "bytes": 473,
+    "sha256": "829648af5cba58565746ceaa21cc02806a87fa1795b4ca80932926291f3fdb0e"
+   },
+   "hash": {
+    "geometry": "584b58c42f062b2acc1d2db25c0e98dc8b1ca3e6c79c950e187065558f27b285",
+    "dfm": "1ceba7c5e11fc39a7f163ce1b7680cddb0c90b9eb192bffedd0815e4fa560e4b",
+    "price": "886cf89aa6d38dfe0cc72726bd12c4c2674f267ebf876c5446947c0ec8ce27b7"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 4,
+    "holes": 2,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 12,
+    "cpuMs": 10,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.7,
+    "afterParseMs": 62,
+    "load": 7.4
+   },
+   "stages": null
+  },
+  "fixture-dxf_bracket_window-step": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".step",
+   "n": null,
+   "input": {
+    "bytes": 46663,
+    "sha256": "57ebe582a9bbd7e4fa0d60263e4102fbb1c1fc0310c10bc71e4a037ae7b5130f"
+   },
+   "hash": {
+    "geometry": "fa66e07c6ef823ce960eb956e172d5916d5f13ecc7f2c1f5756b11772d26b150",
+    "dfm": "b56f77a3639ef3d0473f89562fd873a499e14ac8b817d28c9f0401ffcdfa3d65",
+    "price": "ab82cb845a04ff2b0a48e90ebe5640ef09629a24e595ee5678773eb078d2ec28"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 256,
+    "holes": 2,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1002,
+    "cpuMs": 177,
+    "peakHeapMb": 47,
+    "peakRssMb": 269.5,
+    "baseRssMb": 74.8,
+    "afterParseMs": 196,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 26,
+    "bvh": 0,
+    "shape": 90,
+    "outline": 19,
+    "features": 14,
+    "thickness": 73,
+    "access": 2,
+    "overhang": 0,
+    "selfIntersect": 26,
+    "total": 250
+   }
+  },
+  "fixture-dxf_inch_guard-dxf": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".dxf",
+   "n": null,
+   "input": {
+    "bytes": 332,
+    "sha256": "ecd0f2f4e8cfd81b5aed93037d2307c898b7f9659baed684f2090c7cf6601422"
+   },
+   "hash": {
+    "geometry": "cbae9cf0072e7b6a06ef29f7ca701cc6de3ba3b7126ef080d135502d19985217",
+    "dfm": "1392c63d7b7adbeced7ce9f5e1437faa68abd0e28bf35908063bb4925f816aa3",
+    "price": "3801aee70dbc91e08ce23eab78ea914454b45d02ffb99f454a87ae51e65b7e98"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 5,
+    "holes": 4,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 92,
+    "cpuMs": 13,
+    "peakHeapMb": 13.9,
+    "peakRssMb": 79.3,
+    "baseRssMb": 75,
+    "afterParseMs": 178,
+    "load": 7.4
+   },
+   "stages": null
+  },
+  "fixture-dxf_inch_guard-step": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".step",
+   "n": null,
+   "input": {
+    "bytes": 34803,
+    "sha256": "71ae0a8af7adfa05ccad7c067440fb36be094b554f81db442fe67ddc9668f2a4"
+   },
+   "hash": {
+    "geometry": "782eabc53f3e7c2c3bc56cc39baae6423139ca38512be3c74a9ed911b73fc46f",
+    "dfm": "2505b87bffc2f5a00549981fcd1f001fc90d06e2c86a518fd32f5105ee842a44",
+    "price": "4a8a4f5e054303a924ea3201e202258995db1ea8697f57eff280612399b9250d"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 444,
+    "holes": 4,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 987,
+    "cpuMs": 180,
+    "peakHeapMb": 44.4,
+    "peakRssMb": 273.4,
+    "baseRssMb": 75.2,
+    "afterParseMs": 201,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 2,
+    "segment": 49,
+    "bvh": 1,
+    "shape": 123,
+    "outline": 28,
+    "features": 5,
+    "thickness": 34,
+    "access": 6,
+    "overhang": 0,
+    "selfIntersect": 24,
+    "total": 272
+   }
+  },
+  "fixture-dxf_plate_holes-dxf": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".dxf",
+   "n": null,
+   "input": {
+    "bytes": 390,
+    "sha256": "9c1b4937e4ff45c2fbfee57c2585ac113e98251a580c63223d341de088304d30"
+   },
+   "hash": {
+    "geometry": "680bfbd4bd7a3af5e0dbb1a2312eb607477f7affdd91d8d047713b4c6d7408bd",
+    "dfm": "3b3eb8b5ebaef57c61077a608a6b0689f30f829ebb5f26677392f4e0ce851ace",
+    "price": "029b8c48fc9b11b8b8ed61d1bd245cd2aa3354e5909839813a86fefc59bf4a31"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 7,
+    "holes": 6,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 52,
+    "cpuMs": 16,
+    "peakHeapMb": 13.8,
+    "peakRssMb": 80.3,
+    "baseRssMb": 74.5,
+    "afterParseMs": 82,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "fixture-dxf_plate_holes-step": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".step",
+   "n": null,
+   "input": {
+    "bytes": 43989,
+    "sha256": "52235a73896d3e027627b744ee0c4149d7adc4087286e8cc91ade99f4d28b8a9"
+   },
+   "hash": {
+    "geometry": "43f9597c5f9fc0612285d86dc9da1c2f5f3ac19cc2c626c5e9d3eee704178459",
+    "dfm": "9632c42515b83fe91e032714a7136bbb5a83b3c3ffe4218481cca05237819676",
+    "price": "59e424dfcdd65d7194a7becec45c9a49a09bb9c77d8533c5bf7c5923ef98ad82"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 660,
+    "holes": 6,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1210,
+    "cpuMs": 206,
+    "peakHeapMb": 44.3,
+    "peakRssMb": 272.2,
+    "baseRssMb": 74.7,
+    "afterParseMs": 132,
+    "load": 7.3
+   },
+   "stages": {
+    "mesh": 11,
+    "segment": 49,
+    "bvh": 12,
+    "shape": 85,
+    "outline": 31,
+    "features": 11,
+    "thickness": 17,
+    "access": 11,
+    "overhang": 0,
+    "selfIntersect": 29,
+    "total": 256
+   }
+  },
+  "fixture-dxf_slotted_guide-dxf": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".dxf",
+   "n": null,
+   "input": {
+    "bytes": 490,
+    "sha256": "a1bcf86935f2da2ac87561c587981ade5f793810047c0363c6c292aec075a098"
+   },
+   "hash": {
+    "geometry": "78d02ccc95d1ce4cc753b87c4a0209066cd97d9a19a14054f1b92bee1ea5f5dc",
+    "dfm": "f38ec5a297e72109f88741ce6de8d966ff8c73edb2b84c5c2ced75df2e19d7dd",
+    "price": "9e1484ac3e62cf2e42649270caf3356d5c219980efeb2ee46643860b7a09d929"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 4,
+    "holes": 2,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 60,
+    "cpuMs": 16,
+    "peakHeapMb": 14.6,
+    "peakRssMb": 79.2,
+    "baseRssMb": 74.8,
+    "afterParseMs": 175,
+    "load": 7.3
+   },
+   "stages": null
+  },
+  "fixture-dxf_slotted_guide-step": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".step",
+   "n": null,
+   "input": {
+    "bytes": 55390,
+    "sha256": "51406c5e22905694b21307e39009286559755d8d1e3a881c0dbce45f111249fe"
+   },
+   "hash": {
+    "geometry": "c2b6421269f9499fa55d676e819570182f27729dce5931e9d5a418c9fdcbed92",
+    "dfm": "3cd05eee4ec36904af5698a0afe61f79104d0d68fa4881e7c40da4e2e1f83f94",
+    "price": "9ff0a7671418608226f72b96700df0f37e9687b5ac7c6e79d0d3120a7a00307a"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 472,
+    "holes": 2,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1155,
+    "cpuMs": 187,
+    "peakHeapMb": 47.2,
+    "peakRssMb": 270,
+    "baseRssMb": 74.6,
+    "afterParseMs": 292,
+    "load": 7.3
+   },
+   "stages": {
+    "mesh": 2,
+    "segment": 56,
+    "bvh": 1,
+    "shape": 76,
+    "outline": 7,
+    "features": 7,
+    "thickness": 10,
+    "access": 6,
+    "overhang": 0,
+    "selfIntersect": 23,
+    "total": 188
+   }
+  },
+  "fixture-gear_disc-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 200084,
+    "sha256": "2cb8c9278ff4ce73e1cfc97dfbb587fc74385045f6ff0af7dd0fa5a612c72cc0"
+   },
+   "hash": {
+    "geometry": "37d94c0bbaf5adcbf3dd26dde4df3d5716a5289b23103d3bfe079e9c46e2effd",
+    "dfm": "1f3d39440a81aede8a1881b6c4acc1faa34dfa0b3fbc14264f120c6ea8b4e416",
+    "price": "6964ec883a4cd250a0468cda80f1e08f025404c4500d96f7ce015bf8da880c65"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 4000,
+    "holes": 1,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 397,
+    "cpuMs": 177,
+    "peakHeapMb": 32,
+    "peakRssMb": 104.9,
+    "baseRssMb": 74.8,
+    "afterParseMs": 146,
+    "load": 7.5
+   },
+   "stages": {
+    "mesh": 12,
+    "segment": 46,
+    "bvh": 46,
+    "shape": 43,
+    "outline": 67,
+    "features": 5,
+    "thickness": 38,
+    "access": 42,
+    "overhang": 2,
+    "selfIntersect": 70,
+    "total": 372
+   }
+  },
+  "fixture-oversize_panel-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 28284,
+    "sha256": "31c662b3716d7df9ce5f20c153bdfec8ac1bba7c823f03c46ddaec7841ef2859"
+   },
+   "hash": {
+    "geometry": "9d6e5fee478e238eeccabba31a703359b6360021f64a8245b7360b685b978ba8",
+    "dfm": "c7ecbdae9b6899df21a34cdb479ce7e97d09abd8523a6850396fcb52305804cc",
+    "price": "e00534664358af6b8c9f44d2cb776c3636b4a29d2416feec205f267b9a5f8726"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 564,
+    "holes": 4,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 191,
+    "cpuMs": 52,
+    "peakHeapMb": 15.2,
+    "peakRssMb": 84.3,
+    "baseRssMb": 74.8,
+    "afterParseMs": 249,
+    "load": 7.5
+   },
+   "stages": {
+    "mesh": 20,
+    "segment": 28,
+    "bvh": 8,
+    "shape": 38,
+    "outline": 8,
+    "features": 12,
+    "thickness": 23,
+    "access": 10,
+    "overhang": 1,
+    "selfIntersect": 29,
+    "total": 177
+   }
+  },
+  "fixture-plate_hole_pattern-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 51484,
+    "sha256": "e198e330955d729ca54829800dff96d651b26cec773eb70f7eed991cc06c5d33"
+   },
+   "hash": {
+    "geometry": "071974b1837ce0170cdb70aede2ab8b84995bd13ed84ab44ee21fa470b20b544",
+    "dfm": "ca042cb345db004b84b6ad18b73e86ecdb1fae97b5945ded00f7c6e86f4e57ae",
+    "price": "1db95936ddf7d59ed12043fbfbebcf164f94471bb8e72f1599e544f578cbc9c7"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 1028,
+    "holes": 6,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 157,
+    "cpuMs": 72,
+    "peakHeapMb": 15.6,
+    "peakRssMb": 87.3,
+    "baseRssMb": 75.1,
+    "afterParseMs": 74,
+    "load": 7.5
+   },
+   "stages": {
+    "mesh": 6,
+    "segment": 8,
+    "bvh": 4,
+    "shape": 25,
+    "outline": 17,
+    "features": 32,
+    "thickness": 19,
+    "access": 14,
+    "overhang": 0,
+    "selfIntersect": 21,
+    "total": 146
+   }
+  },
+  "fixture-plate_holes-step": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".step",
+   "n": null,
+   "input": {
+    "bytes": 55056,
+    "sha256": "9aa599d774931c6cfb696fe8ed0a8286f94a92c8992d557e29a750edc095aac4"
+   },
+   "hash": {
+    "geometry": "e5fb93880a3de4a6c10e9cbf7f4cb253f73c8d9d4f23a608032d59f216f74f52",
+    "dfm": "34ccf16504956dd7266c487b7a40be45911b596c0dfa294f28ad51dcb3d467c5",
+    "price": "0ae0544cc97fe80876607b51ca0a23d5678cefdcca53c00b71d2c69ceaff8e23"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 1026,
+    "holes": 7,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 2803,
+    "cpuMs": 262,
+    "peakHeapMb": 47.8,
+    "peakRssMb": 273.1,
+    "baseRssMb": 75.2,
+    "afterParseMs": 404,
+    "load": 7.3
+   },
+   "stages": {
+    "mesh": 3,
+    "segment": 95,
+    "bvh": 15,
+    "shape": 147,
+    "outline": 46,
+    "features": 75,
+    "thickness": 36,
+    "access": 72,
+    "overhang": 0,
+    "selfIntersect": 273,
+    "total": 763
+   }
+  },
+  "fixture-pocketed_tray-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 8084,
+    "sha256": "71eadcddaa6a93aad86a4767ffe9c794f78f9e18d132e04db51de49f15f2561b"
+   },
+   "hash": {
+    "geometry": "811836fc98a9fa852e7c3089f4b9b63d78b129cde9b4de02a4de06728dfba9a1",
+    "dfm": "4614b00cfb3bfd345ca16243041fbe7dad0ffa7eba40bdcdc31d5bdf98f1816f",
+    "price": "6b04421fc20ddbdd2389eff8d940123273b40b3ac85969092f9bafa71b8a9e02"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 160,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 70,
+    "cpuMs": 29,
+    "peakHeapMb": 13.8,
+    "peakRssMb": 81.9,
+    "baseRssMb": 75.2,
+    "afterParseMs": 165,
+    "load": 7.5
+   },
+   "stages": {
+    "mesh": 1,
+    "segment": 3,
+    "bvh": 0,
+    "shape": 16,
+    "outline": 1,
+    "features": 7,
+    "thickness": 7,
+    "access": 12,
+    "overhang": 0,
+    "selfIntersect": 12,
+    "total": 59
+   }
+  },
+  "fixture-roller-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 35284,
+    "sha256": "c38b801e2df4d97388e172173df38ea714919c4fcf4cd57513522dbdf3c85b72"
+   },
+   "hash": {
+    "geometry": "8ca4fde167bbcc1de4e02a163aa60a6c049af5036482315d511618beedb66497",
+    "dfm": "d68ccf7ac30827fe41d31756c893c19b08e6ab2dbf2e02ae3c5a88d0eb4c1ad3",
+    "price": "68b0a06919a4f36b22b12f115bcb9f58750c11c794fcad18297fd4e41b9ab029"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 704,
+    "holes": 1,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 264,
+    "cpuMs": 71,
+    "peakHeapMb": 16.6,
+    "peakRssMb": 86.8,
+    "baseRssMb": 74.8,
+    "afterParseMs": 169,
+    "load": 7.5
+   },
+   "stages": {
+    "mesh": 7,
+    "segment": 48,
+    "bvh": 19,
+    "shape": 72,
+    "outline": 17,
+    "features": 1,
+    "thickness": 31,
+    "access": 11,
+    "overhang": 0,
+    "selfIntersect": 36,
+    "total": 243
+   }
+  },
+  "fixture-saddle_clamp-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 24084,
+    "sha256": "e38821cff24c1dddbadf331d17f47307da38b5d48f1205ae818fdeb9c3bbd967"
+   },
+   "hash": {
+    "geometry": "23afa9559e05b3dac7895d00fb1acf82e42621cf1515e8983920249ee5b92d12",
+    "dfm": "5fc7b0005a4bf92ec7d4344e5a233e0b290925d2482b5eb05f6a947228075a17",
+    "price": "f45a389c99f622ec81b51bf980be53dfdbc112341abe191d58a7412e298c064b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 480,
+    "holes": 2,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 67,
+    "cpuMs": 41,
+    "peakHeapMb": 15.7,
+    "peakRssMb": 83.1,
+    "baseRssMb": 74.9,
+    "afterParseMs": 91,
+    "load": 7.3
+   },
+   "stages": {
+    "mesh": 4,
+    "segment": 5,
+    "bvh": 1,
+    "shape": 12,
+    "outline": 3,
+    "features": 2,
+    "thickness": 11,
+    "access": 7,
+    "overhang": 0,
+    "selfIntersect": 17,
+    "total": 63
+   }
+  },
+  "fixture-seal_ring_peek-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 35284,
+    "sha256": "c8014f9d356fad4963d09fce063eb27685bb88312448c1d06b2454d1af83cc08"
+   },
+   "hash": {
+    "geometry": "79bce8a405d756e645cf0b942f851c08cfed207fd5bd7990a81d588df19ed225",
+    "dfm": "7a53660c95f4c1da274794228cb83c78f378f978731d9218fb3f5f16f901356a",
+    "price": "04e570e309f4c7b5540bbfdfb6e726f25d89551614e434f9037349f59c6be7e7"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 704,
+    "holes": 1,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 116,
+    "cpuMs": 52,
+    "peakHeapMb": 14.8,
+    "peakRssMb": 87.4,
+    "baseRssMb": 74.6,
+    "afterParseMs": 237,
+    "load": 7.3
+   },
+   "stages": {
+    "mesh": 4,
+    "segment": 12,
+    "bvh": 2,
+    "shape": 46,
+    "outline": 4,
+    "features": 1,
+    "thickness": 13,
+    "access": 7,
+    "overhang": 0,
+    "selfIntersect": 18,
+    "total": 107
+   }
+  },
+  "fixture-small_clip-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 6284,
+    "sha256": "0e0712ecd306867e92c6dc05d805d5955d2dc475c468fb6c57a60e5f2becd375"
+   },
+   "hash": {
+    "geometry": "4e7ee9926d8f083d74b5e8cfbc3a2ca2fbdee0f634b24d73a1202a782661d141",
+    "dfm": "5b3baf486331a9959eca89ca4eae4df8207c7a406a75cfc3bd3d662630b67dfd",
+    "price": "5ba59b4d8efd329b0f319169e46f5007c44818dad5fd3f12098cd6cf73fae987"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 124,
+    "holes": 1,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 38,
+    "cpuMs": 20,
+    "peakHeapMb": 15.1,
+    "peakRssMb": 79.7,
+    "baseRssMb": 74.8,
+    "afterParseMs": 74,
+    "load": 7.3
+   },
+   "stages": {
+    "mesh": 1,
+    "segment": 1,
+    "bvh": 1,
+    "shape": 7,
+    "outline": 1,
+    "features": 1,
+    "thickness": 6,
+    "access": 7,
+    "overhang": 0,
+    "selfIntersect": 8,
+    "total": 33
+   }
+  },
+  "fixture-spacer-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 16084,
+    "sha256": "760dbd88bc310d59f1cbbd4302bf31f03245d27545e84419c255f1031b6f5f6b"
+   },
+   "hash": {
+    "geometry": "73a95d23f24e1f4cb703f411d0765729f8b1236deab5a6c94b78a66b3db9e8e0",
+    "dfm": "f04348669dca90476bd8b41162b70ce82602ea687a602bf72037065ea06a96d3",
+    "price": "92d2b50cb300388e11602e55fc6993f238aa0393e45670219257b73e8daf53b0"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 320,
+    "holes": 1,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 138,
+    "cpuMs": 39,
+    "peakHeapMb": 14,
+    "peakRssMb": 82.2,
+    "baseRssMb": 74.6,
+    "afterParseMs": 162,
+    "load": 7.3
+   },
+   "stages": {
+    "mesh": 1,
+    "segment": 31,
+    "bvh": 1,
+    "shape": 33,
+    "outline": 7,
+    "features": 1,
+    "thickness": 23,
+    "access": 9,
+    "overhang": 1,
+    "selfIntersect": 25,
+    "total": 132
+   }
+  },
+  "fixture-star_wheel-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 297684,
+    "sha256": "7068992ca924e3142096bf75ae850cdfe42e3a537054261e1dc08397acfb6eb2"
+   },
+   "hash": {
+    "geometry": "f014605c07dfeece37df2337d4dc99b6324e0ce84d9b2f839ffcbebeb6c1683d",
+    "dfm": "d594c148b49d1453f61e8b3f35df992dd260f4a6bf7d3498e9e8d04f40b9bcbd",
+    "price": "f411ef49240edf5403e5d6941200f01f708ab4b871aa7739ca6b9b24a41a85d7"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 5952,
+    "holes": 1,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 954,
+    "cpuMs": 283,
+    "peakHeapMb": 40.1,
+    "peakRssMb": 138.4,
+    "baseRssMb": 74.9,
+    "afterParseMs": 389,
+    "load": 7.3
+   },
+   "stages": {
+    "mesh": 42,
+    "segment": 116,
+    "bvh": 85,
+    "shape": 141,
+    "outline": 72,
+    "features": 3,
+    "thickness": 105,
+    "access": 119,
+    "overhang": 1,
+    "selfIntersect": 220,
+    "total": 905
+   }
+  },
+  "fixture-thin_wall_housing-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 8084,
+    "sha256": "c5851d4b7851e113f68cd692e614442489d1df864ed0b86be2e3601a256d42ca"
+   },
+   "hash": {
+    "geometry": "94a06100169f19ab9974c137bc299e335f01f615e63acceca5420ea3286ba89c",
+    "dfm": "be48fc32a7959cf4b0145b49c3a171ae5ca0155eb2d17a1db46576d0c8125362",
+    "price": "e41241661395ef4ec7e9ca67964c7739a06af8b4b823d584a94fab9e9ea69108"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 160,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 88,
+    "cpuMs": 34,
+    "peakHeapMb": 14.5,
+    "peakRssMb": 81.4,
+    "baseRssMb": 74.6,
+    "afterParseMs": 133,
+    "load": 7.3
+   },
+   "stages": {
+    "mesh": 1,
+    "segment": 3,
+    "bvh": 1,
+    "shape": 38,
+    "outline": 1,
+    "features": 10,
+    "thickness": 18,
+    "access": 6,
+    "overhang": 0,
+    "selfIntersect": 7,
+    "total": 85
+   }
+  },
+  "fixture-tray-step": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".step",
+   "n": null,
+   "input": {
+    "bytes": 43306,
+    "sha256": "95cdba0d524d3780de06c4a7bbf01ddcaba219e8f06990e89b41bb6b1830898c"
+   },
+   "hash": {
+    "geometry": "ae9019c02c3413f7429a15f10829a638ee17685bc5f104bb4bad63f518d42cdd",
+    "dfm": "606a8933482829675c1afcc13b42e9243d1509ffaf8ffbdcfa2ac18926b5525b",
+    "price": "e8cc42220952afb605c5a4e9f0c78769ea7d407ac6c3d1169e1d261ce8314655"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 156,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1890,
+    "cpuMs": 184,
+    "peakHeapMb": 47.2,
+    "peakRssMb": 273,
+    "baseRssMb": 75,
+    "afterParseMs": 237,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 6,
+    "segment": 92,
+    "bvh": 0,
+    "shape": 146,
+    "outline": 1,
+    "features": 51,
+    "thickness": 45,
+    "access": 22,
+    "overhang": 1,
+    "selfIntersect": 75,
+    "total": 439
+   }
+  },
+  "fixture-tslot_block-step": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".step",
+   "n": null,
+   "input": {
+    "bytes": 44248,
+    "sha256": "65ce9ba62eed6e85d5cd471fc701b87e864489bc151de983931ba3e38be5377a"
+   },
+   "hash": {
+    "geometry": "ca49fb1af747aba44a60d97ff7953db7c40b3bd2a8b994e9ed92dfc20ea85c3a",
+    "dfm": "d5596f2d16bf0499576a4775004fe5f6c0f1a130b589cefd38497f06ea29ef69",
+    "price": "003fba2b4fdc3682662968149b9b009e5c890fd7fb0595cd1936813fd09d02f9"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 44,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1402,
+    "cpuMs": 155,
+    "peakHeapMb": 47.2,
+    "peakRssMb": 266.7,
+    "baseRssMb": 74.8,
+    "afterParseMs": 581,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 1,
+    "bvh": 0,
+    "shape": 138,
+    "outline": 1,
+    "features": 26,
+    "thickness": 1,
+    "access": 2,
+    "overhang": 0,
+    "selfIntersect": 64,
+    "total": 233
+   }
+  },
+  "fixture-tube-step": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".step",
+   "n": null,
+   "input": {
+    "bytes": 9578,
+    "sha256": "0f641aeab3340d4ffb69f764ab87e868c0a2302a566ae7ee25ba729a3718c253"
+   },
+   "hash": {
+    "geometry": "8f5284f6706113db4687e7ab039cd369a8302ebab10df5150d547833cccb647d",
+    "dfm": "5edbd81d84b04cdb37bb9b23df283495e16f9f34274a8806e2b26c55cf5a0dfc",
+    "price": "a74fa24b3df3b80f3828dcf5f5cb6e286e1a62c5eb71fdfa1c9f51be55574d1c"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 472,
+    "holes": 1,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1152,
+    "cpuMs": 168,
+    "peakHeapMb": 47.1,
+    "peakRssMb": 216.6,
+    "baseRssMb": 75.1,
+    "afterParseMs": 430,
+    "load": 7.6
+   },
+   "stages": {
+    "mesh": 3,
+    "segment": 14,
+    "bvh": 2,
+    "shape": 12,
+    "outline": 11,
+    "features": 1,
+    "thickness": 21,
+    "access": 8,
+    "overhang": 0,
+    "selfIntersect": 52,
+    "total": 124
+   }
+  },
+  "fixture-wear_strip-stl": {
+   "size": "small",
+   "family": "fixture",
+   "ext": ".stl",
+   "n": null,
+   "input": {
+    "bytes": 36284,
+    "sha256": "ead9f4ee108ebe2f388b67f0196a495be814a7e14fd96e8ecdee6154ec520a4d"
+   },
+   "hash": {
+    "geometry": "f8e16390ea119f9232b4d99ce662c2883a3e4d0bad3fbfdda6945f785ce724fe",
+    "dfm": "ab8c3c5b7188657d9e12b44adc8ff6d89431a103aaa8a8659fe26d0fd230da01",
+    "price": "d3f43f34ea00f96fa253c45461ddd7f4995fbc737be044e07e4689734737221b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 724,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 246,
+    "cpuMs": 59,
+    "peakHeapMb": 16.9,
+    "peakRssMb": 85.2,
+    "baseRssMb": 75.1,
+    "afterParseMs": 140,
+    "load": 7.3
+   },
+   "stages": {
+    "mesh": 8,
+    "segment": 18,
+    "bvh": 2,
+    "shape": 29,
+    "outline": 16,
+    "features": 19,
+    "thickness": 20,
+    "access": 11,
+    "overhang": 0,
+    "selfIntersect": 90,
+    "total": 214
+   }
+  },
+  "flat-sheet-two-sided": {
+   "size": "small",
+   "family": "defect",
+   "ext": ".stl",
+   "n": 4,
+   "input": {
+    "bytes": 284,
+    "sha256": "820b0e6ea2386580db747bb92e5e11c8ba33f771c39cca4d4ada74684d61790c"
+   },
+   "hash": {
+    "geometry": "c3a49c83dac60ca407c4ee887ba3cf2c623507971d24c59eef1708c077e85ada",
+    "dfm": "318fa170413ed4877a8e2990f217948a3d408fa6d0a379115a3b3ea798c0ea9e",
+    "price": "ca4f293ac43b87895a6c5117265fdf6096d65ac9b296b76305cb3058f81a570d"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 4,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 7,
+    "cpuMs": 4,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.3,
+    "afterParseMs": 146,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 0,
+    "bvh": 0,
+    "shape": 5,
+    "outline": 0,
+    "features": 1,
+    "thickness": 0,
+    "access": 0,
+    "overhang": 0,
+    "selfIntersect": 0,
+    "total": 6
+   }
+  },
+  "hexprism": {
+   "size": "small",
+   "family": "primitive",
+   "ext": ".stl",
+   "n": 24,
+   "input": {
+    "bytes": 1284,
+    "sha256": "3b7cdb39e3f3ce724bb7d0f5523c6b0c8e7d85e4080908be55f7d6540aafb83a"
+   },
+   "hash": {
+    "geometry": "a1afcbcbeaf579f64f3d15c66253fe4f1fb3cf2dfb291e161892d597a06ad5fa",
+    "dfm": "5dc93c75ccb77340629b7f2057366e4435c0b85feb9cd2540fe80386a5ad2e11",
+    "price": "0d749518b5956166807b6c949e5300b78111d7449351df8bee3fda95b8846b29"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 24,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 13,
+    "cpuMs": 9,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.7,
+    "afterParseMs": 77,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 1,
+    "bvh": 0,
+    "shape": 8,
+    "outline": 1,
+    "features": 1,
+    "thickness": 0,
+    "access": 1,
+    "overhang": 0,
+    "selfIntersect": 0,
+    "total": 12
+   }
+  },
+  "hollow-sphere-10k": {
+   "size": "small",
+   "family": "hollow-sphere",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 476084,
+    "sha256": "558dddb7c87d3987cfcd147c598033d779f69ca7e3e41c6fe83105dc0c63e196"
+   },
+   "hash": {
+    "geometry": "3097ca5508f9d135861f1188059c3df4ab989308bc29cb5ffa0281aa5e8f39d5",
+    "dfm": "8eaa3155eec7371d942d1e2dbb6d60b29d9254c686f716dc05c86e6135062535",
+    "price": "5227bd366873cb81792b06ecbf37caf0ba59d81e778d9979a95e40b54bf6ff75"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9520,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 2151,
+    "cpuMs": 455,
+    "peakHeapMb": 51.6,
+    "peakRssMb": 145.6,
+    "baseRssMb": 75.7,
+    "afterParseMs": 196,
+    "load": 8
+   },
+   "stages": {
+    "mesh": 48,
+    "segment": 664,
+    "bvh": 91,
+    "shape": 177,
+    "outline": 115,
+    "features": 0,
+    "thickness": 133,
+    "access": 416,
+    "overhang": 41,
+    "selfIntersect": 147,
+    "total": 1832
+   }
+  },
+  "icosphere-1k": {
+   "size": "small",
+   "family": "icosphere",
+   "ext": ".stl",
+   "n": 1280,
+   "input": {
+    "bytes": 64084,
+    "sha256": "930282d52505d6c254e964f9d3018cf540bf625c98abebda4116ab4941b73020"
+   },
+   "hash": {
+    "geometry": "008ada06c6348b5095d79884bdc5cdb8fcc2c1c5ed940ff28ad016d98f647edc",
+    "dfm": "e6608f282c95a0eb5c416a6195c424650637000ceca13360872a3b8b0ddb5335",
+    "price": "b5f47b2d809359aff66b589be428162d0e7a41a8cb9e02d7bed59ce4e2b1017c"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 1280,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 246,
+    "cpuMs": 99,
+    "peakHeapMb": 23.3,
+    "peakRssMb": 96.3,
+    "baseRssMb": 74.7,
+    "afterParseMs": 150,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 4,
+    "segment": 68,
+    "bvh": 15,
+    "shape": 20,
+    "outline": 7,
+    "features": 0,
+    "thickness": 15,
+    "access": 37,
+    "overhang": 0,
+    "selfIntersect": 62,
+    "total": 228
+   }
+  },
+  "intersecting-10k": {
+   "size": "small",
+   "family": "intersecting",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 476084,
+    "sha256": "a1ff100020ecbbbb4a009af00eb23aadd32481ae6677e620f2bf1b9eaee544d4"
+   },
+   "hash": {
+    "geometry": "53011dd713a1e64a462bf845430c1b88676886bd9910f4211b63b71f05d200c1",
+    "dfm": "8f374e04965a12760631544ae38324f308756b20121f9eeb846e897218919167",
+    "price": "a06aa0d96a8ef656c898ca013ecc20ecf3056a90fd1492d05f56b6127a77733b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9520,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 2016,
+    "cpuMs": 398,
+    "peakHeapMb": 53.2,
+    "peakRssMb": 145.1,
+    "baseRssMb": 75.5,
+    "afterParseMs": 349,
+    "load": 7.6
+   },
+   "stages": {
+    "mesh": 137,
+    "segment": 739,
+    "bvh": 240,
+    "shape": 114,
+    "outline": 37,
+    "features": 0,
+    "thickness": 105,
+    "access": 203,
+    "overhang": 10,
+    "selfIntersect": 119,
+    "total": 1704
+   }
+  },
+  "lattice-10k": {
+   "size": "small",
+   "family": "lattice",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 520284,
+    "sha256": "bf81a61a80987a949d3ac54d0ad9588f1b4c4bdae505da0bf50bc77650ca49aa"
+   },
+   "hash": {
+    "geometry": "81dcf26f4701e19839da31cf49b309fa7f0ff5d651ecbb6446c97288309a5258",
+    "dfm": "fcb08169308a638aa5d1436d2d8fa8898bf4bf2b36a446dc1e2eb555ce36bcb0",
+    "price": "02b32781091976881c5c6e80fd9fe9448660d91e9f1b77425c5e1a9c551bfea0"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 10404,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 3385,
+    "cpuMs": 1029,
+    "peakHeapMb": 67.1,
+    "peakRssMb": 160.2,
+    "baseRssMb": 75.1,
+    "afterParseMs": 144,
+    "load": 8
+   },
+   "stages": {
+    "mesh": 34,
+    "segment": 47,
+    "bvh": 33,
+    "shape": 141,
+    "outline": 22,
+    "features": 42,
+    "thickness": 579,
+    "access": 2310,
+    "overhang": 59,
+    "selfIntersect": 1,
+    "total": 3268
+   }
+  },
+  "lattice-1k": {
+   "size": "small",
+   "family": "lattice",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 45084,
+    "sha256": "654ffaef10fd72073930585da51ac5062c264835067fede86ffd1e0682da5320"
+   },
+   "hash": {
+    "geometry": "34441e438a58606ce4ca5f77c814090983ad8d7fdfa9d91794c0adef417dfee5",
+    "dfm": "f9b0b5861db37efbf6f47a637d17d8a087638d2791dc86e7d48c51cbe70cb9e1",
+    "price": "8290e9b156671bcb7b028e5b9763e917b458a28322f5952cf99886e66ec884e6"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 900,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 99,
+    "cpuMs": 61,
+    "peakHeapMb": 18.8,
+    "peakRssMb": 86.3,
+    "baseRssMb": 74.8,
+    "afterParseMs": 170,
+    "load": 8
+   },
+   "stages": {
+    "mesh": 3,
+    "segment": 4,
+    "bvh": 4,
+    "shape": 16,
+    "outline": 3,
+    "features": 7,
+    "thickness": 20,
+    "access": 33,
+    "overhang": 1,
+    "selfIntersect": 0,
+    "total": 92
+   }
+  },
+  "lattice-round-10k": {
+   "size": "small",
+   "family": "lattice-round",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 480084,
+    "sha256": "8549d94b2c47c6c71b225c50da46c1aae08673a6455f56ca80c71caf4d56f17e"
+   },
+   "hash": {
+    "geometry": "ce81f46154416899c5c7701f8746e48ef6eae377270a970cd50c606a22a92ae7",
+    "dfm": "4befd3fea0dd8f751b5fc0b715002a133e0b9f92dda266ab2dafc3ee4464bff7",
+    "price": "68b711a71e2efc856d28e78d80ff52a101b1d9d9617aaa7296e2b75c115b3503"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9600,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 3859,
+    "cpuMs": 776,
+    "peakHeapMb": 61,
+    "peakRssMb": 155.5,
+    "baseRssMb": 75.7,
+    "afterParseMs": 185,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 48,
+    "segment": 78,
+    "bvh": 126,
+    "shape": 317,
+    "outline": 255,
+    "features": 99,
+    "thickness": 852,
+    "access": 1948,
+    "overhang": 32,
+    "selfIntersect": 1,
+    "total": 3756
+   }
+  },
+  "mixed-winding-10k": {
+   "size": "small",
+   "family": "mixed-winding",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 490084,
+    "sha256": "1265180f614420601da8aac47b795affb42ccf645603d9d7dbd7f4e626c4d7af"
+   },
+   "hash": {
+    "geometry": "b57d0151bd738d87c2721541df00cc577a8f73cf1f1f3b481d279a0f17163c0c",
+    "dfm": "2ce43c19c0e8c5f1043996f837b1f36d68ac7dbf2d2107e420a499a9da47f92d",
+    "price": "79d94a64200575501ca3f22382806f65b6fa57f63cdb1a1ba6b2f195bf998c9d"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9800,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1651,
+    "cpuMs": 617,
+    "peakHeapMb": 57.8,
+    "peakRssMb": 150.7,
+    "baseRssMb": 75.5,
+    "afterParseMs": 105,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 161,
+    "segment": 677,
+    "bvh": 50,
+    "shape": 142,
+    "outline": 56,
+    "features": 12,
+    "thickness": 100,
+    "access": 143,
+    "overhang": 18,
+    "selfIntersect": 97,
+    "total": 1457
+   }
+  },
+  "mixed-winding-1k": {
+   "size": "small",
+   "family": "mixed-winding",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 48084,
+    "sha256": "327e63837fbf25a2deeba9a276c9a7b5dad3d53c1615644a30a32da31661df18"
+   },
+   "hash": {
+    "geometry": "a0bd2df3e7c416fb7e93b29a0cf3833ec0490dcea84efe6ed212d9703361d3c4",
+    "dfm": "6d559016881fc6cd5ae87b6508eac2f02b07f3fe96360ce8cfc00fc8ec5cb386",
+    "price": "472bc3c6d1fd5a30a8f1548dc4317ccbd4a57e8ecea50d1bb2c6c5370d5bc731"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 960,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 182,
+    "cpuMs": 66,
+    "peakHeapMb": 15.5,
+    "peakRssMb": 85.4,
+    "baseRssMb": 74.7,
+    "afterParseMs": 141,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 2,
+    "segment": 46,
+    "bvh": 4,
+    "shape": 40,
+    "outline": 13,
+    "features": 0,
+    "thickness": 22,
+    "access": 15,
+    "overhang": 0,
+    "selfIntersect": 22,
+    "total": 165
+   }
+  },
+  "multibody-10k": {
+   "size": "small",
+   "family": "multibody",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 502284,
+    "sha256": "ea97d246a0eac33107c6acf551e173dde800dd3859d079370a44a236d94b5970"
+   },
+   "hash": {
+    "geometry": "fb0af576d4921f19a11ebb05e256be85fef727481ef3b17ea217910cb9f87815",
+    "dfm": "5387671085ade955fcfa420baf3f0be7fa2411664de2af41ae1d3db7d6670b3a",
+    "price": "26ca77b8eef779d68107d80d2a553068619b5223e3349c63f680a6fe2197ef74"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 10044,
+    "holes": 24,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 2044,
+    "cpuMs": 462,
+    "peakHeapMb": 60.1,
+    "peakRssMb": 157.6,
+    "baseRssMb": 75.3,
+    "afterParseMs": 128,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 111,
+    "segment": 307,
+    "bvh": 115,
+    "shape": 287,
+    "outline": 134,
+    "features": 160,
+    "thickness": 213,
+    "access": 455,
+    "overhang": 2,
+    "selfIntersect": 174,
+    "total": 1958
+   }
+  },
+  "multibody-10k-3mf": {
+   "size": "small",
+   "family": "multibody",
+   "ext": ".3mf",
+   "n": 10000,
+   "input": {
+    "bytes": 107334,
+    "sha256": "10455acf0cdafc0ae8bfe1f4d9d87e807ebe979dbe4ac44968380c5994265574"
+   },
+   "hash": {
+    "geometry": "8b36d36c2ff252a76b7935040bad6552631b0792d52ef38e3d2e1baab6d9de9b",
+    "dfm": "233f48b1e7de030fbbc66b9c29337979be7ccd3a44e2db0353fb2ef524ca9bf8",
+    "price": "465bca5c5b9f728ef7cfdad14ad320f17fe3263e2f53aba9d7521d0fe6b1ca1a"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 10044,
+    "holes": 24,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 2799,
+    "cpuMs": 554,
+    "peakHeapMb": 61.8,
+    "peakRssMb": 163.5,
+    "baseRssMb": 75.1,
+    "afterParseMs": 144,
+    "load": 7.6
+   },
+   "stages": {
+    "mesh": 107,
+    "segment": 542,
+    "bvh": 91,
+    "shape": 314,
+    "outline": 195,
+    "features": 103,
+    "thickness": 199,
+    "access": 335,
+    "overhang": 2,
+    "selfIntersect": 51,
+    "total": 1944
+   }
+  },
+  "multibody-1k": {
+   "size": "small",
+   "family": "multibody",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 49284,
+    "sha256": "cc15db47a3582e9a120b54f1c7629367c7c5aaab5930e7b6020a79cd73f89c6d"
+   },
+   "hash": {
+    "geometry": "1d9c28b31d53ddcafb5211e77daf3d1b57826e2ea5b351ebae2833d6ab9d0024",
+    "dfm": "b4017b9ffc144fc86281d4054829bdd4065f6b5ff16084f44423cab63bb68260",
+    "price": "b1434add6d34db96d4a6c7c0dda8a145e1126e212edf260756a008ed5bd2b0e2"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 984,
+    "holes": 3,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 159,
+    "cpuMs": 67,
+    "peakHeapMb": 15.9,
+    "peakRssMb": 87.8,
+    "baseRssMb": 74.8,
+    "afterParseMs": 136,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 3,
+    "segment": 34,
+    "bvh": 10,
+    "shape": 25,
+    "outline": 9,
+    "features": 11,
+    "thickness": 7,
+    "access": 11,
+    "overhang": 0,
+    "selfIntersect": 36,
+    "total": 146
+   }
+  },
+  "nonmanifold-boxes": {
+   "size": "small",
+   "family": "defect",
+   "ext": ".stl",
+   "n": 25,
+   "input": {
+    "bytes": 1334,
+    "sha256": "5cebe07ce725d521935f43560d180ccef2714f0e76ad6ff145df6358dce7e059"
+   },
+   "hash": {
+    "geometry": "9cf88a6704e59e72f218b16d5a14d1959f174291beb73a88e696b2f1cf89065d",
+    "dfm": "9fa2d248e4e9b089d98822715991bcc8152ca5f5916ce2697e194c1eacd7808c",
+    "price": "486d31fa1be29e7d0b927197bc0e241333df6f1e4b76c04dfda298e3ff490a71"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 25,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 20,
+    "cpuMs": 8,
+    "peakHeapMb": 13,
+    "peakRssMb": 78,
+    "baseRssMb": 75,
+    "afterParseMs": 118,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 1,
+    "bvh": 0,
+    "shape": 10,
+    "outline": 1,
+    "features": 0,
+    "thickness": 1,
+    "access": 0,
+    "overhang": 0,
+    "selfIntersect": 1,
+    "total": 14
+   }
+  },
+  "open-sheet-10k": {
+   "size": "small",
+   "family": "open-sheet",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 504184,
+    "sha256": "a50ac6e3b57534ba29a6c251427a745e92b7333fee27fa574c28d309b6d5a874"
+   },
+   "hash": {
+    "geometry": "64cdb3586c8f99111309e3179b249da7c88af0e7af7f5d6fc745cd29d40bbe77",
+    "dfm": "891b5b3902d1c5e23e318d438659eb2fd955114b437d62a45f089e28c469b1ec",
+    "price": "59668cf2202e930d14818a4a1a115b767b1db1e64b71cc2a06a0e8e203ca0273"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 10082,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1602,
+    "cpuMs": 520,
+    "peakHeapMb": 55.3,
+    "peakRssMb": 150.4,
+    "baseRssMb": 75.5,
+    "afterParseMs": 157,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 44,
+    "segment": 666,
+    "bvh": 80,
+    "shape": 134,
+    "outline": 21,
+    "features": 6,
+    "thickness": 31,
+    "access": 170,
+    "overhang": 0,
+    "selfIntersect": 334,
+    "total": 1486
+   }
+  },
+  "open-sheet-1k": {
+   "size": "small",
+   "family": "open-sheet",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 48484,
+    "sha256": "fda862b65180a9dfe3bb651d8f6bea8cb2b6c392eb5e18158c2cac383156f0cd"
+   },
+   "hash": {
+    "geometry": "e5a1486a51988991fbf6d89b93226b035a8080a2f970a2d665189dd9420db6b3",
+    "dfm": "c5481066ecfd48c2ca8f3db83c4b7cc47bd64a1b935094e340ff9c2658e6ef1b",
+    "price": "6a7fb50c895db4fa20d21aa7fa65e6282fcae051039ab6bfe90d29c53c1ee9e4"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 968,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 158,
+    "cpuMs": 67,
+    "peakHeapMb": 16.1,
+    "peakRssMb": 86.4,
+    "baseRssMb": 74.7,
+    "afterParseMs": 156,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 4,
+    "segment": 31,
+    "bvh": 4,
+    "shape": 21,
+    "outline": 5,
+    "features": 3,
+    "thickness": 8,
+    "access": 40,
+    "overhang": 0,
+    "selfIntersect": 30,
+    "total": 146
+   }
+  },
+  "open-sphere-10k": {
+   "size": "small",
+   "family": "open-sphere",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 440084,
+    "sha256": "72832338b8fddbac0a2ca1e68deea10126878720c8d59aaa5c9d4b8ab51bc711"
+   },
+   "hash": {
+    "geometry": "81cf8ad8990f51e498f92426cae39d43c25d8ddaf3f073602e2bb51179e4def1",
+    "dfm": "9355636b2f5e59404ad9485abb60838f90f50b38147656014a4ce15654b16c4c",
+    "price": "a13f56a47761849098b5200c721882d41bfc59aa11003c32b55eeee6f2588623"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 8800,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1185,
+    "cpuMs": 356,
+    "peakHeapMb": 53.9,
+    "peakRssMb": 143,
+    "baseRssMb": 75.6,
+    "afterParseMs": 128,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 61,
+    "segment": 400,
+    "bvh": 47,
+    "shape": 92,
+    "outline": 27,
+    "features": 0,
+    "thickness": 107,
+    "access": 158,
+    "overhang": 30,
+    "selfIntersect": 132,
+    "total": 1054
+   }
+  },
+  "open-sphere-1k": {
+   "size": "small",
+   "family": "open-sphere",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 41684,
+    "sha256": "8ededd415d5b82d7ca4d4aaf3fd0dc7599b646b6472273ef2d72e8959472abe0"
+   },
+   "hash": {
+    "geometry": "f817dc93985943e0bdfa86f79881cef8ab9c2491bfe8af7233070e07308911c8",
+    "dfm": "14bfb1422f991811723ffd59a7fc5273b155994a9f955dab65f758d8fe43aaeb",
+    "price": "3df8e5c09bbe40f7995b581919ee983a674714043ae79a6a27e101d69fe78de4"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 832,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 248,
+    "cpuMs": 54,
+    "peakHeapMb": 16,
+    "peakRssMb": 85.7,
+    "baseRssMb": 74.9,
+    "afterParseMs": 118,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 7,
+    "segment": 94,
+    "bvh": 13,
+    "shape": 74,
+    "outline": 2,
+    "features": 0,
+    "thickness": 22,
+    "access": 9,
+    "overhang": 1,
+    "selfIntersect": 18,
+    "total": 240
+   }
+  },
+  "plate-10k": {
+   "size": "small",
+   "family": "plate",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 432084,
+    "sha256": "b550f7e4c8bf9ad8bf06b626fed6c4987024236a6e6526bb642fec64dce8684a"
+   },
+   "hash": {
+    "geometry": "34a960efc3c54d3b977e8cdc3f8b62af4b175dfcdb2fbeb2d7c10243861f0d4a",
+    "dfm": "70ff01f9180f8690b6f6f6b0964bb9b8bfb63fbb9c4d3b96c8c82a882ca92fae",
+    "price": "26f490cefba75d8b198bc35abefee6d996ad740d1f46535a2ac98b1dec98cc5b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 8640,
+    "holes": 45,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1134,
+    "cpuMs": 345,
+    "peakHeapMb": 50.6,
+    "peakRssMb": 144.2,
+    "baseRssMb": 75.4,
+    "afterParseMs": 360,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 125,
+    "segment": 151,
+    "bvh": 50,
+    "shape": 145,
+    "outline": 78,
+    "features": 64,
+    "thickness": 98,
+    "access": 194,
+    "overhang": 1,
+    "selfIntersect": 143,
+    "total": 1054
+   }
+  },
+  "plate-10k-3mf": {
+   "size": "small",
+   "family": "plate",
+   "ext": ".3mf",
+   "n": 10000,
+   "input": {
+    "bytes": 62410,
+    "sha256": "e55b071cb30221065e36571ebd4e815f1bb13db71e140bc83346bd0551764d44"
+   },
+   "hash": {
+    "geometry": "117a38a129e4cf1312db69b56984154148f41286a5c0be2196d3f483fdd3e798",
+    "dfm": "bf82868547e0ef5beece709cc5a96cde46b016816ebc4f3cea56a6380d8fa3e0",
+    "price": "13de2b94e36463082310337ec709a65f357b690ab8508b554f35cbdfb14a6bdc"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 8640,
+    "holes": 45,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 926,
+    "cpuMs": 400,
+    "peakHeapMb": 52.1,
+    "peakRssMb": 148.3,
+    "baseRssMb": 74.7,
+    "afterParseMs": 211,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 45,
+    "segment": 106,
+    "bvh": 44,
+    "shape": 74,
+    "outline": 34,
+    "features": 54,
+    "thickness": 76,
+    "access": 107,
+    "overhang": 0,
+    "selfIntersect": 78,
+    "total": 619
+   }
+  },
+  "plate-10k-ascii": {
+   "size": "small",
+   "family": "plate",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 1411753,
+    "sha256": "e94e794a32d05b5150ea54756b0846af254f7c508a7001ba1a461a5db77018c6"
+   },
+   "hash": {
+    "geometry": "0bea6e5a763ab6977d68cf7020a280ab7856c482adfb48c9b42089451d9957d8",
+    "dfm": "bf82868547e0ef5beece709cc5a96cde46b016816ebc4f3cea56a6380d8fa3e0",
+    "price": "13de2b94e36463082310337ec709a65f357b690ab8508b554f35cbdfb14a6bdc"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 8640,
+    "holes": 45,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1304,
+    "cpuMs": 378,
+    "peakHeapMb": 52.1,
+    "peakRssMb": 147.7,
+    "baseRssMb": 76.1,
+    "afterParseMs": 141,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 45,
+    "segment": 111,
+    "bvh": 67,
+    "shape": 145,
+    "outline": 202,
+    "features": 149,
+    "thickness": 133,
+    "access": 212,
+    "overhang": 1,
+    "selfIntersect": 94,
+    "total": 1160
+   }
+  },
+  "plate-1k": {
+   "size": "small",
+   "family": "plate",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 36884,
+    "sha256": "c6850cb2b4f697d275f7c2cda38f02d26460b393f1790a5b8a07cf42f436d751"
+   },
+   "hash": {
+    "geometry": "1c645e854e89e590267c8b3404e7a709f521c054d7222002fa7023deb9054301",
+    "dfm": "0fac2c348043540e2f812117d70a34b9e611acd41448f877a4c16facdd43b650",
+    "price": "3b1d09b64f1bf8443743da0b836c5cf9cf4044600b9e7f59a49e66d97ea31747"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 736,
+    "holes": 12,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 97,
+    "cpuMs": 53,
+    "peakHeapMb": 16.8,
+    "peakRssMb": 86.3,
+    "baseRssMb": 74.8,
+    "afterParseMs": 225,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 3,
+    "segment": 8,
+    "bvh": 2,
+    "shape": 22,
+    "outline": 3,
+    "features": 6,
+    "thickness": 6,
+    "access": 9,
+    "overhang": 0,
+    "selfIntersect": 29,
+    "total": 88
+   }
+  },
+  "plate-1k-3mf": {
+   "size": "small",
+   "family": "plate",
+   "ext": ".3mf",
+   "n": 1000,
+   "input": {
+    "bytes": 6159,
+    "sha256": "ec91592bdf6ab06781a4287c9b6ca2c422de8eac8d3d3513c55c10e1eb18bc54"
+   },
+   "hash": {
+    "geometry": "3e50dc6fae2bddb5d4b174cc02107083fc4d324ff735ad684905fe4e16d7763d",
+    "dfm": "0fac2c348043540e2f812117d70a34b9e611acd41448f877a4c16facdd43b650",
+    "price": "3b1d09b64f1bf8443743da0b836c5cf9cf4044600b9e7f59a49e66d97ea31747"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 736,
+    "holes": 12,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 523,
+    "cpuMs": 96,
+    "peakHeapMb": 16.9,
+    "peakRssMb": 88.2,
+    "baseRssMb": 74.5,
+    "afterParseMs": 201,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 30,
+    "segment": 39,
+    "bvh": 15,
+    "shape": 92,
+    "outline": 20,
+    "features": 22,
+    "thickness": 34,
+    "access": 13,
+    "overhang": 0,
+    "selfIntersect": 66,
+    "total": 332
+   }
+  },
+  "plate-1k-ascii": {
+   "size": "small",
+   "family": "plate",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 99322,
+    "sha256": "eedc4d5559e4a9b66769812e73d7439a1b08bcf037346e09c8c3c0149acecd11"
+   },
+   "hash": {
+    "geometry": "bf7baf896f465402c29cde5913356779942fcd06ceeab980b9aec2c2fffccdd8",
+    "dfm": "0fac2c348043540e2f812117d70a34b9e611acd41448f877a4c16facdd43b650",
+    "price": "3b1d09b64f1bf8443743da0b836c5cf9cf4044600b9e7f59a49e66d97ea31747"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 736,
+    "holes": 12,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 144,
+    "cpuMs": 55,
+    "peakHeapMb": 16,
+    "peakRssMb": 86.4,
+    "baseRssMb": 74.9,
+    "afterParseMs": 152,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 4,
+    "segment": 9,
+    "bvh": 2,
+    "shape": 36,
+    "outline": 3,
+    "features": 19,
+    "thickness": 3,
+    "access": 12,
+    "overhang": 0,
+    "selfIntersect": 47,
+    "total": 135
+   }
+  },
+  "plate-defects-10k": {
+   "size": "small",
+   "family": "defect",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 439884,
+    "sha256": "a8866ce3973f2378f11dc9f769485950440800a5acc1733efa24449292ec5d64"
+   },
+   "hash": {
+    "geometry": "32ada194ef1959e4e68d97855e07aad5e9f626af6596ad36ee4ac6d6eae8e952",
+    "dfm": "8985c962b15f345e30e245e5e14a7329872a6a6e5911c0435668d9fd8e292099",
+    "price": "4a35909c3f2384955bce1737b32c7b42eff8d0195dda8587f2d2779a440e3a10"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 8796,
+    "holes": 45,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 979,
+    "cpuMs": 377,
+    "peakHeapMb": 53.5,
+    "peakRssMb": 152.6,
+    "baseRssMb": 75.3,
+    "afterParseMs": 128,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 30,
+    "segment": 82,
+    "bvh": 50,
+    "shape": 106,
+    "outline": 80,
+    "features": 60,
+    "thickness": 64,
+    "access": 225,
+    "overhang": 6,
+    "selfIntersect": 220,
+    "total": 924
+   }
+  },
+  "plate-dense-10k": {
+   "size": "small",
+   "family": "plate-dense",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 291084,
+    "sha256": "bfb9f09e0289e2ffa0ef5ecbf15b9326541274d605fcdf823bc2096e15972f18"
+   },
+   "hash": {
+    "geometry": "12072ebe6e3ec5a3ffd0c00ad94fb42d0df41ec0874450404227d046a5d9fd0f",
+    "dfm": "cf615473b767f12cae582bf3d5d95ccd8ca0e608ee06b2bf180c4e137ab92826",
+    "price": "08b07f339443b02e4d8563e9472cc76d9d5a900fc4122856ba301d7be5c4e33e"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 5820,
+    "holes": 9,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 583,
+    "cpuMs": 216,
+    "peakHeapMb": 41.5,
+    "peakRssMb": 135.6,
+    "baseRssMb": 75,
+    "afterParseMs": 113,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 24,
+    "segment": 76,
+    "bvh": 20,
+    "shape": 82,
+    "outline": 29,
+    "features": 32,
+    "thickness": 27,
+    "access": 135,
+    "overhang": 0,
+    "selfIntersect": 87,
+    "total": 512
+   }
+  },
+  "plate-holes-only-10k": {
+   "size": "small",
+   "family": "plate",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 753684,
+    "sha256": "81e66f6ca6ed7d1ef8071aa6294fb03a2ac2da5aba764541209f375ecb583145"
+   },
+   "hash": {
+    "geometry": "d2429db93468aab41943027eb292a2d75082b65c4126ea38833ae0e8afd9b41a",
+    "dfm": "da9028d44de751862bc15a012818444829a9c69b3d195ad0dba997a38e365191",
+    "price": "c365b805aed1fcdce26c0f9e3d24cc188cc4b9923a94de79c02761f37215c9bb"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 15072,
+    "holes": 144,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 2161,
+    "cpuMs": 516,
+    "peakHeapMb": 67.6,
+    "peakRssMb": 170.9,
+    "baseRssMb": 75.4,
+    "afterParseMs": 103,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 129,
+    "segment": 532,
+    "bvh": 136,
+    "shape": 225,
+    "outline": 48,
+    "features": 40,
+    "thickness": 224,
+    "access": 355,
+    "overhang": 4,
+    "selfIntersect": 173,
+    "total": 1866
+   }
+  },
+  "plate-pockets-only-10k": {
+   "size": "small",
+   "family": "plate",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 465684,
+    "sha256": "6f5ef387ad9fa97bdeaac11acb46558e5e317173cf5e79e238241d14ec8e4d79"
+   },
+   "hash": {
+    "geometry": "1e8e21ffd53d6f2f27a93e684a51152b60d328ccf1fc46989be98a76a09f46f1",
+    "dfm": "b6eafcd6cd5dffd2a0b25784e3e531cf76da2c2766c55eda3b4a43001c28e415",
+    "price": "0b0f09e990a59495c93f3c735345b43f0c81f64e8816089794e4d27fc1dd60f3"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9312,
+    "holes": 36,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1393,
+    "cpuMs": 401,
+    "peakHeapMb": 55.4,
+    "peakRssMb": 145.6,
+    "baseRssMb": 75.5,
+    "afterParseMs": 144,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 31,
+    "segment": 73,
+    "bvh": 31,
+    "shape": 165,
+    "outline": 258,
+    "features": 106,
+    "thickness": 121,
+    "access": 326,
+    "overhang": 1,
+    "selfIntersect": 189,
+    "total": 1302
+   }
+  },
+  "plate-tilted-10k": {
+   "size": "small",
+   "family": "plate",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 432084,
+    "sha256": "49b9b16da41f4546b1b81539db534c28deacee9644ba4f50e7c1de157db2389b"
+   },
+   "hash": {
+    "geometry": "538ca5b686b3ad63ebd8539967cc91dea666abd983d238e72137597498938a98",
+    "dfm": "fe9f4408d0041308cb3f1c6c28098009e73b3c8e0803ad6de11b458063a6da24",
+    "price": "1b6851d1c560cedef2a079ae7f4fbaae7cbb94ff1eea552b1beb8ade6922d159"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 8640,
+    "holes": 45,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1877,
+    "cpuMs": 368,
+    "peakHeapMb": 47.4,
+    "peakRssMb": 135.8,
+    "baseRssMb": 75.3,
+    "afterParseMs": 112,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 120,
+    "segment": 226,
+    "bvh": 148,
+    "shape": 178,
+    "outline": 45,
+    "features": 74,
+    "thickness": 240,
+    "access": 424,
+    "overhang": 7,
+    "selfIntersect": 333,
+    "total": 1795
+   }
+  },
+  "relief-10k": {
+   "size": "small",
+   "family": "relief",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 924684,
+    "sha256": "f877f8b1b92df8ed819f08b684ba1960d5596f0f3b10ec225d48207f8fbe7f19"
+   },
+   "hash": {
+    "geometry": "c49ce0cc9bc5d4865f9fc0f8733a985a92c6443f82fa47bed1d22a0f45a4a51b",
+    "dfm": "892871869d7a6ba7fdc5371d4d6838873a135abfc2f3178f5dd6c4bf65361557",
+    "price": "28de010b4af58acbedb95f846f9b91821c3d5bd7d6d0dab69e0997f55ef54a09"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 18492,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 4271,
+    "cpuMs": 1119,
+    "peakHeapMb": 74.1,
+    "peakRssMb": 180,
+    "baseRssMb": 75.6,
+    "afterParseMs": 288,
+    "load": 8
+   },
+   "stages": {
+    "mesh": 49,
+    "segment": 2002,
+    "bvh": 243,
+    "shape": 279,
+    "outline": 33,
+    "features": 53,
+    "thickness": 233,
+    "access": 699,
+    "overhang": 36,
+    "selfIntersect": 409,
+    "total": 4036
+   }
+  },
+  "relief-1k": {
+   "size": "small",
+   "family": "relief",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 96684,
+    "sha256": "910607d61005580803bd25efba49deeb79518076a4f6ba16e1f5c1a08ed64861"
+   },
+   "hash": {
+    "geometry": "2f4302985f3d4088382c8db5de76f8cd6307a447e91fa0115504243ea1d700cb",
+    "dfm": "4c2168808167f7ab6acd33b128a9d7e4fe72404734d75b4f7e616f302ec9f011",
+    "price": "f8be826fbf86231d46b6871e0868d9db283460fb63a46d2508e675fb25fbcdbd"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 1932,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 449,
+    "cpuMs": 117,
+    "peakHeapMb": 24.2,
+    "peakRssMb": 101.3,
+    "baseRssMb": 74.3,
+    "afterParseMs": 202,
+    "load": 8
+   },
+   "stages": {
+    "mesh": 9,
+    "segment": 62,
+    "bvh": 23,
+    "shape": 87,
+    "outline": 14,
+    "features": 32,
+    "thickness": 48,
+    "access": 71,
+    "overhang": 3,
+    "selfIntersect": 77,
+    "total": 426
+   }
+  },
+  "roughblob-10k": {
+   "size": "small",
+   "family": "roughblob",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 490084,
+    "sha256": "b889ebe474ec799a6f482eaa665c7086ba81ea9e2f53110b7fcd9cecc9802903"
+   },
+   "hash": {
+    "geometry": "3845c4b8e69b7c8a3d4315ab7d3c97082c39550f40ac1d71d63bee6e2c7db400",
+    "dfm": "23aeee177c48548145280a94c89daf511e380a64390af82183677fe3e8d3eee4",
+    "price": "27f9ffbbed0f268f5b2bec6fa1503d885cda7eee3609a0cefac3d86e4589b076"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9800,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 4780,
+    "cpuMs": 1460,
+    "peakHeapMb": 58.2,
+    "peakRssMb": 149.1,
+    "baseRssMb": 75.2,
+    "afterParseMs": 136,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 47,
+    "segment": 4006,
+    "bvh": 62,
+    "shape": 93,
+    "outline": 44,
+    "features": 0,
+    "thickness": 113,
+    "access": 177,
+    "overhang": 8,
+    "selfIntersect": 79,
+    "total": 4630
+   }
+  },
+  "roughblob-1k": {
+   "size": "small",
+   "family": "roughblob",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 48084,
+    "sha256": "00198889f17d849d0bcb90a76cafae26b13ea74cbde55d95b0cba5a9b0076d47"
+   },
+   "hash": {
+    "geometry": "81ec38881e5bb117a814298e8f51f4184fc8a74083176103f552cbc302cf27e4",
+    "dfm": "d35e1bfd8a7d7436050a65237abb39a764c10db6522066f8d03305da63ad3178",
+    "price": "fad584fe3e0f2ca80cf1b85a3dc6ac94539913a92948dd1baeeddb1b1f06d068"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 960,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 228,
+    "cpuMs": 76,
+    "peakHeapMb": 15.9,
+    "peakRssMb": 86.4,
+    "baseRssMb": 74.9,
+    "afterParseMs": 185,
+    "load": 7
+   },
+   "stages": {
+    "mesh": 7,
+    "segment": 48,
+    "bvh": 10,
+    "shape": 25,
+    "outline": 2,
+    "features": 1,
+    "thickness": 24,
+    "access": 23,
+    "overhang": 1,
+    "selfIntersect": 70,
+    "total": 214
+   }
+  },
+  "shaft-10k": {
+   "size": "small",
+   "family": "shaft",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 500484,
+    "sha256": "578a5185ca44c601ee8a636121516feb4690f7659b5653d738602f4aea63f5d0"
+   },
+   "hash": {
+    "geometry": "deb65adaee1ff1f7eaeba72269aeae0e403fd015d77e26ebd964bd5d87d158e7",
+    "dfm": "2112e45b3b8e07ed6bdfaac52c9d60467de9129b099229807691e1ef45feefa3",
+    "price": "815df3b29626cb7a7d1e7ed69cab98f04d7e301b87cf25201301389df1c7d405"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 10008,
+    "holes": 1,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1577,
+    "cpuMs": 466,
+    "peakHeapMb": 58.4,
+    "peakRssMb": 151.3,
+    "baseRssMb": 75.7,
+    "afterParseMs": 94,
+    "load": 8
+   },
+   "stages": {
+    "mesh": 154,
+    "segment": 175,
+    "bvh": 117,
+    "shape": 239,
+    "outline": 52,
+    "features": 39,
+    "thickness": 52,
+    "access": 191,
+    "overhang": 12,
+    "selfIntersect": 397,
+    "total": 1429
+   }
+  },
+  "shaft-1k": {
+   "size": "small",
+   "family": "shaft",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 50484,
+    "sha256": "f2ccc41f5449b47dc79eecfbef0661d6c51b56d96f4f31382e2807236606b7ca"
+   },
+   "hash": {
+    "geometry": "333c057e3a3f6b51d98ba92d42652fe45d25504ed931da9146c705cde4cf72ba",
+    "dfm": "303e02978b49ab4060944f77b715fa5233e95cfa3bfbad06feace295d0e0638c",
+    "price": "a00a9c789dce10503cf736b8458c9f804582ae1ced41faf2dff2e635beb80348"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 1008,
+    "holes": 1,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 223,
+    "cpuMs": 82,
+    "peakHeapMb": 17.9,
+    "peakRssMb": 87.7,
+    "baseRssMb": 74.9,
+    "afterParseMs": 78,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 5,
+    "segment": 8,
+    "bvh": 3,
+    "shape": 69,
+    "outline": 16,
+    "features": 8,
+    "thickness": 20,
+    "access": 35,
+    "overhang": 0,
+    "selfIntersect": 44,
+    "total": 208
+   }
+  },
+  "shattered-10k": {
+   "size": "small",
+   "family": "shattered",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 490084,
+    "sha256": "3b8920ab263a6ddcc49089c131f539e8b639a2b2efd195b456d750128b3c9734"
+   },
+   "hash": {
+    "geometry": "ddabd59c9ac7665155398aa697a29545710458dc06c8d2839038e25863981e0f",
+    "dfm": "3b4010acb6b8a64b67934ff1a88192279ed1cbf635dffd6caf175ac3e52a6067",
+    "price": "a39e393fc705af1313b577840b936a5bb2759dcf1fd2264b76b6e2d5c3d0003c"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9800,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 961,
+    "cpuMs": 396,
+    "peakHeapMb": 63.8,
+    "peakRssMb": 172.5,
+    "baseRssMb": 75,
+    "afterParseMs": 105,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 33,
+    "segment": 35,
+    "bvh": 31,
+    "shape": 246,
+    "outline": 199,
+    "features": 23,
+    "thickness": 90,
+    "access": 162,
+    "overhang": 18,
+    "selfIntersect": 1,
+    "total": 838
+   }
+  },
+  "shattered-1k": {
+   "size": "small",
+   "family": "shattered",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 48084,
+    "sha256": "adc3eda2381b9387f4961d80aa14884ad440b7517e9d27b96f1fe3395e8f344d"
+   },
+   "hash": {
+    "geometry": "8a68769b683b2e1dc7c859a7ec187c91a2068d8733b3d90694b49686416ebc16",
+    "dfm": "52398124b9cdc16062b87cb459a0972d7a836706faaab2e47faa2f1d4dcdabc9",
+    "price": "1e4b9c9cf7ccda5817310b85343bcae25815268b1797dcc001453ebb486ac2c6"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 960,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 175,
+    "cpuMs": 75,
+    "peakHeapMb": 17.7,
+    "peakRssMb": 93.9,
+    "baseRssMb": 75,
+    "afterParseMs": 123,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 6,
+    "segment": 7,
+    "bvh": 7,
+    "shape": 61,
+    "outline": 32,
+    "features": 13,
+    "thickness": 23,
+    "access": 13,
+    "overhang": 0,
+    "selfIntersect": 0,
+    "total": 163
+   }
+  },
+  "single-triangle": {
+   "size": "small",
+   "family": "defect",
+   "ext": ".stl",
+   "n": 1,
+   "input": {
+    "bytes": 134,
+    "sha256": "65ce138ec1e2b27df6423fd59fc3d3f6d28b82d244d6d394e713eab5a3540186"
+   },
+   "hash": {
+    "geometry": "1222c7e9b4bb2bc45d143e6610988c7fd0cb98d2c87d78713a6643d3811dfcf3",
+    "dfm": "2912d618abef7df2d852b5e496f6328de33f40d55c5af5450dfbe572e202a28f",
+    "price": "d6c29ed3e2abde244cb66b23c9cda2eb4af4ad13f51425afb7de31255ab3bdfc"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 1,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 8,
+    "cpuMs": 3,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.8,
+    "afterParseMs": 101,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 0,
+    "bvh": 0,
+    "shape": 2,
+    "outline": 0,
+    "features": 0,
+    "thickness": 0,
+    "access": 0,
+    "overhang": 0,
+    "selfIntersect": 0,
+    "total": 2
+   }
+  },
+  "sphere-100k": {
+   "size": "medium",
+   "family": "sphere",
+   "ext": ".stl",
+   "n": 100000,
+   "input": {
+    "bytes": 4961284,
+    "sha256": "f0c40282320bf1a10f9bb9afa55e8875db9c0bfc3ae95ffd41ce7427952840f2"
+   },
+   "hash": {
+    "geometry": "417eed0dafad18d691c821f48b39db0d1a86932f308ff26ebd855c362e929049",
+    "dfm": "ccce74a00f1081c9ab83a206428f3c7564ba7ddee7af4b97327b959ed046ff27",
+    "price": "dd3c8850581b37f67ba7912df7c0038507d07d0edf6d8899918cf8694134b54e"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 99224,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 77022,
+    "cpuMs": 40558,
+    "peakHeapMb": 151.8,
+    "peakRssMb": 290.8,
+    "baseRssMb": 80.2,
+    "afterParseMs": 154,
+    "load": 6.3
+   },
+   "stages": {
+    "mesh": 243,
+    "segment": 74783,
+    "bvh": 293,
+    "shape": 332,
+    "outline": 120,
+    "features": 25,
+    "thickness": 199,
+    "access": 315,
+    "overhang": 16,
+    "selfIntersect": 166,
+    "total": 76493
+   }
+  },
+  "sphere-100k-3mf": {
+   "size": "medium",
+   "family": "sphere",
+   "ext": ".3mf",
+   "n": 100000,
+   "input": {
+    "bytes": 1001346,
+    "sha256": "9d23afe90ee0985157e693580d77665d80b70e5a7afbcd056fbb794396d95be0"
+   },
+   "hash": {
+    "geometry": "58e70378100748d71393fed73ce2394e2587e4a723cf877a6fe7a36092c0ae34",
+    "dfm": "3da800ae94d7f9bcaaae8c1d3866b246b25bbe1780940db5a243424530bdbac3",
+    "price": "d1cae01dc22c218815dddede1bb5d3221150dff24c69bfafd6f7050484edb525"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 99224,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 75274,
+    "cpuMs": 49022,
+    "peakHeapMb": 163.9,
+    "peakRssMb": 296.4,
+    "baseRssMb": 75.9,
+    "afterParseMs": 158,
+    "load": 3.7
+   },
+   "stages": {
+    "mesh": 87,
+    "segment": 72016,
+    "bvh": 281,
+    "shape": 263,
+    "outline": 83,
+    "features": 141,
+    "thickness": 320,
+    "access": 522,
+    "overhang": 13,
+    "selfIntersect": 360,
+    "total": 74086
+   }
+  },
+  "sphere-10k": {
+   "size": "small",
+   "family": "sphere",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 490084,
+    "sha256": "f4da4c93c5fa9b9143bb0354a8ca15e461d190f19a92b1c144feeb5ac4f5346e"
+   },
+   "hash": {
+    "geometry": "83ba97f8bf0d23862633707ef02590f88eeb4c5d7465d491bdaf74e24222d19f",
+    "dfm": "60eec4e90c1344deae720d31efe23e5015b7b3a7452383b350f6d9d6d4a59246",
+    "price": "55e677abf3c41c378067ac834c77703f88f701116d0d96dbfc1d1326f86caea3"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9800,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1070,
+    "cpuMs": 523,
+    "peakHeapMb": 49.2,
+    "peakRssMb": 139.3,
+    "baseRssMb": 75.5,
+    "afterParseMs": 76,
+    "load": 6.3
+   },
+   "stages": {
+    "mesh": 43,
+    "segment": 523,
+    "bvh": 40,
+    "shape": 45,
+    "outline": 22,
+    "features": 0,
+    "thickness": 76,
+    "access": 99,
+    "overhang": 4,
+    "selfIntersect": 71,
+    "total": 923
+   }
+  },
+  "sphere-10k-3mf": {
+   "size": "small",
+   "family": "sphere",
+   "ext": ".3mf",
+   "n": 10000,
+   "input": {
+    "bytes": 98050,
+    "sha256": "30e7685796b1f2960ab2f5018eb8906aa04c68f7773790c1c098b30972809a93"
+   },
+   "hash": {
+    "geometry": "e8c26b70607136b5cd394d32a663ec5edebce958b4377aebc7e8b7e3d272b7e8",
+    "dfm": "a7d5cdc37025053e8291115f4d6b16be85bc39acef19a9d77e5a66ac1ee507cd",
+    "price": "7b2ba963a19b6f6976c8ce494718b0b04349d72eb9bbeebeb3cac4476712e973"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9800,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 2111,
+    "cpuMs": 608,
+    "peakHeapMb": 51.2,
+    "peakRssMb": 156.3,
+    "baseRssMb": 75,
+    "afterParseMs": 188,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 71,
+    "segment": 827,
+    "bvh": 46,
+    "shape": 121,
+    "outline": 46,
+    "features": 0,
+    "thickness": 235,
+    "access": 185,
+    "overhang": 20,
+    "selfIntersect": 163,
+    "total": 1714
+   }
+  },
+  "sphere-10k-ascii": {
+   "size": "small",
+   "family": "sphere",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 2861961,
+    "sha256": "625af19f65b05712c27caebfd256a28fadaf4c0aab7b2dcccf6a4c7c63abc79b"
+   },
+   "hash": {
+    "geometry": "a3127d2b6b382389c8871d3bf7d5584dbe68ce7057b66959bfda6bfa78ddaa85",
+    "dfm": "e3e5dbd84566e702b63878cf480c3aff8949206ee8270952f7fad9cc820de68d",
+    "price": "e974eee57b2a4066e952d6697ab8b801525d9111df5db76b3da8e17324126deb"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9800,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 2070,
+    "cpuMs": 533,
+    "peakHeapMb": 52,
+    "peakRssMb": 147.6,
+    "baseRssMb": 77.4,
+    "afterParseMs": 174,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 36,
+    "segment": 1047,
+    "bvh": 90,
+    "shape": 69,
+    "outline": 61,
+    "features": 0,
+    "thickness": 103,
+    "access": 220,
+    "overhang": 114,
+    "selfIntersect": 223,
+    "total": 1963
+   }
+  },
+  "sphere-1k": {
+   "size": "small",
+   "family": "sphere",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 48084,
+    "sha256": "2cb0e07453af06a061ac43aa711022c3ff1af4d14deaa4abe18f762b1ad68272"
+   },
+   "hash": {
+    "geometry": "87eb35a936aaffbb41604a147e78517e0eb9e84e6c680b50e9d4a90e51bd1470",
+    "dfm": "3243894962969eb858ba50c9d7416514a48b3913ade4ee1fe3a011d87928c710",
+    "price": "7a0048260fb2eada77945a7db2053d1801845eda2a018cf19f65ce40a7d96df5"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 960,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 177,
+    "cpuMs": 51,
+    "peakHeapMb": 16.5,
+    "peakRssMb": 86.7,
+    "baseRssMb": 75.1,
+    "afterParseMs": 98,
+    "load": 6.2
+   },
+   "stages": {
+    "mesh": 8,
+    "segment": 32,
+    "bvh": 7,
+    "shape": 28,
+    "outline": 5,
+    "features": 0,
+    "thickness": 34,
+    "access": 19,
+    "overhang": 1,
+    "selfIntersect": 32,
+    "total": 166
+   }
+  },
+  "sphere-1k-3mf": {
+   "size": "small",
+   "family": "sphere",
+   "ext": ".3mf",
+   "n": 1000,
+   "input": {
+    "bytes": 9772,
+    "sha256": "b84a8986643bb6b5506f21f82a8e70556d05878a896a2be0415c8ec7f01ace3e"
+   },
+   "hash": {
+    "geometry": "ab454ca1e1138e1643b09537903c24154e66b68efefa3f6219e7182a4c2d542c",
+    "dfm": "356d2e3e2e064bdada0823c7a33f47a6ca34057cd7cf1dddebb9975654147f9c",
+    "price": "4a49037c051fde5b5719e7155ec6e2f05fcebfe39cce6d2703f31f5c45d12525"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 960,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 187,
+    "cpuMs": 84,
+    "peakHeapMb": 17.4,
+    "peakRssMb": 97.1,
+    "baseRssMb": 75.2,
+    "afterParseMs": 118,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 3,
+    "segment": 38,
+    "bvh": 3,
+    "shape": 30,
+    "outline": 4,
+    "features": 0,
+    "thickness": 24,
+    "access": 7,
+    "overhang": 1,
+    "selfIntersect": 17,
+    "total": 127
+   }
+  },
+  "sphere-1k-ascii": {
+   "size": "small",
+   "family": "sphere",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 277224,
+    "sha256": "02f0d97ef82b2b234afa7e732360e0abaeb1c5d610a7a07283a4a2618193e061"
+   },
+   "hash": {
+    "geometry": "4203903d0967a8e86104e68e467b292c07dde863ba889613a1a0ff7dfda5b379",
+    "dfm": "e5103ed38ff4eaa57354c03d9e68ffbb1e448cd72f0feebd8a743e32f265ea98",
+    "price": "47fa72db16ab2bbd48cfdd041d0b8a5bf04fba84b333156efc08e3307948a4ce"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 960,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 255,
+    "cpuMs": 70,
+    "peakHeapMb": 16.7,
+    "peakRssMb": 85.9,
+    "baseRssMb": 74.7,
+    "afterParseMs": 153,
+    "load": 7.4
+   },
+   "stages": {
+    "mesh": 6,
+    "segment": 28,
+    "bvh": 8,
+    "shape": 44,
+    "outline": 2,
+    "features": 0,
+    "thickness": 80,
+    "access": 31,
+    "overhang": 1,
+    "selfIntersect": 42,
+    "total": 242
+   }
+  },
+  "sphere-inch-3mf": {
+   "size": "small",
+   "family": "sphere",
+   "ext": ".3mf",
+   "n": 1000,
+   "input": {
+    "bytes": 9831,
+    "sha256": "b65ea08f6c1f6cdf2978509eb604e2229aa9dea57f12db5af988492ede510218"
+   },
+   "hash": {
+    "geometry": "8c9172584dec7846c8eaf10aeb7be15848ed0519f3dd583bf87f6a851afaf305",
+    "dfm": "0e291e03b0dec21e0904ca62181a2a567eead267d389992f9f8c81aa0a8acb86",
+    "price": "e09d27e3c80df2f7fc0dfe012c7c0d320c0afd6a36665e0e1496a7cb867da7fb"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 960,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 304,
+    "cpuMs": 93,
+    "peakHeapMb": 18.4,
+    "peakRssMb": 92.1,
+    "baseRssMb": 75.1,
+    "afterParseMs": 129,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 3,
+    "segment": 45,
+    "bvh": 9,
+    "shape": 27,
+    "outline": 2,
+    "features": 0,
+    "thickness": 28,
+    "access": 19,
+    "overhang": 1,
+    "selfIntersect": 38,
+    "total": 173
+   }
+  },
+  "sphere-inverted-10k": {
+   "size": "small",
+   "family": "defect",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 490084,
+    "sha256": "a4818a74e4329be900f761c0a24ddd814f2395a3d4633d39b8f37cab1611cdfe"
+   },
+   "hash": {
+    "geometry": "39171625be53a01fe91ce50bb735f62a9ba8f411ba8c04fe31ccd64a60a2655c",
+    "dfm": "5e315b4f34c1b088913c66875d49b5a30ef969c7cda58ec8d093254f5c157531",
+    "price": "b8d3e1033cec7f294a93ba1bd6d014d924b73a5082ea74c214a0eade39afe5ef"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9800,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1330,
+    "cpuMs": 515,
+    "peakHeapMb": 47.4,
+    "peakRssMb": 137.3,
+    "baseRssMb": 75,
+    "afterParseMs": 76,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 55,
+    "segment": 714,
+    "bvh": 55,
+    "shape": 110,
+    "outline": 37,
+    "features": 0,
+    "thickness": 42,
+    "access": 175,
+    "overhang": 7,
+    "selfIntersect": 51,
+    "total": 1247
+   }
+  },
+  "textplate-7k": {
+   "size": "small",
+   "family": "textplate",
+   "ext": ".stl",
+   "n": 7000,
+   "input": {
+    "bytes": 407284,
+    "sha256": "579cf90e79e703560b8f23484d728cfd7cd1e8f9cc8cb8637742d6cae998e0e2"
+   },
+   "hash": {
+    "geometry": "33f5afce6ab8cd7d211ab16a4b0500a46593f34de4c7b172014e69d6aa59e4ac",
+    "dfm": "177a65114bfa0f0345d9ab421ca23353752aec9b571382c3779f1fa8bce437f5",
+    "price": "16c1d6a7fb78bbb8e7ee2317e643c586494e4fb7244441c518acbe933faa95d8"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 8144,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1216,
+    "cpuMs": 245,
+    "peakHeapMb": 33.5,
+    "peakRssMb": 120.9,
+    "baseRssMb": 75,
+    "afterParseMs": 177,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 24,
+    "segment": 22,
+    "bvh": 30,
+    "shape": 320,
+    "outline": 56,
+    "features": 124,
+    "thickness": 123,
+    "access": 290,
+    "overhang": 1,
+    "selfIntersect": 153,
+    "total": 1143
+   }
+  },
+  "tjunction-box": {
+   "size": "small",
+   "family": "defect",
+   "ext": ".stl",
+   "n": 810,
+   "input": {
+    "bytes": 40584,
+    "sha256": "3458cd4420ed3d23bce5be8e441966069ac6a5590a315c74125f0979a0b9e455"
+   },
+   "hash": {
+    "geometry": "304133d5700993f943f8c05e1b2c2be75292bd725f5c6e572ef276a6fa8c13e2",
+    "dfm": "f16513e3a617e194d8959a729604460f95caf00bd5d6eb643c62dd24bd70735f",
+    "price": "870b544cb0fc25215d591fd1e6ecd14cacb9fde53b012cca6211a6fe949f8d0c"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 810,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 180,
+    "cpuMs": 49,
+    "peakHeapMb": 15,
+    "peakRssMb": 85.6,
+    "baseRssMb": 74.7,
+    "afterParseMs": 140,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 7,
+    "segment": 1,
+    "bvh": 42,
+    "shape": 42,
+    "outline": 10,
+    "features": 1,
+    "thickness": 7,
+    "access": 7,
+    "overhang": 1,
+    "selfIntersect": 40,
+    "total": 159
+   }
+  },
+  "torus-100k": {
+   "size": "medium",
+   "family": "torus",
+   "ext": ".stl",
+   "n": 100000,
+   "input": {
+    "bytes": 4992884,
+    "sha256": "73aec0110869c081fcf4dd7f1c0a101366f41e7e1978dee7362a3fa88b045d9a"
+   },
+   "hash": {
+    "geometry": "e4e2085c34ea5bce5bf45305b9663c3b400fb1b8e224b6b50efd4308ac56a0d0",
+    "dfm": "a8f0f2dab61c16c843f7d4d8fc958bba75bade8e9465dbaff907978892371cc3",
+    "price": "1b580a35303e0b67dcb91790de35be366cb48dfe4e47c3a17f57c30a4faa428b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 99856,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 44627,
+    "cpuMs": 22519,
+    "peakHeapMb": 167.2,
+    "peakRssMb": 302.2,
+    "baseRssMb": 80.1,
+    "afterParseMs": 71,
+    "load": 5.6
+   },
+   "stages": {
+    "mesh": 118,
+    "segment": 42307,
+    "bvh": 526,
+    "shape": 503,
+    "outline": 56,
+    "features": 19,
+    "thickness": 179,
+    "access": 322,
+    "overhang": 32,
+    "selfIntersect": 164,
+    "total": 44226
+   }
+  },
+  "torus-10k": {
+   "size": "small",
+   "family": "torus",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 500084,
+    "sha256": "d6777e308d61e8f96d67636b733be98bee2f78a39091f163ee9962f577d429f3"
+   },
+   "hash": {
+    "geometry": "731e7639b0805e9f09939403370eda0e727a068535ea1ea7ede9c96cc1952db2",
+    "dfm": "b8d35ec4e8e10e815e630f7b600bff80e31aad0c0332ac5864e3ac1a802e0331",
+    "price": "0dbcaccb3b791b5c85d33f08350ea7fa1a46b7f1ba8030a966a63c78679c7484"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 10000,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1093,
+    "cpuMs": 441,
+    "peakHeapMb": 54.2,
+    "peakRssMb": 146.5,
+    "baseRssMb": 75.4,
+    "afterParseMs": 230,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 60,
+    "segment": 353,
+    "bvh": 42,
+    "shape": 123,
+    "outline": 21,
+    "features": 3,
+    "thickness": 64,
+    "access": 214,
+    "overhang": 21,
+    "selfIntersect": 75,
+    "total": 976
+   }
+  },
+  "torus-1k": {
+   "size": "small",
+   "family": "torus",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 51284,
+    "sha256": "992ed657385a4d162229529421aeabd2dcd02f1c60ba975b81793f5beab46a80"
+   },
+   "hash": {
+    "geometry": "20009e8cfa7c33c560cc5f7b76ff9dea90c35ab1d73cbb27d3265cdbdc80b146",
+    "dfm": "84f0527059bf46203b0b181fe47df54712a9269c430aef9a06d915ea5968a8b8",
+    "price": "ccca1e4b40866f5c2640ebe5579ee68b634b13a16d88cff20379290b15cd0414"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 1024,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 273,
+    "cpuMs": 60,
+    "peakHeapMb": 15.9,
+    "peakRssMb": 85.3,
+    "baseRssMb": 74.8,
+    "afterParseMs": 211,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 12,
+    "segment": 32,
+    "bvh": 9,
+    "shape": 59,
+    "outline": 4,
+    "features": 0,
+    "thickness": 18,
+    "access": 17,
+    "overhang": 0,
+    "selfIntersect": 31,
+    "total": 182
+   }
+  },
+  "tslot-block": {
+   "size": "small",
+   "family": "primitive",
+   "ext": ".stl",
+   "n": 60,
+   "input": {
+    "bytes": 2484,
+    "sha256": "ba58d256d140b5d710b6fe98ae2d2a9093d40f41e310fbd1a31d2613e5cf54aa"
+   },
+   "hash": {
+    "geometry": "0384db3b7fb042f62df0d722eb03faf11b0f6200e88fdf7074717565c0d11a9c",
+    "dfm": "bf96b9ca1981ef1e726b6916ef7f5249811ce0810b83a3391e70df1704bf9372",
+    "price": "3dbaa7f20803fb676b408d66e306fea62d515912163a627a28f29d6f53ab0be7"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 48,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 24,
+    "cpuMs": 15,
+    "peakHeapMb": 11,
+    "peakRssMb": 81.1,
+    "baseRssMb": 74.9,
+    "afterParseMs": 245,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 0,
+    "bvh": 0,
+    "shape": 9,
+    "outline": 0,
+    "features": 2,
+    "thickness": 1,
+    "access": 5,
+    "overhang": 1,
+    "selfIntersect": 3,
+    "total": 21
+   }
+  },
+  "vase-10k": {
+   "size": "small",
+   "family": "vase",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 482884,
+    "sha256": "737901579e2657feb3b3763f89177a8907a53c129d459e36fc580a9ac9a0f431"
+   },
+   "hash": {
+    "geometry": "ee1f9be6e1d04064ac18f7a763f645640a55bba60fde269f5cba43970f2c0a32",
+    "dfm": "110884371dee5c39f63776b4c10285fb21c5f4f664ff69405a0e387414db96b3",
+    "price": "d1320c4bc9341e0653598bbfeb7e5065bbed943812c2373c3c550bea06bb3842"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 9656,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 1702,
+    "cpuMs": 487,
+    "peakHeapMb": 50.2,
+    "peakRssMb": 144.5,
+    "baseRssMb": 75.1,
+    "afterParseMs": 146,
+    "load": 7.7
+   },
+   "stages": {
+    "mesh": 50,
+    "segment": 480,
+    "bvh": 77,
+    "shape": 194,
+    "outline": 88,
+    "features": 27,
+    "thickness": 141,
+    "access": 354,
+    "overhang": 1,
+    "selfIntersect": 182,
+    "total": 1594
+   }
+  },
+  "waffle-10k": {
+   "size": "small",
+   "family": "waffle",
+   "ext": ".stl",
+   "n": 10000,
+   "input": {
+    "bytes": 429684,
+    "sha256": "0077e14e3bac9b5e30b3cb32d0cf349bf3591e5761db16bbb153ae23883ee0bc"
+   },
+   "hash": {
+    "geometry": "ab48129463d8289e9bf38a93fde24f0a6508011e8ad2803ba2f9e1032b5554e8",
+    "dfm": "e76946cbd24564e00621636335084a2881cd0170266b52bec21dbc297c0de81b",
+    "price": "1696f95b63f377c1ce2c6c816928281e5b9a1f52865d6d4cd27d13e1338e339b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 8592,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 765,
+    "cpuMs": 272,
+    "peakHeapMb": 41.4,
+    "peakRssMb": 124.9,
+    "baseRssMb": 75.2,
+    "afterParseMs": 305,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 51,
+    "segment": 22,
+    "bvh": 60,
+    "shape": 168,
+    "outline": 13,
+    "features": 34,
+    "thickness": 28,
+    "access": 253,
+    "overhang": 4,
+    "selfIntersect": 74,
+    "total": 708
+   }
+  },
+  "waffle-1k": {
+   "size": "small",
+   "family": "waffle",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 81684,
+    "sha256": "d28bf479f687b3b2ce12365bd1bcdc1b177c3dbfdc6738427d20819d1257ff65"
+   },
+   "hash": {
+    "geometry": "9ac4453fc5b95a5e015d40d4073df0820f67efee58b3d06e9130dfcad727acab",
+    "dfm": "716a5d2ef45b1b34c5a52f42f2b256c1d705c4fa4a33c673ab1963701c95086c",
+    "price": "95520f259c738fa616a8b098c28af687b2463400e0282c7df089eaa4d208b40c"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 1632,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 214,
+    "cpuMs": 66,
+    "peakHeapMb": 17,
+    "peakRssMb": 89.6,
+    "baseRssMb": 74.9,
+    "afterParseMs": 144,
+    "load": 7.8
+   },
+   "stages": {
+    "mesh": 7,
+    "segment": 10,
+    "bvh": 15,
+    "shape": 41,
+    "outline": 12,
+    "features": 20,
+    "thickness": 9,
+    "access": 31,
+    "overhang": 0,
+    "selfIntersect": 56,
+    "total": 202
+   }
+  },
+  "zero-area-only": {
+   "size": "small",
+   "family": "defect",
+   "ext": ".stl",
+   "n": 2,
+   "input": {
+    "bytes": 184,
+    "sha256": "a8cc9b09fa2f1f184beedcfe81b86f6760ef278c583f9deab4ea6fda23e60a7c"
+   },
+   "hash": {
+    "geometry": "7bfe1334e6bef8ebd4d9ad0ed5477b5d9909c41d5e7db263ffb0537a43fe5523",
+    "dfm": "15468d579ad85aeb9707a9c01d61939bfeab46549edf068f42a41ec9137cee42",
+    "price": "cff7730e33acc800e80536f288e0f60cad3307225e56498e5ade4fcbba0f4912"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 2,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 2,
+    "cpuMs": 2,
+    "peakHeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.6,
+    "afterParseMs": 94,
+    "load": 7.2
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 0,
+    "bvh": 0,
+    "shape": 1,
+    "outline": 0,
+    "features": 0,
+    "thickness": 0,
+    "access": 0,
+    "overhang": 0,
+    "selfIntersect": 0,
+    "total": 1
+   }
+  }
+ },
+ "node": "v22.23.4",
+ "platform": "linux-x64",
+ "generatorKey": "598d332abb4f",
+ "pricingFingerprint": "da3a4d1a6e4e5800"
+}
