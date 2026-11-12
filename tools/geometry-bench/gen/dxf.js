@@ -39,7 +39,12 @@ function perforatedInsert(cols, rows, { d = 4, pitch = 9, margin = 8 } = {}) {
   ], { blocks: [{ name: "HOLE", entities: [w.circle(0, 0, d / 2)] }] });
 }
 /** Plate with a grid of mixed cutouts: slots, rounded windows, polygon holes, splined and elliptical openings. */
-function mixedCutouts(n) {
+function mixedCutouts(n) { return doc(mixedCutoutEntities(n)); }
+/** The same drawing as one block inserted far from the origin (a part drawn in site coordinates). */
+function farFromOrigin(n, x = 5e6, y = -3e6) {
+  return doc([w.insert("PART", x, y)], { blocks: [{ name: "PART", entities: mixedCutoutEntities(n) }] });
+}
+function mixedCutoutEntities(n) {
   const cols = Math.max(1, Math.round(Math.sqrt(n))), rows = Math.max(1, Math.ceil(n / cols));
   const pitch = 30, margin = 12;
   const e = [w.roundRect(0, 0, 2 * margin + cols * pitch, 2 * margin + rows * pitch, 6)];
@@ -61,7 +66,7 @@ function mixedCutouts(n) {
       }
     }
   }
-  return doc(e);
+  return e;
 }
 /** Outline drawn as separate LINE entities in shuffled order, plus round holes. */
 function looseLineOutline(sides, holes = 12, seed = 4) {
@@ -202,6 +207,6 @@ function tightWebs() {
 }
 
 module.exports = {
-  crossingLines, perforated, perforatedInsert, mixedCutouts, looseLineOutline, denseOutline, nested, windows,
+  crossingLines, perforated, perforatedInsert, mixedCutouts, farFromOrigin, looseLineOutline, denseOutline, nested, windows,
   openContours, lineGrid, duplicates, scatteredRects, splines, annotated, inserts, insertedHoles, separateParts, selfCrossing, tightWebs,
 };

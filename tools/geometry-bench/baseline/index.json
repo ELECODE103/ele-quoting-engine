@@ -1,5 +1,84 @@
 {
  "cases": {
+  "ascii-extra-vertex": {
+   "size": "small",
+   "family": "malformed",
+   "ext": ".stl",
+   "n": 2,
+   "input": {
+    "bytes": 211,
+    "sha256": "b2b0a209fd1fda384c8ea3be17213b900efbb7f88be635dd8e593a08f2449211"
+   },
+   "hash": {
+    "geometry": "d988aabe3d5a711ae29b66ab2eb1784f84ff2111821a2f0e67bd3a67eeefe107",
+    "dfm": "a28983756e159a2915ea30402860910e5b9a0ef9083aa8fe62bc9bcd42662307",
+    "price": "b8a47e2cfd360e66045aa4d3e190044195816105524e8c0d68eb307060b0cbab"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 2,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 9,
+    "cpuMs": 5,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.9,
+    "afterParseMs": 63,
+    "load": 3.8
+   },
+   "stages": {
+    "mesh": 0,
+    "segment": 0,
+    "bvh": 0,
+    "shape": 6,
+    "outline": 0,
+    "features": 1,
+    "thickness": 0,
+    "access": 0,
+    "overhang": 0,
+    "selfIntersect": 0,
+    "total": 7
+   }
+  },
+  "ascii-missing-vertex": {
+   "size": "small",
+   "family": "malformed",
+   "ext": ".stl",
+   "n": 2,
+   "input": {
+    "bytes": 178,
+    "sha256": "5956c29878d2ff15950b1676a9da249036176b8f085734b60e8a160a469fc2c6"
+   },
+   "hash": {
+    "geometry": "036fc5f8ef0974e54c5fc3e4e111e845d3dc1b728540429cc0c2652ed304cb1e",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "Cannot read properties of undefined (reading '0')",
+    "fullMessage": "Cannot read properties of undefined (reading '0')"
+   },
+   "timing": {
+    "wallMs": 1,
+    "cpuMs": 1,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 74.8,
+    "afterParseMs": 1,
+    "load": 3.8
+   },
+   "stages": null
+  },
   "blob-100k": {
    "size": "medium",
    "family": "blob",
@@ -953,6 +1032,39 @@
    },
    "stages": null
   },
+  "dxf-far-from-origin": {
+   "size": "small",
+   "family": "dxf-far-from-origin",
+   "ext": ".dxf",
+   "n": 500,
+   "input": {
+    "bytes": 91299,
+    "sha256": "7327b6b26a3bba7af3f6a15efa4e1dda7a635e0708d2c4ee885e6bf53d7b88e0"
+   },
+   "hash": {
+    "geometry": "dfcbc2ca0d877c1172c11799a94e99ee839779ed529cf71cf408a2bc517e912c",
+    "dfm": "7200cb9ac6a59a3100f81f92a5e12f771728c09e9ba916fe0cf80377a2de73c2",
+    "price": "382a0c14106c1feb060d1a06da1755a883577e20d0552fb02560ed4d99c8fff7"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 501,
+    "holes": 143,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 1624,
+    "cpuMs": 639,
+    "peakHeapMb": 83.1,
+    "peakV8HeapMb": 80.3,
+    "peakRssMb": 173.9,
+    "baseRssMb": 74,
+    "afterParseMs": 243,
+    "load": 7
+   },
+   "stages": null
+  },
   "dxf-insert-array-100x100": {
    "size": "medium",
    "family": "dxf-insert-array-100x100",
@@ -1407,13 +1519,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 1457,
-    "cpuMs": 480,
-    "peakHeapMb": 80.2,
-    "peakRssMb": 171.7,
-    "baseRssMb": 75,
-    "afterParseMs": 134,
-    "load": 7.2
+    "wallMs": 1599,
+    "cpuMs": 562,
+    "peakHeapMb": 78.7,
+    "peakV8HeapMb": 75.9,
+    "peakRssMb": 169.1,
+    "baseRssMb": 73.9,
+    "afterParseMs": 270,
+    "load": 7
    },
    "stages": null
   },
@@ -2203,6 +2316,61 @@
     "baseRssMb": 74.6,
     "afterParseMs": 177,
     "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-two-kilometres": {
+   "size": "small",
+   "family": "dxf-two-kilometres",
+   "ext": ".dxf",
+   "n": 400,
+   "input": {
+    "bytes": 16972,
+    "sha256": "887c76275d63a86391f3e8a054af14bff78c47e01ad5248914616b6c3921bcca"
+   },
+   "unfinished": "resource",
+   "note": "Set maximum size exceeded",
+   "timing": {
+    "wallMs": 42506,
+    "cpuMs": 13357,
+    "peakHeapMb": 724.1,
+    "peakV8HeapMb": 721.4,
+    "peakRssMb": 807.8,
+    "baseRssMb": 72.9,
+    "afterParseMs": 1,
+    "load": 6.3
+   }
+  },
+  "dxf-two-kilometres-crossing": {
+   "size": "small",
+   "family": "dxf-two-kilometres-crossing",
+   "ext": ".dxf",
+   "n": 300,
+   "input": {
+    "bytes": 29111,
+    "sha256": "64d4edb17761f14952cd3f9825df402eed19eab86478b92bff64768816583816"
+   },
+   "hash": {
+    "geometry": "9a44becef180e59130871c48144edaf6145d43e1a5838bb72144c1c361aeac33",
+    "dfm": "be47a6d07de4260dc5a3a3e6916e668a0d615a04aa540d4844def35f4d0e1ee1",
+    "price": "1a10c2dcadf7e8571d605dddf8cfd18837a6dfe0da03414c037eb91694ad1012"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 300,
+    "holes": 0,
+    "problems": 459
+   },
+   "timing": {
+    "wallMs": 116,
+    "cpuMs": 62,
+    "peakHeapMb": 16.7,
+    "peakV8HeapMb": 13.9,
+    "peakRssMb": 83,
+    "baseRssMb": 74.1,
+    "afterParseMs": 207,
+    "load": 6.5
    },
    "stages": null
   },
@@ -6874,6 +7042,14 @@
     "total": 242
    }
   },
+  "sphere-500k": {
+   "size": "large",
+   "family": "sphere",
+   "ext": ".stl",
+   "n": 500000,
+   "unfinished": "time",
+   "note": "not finished after 45 minutes"
+  },
   "sphere-inch-3mf": {
    "size": "small",
    "family": "sphere",
@@ -6962,6 +7138,190 @@
     "overhang": 7,
     "selfIntersect": 51,
     "total": 1247
+   }
+  },
+  "stl-far-from-origin": {
+   "size": "small",
+   "family": "malformed",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 36884,
+    "sha256": "779a0571b77c4752bf7898c5731c65998e18afa82a6f5d0f6576e5da1b4c9891"
+   },
+   "hash": {
+    "geometry": "f61816ba8f1333918dc0d9c4132b79fa0c73b75adff73a0de7e56e3c9f224f87",
+    "dfm": "5140554cd4d0812b6f7c1dc64f6a6c3944f1d5570a1fa76006891636763bb157",
+    "price": "71877dc8fda8efa957565d2c5d06f6364c555f91e51d823b02df828ce86941c1"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 736,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 243,
+    "cpuMs": 68,
+    "peakHeapMb": 14.8,
+    "peakV8HeapMb": 11.3,
+    "peakRssMb": 85.8,
+    "baseRssMb": 74.6,
+    "afterParseMs": 168,
+    "load": 3.8
+   },
+   "stages": {
+    "mesh": 8,
+    "segment": 10,
+    "bvh": 13,
+    "shape": 44,
+    "outline": 9,
+    "features": 8,
+    "thickness": 31,
+    "access": 21,
+    "overhang": 0,
+    "selfIntersect": 75,
+    "total": 220
+   }
+  },
+  "stl-kilometre": {
+   "size": "small",
+   "family": "malformed",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 48084,
+    "sha256": "1d248e234eeb6c1b48483b9426b92bda267fe0d9c29a73171387b6947bd3ed03"
+   },
+   "hash": {
+    "geometry": "a036e97f82eddb2459888e09919d26139f30e7ef931553cfb561af64cbfe4518",
+    "dfm": "b80316c8f2a5e53931515b447a267d3273a67701c27c7ae1b7bb8901f4fbc778",
+    "price": "120fe4eeeb7115b4c3839d09d83f830903046c32b375c1229043196bb3363a16"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 960,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 246,
+    "cpuMs": 71,
+    "peakHeapMb": 15.8,
+    "peakV8HeapMb": 11.5,
+    "peakRssMb": 86.1,
+    "baseRssMb": 74.9,
+    "afterParseMs": 227,
+    "load": 3.9
+   },
+   "stages": {
+    "mesh": 14,
+    "segment": 43,
+    "bvh": 9,
+    "shape": 44,
+    "outline": 5,
+    "features": 0,
+    "thickness": 34,
+    "access": 18,
+    "overhang": 1,
+    "selfIntersect": 55,
+    "total": 223
+   }
+  },
+  "stl-microscopic": {
+   "size": "small",
+   "family": "malformed",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 36884,
+    "sha256": "375ecffe2b24e6ed357215f47db24b89d872a6afd295cce1d26409f053e64b87"
+   },
+   "hash": {
+    "geometry": "5d8354268b9111b7e3c73d4a9fd09dc00dcb48ba6199879116790cde35b114b5",
+    "dfm": "4048dceb0a3332e05ee7eb4f8852d480579e94e9648003dc852ca9580d81ff05",
+    "price": "271c193527b7da22c262d9a3edb5c6c585ba93682992d1aa6c5daf70b66e0b38"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 736,
+    "holes": 1,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 252,
+    "cpuMs": 71,
+    "peakHeapMb": 17.1,
+    "peakV8HeapMb": 12.5,
+    "peakRssMb": 86.8,
+    "baseRssMb": 74.8,
+    "afterParseMs": 281,
+    "load": 3.9
+   },
+   "stages": {
+    "mesh": 7,
+    "segment": 20,
+    "bvh": 10,
+    "shape": 47,
+    "outline": 12,
+    "features": 8,
+    "thickness": 35,
+    "access": 20,
+    "overhang": 0,
+    "selfIntersect": 73,
+    "total": 233
+   }
+  },
+  "stl-nan-vertex": {
+   "size": "small",
+   "family": "malformed",
+   "ext": ".stl",
+   "n": 1000,
+   "input": {
+    "bytes": 48084,
+    "sha256": "37365e402159d5133813793cc8fd7989a16e141f76d006edbeffbe25e7fe20ed"
+   },
+   "hash": {
+    "geometry": "9de8d9520e5c07bdb3802ebfb36b279f0a3e72c231d0fb456b27867a868e9b6c",
+    "dfm": "f68e3363ddf55a2a686e884c89ec5d8ec9d8c93df85deca57a5a82452008860c",
+    "price": "8aaa626e6cdebecd3afda7c3bac7cd564a2040c50ed07b88d5555cd2026f75da"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 960,
+    "holes": 0,
+    "kind": "freeform",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 121,
+    "cpuMs": 55,
+    "peakHeapMb": 16.9,
+    "peakV8HeapMb": 12.6,
+    "peakRssMb": 84.4,
+    "baseRssMb": 75.3,
+    "afterParseMs": 184,
+    "load": 3.8
+   },
+   "stages": {
+    "mesh": 3,
+    "segment": 5,
+    "bvh": 5,
+    "shape": 17,
+    "outline": 1,
+    "features": 5,
+    "thickness": 6,
+    "access": 12,
+    "overhang": 0,
+    "selfIntersect": 54,
+    "total": 108
    }
   },
   "textplate-100k": {
@@ -7597,6 +7957,6 @@
  },
  "node": "v22.23.4",
  "platform": "linux-x64",
- "generatorKey": "3b4c2c8de357",
+ "generatorKey": "82e8df9cb07c",
  "pricingFingerprint": "da3a4d1a6e4e5800"
 }

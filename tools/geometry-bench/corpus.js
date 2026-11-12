@@ -91,6 +91,15 @@ add({ id: "zero-area-only", ext: ".stl", size: "small", family: "defect", n: 2, 
 add({ id: "flat-sheet-two-sided", ext: ".stl", size: "small", family: "defect", n: 4, build: () => F.binaryStl([0, 0, 0, 10, 0, 0, 10, 10, 0, 0, 0, 0, 10, 10, 0, 0, 10, 0, 0, 0, 0, 10, 10, 0, 10, 0, 0, 0, 0, 0, 0, 10, 0, 10, 10, 0]) });
 add({ id: "sphere-inch-3mf", ext: ".3mf", size: "small", family: "sphere", n: 1000, build: () => F.threeMf(M.uvSphere(1000, 1).a, { unit: "inch", transform: "1 0 0 0 1 0 0 0 1 2 3 4" }) });
 
+// ── malformed and extreme input (results, or the errors raised, must not change either) ──
+const facet = (v) => `facet normal 0 0 1\nouter loop\n${v.map((p) => `vertex ${p.join(" ")}`).join("\n")}\nendloop\nendfacet\n`;
+add({ id: "ascii-missing-vertex", ext: ".stl", size: "small", family: "malformed", n: 2, build: () => Buffer.from("solid a\n" + facet([[0, 0, 0], [1, 0, 0], [0, 1, 0]]) + facet([[0, 0, 0], [1, 0, 0]]) + "endsolid a\n") });
+add({ id: "ascii-extra-vertex", ext: ".stl", size: "small", family: "malformed", n: 2, build: () => Buffer.from("solid a\n" + facet([[0, 0, 0], [10, 0, 0], [0, 10, 0], [50, 50, 50]]) + facet([[0, 0, 0], [0, 10, 0], [0, 0, 10]]) + "endsolid a\n") });
+add({ id: "stl-nan-vertex", ext: ".stl", size: "small", family: "malformed", n: 1000, build: () => { const b = F.binaryStl(M.uvSphere(1000, 25).a); b.writeFloatLE(NaN, 84 + 50 * 7 + 12); b.writeFloatLE(Infinity, 84 + 50 * 300 + 20); return b; } });
+add({ id: "stl-far-from-origin", ext: ".stl", size: "small", family: "malformed", n: 1000, build: () => F.binaryStl(M.featurePlateFor(1000).map(M.translate(1e6, -2e6, 5e5)).a) });
+add({ id: "stl-microscopic", ext: ".stl", size: "small", family: "malformed", n: 1000, build: () => F.binaryStl(M.featurePlateFor(1000).map((p) => [p[0] * 1e-4, p[1] * 1e-4, p[2] * 1e-4]).a) });
+add({ id: "stl-kilometre", ext: ".stl", size: "small", family: "malformed", n: 1000, build: () => F.binaryStl(M.uvSphere(1000, 5e5).a) });
+
 // ── the triangle ceiling ─────────────────────────────────────────────────────
 add({ id: "ceiling-sphere-500000", ext: ".stl", size: "large", family: "ceiling", n: 500000, build: () => { const s = M.uvSphere(499000, 25); while (s.count < 500000) s.add(M.box(1, 1, 1, 60 + s.count % 7, 0, 0)); s.a.length = 500000 * 9; return F.binaryStl(s.a); } });
 add({ id: "ceiling-over-500001", ext: ".stl", size: "small", family: "ceiling", n: 500001, build: () => { const b = Buffer.alloc(84 + 500001 * 50); b.writeUInt32LE(500001, 80); return b; } });
@@ -128,6 +137,10 @@ dxf("dxf-separate-parts-3", 6, () => D.separateParts(3));
 dxf("dxf-separate-parts-2000", 4000, () => D.separateParts(2000));
 dxf("dxf-self-crossing", 4, () => D.selfCrossing());
 dxf("dxf-tight-webs", 7, () => D.tightWebs());
+// far from the origin, and wider than the range the spatial indexes are proven for (they must stand aside)
+dxf("dxf-far-from-origin", 500, () => D.farFromOrigin(500));
+dxf("dxf-two-kilometres", 400, () => D.perforated(400, { d: 4000, pitch: 100000, margin: 50000 }));
+dxf("dxf-two-kilometres-crossing", 300, () => D.crossingLines(300).replace(/^(10|20|11|21)\n(-?[0-9.e+-]+)$/gm, (m, code, v) => `${code}\n${Number(v) * 3000}`));
 
 // ── every CAD file already in the repo ───────────────────────────────────────
 function fixture(rel, opts = {}) {
