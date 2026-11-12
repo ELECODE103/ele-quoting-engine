@@ -158,12 +158,26 @@ async function db() {
     const t0 = Date.now();
     const mon = monitor(s);
     const rows = [];
-    let n = 0, refused = null, ipN = 0, ip = "192.0.2.61", limited = 0;
+    let n = 0, refused = null, ipN = 0, ip = "192.0.2.61", limited = 0, quoteRefused = null;
+    const quoteIds = [];
     for (;;) {
       const q0 = Date.now();
       const r = await s.post("/api/quote", body, { ip, timeoutMs: 120000 });
-      if (r.status === 429) { limited++; ipN++; ip = `192.0.2.${62 + ipN}`; continue; } // next address
-      if (r.status !== 200) { log("quote refused:", r.status, r.text.slice(0, 200)); break; }
+      // 2026-11-12, with the fixes: a quote without an account holds 25 lines, so the flood goes on with 25.
+      if (r.status === 400 && r.body?.code === "too-many-lines" && body.parts.length > 25) { log("100 lines without an account refused (too-many-lines); going on with 25 lines a quote"); body.parts = body.parts.slice(0, 25); continue; }
+      if (r.status === 429) { limited++; ipN++; ip = `198.18.${ipN >> 8}.${ipN & 255}`; continue; } // next address
+      if (r.status !== 200) {
+        quoteRefused = { afterQuotes: n, status: r.status, code: r.body?.code, dbMb: Number((size() / MB).toFixed(1)), addressesUsed: ipN + 1 };
+        log("quote refused:", r.status, r.text.slice(0, 200));
+        // what a real visitor meets at that moment, with and without an account
+        const anon = await s.upload([{ name: "cube.stl", data: cube }], { ip: "203.0.113.201" });
+        const reprice = quoteIds.length ? await s.post("/api/quote", { ...body, quoteId: quoteIds[0] }, { ip: "192.0.2.61" }) : null;
+        quoteRefused.anonymousUpload = `${anon.status} ${anon.body?.code || "ok"}`;
+        quoteRefused.repriceOfAnOpenQuote = reprice ? reprice.status : null;
+        log("at that moment:", JSON.stringify(quoteRefused));
+        break;
+      }
+      if (quoteIds.length < 1) quoteIds.push(r.body.quoteId);
       n++;
       if (n % 25 === 0 || n === 1) {
         const row = { quotes: n, dbMb: Number((size() / MB).toFixed(1)), lastQuoteMs: Date.now() - q0, rssMb: rssMb(s.pid), addressesUsed: ipN + 1, elapsed: Math.round((Date.now() - t0) / 1000) };
@@ -184,7 +198,7 @@ async function db() {
       log("after a restart:", JSON.stringify(afterRestart));
       await s2.stop();
     }
-    console.log(JSON.stringify({ test: "db", quotes: n, bytesPerQuote: rows.length ? Math.round((rows[rows.length - 1].dbMb * MB) / rows[rows.length - 1].quotes) : 0, rateLimitedResponses: limited, seconds: Math.round((Date.now() - t0) / 1000), healthWorstMs: m.worstMs, healthMedianMs: m.medianMs, peakRssMb: m.peakRssMb, refused, afterRestart, rows }));
+    console.log(JSON.stringify({ test: "db", quotes: n, bytesPerQuote: rows.length ? Math.round((rows[rows.length - 1].dbMb * MB) / rows[rows.length - 1].quotes) : 0, rateLimitedResponses: limited, seconds: Math.round((Date.now() - t0) / 1000), healthWorstMs: m.worstMs, healthMedianMs: m.medianMs, peakRssMb: m.peakRssMb, quoteRefused, refused, afterRestart, rows }));
     if (!s.exited()) await s.stop();
   } catch (err) { await s.stop().catch(() => {}); throw err; }
 }

@@ -32,9 +32,17 @@ const pdf = Buffer.from("%PDF-1.4\n%%EOF\n");
       res["verified-human token from address A used from another address"] = `${other.status} (${other.body?.parts?.length || 0} part)`;
     }
     const H = human ? { "X-Human-Token": human } : {};
+    // 2026-11-12, with the fixes: a verified-human token works only from the address that passed the
+    // check (the line above shows it refused elsewhere), so each address in this script passes its own.
+    const passed = { [A]: H };
+    const Hfor = async (ip) => {
+      if (mode !== "on") return {};
+      if (!passed[ip]) { const v = await s.post("/api/human/verify", { turnstileToken: "pass-quote", action: "quote" }, { ip }); passed[ip] = v.body?.humanToken ? { "X-Human-Token": v.body.humanToken } : {}; }
+      return passed[ip];
+    };
 
     // 1. parts: uploads of ten 684-byte cubes
-    const partsFrom = async (ip, maxReq = 60) => { let parts = 0, reqs = 0, last = 0, ids = []; for (let i = 0; i < maxReq; i++) { const r = await s.upload(Array.from({ length: 10 }, (_, k) => ({ name: `c${k}.stl`, data: cube })), { ip, headers: H }); last = r.status; if (r.status !== 200) break; reqs++; parts += r.body.parts.length; if (ids.length < 100) ids.push(...r.body.parts.map((p) => p.partId)); } return { parts, reqs, last, ids }; };
+    const partsFrom = async (ip, maxReq = 60) => { let parts = 0, reqs = 0, last = 0, ids = []; for (let i = 0; i < maxReq; i++) { const r = await s.upload(Array.from({ length: 10 }, (_, k) => ({ name: `c${k}.stl`, data: cube })), { ip, headers: await Hfor(ip) }); last = r.status; if (r.status !== 200) break; reqs++; parts += r.body.parts.length; if (ids.length < 100) ids.push(...r.body.parts.map((p) => p.partId)); } return { parts, reqs, last, ids }; };
     const pA = await partsFrom(A);
     res["parts per 15 min, one address"] = `${pA.parts} in ${pA.reqs} requests, then HTTP ${pA.last}`;
     res["parts, second address straight after"] = (await partsFrom(B, 1)).parts;
@@ -53,7 +61,7 @@ const pdf = Buffer.from("%PDF-1.4\n%%EOF\n");
       break;
     }
     res["draft quotes per 15 min, one address"] = `${quotes} (first burst ${firstBurst} in under 10 s), then HTTP ${lastStatus} after ${Math.round((Date.now() - t0) / 1000)} s`;
-    res["draft quote, second address straight after"] = (await s.post("/api/quote", { parts: [line(pA.ids[0])], leadTimeSlug: "standard" }, { ip: B, headers: H })).status;
+    res["draft quote, second address straight after"] = (await s.post("/api/quote", { parts: [line(pA.ids[0])], leadTimeSlug: "standard" }, { ip: B, headers: await Hfor(B) })).status;
 
     // 3. firm-quote requests with an attachment
     const rfqFrom = async (ip, n = 40) => { let ok = 0, last = 0, code = ""; for (let i = 0; i < n; i++) { const r = await s.rfq({ contactName: "Bot", email: `victim${ip.replace(/\W/g, "")}${i}@example.test`, notes: `n${i}` }, [{ name: "d.pdf", data: pdf }], { ip, headers: T }); last = r.status; code = r.body?.code || ""; if (r.status !== 201) break; ok++; } return { ok, last, code }; };
@@ -89,14 +97,14 @@ const pdf = Buffer.from("%PDF-1.4\n%%EOF\n");
 
     // 6. Stripe checkout sessions (stub): one account, one quote, asked again and again
     const buyer = await s.register("checkout-bot@example.test", { ip: "198.51.100.25", headers: T });
-    const q = await s.post("/api/quote", { parts: [line(pA.ids[1])], leadTimeSlug: "standard" }, { ip: "198.51.100.25", headers: H });
+    const q = await s.post("/api/quote", { parts: [line(pA.ids[1])], leadTimeSlug: "standard" }, { ip: "198.51.100.25", headers: await Hfor("198.51.100.25") });
     let sessions = 0, lastCo = 0, orders = new Set();
     for (let i = 0; i < 230; i++) { const r = await s.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, shippingName: "B", shippingAddress: "1 Test St", shippingCity: "T", shippingState: "IL", shippingZip: "60000" }, { token: buyer, ip: "198.51.100.25" }); lastCo = r.status; if (r.status !== 200) break; sessions++; orders.add(r.body.orderId); }
     res["Stripe checkout sessions per 15 min, one account and address (stub)"] = `${sessions} sessions on ${orders.size} order(s), then HTTP ${lastCo}`;
     // different quotes → different pending orders in the admin queue
     const buyer2 = await s.register("checkout-bot2@example.test", { ip: "198.51.100.26", headers: T });
     let pendingOrders = 0;
-    for (let i = 0; i < 60; i++) { const qq = await s.post("/api/quote", { parts: [line(pA.ids[2])], leadTimeSlug: "standard" }, { ip: "198.51.100.26", headers: H }); if (qq.status !== 200) break; const r = await s.post("/api/orders/checkout-session", { quoteId: qq.body.quoteId, shippingName: "B", shippingAddress: "1 Test St", shippingCity: "T", shippingState: "IL", shippingZip: "60000" }, { token: buyer2, ip: "198.51.100.26" }); if (r.status !== 200) break; pendingOrders++; }
+    for (let i = 0; i < 60; i++) { const qq = await s.post("/api/quote", { parts: [line(pA.ids[2])], leadTimeSlug: "standard" }, { ip: "198.51.100.26", headers: await Hfor("198.51.100.26") }); if (qq.status !== 200) break; const r = await s.post("/api/orders/checkout-session", { quoteId: qq.body.quoteId, shippingName: "B", shippingAddress: "1 Test St", shippingCity: "T", shippingState: "IL", shippingZip: "60000" }, { token: buyer2, ip: "198.51.100.26" }); if (r.status !== 200) break; pendingOrders++; }
     res["unpaid orders created in the admin's list (60 tried, one account)"] = pendingOrders;
 
     // 7. PDFs: every document route is admin-only

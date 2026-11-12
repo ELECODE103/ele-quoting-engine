@@ -24,7 +24,23 @@ const ship = { shippingName: "B", shippingAddress: "1 Test St", shippingCity: "T
 async function restart(s, opts = {}) {
   const tmp = s.tmp;
   await s.stop({ keep: true });
+  if (opts.whileStopped) await opts.whileStopped();
+  delete opts.whileStopped;
   return startServer({ stubs: true, tmpDir: tmp, ...opts });
+}
+
+/**
+ * Added with the fixes (2026-11-12): a request's attachment is now deleted a set number of days after
+ * the request was CLOSED, which is read from the request's row, not from the file's date. To simulate
+ * the passing of time the row has to be aged too. The server is stopped while this runs.
+ */
+async function ageRequestRow(dbFile, rfqId, days) {
+  const SQL = await require("sql.js")();
+  const db = new SQL.Database(fs.readFileSync(dbFile));
+  const then = new Date(Date.now() - days * DAY).toISOString();
+  db.run("UPDATE rfqs SET updated_at = ?, created_at = ? WHERE id = ?", [then, then, rfqId]);
+  fs.writeFileSync(dbFile, Buffer.from(db.export()));
+  db.close();
 }
 
 async function retention() {
@@ -58,7 +74,10 @@ async function retention() {
     const r2 = await s.rfq({ contactName: "Old Lead", email: "old@example.test", notes: "old request" }, [{ name: "old-drawing.pdf", data: pdf }], { ip: "198.51.100.42" });
     const put = await s.req({ method: "PUT", url: `/api/rfq/admin/${r2.body.rfqId}`, json: { status: "declined" }, token: admin, ip: "203.0.113.5" });
     age(path.join(s.dataDir, "rfq-drawings"), 400);
+    const dbFile = path.join(s.dataDir, "quoting.db");
     s = await restart(s);
+    say("INFO", "declined a minute ago, file dated 400 days back", `files in data/rfq-drawings after the sweep: ${ls(s, "rfq-drawings").length} (kept: the count runs from the day the request was closed)`);
+    s = await restart(s, { whileStopped: () => ageRequestRow(dbFile, r2.body.rfqId, 400) });
     say(ls(s, "rfq-drawings").length > 0 ? "FINDING" : "PASS", "the drawing of a request declined 400 days ago is removed", `declined → HTTP ${put.status}; files in data/rfq-drawings after the sweep: ${ls(s, "rfq-drawings").length}`);
 
     // A drawing nothing points at IS removed after a day.
@@ -69,15 +88,19 @@ async function retention() {
     say(ls(s, "rfq-drawings").length === before - 1 ? "PASS" : "FINDING", "an orphan drawing is removed after 24 hours", `${before} → ${ls(s, "rfq-drawings").length}`);
 
     // A process killed in the middle of a parse leaves the upload behind.
-    const bomb = g.dxfInsertBomb(8, 1, 100, 100);
-    s.upload([{ name: "customer-part.dxf", data: bomb }], { ip: "198.51.100.43", timeoutMs: 5000 }).catch(() => {});
-    await sleep(1500);
-    const during = ls(s, "uploads");
+    // (2026-11-12: the nested-block DXF this used is now refused in milliseconds, so the file that is
+    // mid-parse when the process dies is a 2 MB STEP; and the two CAD files above now rightly stay —
+    // one is on an order, one on an open request — so the check is on the orphan alone.)
+    const kept = new Set(ls(s, "uploads"));
+    s.upload([{ name: "customer-part.step", data: g.stepPlate400() }], { ip: "198.51.100.43", timeoutMs: 5000 }).catch(() => {});
+    let orphans = [];
+    for (let i = 0; i < 40 && orphans.length === 0; i++) { await sleep(50); orphans = ls(s, "uploads").filter((f) => !kept.has(f)); }
     process.kill(s.pid, "SIGKILL");
     await sleep(500);
     age(path.join(s.dataDir, "uploads"), 6);
     s = await startServer({ stubs: true, tmpDir: s.tmp });
-    say(ls(s, "uploads").length ? "FINDING" : "PASS", "an upload orphaned by a crash mid-parse is cleaned up at the next start", `on disk during the parse: ${during.join(", ")}; six days and one restart later: ${ls(s, "uploads").join(", ") || "nothing"} (no part row points at it; it goes at 7 days)`);
+    const left = ls(s, "uploads").filter((f) => !kept.has(f));
+    say(orphans.length === 0 ? "INFO" : left.length ? "FINDING" : "PASS", "an upload orphaned by a crash mid-parse is cleaned up at the next start", `on disk when the process was killed: ${orphans.join(", ") || "nothing (the upload had not landed; run again)"}; six days and one restart later: ${left.join(", ") || "nothing"}; the ${kept.size} file(s) on the order and the open request: ${ls(s, "uploads").filter((f) => kept.has(f)).length} still there`);
   } finally { await s.stop().catch(() => {}); }
 }
 

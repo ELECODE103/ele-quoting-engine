@@ -252,20 +252,38 @@ const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#toke
     s.note = `canvas ${canvas.w}×${canvas.h}, WebGL ${canvas.webgl ? "on" : "context not readable (already in use)"}, quote ${quoteId ? quoteId.slice(0, 8) : "?"}`;
     if (!quoteId) throw new Error("no quote id in sessionStorage");
   });
-  await step("quote tool: the page reloaded — the quote reopens and the 3D preview is read back from the part's file", async (s) => {
+  // Every request for a part's preview, in the order the page made them (availability fixes 2026-11-11:
+  // a preview is no longer inside the quote's answer; the page fetches each from /api/parts/:id/mesh).
+  const meshCalls = [];
+  page.on("request", (r) => { const m = /\/api\/parts\/([0-9a-f-]{36})\/mesh/.exec(r.url()); if (m) meshCalls.push({ partId: m[1], start: Date.now(), end: null, status: 0, request: r }); });
+  page.on("response", (r) => { const c = meshCalls.find((x) => x.request === r.request()); if (c) c.status = r.status(); });
+  page.on("requestfinished", (r) => { const c = meshCalls.find((x) => x.request === r); if (c) c.end = Date.now(); });
+  const waitForMeshes = async (n, ms = 20000) => { const t0 = Date.now(); while (meshCalls.filter((c) => c.end).length < n && Date.now() - t0 < ms) await page.waitForTimeout(100); };
+  const canvasShot = async (name) => { const png = await page.locator("canvas").first().screenshot(); if (SHOTS) fs.writeFileSync(path.join(SHOTS, name), png); return png; };
+
+  await step("quote tool: the page reloaded — the quote reopens and the 3D preview is fetched on its own, from the part's file", async (s) => {
+    meshCalls.length = 0;
     const [session] = await Promise.all([
       page.waitForResponse((r) => r.url().includes(`/api/quote/${quoteId}/session`), { timeout: 20000 }),
       page.reload({ waitUntil: "domcontentloaded" }),
     ]);
-    const body = await session.json();
-    const vertices = body.parts[0].meshPreview.positions.length / 3;
+    const text = await session.text();
+    const body = JSON.parse(text);
+    const first = body.partsById[body.parts[0].partId];
+    await waitForMeshes(1);
+    const call = meshCalls[0];
+    const mesh = call ? await (await call.request.response()).json() : null;
+    const vertices = mesh ? mesh.positions.length / 3 : 0;
     await page.waitForSelector("canvas", { timeout: 30000 });
     await settle(1200);
     const canvas = await canvasInfo();
     const onDisk = fs.readdirSync(path.join(SCRATCH, "data", "part-payloads")).filter((f) => f.endsWith(".mesh.json"));
-    s.note = `${vertices} vertices from ${onDisk.length} mesh file(s), canvas ${canvas.w}×${canvas.h}`;
-    if (session.status() !== 200 || !(vertices > 1000)) throw new Error(`the session answer carried ${vertices} vertices (status ${session.status()})`);
-    if (body.parts[0].previewUnavailable) throw new Error("the preview was reported unavailable");
+    s.note = `session answer ${(text.length / 1024).toFixed(1)} kB with no mesh in it; ${vertices} vertices fetched from ${first.mesh && first.mesh.url}; ${onDisk.length} mesh file(s); canvas ${canvas.w}×${canvas.h}`;
+    if (session.status() !== 200) throw new Error(`session answered ${session.status()}`);
+    if (first.meshPreview && first.meshPreview.positions) throw new Error("the session answer still carries the mesh");
+    if (!first.mesh || !/^\/api\/parts\/[0-9a-f-]{36}\/mesh$/.test(first.mesh.url)) throw new Error("the session answer does not say where the preview is");
+    if (!call || call.status !== 200 || !(vertices > 1000)) throw new Error(`the preview route gave ${vertices} vertices (status ${call && call.status})`);
+    if (first.previewUnavailable) throw new Error("the preview was reported unavailable");
     if (!(canvas && canvas.w > 50 && canvas.h > 50)) throw new Error("no canvas after the reload");
     if (onDisk.length < 1) throw new Error("no mesh file under data/part-payloads");
     if (!/star_wheel/i.test(await page.locator("#root").innerText())) throw new Error("the part did not come back");
@@ -274,6 +292,45 @@ const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#toke
     await page.setInputFiles('input[type="file"][multiple]', path.join(ROOT, "server", "geometry", "fixtures", "plate_holes.step"));
     await settle(3500);
     if (!/plate_holes/i.test(await page.locator("#root").innerText())) throw new Error("the STEP part did not appear");
+  });
+  await step("quote tool: a third part, then the multi-part quote reopened — every 3D preview loads, one at a time, the part on screen first", async (s) => {
+    await page.setInputFiles('input[type="file"][multiple]', path.join(ROOT, "tools", "vet-quotes", "parts", "cube_20mm.stl"));
+    await settle(3000);
+    await page.waitForFunction(() => /\$\s?\d/.test(document.querySelector("#root").innerText), null, { timeout: 20000 });
+    await settle(1500); // the re-priced quote, now with three lines, is saved
+    meshCalls.length = 0;
+    const [session] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes(`/api/quote/${quoteId}/session`), { timeout: 20000 }),
+      page.reload({ waitUntil: "domcontentloaded" }),
+    ]);
+    const text = await session.text();
+    const body = JSON.parse(text);
+    const ids = body.parts.map((p) => p.partId);
+    const lazy = ids.filter((id) => body.partsById[id].mesh && body.partsById[id].mesh.url);
+    const inline = ids.filter((id) => body.partsById[id].meshPreview && body.partsById[id].meshPreview.positions);
+    if (ids.length !== 3) throw new Error(`the reopened quote has ${ids.length} parts, not 3`);
+    await waitForMeshes(lazy.length);
+    await settle(800);
+    const done = meshCalls.filter((c) => c.end);
+    // one at a time: no request starts before the one before it has finished
+    const overlaps = done.filter((c, i) => i > 0 && c.start < done[i - 1].end).length;
+    const sizes = [];
+    for (const [i, name] of [[0, "star_wheel"], [1, "plate_holes"], [2, "cube_20mm"]]) {
+      await page.getByText(new RegExp(name, "i")).first().click();
+      await settle(700);
+      const canvas = await canvasInfo();
+      if (!(canvas && canvas.w > 50 && canvas.h > 50)) throw new Error(`no 3D canvas for ${name}`);
+      sizes.push((await canvasShot(`reopened-part-${i + 1}-${name}.png`)).length);
+    }
+    s.note = `session answer ${(text.length / 1024).toFixed(1)} kB for 3 parts; previews by URL: ${lazy.length}, small enough to travel with the part: ${inline.length}; preview requests ${done.map((c) => `${ids.indexOf(c.partId) + 1}:${c.status}`).join(" → ")} (${overlaps} overlapping); canvas PNG bytes ${sizes.join(" / ")}`;
+    if (lazy.length + inline.length !== 3) throw new Error("a part came back with no preview at all");
+    if (done.length !== lazy.length || done.some((c) => c.status !== 200)) throw new Error(`expected ${lazy.length} preview requests, saw ${meshCalls.map((c) => c.status).join(",")}`);
+    if (new Set(done.map((c) => c.partId)).size !== done.length) throw new Error("a preview was fetched twice");
+    if (overlaps) throw new Error("previews were fetched in parallel");
+    if (lazy.length && done[0].partId !== ids[0]) throw new Error("the part on screen was not fetched first");
+    if (inline.some((id) => body.partsById[id].meshPreview.positions.length > 200000)) throw new Error("a large mesh travelled inside the session answer");
+    if (text.length > 512 * 1024) throw new Error(`the session answer is ${(text.length / 1024).toFixed(0)} kB`);
+    if (new Set(sizes).size !== 3 || sizes.some((b) => b < 3000)) throw new Error(`the three previews do not look like three different drawn models (PNG bytes ${sizes.join(", ")})`);
   });
   await step("quote tool: DXF upload for routing, 2D preview (SVG)", async (s) => {
     const keep = quoteId;
