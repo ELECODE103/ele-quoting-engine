@@ -42,6 +42,25 @@ const pools = [];
 const make = (opts) => { const p = new ParsePool(opts); pools.push(p); return p; };
 const settle = (p) => p.then((value) => ({ value }), (error) => ({ error }));
 
+// First, because it runs at the DEFAULT memory lines and those are about the whole process: after the memory tests
+// below this process is left holding several hundred MB (freed, but not given back to the system), and a parse
+// that needs 460 MB by itself would then be asked to try again later, exactly as the server would ask.
+test("the main thread stays free while a 2 MB STEP file (400 holes, ~10 s of OpenCascade) is read", async () => {
+  const pool = make({ parseTimeoutMs: 120000 });
+  let worstLag = 0, ticks = 0, last = Date.now();
+  const timer = setInterval(() => { const now = Date.now(); worstLag = Math.max(worstLag, now - last - 20); last = now; ticks++; }, 20);
+  const t0 = Date.now();
+  const parsed = await pool.run({ filePath: bigStep, sizeBytes: fs.statSync(bigStep).size });
+  clearInterval(timer);
+  const took = Date.now() - t0;
+  assert.strictEqual(parsed.geometry.estimatedHoles, 400, "the plate's 400 holes were recognised");
+  assert.ok(took > 1500, `the parse really is slow (${took} ms)`);
+  assert.ok(worstLag < 250, `event loop was blocked for ${worstLag} ms during the parse`);
+  assert.ok(ticks > took / 20 / 2, `timers kept firing (${ticks} ticks in ${took} ms)`);
+  assert.strictEqual(pool.stats().idleWorkers, 0, "a worker that read a large, slow file is retired, not kept warm");
+  console.log(`       (STEP parse ${took} ms in a worker; worst main-thread lag ${worstLag} ms)`);
+});
+
 test("a file parsed in a worker gives exactly the result the main thread gives (STL, STEP, IGES, DXF, 3MF)", async () => {
   const pool = make({});
   const files = [
@@ -219,8 +238,19 @@ test("memory watchdog: one parse running by itself has the whole parsing share (
   await new Promise((r) => setTimeout(r, 80));
   at = 1050 * 1024 * 1024; // the rest of the server grew: 100 MB added, 1,050 MB resident
   const out = await p;
-  assert.strictEqual(out.error && out.error.code, "parse-memory", "over the process line on the first run and again on its run alone");
-  assert.strictEqual(high.stats().rerunAlone, 1);
+  // Stopped on the first run and again on its run alone. It added 100 MB: it is the server that is short of
+  // room, so the customer is asked to try again, not told the model is too big, and is not marked.
+  assert.deepStrictEqual([out.error && out.error.code, out.error && out.error.status, out.error && out.error.retryAfter], ["busy", 503, 60]);
+  assert.deepStrictEqual([high.stats().rerunAlone, high.stats().shortOfRoom, high.stats().outOfMemory], [1, 1, 0]);
+  assert.strictEqual(high._isSuspect("customer"), false);
+  // The same, but the parse itself has taken more than the share two parses get between them (600 of 500 MB,
+  // under its solo line of 700): that file is too big for this server, and says so.
+  let heavy;
+  heavy = make({ parseConcurrency: 2, parseRssLimitMb: 500, parseRssSoloLimitMb: 700, parseRssCeilingMb: 900, watchIntervalMs: 40, rssProbe: () => { const e = [...heavy.running][0]; return (400 + (e && e.startedAt && Date.now() - e.startedAt > 150 ? 600 : 0)) * 1024 * 1024; }, testDelayMs: 900 });
+  const q = settle(heavy.run({ filePath: cube, client: "big-file" }));
+  const refused = await q;
+  assert.strictEqual(refused.error && refused.error.code, "parse-memory");
+  assert.deepStrictEqual([heavy.stats().shortOfRoom, heavy.stats().outOfMemory], [0, 1]);
 });
 
 test("where the runtime cannot be asked for a worker's memory (Node 20), parsers are ranked by the memory their thread has touched, not by file size", async () => {
@@ -274,21 +304,6 @@ test("cancel: a job whose client went away frees its worker and its place in the
   assert.deepStrictEqual([pool.stats().running, pool.stats().queued], [0, 0]);
 });
 
-test("the main thread stays free while a 2 MB STEP file (400 holes, ~10 s of OpenCascade) is read", async () => {
-  const pool = make({ parseTimeoutMs: 120000 });
-  let worstLag = 0, ticks = 0, last = Date.now();
-  const timer = setInterval(() => { const now = Date.now(); worstLag = Math.max(worstLag, now - last - 20); last = now; ticks++; }, 20);
-  const t0 = Date.now();
-  const parsed = await pool.run({ filePath: bigStep, sizeBytes: fs.statSync(bigStep).size });
-  clearInterval(timer);
-  const took = Date.now() - t0;
-  assert.strictEqual(parsed.geometry.estimatedHoles, 400, "the plate's 400 holes were recognised");
-  assert.ok(took > 1500, `the parse really is slow (${took} ms)`);
-  assert.ok(worstLag < 250, `event loop was blocked for ${worstLag} ms during the parse`);
-  assert.ok(ticks > took / 20 / 2, `timers kept firing (${ticks} ticks in ${took} ms)`);
-  assert.strictEqual(pool.stats().idleWorkers, 0, "a worker that read a large, slow file is retired, not kept warm");
-  console.log(`       (STEP parse ${took} ms in a worker; worst main-thread lag ${worstLag} ms)`);
-});
 
 run(async () => {
   for (const p of pools) await p.close();

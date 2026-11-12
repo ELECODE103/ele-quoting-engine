@@ -165,7 +165,7 @@ class ParsePool {
     this.budget = new ParseBudget();
     this.suspects = new Map();  // client → time its last parse was stopped
     this.lastTurn = new Map();  // client → when it last got a worker (round-robin)
-    this.counters = { completed: 0, failed: 0, timedOut: 0, outOfMemory: 0, busy: 0, cancelled: 0, workersStarted: 0, overBudget: 0, queueFullForClient: 0, rerunAlone: 0 };
+    this.counters = { completed: 0, failed: 0, timedOut: 0, outOfMemory: 0, busy: 0, cancelled: 0, workersStarted: 0, overBudget: 0, queueFullForClient: 0, rerunAlone: 0, shortOfRoom: 0 };
   }
 
   _opt(name) {
@@ -533,15 +533,19 @@ class ParsePool {
         new Promise((resolve) => { const t = setTimeout(() => resolve(null), 300); if (t.unref) t.unref(); }),
       ]);
     }));
-    const STEP = 32 * 1024 * 1024; // figures this close are "the same"
-    let best = null;
-    let bestWeight = null;
-    entries.forEach((e, i) => {
-      if (e.settled || !this.running.has(e)) return;
-      const w = [this._isSuspect(e.client) ? 1 : 0, asked[i] === null ? -1 : Math.round(asked[i] / STEP), e.job.sizeBytes || (e.job.buffer ? e.job.buffer.length : 0), -e.startedAt];
-      if (!best || w.some((v, k) => v !== bestWeight[k] && w.slice(0, k).every((x, j) => x === bestWeight[j]) && v > bestWeight[k])) { best = e; bestWeight = w; }
-    });
-    return best;
+    const NEAR = 64 * 1024 * 1024; // figures this close are "the same": a few MB either way must not decide
+    let live = entries.map((e, i) => ({ e, mem: asked[i] })).filter((x) => !x.e.settled && this.running.has(x.e));
+    if (live.length === 0) return null;
+    // A client whose parse was already refused this hour comes first.
+    if (live.some((x) => this._isSuspect(x.e.client))) live = live.filter((x) => this._isSuspect(x.e.client));
+    // Then whoever has taken the most memory, with everyone within NEAR of the most. A worker that
+    // could not say (it is still starting) counts as having taken nothing yet.
+    const most = Math.max(...live.map((x) => x.mem || 0));
+    live = live.filter((x) => (x.mem || 0) >= most - NEAR);
+    // Then the larger file, then the longer-running parse.
+    const size = (e) => e.job.sizeBytes || (e.job.buffer ? e.job.buffer.length : 0);
+    live.sort((x, y) => (size(y.e) - size(x.e)) || (x.e.startedAt - y.e.startedAt));
+    return live[0].e;
   }
 
   /**
@@ -600,6 +604,15 @@ class ParsePool {
         this.counters.rerunAlone++;
         console.warn(`Parse pool: ${why}; stopped a parse (${kind}) to run it again on its own`);
         return this._rerunAlone(victim);
+      }
+      // Running by itself, and under the share two parses get between them, yet the process is over
+      // its own line: it is the server that is short of room, not this file that is too big. The
+      // sender is asked to try again (not told the model needs too much memory, and not marked),
+      // and the log says what to do.
+      if (!overShare && addedMb <= sharedMb) {
+        this.counters.shortOfRoom++;
+        console.error(`Parse pool: SHORT OF MEMORY. The process is at ${Math.round(nowMb)} MB resident (line: ${ceilingMb} MB, PARSE_RSS_CEILING_MB) with ONE parse running that has added only ${Math.round(addedMb)} MB by itself (${kind}); before it started the process was already at ${Math.round(baselineMb)} MB. The file was not read and its sender was asked to try again in a minute. If this repeats: restart the service, or give it a larger instance and raise MEMORY_BUDGET_MB to match.`);
+        return this._finish(victim, busy(60), undefined, { kill: true });
       }
       this.counters.outOfMemory++;
       this._markSuspect(victim.client);
