@@ -12,7 +12,21 @@
  *                         PARSE_QUEUE_WAIT_MS of waiting, the caller gets a
  *                         "busy" error (HTTP 503 with Retry-After)
  *   - fairness            one client address runs PARSE_PER_CLIENT files at a
- *                         time, so one sender cannot occupy every worker
+ *                         time and may hold PARSE_QUEUE_PER_CLIENT of the
+ *                         waiting places; when a worker frees up, the client
+ *                         that has waited longest since its last turn goes
+ *                         next (round-robin across clients, not first come
+ *                         first served across requests)
+ *   - a parsing allowance PARSE_SECONDS_PER_CLIENT_HOUR of worker time per
+ *                         client address, charged for the time a parse really
+ *                         used — including one that was stopped. A client that
+ *                         has used it is told so before its file is read.
+ *   - a reserved worker   a client whose parse was stopped (time or memory) in
+ *                         the last PARSE_SUSPECT_MINUTES may not take the last
+ *                         free worker: one stays open for everyone else
+ *   - time by file kind   a DXF gets PARSE_TIMEOUT_DXF_MS (10 s); the other
+ *                         formats a base plus time per megabyte, never more
+ *                         than PARSE_TIMEOUT_MS
  *   - wall-clock timeout  PARSE_TIMEOUT_MS per file, then worker.terminate()
  *   - memory ceilings     V8 heap per worker (resourceLimits, PARSE_MAX_HEAP_MB)
  *                         and a watchdog on the memory parsing adds to the
@@ -42,6 +56,48 @@ function poolError(code, status, message, extra = {}) {
   return Object.assign(new Error(message), { code, status, expose: true, ...extra });
 }
 
+const brand = require("../../shared/brand.json");
+const HOUR_MS = 60 * 60 * 1000;
+
+/** Worker time one client has used in the last hour. */
+class ParseBudget {
+  constructor() { this.used = new Map(); } // client → [{ at, ms }]
+  _live(client, now) {
+    const list = this.used.get(client);
+    if (!list) return [];
+    while (list.length && now - list[0].at >= HOUR_MS) list.shift();
+    if (!list.length) this.used.delete(client);
+    return list;
+  }
+  usedMs(client, now = Date.now()) {
+    let total = 0;
+    for (const e of this._live(client, now)) total += e.ms;
+    return total;
+  }
+  charge(client, ms, now = Date.now()) {
+    if (!client || !(ms > 0)) return;
+    let list = this.used.get(client);
+    if (!list) {
+      if (this.used.size >= 50000) { let n = 5000; for (const k of this.used.keys()) { this.used.delete(k); if (--n <= 0) break; } }
+      list = [];
+      this.used.set(client, list);
+    }
+    list.push({ at: now, ms });
+  }
+  /** Seconds until enough of the hour has passed for `needMs` to be free again. */
+  retryAfterSeconds(client, limitMs, now = Date.now()) {
+    const list = this._live(client, now);
+    let over = this.usedMs(client, now) - limitMs;
+    for (const e of list) {
+      if (over < 0) break;
+      over -= e.ms;
+      if (over < 0) return Math.max(60, Math.ceil((e.at + HOUR_MS - now) / 1000));
+    }
+    return 60;
+  }
+  reset() { this.used.clear(); }
+}
+
 const busy = (retryAfter) => poolError(
   "busy", 503,
   "We're reading a lot of files right now. Give it a minute and upload this one again.",
@@ -65,7 +121,10 @@ class ParsePool {
     this.idle = [];             // warm workers: { worker, jobs, idleTimer }
     this.watchdog = null;
     this.nextId = 1;
-    this.counters = { completed: 0, failed: 0, timedOut: 0, outOfMemory: 0, busy: 0, cancelled: 0, workersStarted: 0 };
+    this.budget = new ParseBudget();
+    this.suspects = new Map();  // client → time its last parse was stopped
+    this.lastTurn = new Map();  // client → when it last got a worker (round-robin)
+    this.counters = { completed: 0, failed: 0, timedOut: 0, outOfMemory: 0, busy: 0, cancelled: 0, workersStarted: 0, overBudget: 0, queueFullForClient: 0 };
   }
 
   _opt(name) {
@@ -90,10 +149,27 @@ class ParsePool {
     });
     promise.cancel = () => this._cancel(entry);
 
+    // This client's parsing allowance for the hour, counting what its running parse has used so far.
+    const limitMs = this._opt("parseSecondsPerClientHour") * 1000;
+    if (entry.client && this._clientUsedMs(entry.client) >= limitMs) {
+      this.counters.overBudget++;
+      this._settle(entry, poolError(
+        "parse-budget", 429,
+        `We've spent as long reading files from this network in the last hour as the instant quote allows. Try again later, or email your files to ${brand.email} and we'll quote them by hand.`,
+        { offerRfq: true, retryAfter: this.budget.retryAfterSeconds(entry.client, limitMs) },
+      ));
+      return promise;
+    }
+
     if (this._canStart(entry)) {
       this._start(entry);
     } else if (this.queue.length >= this._opt("parseQueueMax")) {
       this.counters.busy++;
+      this._settle(entry, busy(this._retryAfter()));
+    } else if (this._queuedFor(entry.client) >= this._opt("parseQueuePerClient")) {
+      // The waiting line is shared: one client may not fill it.
+      this.counters.busy++;
+      this.counters.queueFullForClient++;
       this._settle(entry, busy(this._retryAfter()));
     } else {
       this.queue.push(entry);
@@ -108,7 +184,43 @@ class ParsePool {
   }
 
   _retryAfter() {
-    return Math.max(5, Math.ceil(this._opt("parseTimeoutMs") / 1000));
+    return Math.max(5, Math.min(30, Math.ceil(this._opt("parseTimeoutMs") / 1000)));
+  }
+
+  /**
+   * The wall-clock budget of one file: by kind and size, capped by PARSE_TIMEOUT_MS.
+   * A caller that fixes parseTimeoutMs (the tests) gets exactly that.
+   */
+  _timeoutFor(job) {
+    const cap = this._opt("parseTimeoutMs");
+    if (this.opts.parseTimeoutMs !== undefined && this.opts.byKind !== true) return cap;
+    const ext = String((job.options && job.options.ext) || path.extname(job.filePath || "")).toLowerCase();
+    const sizeMb = (job.sizeBytes || (job.buffer ? job.buffer.length : 0)) / (1024 * 1024);
+    let ms;
+    if (ext === ".dxf") ms = this._opt("parseTimeoutDxfMs");
+    else if (ext === ".step" || ext === ".stp" || ext === ".iges" || ext === ".igs") ms = this._opt("parseTimeoutCadBaseMs") + sizeMb * this._opt("parseTimeoutCadPerMbMs");
+    else ms = this._opt("parseTimeoutMeshBaseMs") + sizeMb * this._opt("parseTimeoutMeshPerMbMs");
+    return Math.max(100, Math.min(cap, Math.round(ms)));
+  }
+
+  _queuedFor(client) {
+    let n = 0;
+    for (const e of this.queue) if (e.client === client) n++;
+    return n;
+  }
+
+  /** Worker time this client has used in the last hour, including its parse that is running now. */
+  _clientUsedMs(client, now = Date.now()) {
+    let ms = this.budget.usedMs(client, now);
+    for (const e of this.running) if (e.client === client && e.startedAt) ms += now - e.startedAt;
+    return ms;
+  }
+
+  _isSuspect(client, now = Date.now()) {
+    const at = this.suspects.get(client);
+    if (at === undefined) return false;
+    if (now - at >= this._opt("parseSuspectMinutes") * 60 * 1000) { this.suspects.delete(client); return false; }
+    return true;
   }
 
   _runningFor(client) {
@@ -118,9 +230,13 @@ class ParsePool {
   }
 
   _canStart(entry) {
-    if (this.running.size >= this._opt("parseConcurrency")) return false;
+    const concurrency = this._opt("parseConcurrency");
+    if (this.running.size >= concurrency) return false;
     // Each client address has its own lane; callers with no address share one.
-    return this._runningFor(entry.client) < this._opt("parsePerClient");
+    if (this._runningFor(entry.client) >= this._opt("parsePerClient")) return false;
+    // A client whose parse was stopped recently does not get the last free worker.
+    if (concurrency > 1 && this.running.size >= concurrency - 1 && entry.client && this._isSuspect(entry.client)) return false;
+    return true;
   }
 
   /** A warm worker if there is one, else a new one. */
@@ -151,6 +267,7 @@ class ParsePool {
       const entry = slot.entry;
       if (err && err.code === "ERR_WORKER_OUT_OF_MEMORY") {
         this.counters.outOfMemory++;
+        if (entry) this._markSuspect(entry.client);
         console.warn(`Parse pool: a parse ran out of memory (${entry ? path.extname(entry.job.filePath || "") : "idle"}, heap limit ${heap} MB)`);
         if (entry) this._finish(entry, this._memoryError(), undefined, { kill: true });
       } else {
@@ -190,11 +307,13 @@ class ParsePool {
     entry.slot = slot;
     entry.startedAt = Date.now();
     this.running.add(entry);
+    if (entry.client) { this.lastTurn.delete(entry.client); this.lastTurn.set(entry.client, entry.startedAt); if (this.lastTurn.size > 20000) this.lastTurn.clear(); }
     this._watch();
 
-    const timeoutMs = this._opt("parseTimeoutMs");
+    const timeoutMs = this._timeoutFor(entry.job);
     entry.timer = setTimeout(() => {
       this.counters.timedOut++;
+      this._markSuspect(entry.client);
       console.warn(`Parse pool: stopped a parse after ${Math.round(timeoutMs / 1000)}s (${path.extname(filePath || "") || "file"})`);
       this._finish(entry, poolError(
         "parse-timeout", 422,
@@ -222,6 +341,8 @@ class ParsePool {
     if (entry.settled) return;
     clearTimeout(entry.timer);
     this.running.delete(entry);
+    // The time this parse really used is charged to its client, however it ended.
+    if (entry.startedAt) this.budget.charge(entry.client, Date.now() - entry.startedAt);
     const slot = entry.slot;
     if (slot) {
       slot.entry = null;
@@ -253,11 +374,31 @@ class ParsePool {
     if (err) entry.reject(err); else entry.resolve(result);
   }
 
+  /**
+   * Start what can start. Among the waiting jobs, the one whose client has
+   * gone longest without a worker goes first (a client that has never had one
+   * counts as longest); within one client, first come first served.
+   */
   _drain() {
-    for (let i = 0; i < this.queue.length && this.running.size < this._opt("parseConcurrency");) {
-      const next = this.queue[i];
-      if (this._canStart(next)) { this.queue.splice(i, 1); this._start(next); } else i++;
+    while (this.running.size < this._opt("parseConcurrency") && this.queue.length) {
+      let best = -1;
+      let bestTurn = Infinity;
+      for (let i = 0; i < this.queue.length; i++) {
+        const e = this.queue[i];
+        if (!this._canStart(e)) continue;
+        const turn = this.lastTurn.get(e.client) || 0;
+        if (turn < bestTurn) { bestTurn = turn; best = i; }
+      }
+      if (best < 0) return;
+      const [next] = this.queue.splice(best, 1);
+      this._start(next);
     }
+  }
+
+  _markSuspect(client) {
+    if (!client) return;
+    if (this.suspects.size >= 20000) this.suspects.clear();
+    this.suspects.set(client, Date.now());
   }
 
   _cancel(entry) {
@@ -285,13 +426,21 @@ class ParsePool {
       if (this.running.size === 0) return this._unwatch();
       const rssMb = rss() - baselineMb;
       if (rssMb <= limitMb) return;
-      // Warm workers hold memory too: let them go first, then stop the parse
-      // that has been running longest (it has had the most time to grow).
+      // Warm workers hold memory too: let them go first. Then stop one parse. Memory is not known
+      // per worker, so the choice is by who is most likely to be the cause and least likely to be
+      // a customer: a client whose parse was already stopped this hour first, then the largest
+      // file, then the longest-running.
       for (const slot of [...this.idle]) { slot.dead = true; this._forget(slot); slot.worker.terminate().catch(() => {}); }
       let oldest = null;
-      for (const e of this.running) if (!oldest || e.startedAt < oldest.startedAt) oldest = e;
+      const weight = (e) => [this._isSuspect(e.client) ? 1 : 0, e.job.sizeBytes || (e.job.buffer ? e.job.buffer.length : 0), -e.startedAt];
+      for (const e of this.running) {
+        if (!oldest) { oldest = e; continue; }
+        const a = weight(e), b = weight(oldest);
+        if (a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] > b[2]) oldest = e;
+      }
       if (!oldest) return;
       this.counters.outOfMemory++;
+      this._markSuspect(oldest.client);
       console.warn(`Parse pool: parsing has added ${Math.round(rssMb)} MB to the process, over the ${limitMb} MB ceiling (PARSE_RSS_LIMIT_MB); stopped a parse (${path.extname(oldest.job.filePath || "") || "file"})`);
       this._finish(oldest, this._memoryError(), undefined, { kill: true });
     }, this.opts.watchIntervalMs || 500);
@@ -315,4 +464,4 @@ class ParsePool {
 /** The pool the routes use. */
 const pool = new ParsePool();
 
-module.exports = { ParsePool, pool, poolError };
+module.exports = { ParsePool, ParseBudget, pool, poolError };
