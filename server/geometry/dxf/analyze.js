@@ -30,6 +30,8 @@ const SLIVER_WIDTH_MM = 0.02;    // area / perimeter below this = a zero-area lo
 const MAX_MARKS = 40;
 const TAU = Math.PI * 2;
 
+const { CoverGrid, SegmentIndex, Buckets, usable } = require("./spatial");
+
 const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
 
 // ─── primitives ──────────────────────────────────────────────────────────────
@@ -269,7 +271,20 @@ function properCross(a, b, c, d) {
   }
   return null;
 }
-function findCrossings(loops, bbox) {
+const MAX_CROSSINGS = 200;
+
+/**
+ * Crossings between segments of the flattened loops: the first MAX_CROSSINGS
+ * found, in the order the scan below finds them.
+ *
+ * The scan (crossingsScan) buckets every segment into each cell of its
+ * bounding box on a coarse grid and tests every pair that shares a cell; a
+ * few thousand long lines share thousands of cells per pair, which made it
+ * billions of look-ups. crossingsIndexed returns the same list without
+ * visiting the pairs cell by cell; it is used whenever the drawing's extent
+ * is within the range its margins are proven for.
+ */
+function findCrossings(loops, bbox, force) {
   const segs = [];
   loops.forEach((L, li) => {
     const n = L.pts.length, m = L.closed ? n : n - 1;
@@ -277,6 +292,12 @@ function findCrossings(loops, bbox) {
   });
   const out = [];
   if (segs.length < 2) return out;
+  if (force === "scan" || (force !== "indexed" && !usable(bbox))) return crossingsScan(segs, bbox, out);
+  return crossingsIndexed(segs, bbox, out);
+}
+
+/** The original exhaustive scan. Its visiting order defines the order of the result. */
+function crossingsScan(segs, bbox, out) {
   const w = bbox[2] - bbox[0] || 1, h = bbox[3] - bbox[1] || 1;
   const cells = Math.max(4, Math.min(256, Math.ceil(Math.sqrt(segs.length))));
   const cw = w / cells, ch = h / cells;
@@ -300,11 +321,90 @@ function findCrossings(loops, bbox) {
         if (seenPair.has(pk)) continue;
         seenPair.add(pk);
         const p = properCross(s.a, s.b, t.a, t.b);
-        if (p && out.length < 200) out.push({ at: p, self: t.loop === s.loop, loops: [t.loop, s.loop] });
+        if (p && out.length < MAX_CROSSINGS) out.push({ at: p, self: t.loop === s.loop, loops: [t.loop, s.loop] });
       }
       b.push(si);
     }
   });
+  return out;
+}
+
+/**
+ * Same result as crossingsScan.
+ *
+ * What the scan reports. For segment si (ascending) it meets each earlier
+ * segment sj at the first cell, in its own row-by-row walk, that both
+ * bounding boxes cover — row max(y0, Y0), column max(x0, X0) of the coarse
+ * grid — and inside a cell in ascending sj. Every pair whose boxes share a
+ * cell is tested once with properCross(); the first MAX_CROSSINGS hits are
+ * kept. So the result is: for si ascending, the earlier segments that
+ * properCross() says it crosses, ordered by (that row, that column, sj),
+ * until MAX_CROSSINGS are found. Nothing after that changes the result, so
+ * the search stops there.
+ *
+ * Finding those segments. properCross() returns a point only when its four
+ * orientation values pass its own tolerance, 1e-9 × (length + 1)², with
+ * opposite signs; each value carries a rounding error below
+ * 4.1 × 2⁻⁵³ × extent × length, which is under that tolerance for any extent
+ * up to 2 × 10⁶ mm (`usable()` allows 10⁶). So a reported crossing is a real
+ * one: the two segments meet at a point, their bounding boxes overlap (the
+ * scan tests the pair) and both pass through the cell that holds the point
+ * (the conservative covers below both contain it). Candidates therefore come
+ * from a fine grid of covers; properCross() itself decides, exactly as before.
+ */
+function crossingsIndexed(segs, bbox, out) {
+  const n = segs.length;
+  // the scan's coarse grid: only the first shared cell of a pair is needed, for the ordering
+  const w = bbox[2] - bbox[0] || 1, h = bbox[3] - bbox[1] || 1;
+  const cells = Math.max(4, Math.min(256, Math.ceil(Math.sqrt(n))));
+  const cw = w / cells, ch = h / cells;
+  const cl = (v) => Math.max(0, Math.min(cells - 1, v));
+  const X0 = new Int32Array(n), Y0 = new Int32Array(n);
+  let reach = 0; // total length in the larger coordinate, to size the fine grid
+  for (let i = 0; i < n; i++) {
+    const s = segs[i];
+    X0[i] = cl(Math.floor((Math.min(s.a[0], s.b[0]) - bbox[0]) / cw));
+    Y0[i] = cl(Math.floor((Math.min(s.a[1], s.b[1]) - bbox[1]) / ch));
+    reach += Math.max(Math.abs(s.b[0] - s.a[0]), Math.abs(s.b[1] - s.a[1]));
+  }
+  let across = Math.max(16, Math.min(1024, Math.ceil(Math.sqrt(n))));
+  const extent = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1], 1e-9);
+  while (across > 16 && (reach / extent) * across * 3 + 4 * n > 8000000) across >>= 1; // keep the covers to a few million cells
+  const grid = new CoverGrid(bbox, across);
+  const buckets = new Array(grid.size);
+  const stamp = new Int32Array(n).fill(-1);
+  const hits = [];
+  for (let si = 0; si < n; si++) {
+    const s = segs[si];
+    hits.length = 0;
+    grid.coverSegment(s.a[0], s.a[1], s.b[0], s.b[1], (c) => {
+      const b = buckets[c];
+      if (!b) return;
+      for (let k = 0; k < b.length; k++) {
+        const sj = b[k];
+        if (stamp[sj] === si) continue;
+        stamp[sj] = si;
+        const t = segs[sj];
+        if (t.loop === s.loop) {
+          const d = Math.abs(t.i - s.i);
+          if (d <= 1 || (s.closed && d === s.n - 1)) continue; // neighbours share a vertex
+        }
+        const p = properCross(s.a, s.b, t.a, t.b);
+        if (p) hits.push({ row: Math.max(Y0[si], Y0[sj]), col: Math.max(X0[si], X0[sj]), sj, p });
+      }
+    });
+    if (hits.length > 1) hits.sort((p, q) => p.row - q.row || p.col - q.col || p.sj - q.sj);
+    for (const hit of hits) {
+      if (out.length >= MAX_CROSSINGS) break;
+      const t = segs[hit.sj];
+      out.push({ at: hit.p, self: t.loop === s.loop, loops: [t.loop, s.loop] });
+    }
+    if (out.length >= MAX_CROSSINGS) break;
+    grid.coverSegment(s.a[0], s.a[1], s.b[0], s.b[1], (c) => {
+      const b = buckets[c];
+      if (b) b.push(si); else buckets[c] = [si];
+    });
+  }
   return out;
 }
 
@@ -363,6 +463,62 @@ function nearestHit(p, nx, ny, loops, own, skip, skip2) {
     }
   }
   return best;
+}
+
+/**
+ * nearestHit() with the segments to test taken from a SegmentIndex instead of
+ * every segment of every loop.
+ *
+ * Loops are visited in the same order with the same bounding-box test against
+ * the same running `best`; within a loop the result is a minimum, so the order
+ * of its segments does not matter. The index leaves out only segments that lie
+ * entirely to one side of the ray's line, for which raySeg() returns null, and
+ * a loop with no segment left has nothing that could lower `best`. The value
+ * returned is therefore the one nearestHit() returns.
+ *
+ * @param {SegmentIndex} index built over `loops` (same order)
+ * @param {number} own index in `loops` of the loop the ray starts on (or -1)
+ */
+function nearestHitIndexed(index, loops, p, nx, ny, own, skip, skip2) {
+  let best = Infinity;
+  index.alongLine(p[0], p[1], nx, ny);
+  const { segOf, found, next, head } = index;
+  const near = index.loops, count = index.loopCount;
+  for (let k = 0; k < count; k++) {
+    const li = near[k];
+    const L = loops[li];
+    // slab test: skip loops whose bounding box the ray cannot reach before `best`
+    const bb = L.bbox;
+    let t0 = 0, t1 = best;
+    if (Math.abs(nx) < 1e-12) { if (p[0] < bb[0] - 1e-9 || p[0] > bb[2] + 1e-9) continue; }
+    else { const a = (bb[0] - p[0]) / nx, b = (bb[2] - p[0]) / nx; t0 = Math.max(t0, Math.min(a, b) - 1e-9); t1 = Math.min(t1, Math.max(a, b) + 1e-9); }
+    if (Math.abs(ny) < 1e-12) { if (p[1] < bb[1] - 1e-9 || p[1] > bb[3] + 1e-9) continue; }
+    else { const a = (bb[1] - p[1]) / ny, b = (bb[3] - p[1]) / ny; t0 = Math.max(t0, Math.min(a, b) - 1e-9); t1 = Math.min(t1, Math.max(a, b) + 1e-9); }
+    if (t0 > t1) continue;
+    const pts = L.pts, n = pts.length;
+    for (let m = head[li]; m >= 0; m = next[m]) {
+      const j = segOf[found[m]];
+      if (li === own && (j === skip || j === skip2)) continue;
+      const t = raySeg(p[0], p[1], nx, ny, pts[j], pts[(j + 1) % n]);
+      if (t !== null && t > 1e-6 && t < best) best = t;
+    }
+  }
+  return best;
+}
+
+/**
+ * A SegmentIndex over `loops` when it will shorten the ray searches, else null
+ * (the exhaustive nearestHit() is then used; both give the same answer).
+ * An index pays for itself when there are many loops to skip or a loop with
+ * many segments to skip; `mode` "always" / "never" overrides that for tests.
+ */
+function rayIndex(loops, bbox, mode) {
+  if (mode === "never" || !loops.length || !usable(bbox)) return null;
+  let total = 0, longest = 0;
+  for (const L of loops) { total += L.pts.length; if (L.pts.length > longest) longest = L.pts.length; }
+  if (mode !== "always" && !(loops.length >= 1500 || longest >= 400)) return null;
+  const index = new SegmentIndex(loops, bbox);
+  return index.ok ? index : null;
 }
 
 // ─── loop measurement ────────────────────────────────────────────────────────
@@ -434,10 +590,25 @@ function insideCorners(L) {
 }
 
 // ─── main ────────────────────────────────────────────────────────────────────
-function analyseCurves(curves) {
+/**
+ * @param {object[]} curves from parse.js
+ * @param {object} [opts]
+ * @param {number} [opts.maxLoops]    stop after counting the contours when there are more than this;
+ *                                    returns { tooManyLoops: true, loopCount }
+ * @param {boolean} [opts.exhaustive] search without the spatial indexes (the original loops; for tests)
+ * @param {"always"|"never"} [opts.rayIndex] force the ray index on or off (for tests)
+ */
+function analyseCurves(curves, opts = {}) {
+  const indexMode = opts.exhaustive ? "never" : opts.rayIndex; // undefined = decide per search
   const cleaned = cleanCurves(curves);
   const problems = cleaned.problems.slice();
   const { loops: closedLoops, openChains, junctions } = chain(cleaned.curves);
+
+  // A drawing with more contours than the caller reads is refused whatever else is found in
+  // it, so it is not measured: the count is all the refusal needs.
+  if (opts.maxLoops != null && closedLoops.length + openChains.length > opts.maxLoops) {
+    return { tooManyLoops: true, loopCount: closedLoops.length + openChains.length };
+  }
 
   const all = closedLoops.map((L) => measure(L)).concat(openChains.map((L) => measure({ ...L, closed: false })));
   if (!all.length) return null;
@@ -448,7 +619,7 @@ function analyseCurves(curves) {
 
   // Crossings first: a loop that crosses itself (a bow-tie has zero net area) is not a sliver,
   // and two loops that cross each other belong to one part.
-  const crossings = findCrossings(all, bbox);
+  const crossings = findCrossings(all, bbox, opts.exhaustive ? "scan" : undefined);
   const selfCrossed = new Set(crossings.filter((c) => c.self).map((c) => all[c.loops[0]]));
 
   // Slivers and stray open lines carry no area: set aside
@@ -465,32 +636,117 @@ function analyseCurves(curves) {
   const looseEnds = [];
   for (const L of all) if (!L.closed) looseEnds.push({ p: L.segs[0].a, L }, { p: L.segs[L.segs.length - 1].b, L });
   const reported = new Set();
-  looseEnds.forEach((e, i) => {
-    if (reported.has(i)) return;
-    let best = -1, bd = Infinity;
-    looseEnds.forEach((o, j) => { if (j !== i) { const d = dist(e.p, o.p); if (d > WELD_TOL_MM && d < bd) { bd = d; best = j; } } });
-    const isJunction = junctions.some((j) => dist(j, e.p) <= WELD_TOL_MM);
-    if (isJunction) return;
-    if (best >= 0 && bd <= Math.max(1, 0.02 * Math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1]))) {
-      reported.add(best);
-      problems.push({ code: "open-contour", at: [(e.p[0] + looseEnds[best].p[0]) / 2, (e.p[1] + looseEnds[best].p[1]) / 2], gap: bd });
-    } else problems.push({ code: "open-contour", at: e.p, gap: null });
-  });
+  const nearLimit = Math.max(1, 0.02 * Math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1]));
+  // Only another loose end within `nearLimit` changes what is reported, and a junction only
+  // within the weld tolerance, so both are looked up on a grid of that size (3 × 3 cells)
+  // instead of measuring every end against every other.
+  const coordMax = Math.max(Math.abs(bbox[0]), Math.abs(bbox[1]), Math.abs(bbox[2]), Math.abs(bbox[3]));
+  const spread = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1], 1e-9);
+  const acrossEnds = Math.max(1, Math.ceil(Math.sqrt(looseEnds.length)));
+  // about one loose end per cell, and never coarser than the distance that matters
+  const cellSize = Math.min(nearLimit * 1.000001, Math.max(spread / acrossEnds, 1e-6));
+  const junctionCell = Math.max(cellSize, 1);
+  if (opts.exhaustive || !usable(bbox) || !Buckets.fits(coordMax + nearLimit, cellSize)) {
+    looseEnds.forEach((e, i) => {
+      if (reported.has(i)) return;
+      let best = -1, bd = Infinity;
+      looseEnds.forEach((o, j) => { if (j !== i) { const d = dist(e.p, o.p); if (d > WELD_TOL_MM && d < bd) { bd = d; best = j; } } });
+      const isJunction = junctions.some((j) => dist(j, e.p) <= WELD_TOL_MM);
+      if (isJunction) return;
+      if (best >= 0 && bd <= nearLimit) {
+        reported.add(best);
+        problems.push({ code: "open-contour", at: [(e.p[0] + looseEnds[best].p[0]) / 2, (e.p[1] + looseEnds[best].p[1]) / 2], gap: bd });
+      } else problems.push({ code: "open-contour", at: e.p, gap: null });
+    });
+  } else {
+    const endGrid = new Buckets(cellSize), junctionGrid = new Buckets(junctionCell);
+    looseEnds.forEach((e, j) => endGrid.add(endGrid.cellOf(e.p[0]), endGrid.cellOf(e.p[1]), j));
+    junctions.forEach((j) => junctionGrid.add(junctionGrid.cellOf(j[0]), junctionGrid.cellOf(j[1]), j));
+    // rings of cells to search before every end within nearLimit has been seen
+    const maxRing = Math.min(Math.ceil(nearLimit / cellSize) + 1, Math.ceil(spread / cellSize) + 2);
+    const limit2 = nearLimit * nearLimit * (1 + 1e-12);
+    looseEnds.forEach((e, i) => {
+      if (reported.has(i)) return;
+      const jx = junctionGrid.cellOf(e.p[0]), jy = junctionGrid.cellOf(e.p[1]);
+      let isJunction = false;
+      for (let gx = jx - 1; gx <= jx + 1 && !isJunction; gx++) for (let gy = jy - 1; gy <= jy + 1 && !isJunction; gy++) {
+        const js = junctionGrid.get(gx, gy);
+        if (js) isJunction = js.some((j) => dist(j, e.p) <= WELD_TOL_MM);
+      }
+      if (isJunction) return;
+      // Nearest other end beyond the weld tolerance and within nearLimit; the earliest one on a
+      // tie, as the full scan picks. Cells are searched ring by ring: after ring r every end not
+      // yet seen is more than r cells away, so the search ends once the best is closer than that.
+      const cx = endGrid.cellOf(e.p[0]), cy = endGrid.cellOf(e.p[1]);
+      let best = -1, bd = Infinity, bound2 = limit2;
+      const look = (gx, gy) => {
+        const near = endGrid.get(gx, gy);
+        if (!near) return;
+        for (const j of near) {
+          if (j === i) continue;
+          const q = looseEnds[j].p, dx = e.p[0] - q[0], dy = e.p[1] - q[1];
+          if (dx * dx + dy * dy > bound2) continue; // certainly farther than the best so far (or than nearLimit)
+          const d = dist(e.p, q);
+          if (d > WELD_TOL_MM && d <= nearLimit && (d < bd || (d === bd && j < best))) { bd = d; best = j; bound2 = bd * bd * (1 + 1e-12); }
+        }
+      };
+      for (let r = 0; r <= maxRing; r++) {
+        if (r === 0) look(cx, cy);
+        else {
+          for (let gx = cx - r; gx <= cx + r; gx++) { look(gx, cy - r); look(gx, cy + r); }
+          for (let gy = cy - r + 1; gy <= cy + r - 1; gy++) { look(cx - r, gy); look(cx + r, gy); }
+        }
+        if (best >= 0 && bd <= r * cellSize * (1 - 1e-9)) break;
+      }
+      if (best >= 0) {
+        reported.add(best);
+        problems.push({ code: "open-contour", at: [(e.p[0] + looseEnds[best].p[0]) / 2, (e.p[1] + looseEnds[best].p[1]) / 2], gap: bd });
+      } else problems.push({ code: "open-contour", at: e.p, gap: null });
+    });
+  }
   for (const j of junctions) problems.push({ code: "junction", at: j });
 
   // Containment depth (largest first)
   shaped.sort((a, b) => Math.abs(b.area) - Math.abs(a.area));
-  shaped.forEach((L, i) => {
-    let depth = 0, parent = null;
-    for (let j = 0; j < i; j++) {
-      const P = shaped[j];
-      if (L.bbox[0] < P.bbox[0] - 1e-6 || L.bbox[2] > P.bbox[2] + 1e-6 || L.bbox[1] < P.bbox[1] - 1e-6 || L.bbox[3] > P.bbox[3] + 1e-6) continue;
-      const probes = [L.pts[0], L.pts[Math.floor(L.pts.length / 3)], L.pts[Math.floor((2 * L.pts.length) / 3)]];
-      const votes = probes.filter((p) => pointInPoly(p, P.pts)).length;
-      if (votes >= 2) { depth++; if (!parent || Math.abs(P.area) < Math.abs(parent.area)) parent = P; }
-    }
-    L.depth = depth; L.parent = parent;
-  });
+  // Which earlier (larger) loops contain loop i: only a loop whose bounding box holds this
+  // one's is examined, so earlier loops are registered on a grid by bounding box and looked
+  // up at this loop's centre. Loops that cover many cells go on a short list checked every time.
+  const containment = (L, P, state) => {
+    if (L.bbox[0] < P.bbox[0] - 1e-6 || L.bbox[2] > P.bbox[2] + 1e-6 || L.bbox[1] < P.bbox[1] - 1e-6 || L.bbox[3] > P.bbox[3] + 1e-6) return;
+    const probes = [L.pts[0], L.pts[Math.floor(L.pts.length / 3)], L.pts[Math.floor((2 * L.pts.length) / 3)]];
+    const votes = probes.filter((p) => pointInPoly(p, P.pts)).length;
+    if (votes >= 2) { state.depth++; if (!state.parent || Math.abs(P.area) < Math.abs(state.parent.area)) state.parent = P; }
+  };
+  if (opts.exhaustive || shaped.length < 2 || !usable(bbox)) {
+    shaped.forEach((L, i) => {
+      const state = { depth: 0, parent: null };
+      for (let j = 0; j < i; j++) containment(L, shaped[j], state);
+      L.depth = state.depth; L.parent = state.parent;
+    });
+  } else {
+    const across = Math.max(1, Math.min(256, Math.ceil(Math.sqrt(shaped.length))));
+    const cell = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1], 1e-9) / across;
+    const nx = Math.floor((bbox[2] - bbox[0]) / cell) + 3, ny = Math.floor((bbox[3] - bbox[1]) / cell) + 3;
+    const ix = (x) => Math.max(0, Math.min(nx - 1, Math.floor((x - bbox[0]) / cell) + 1));
+    const iy = (y) => Math.max(0, Math.min(ny - 1, Math.floor((y - bbox[1]) / cell) + 1));
+    const cellLists = new Array(nx * ny);
+    const wide = []; // indices of loops spanning more than WIDE_CELLS cells, ascending
+    const WIDE_CELLS = 64;
+    shaped.forEach((L, i) => {
+      const state = { depth: 0, parent: null };
+      const here = cellLists[iy((L.bbox[1] + L.bbox[3]) / 2) * nx + ix((L.bbox[0] + L.bbox[2]) / 2)] || [];
+      // merge the two ascending lists so the loops are examined in the original order
+      let a = 0, b = 0;
+      while (a < here.length || b < wide.length) {
+        const j = b >= wide.length || (a < here.length && here[a] < wide[b]) ? here[a++] : wide[b++];
+        containment(L, shaped[j], state);
+      }
+      L.depth = state.depth; L.parent = state.parent;
+      const x0 = ix(L.bbox[0] - 2e-6), x1 = ix(L.bbox[2] + 2e-6), y0 = iy(L.bbox[1] - 2e-6), y1 = iy(L.bbox[3] + 2e-6);
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) > WIDE_CELLS) wide.push(i);
+      else for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const k = y * nx + x; if (cellLists[k]) cellLists[k].push(i); else cellLists[k] = [i]; }
+    });
+  }
   // Outlines that cross each other are one (broken) part, not two parts: the smaller becomes a cutout.
   for (const c of crossings) {
     if (c.self) continue;
@@ -541,8 +797,10 @@ function analyseCurves(curves) {
   for (const L of shaped) {
     if (L.role === "hole" || !L.closed) continue;
     let best = Infinity, bestAt = null;
+    const own = [L];
+    const ownIndex = rayIndex(own, L.bbox, indexMode);
     for (const s of samples(L, budget)) {
-      const t = nearestHit(s.p, s.d[1], -s.d[0], [L], L, s.seg, s.seg2);
+      const t = ownIndex ? nearestHitIndexed(ownIndex, own, s.p, s.d[1], -s.d[0], 0, s.seg, s.seg2) : nearestHit(s.p, s.d[1], -s.d[0], own, L, s.seg, s.seg2);
       if (t < best) { best = t; bestAt = [s.p[0] + s.d[1] * t / 2, s.p[1] - s.d[0] * t / 2]; }
     }
     if (best < Infinity) {
@@ -565,29 +823,57 @@ function analyseCurves(curves) {
   // Narrowest web: rays to the left (into material) against every loop
   let minWeb = null, minWebAt = null;
   const closedShaped = shaped.filter((L) => L.closed);
-  for (const L of closedShaped) {
+  const webIndex = rayIndex(closedShaped, bbox, indexMode);
+  for (let li = 0; li < closedShaped.length; li++) {
+    const L = closedShaped[li];
     for (const s of samples(L, budget)) {
-      const t = nearestHit(s.p, -s.d[1], s.d[0], closedShaped, L, s.seg, s.seg2);
+      const t = webIndex ? nearestHitIndexed(webIndex, closedShaped, s.p, -s.d[1], s.d[0], li, s.seg, s.seg2) : nearestHit(s.p, -s.d[1], s.d[0], closedShaped, L, s.seg, s.seg2);
       if (t < Infinity && (minWeb === null || t < minWeb)) { minWeb = t; minWebAt = [s.p[0] - s.d[1] * t / 2, s.p[1] + s.d[0] * t / 2]; }
     }
   }
 
   // Circle-to-circle webs are exact (the ray pass samples a faceted circle and gets coarser on perforated panels)
   const round = shaped.filter((L) => L.role === "hole" && L.hole.exact);
-  for (let i = 0; i < round.length; i++) {
-    const a = round[i].hole;
-    for (let j = i + 1; j < round.length; j++) {
-      const b = round[j].hole;
-      const dx = b.center[0] - a.center[0], dy = b.center[1] - a.center[1];
-      const lim = (minWeb === null ? Infinity : minWeb) + (a.diameter + b.diameter) / 2;
-      if (Math.abs(dx) >= lim || Math.abs(dy) >= lim) continue;
-      const d = Math.hypot(dx, dy), web = d - (a.diameter + b.diameter) / 2;
-      if (web < 0 || d < 1e-9) continue; // overlapping circles are reported as crossings
-      if (minWeb === null || web < minWeb) {
-        minWeb = web;
-        const t = (a.diameter / 2 + web / 2) / d;
-        minWebAt = [a.center[0] + dx * t, a.center[1] + dy * t];
+  const circlePair = (a, b) => {
+    const dx = b.center[0] - a.center[0], dy = b.center[1] - a.center[1];
+    const lim = (minWeb === null ? Infinity : minWeb) + (a.diameter + b.diameter) / 2;
+    if (Math.abs(dx) >= lim || Math.abs(dy) >= lim) return;
+    const d = Math.hypot(dx, dy), web = d - (a.diameter + b.diameter) / 2;
+    if (web < 0 || d < 1e-9) return; // overlapping circles are reported as crossings
+    if (minWeb === null || web < minWeb) {
+      minWeb = web;
+      const t = (a.diameter / 2 + web / 2) / d;
+      minWebAt = [a.center[0] + dx * t, a.center[1] + dy * t];
+    }
+  };
+  let widest = 0, centreMax = 0;
+  for (const L of round) { widest = Math.max(widest, L.hole.diameter); centreMax = Math.max(centreMax, Math.abs(L.hole.center[0]), Math.abs(L.hole.center[1])); }
+  const circleCell = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1], 1e-9) / Math.max(1, Math.ceil(Math.sqrt(round.length)));
+  if (opts.exhaustive || round.length < 32 || !usable(bbox) || !Number.isFinite(widest) || !Buckets.fits(centreMax + 2 * (bbox[2] - bbox[0] + bbox[3] - bbox[1]) + widest, circleCell)) {
+    for (let i = 0; i < round.length; i++) for (let j = i + 1; j < round.length; j++) circlePair(round[i].hole, round[j].hole);
+  } else {
+    // A pair is skipped unless its centres are closer than (narrowest web so far) + both radii in
+    // x and in y. That web only shrinks, so for hole i every later hole outside a box of
+    // (web so far + its radius + the largest radius) is skipped whatever happens in between;
+    // the holes inside the box are taken in their original order through the same test.
+    const grid = new Buckets(circleCell);
+    round.forEach((L, j) => grid.add(grid.cellOf(L.hole.center[0]), grid.cellOf(L.hole.center[1]), j));
+    const near = [];
+    for (let i = 0; i < round.length; i++) {
+      const a = round[i].hole;
+      const reach = minWeb === null ? Infinity : (minWeb + (a.diameter + widest) / 2) * (1 + 1e-9) + 1e-9;
+      const x0 = grid.cellOf(a.center[0] - reach), x1 = grid.cellOf(a.center[0] + reach), y0 = grid.cellOf(a.center[1] - reach), y1 = grid.cellOf(a.center[1] + reach);
+      if (!(Number.isFinite(reach) && (x1 - x0 + 1) * (y1 - y0 + 1) <= round.length)) {
+        for (let j = i + 1; j < round.length; j++) circlePair(a, round[j].hole);
+        continue;
       }
+      near.length = 0;
+      for (let gx = x0; gx <= x1; gx++) for (let gy = y0; gy <= y1; gy++) {
+        const list = grid.get(gx, gy);
+        if (list) for (const j of list) if (j > i) near.push(j);
+      }
+      near.sort((p, q) => p - q);
+      for (const j of near) circlePair(a, round[j].hole);
     }
   }
 

@@ -49,11 +49,13 @@ function parseDXF(input, opts = {}) {
     throw new Error("No cut geometry found in this DXF. It needs lines, arcs, circles, polylines, ellipses or splines that outline the part.");
   }
 
-  const profile = analyseCurves(curves);
+  // Past MAX_CONTOURS the drawing is refused below; analyseCurves stops at the count in that case.
+  const profile = analyseCurves(curves, { maxLoops: MAX_CONTOURS });
   if (!profile) throw new Error("No cut geometry found in this DXF.");
 
-  if (profile.loops.length > MAX_CONTOURS) {
-    throw new Error(`This DXF has ${profile.loops.length.toLocaleString()} contours — more than the instant quote reads (${MAX_CONTOURS.toLocaleString()}). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ.`);
+  const contours = profile.tooManyLoops ? profile.loopCount : profile.loops.length;
+  if (contours > MAX_CONTOURS) {
+    throw new Error(`This DXF has ${contours.toLocaleString()} contours — more than the instant quote reads (${MAX_CONTOURS.toLocaleString()}). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ.`);
   }
   if (profile.outerCount > 1) {
     throw new Error(`This DXF contains ${profile.outerCount} separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation layer or delete it.`);
