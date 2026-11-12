@@ -71,7 +71,7 @@ const SHIPPING_RULES = {
   shippingCity: { label: "The city", max: 100 },
   shippingState: { label: "The state", max: 100 },
   shippingZip: { label: "The ZIP code", max: 20 },
-  shippingCountry: { label: "The country", max: 5 },
+  shippingCountry: { label: "The country", max: 60 }, // typed freely on the checkout page; the routes keep their own short form of it
 };
 
 /** One-line text for a place that prints stored data as it is (rows written before these checks existed). */

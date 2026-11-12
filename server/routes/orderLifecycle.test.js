@@ -707,6 +707,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       assert.deepStrictEqual([r.status, r.body.code, r.body.field], [400, "field-single-line", field]);
     }
     assert.strictEqual(rfqsDB.query((r) => r.email === "single@oem.test").length, 0);
+    // The account's own name, company and phone (they become "Ordered by" on documents).
+    const reg = await h.raw("POST", "/api/auth/register", { json: { email: "lines@buyer.test", password: h.password, name: "Lee\nPAID IN FULL" }, headers: { "X-Form-Token": h.formToken("register"), "X-Turnstile-Token": "pass-register" } });
+    assert.deepStrictEqual([reg.status, reg.body.code, reg.body.field], [400, "field-single-line", "name"]);
+    const prof = await h.put("/api/auth/profile", { company: "Acme\r\nNET 90 APPROVED" }, buyer);
+    assert.deepStrictEqual([prof.status, prof.body.code, prof.body.field], [400, "field-single-line", "company"]);
     // The owner's own fields on an order: carrier and tracking number.
     const p = await paid(2);
     const t = await h.put(`/api/orders/${p.orderId}/status`, { status: "shipped", carrier: "UPS", trackingNumber: "1Z999\nfake line" }, owner);

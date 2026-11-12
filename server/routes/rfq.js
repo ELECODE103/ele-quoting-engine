@@ -197,12 +197,12 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
     // Name, company and phone are one line each: they are printed on documents and shown in emails,
     // so a value with a line break or hidden characters is refused here, not quietly rewritten.
     const lines = singleLines(b, {
-      contactName: { label: "Your name", max: 120 },
-      company: { label: "The company name", max: 160 },
-      phone: { label: "The phone number", max: 40 },
+      contactName: { label: "Your name", max: 1000 },
+      company: { label: "The company name", max: 1000 },
+      phone: { label: "The phone number", max: 1000 },
     });
     if (!lines.ok) { await dropFile(); return res.status(400).json({ error: lines.error, code: lines.code, field: lines.field }); }
-    const contactName = lines.values.contactName;
+    const contactName = sanitizeString(lines.values.contactName, 120);
 
     if (!contactName) { await dropFile(); return res.status(400).json({ error: "Your name is required" }); }
     if (!isValidEmail(email) || !mailer.cleanAddress(email)) { await dropFile(); return res.status(400).json({ error: "A valid email is required" }); }
@@ -274,8 +274,8 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       status: "new",
       contactName,
       email,
-      company: lines.values.company,
-      phone: lines.values.phone,
+      company: sanitizeString(lines.values.company, 160),
+      phone: sanitizeString(lines.values.phone, 40),
       process,
       quantities: sanitizeString(b.quantities || "", 200),
       tolerance: sanitizeString(b.tolerance || "", 200),
@@ -646,7 +646,7 @@ router.post("/quote/:token/accept", async (req, res) => {
     // Ship-to and PO number: one printable line each, refused (not rewritten) when they are not.
     const ship = singleLines({ ...b, shippingCountry: b.shippingCountry || "US" }, SHIPPING_RULES);
     if (!ship.ok) return res.status(400).json({ error: ship.error, code: ship.code, field: ship.field });
-    const shipping = ship.values;
+    const shipping = { ...ship.values, shippingCountry: sanitizeString(ship.values.shippingCountry || "US", 5) };
     if (!shipping.shippingName || !shipping.shippingAddress || !shipping.shippingCity || !shipping.shippingState || !shipping.shippingZip) {
       return res.status(400).json({ error: "Add the full ship-to address", code: "address-required" });
     }

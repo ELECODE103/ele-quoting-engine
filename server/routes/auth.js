@@ -26,6 +26,11 @@ const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
 const { usersDB } = require("../models");
 const { sanitizeString, isValidEmail } = require("../middleware/validate");
+const { singleLines } = require("../middleware/singleLine");
+
+// Name, company and phone are one line each: they are printed on order documents ("Ordered by")
+// and shown in emails. A value with a line break or hidden characters is refused, not rewritten.
+const PROFILE_LINES = { name: { label: "Your name", max: 1000 }, company: { label: "The company name", max: 1000 }, phone: { label: "The phone number", max: 1000 } };
 const session = require("../security/session");
 const loginGuard = require("../security/loginGuard");
 const botGuard = require("../security/botGuard");
@@ -179,6 +184,9 @@ router.post("/register", registerLimiter, async (req, res) => {
     if (!isValidEmail(normalizedEmail) || !mailer.cleanAddress(normalizedEmail) || typeof password !== "string") {
       return res.status(400).json({ error: "Please enter a valid email address" });
     }
+
+    const lines = singleLines({ name, company, phone }, PROFILE_LINES);
+    if (!lines.ok) return res.status(400).json({ error: lines.error, code: lines.code, field: lines.field });
 
     // Always-on form checks, then the bot check.
     check = botGuard.checkForm(req, { form: "register", email: normalizedEmail });
@@ -521,6 +529,8 @@ router.get("/profile", authenticate, (req, res) => {
 // PUT /api/auth/profile
 router.put("/profile", authenticate, (req, res) => {
   const { name, company, phone } = req.body || {};
+  const lines = singleLines({ name, company, phone }, PROFILE_LINES);
+  if (!lines.ok) return res.status(400).json({ error: lines.error, code: lines.code, field: lines.field });
   const updates = {};
   if (name !== undefined) updates.name = sanitizeString(name, 100);
   if (company !== undefined) updates.company = sanitizeString(company, 100);
