@@ -209,33 +209,67 @@ test("throttle: counts inside the window, frees up as it slides, says how long t
   assert.strictEqual(s.get("k", 1000), undefined);
 });
 
-test("login guard: failures only; challenge after 3; the address pauses at 5 and the IP at 20", () => {
+// Rewritten with the guard (independent review 2026-11-11, F4). The old test asserted that five wrong
+// passwords pause the ADDRESS for everyone for 15 minutes — the very thing that let anyone lock an
+// account's owner out. What replaced it is tested end to end in routes/signInThrottle.test.js.
+test("login guard: failures only; challenge after 3; one client waits longer and longer; the address is never hard-paused at 5; the IP stops at 20", () => {
   loginGuard.resetForTests();
   const ip = "203.0.113.5", who = "dana@buyer.test";
   const t0 = 1_000_000;
+  const fail = (from, at, deviceId) => loginGuard.recordFailure({ ip: from, emailKey: who, deviceId }, at);
   assert.strictEqual(loginGuard.challengeDue(ip, who, t0), false);
-  for (let i = 0; i < 2; i++) assert.strictEqual(loginGuard.recordFailure(ip, who, t0 + i).locked, false);
+  for (let i = 0; i < 2; i++) fail(ip, t0 + i);
   assert.strictEqual(loginGuard.challengeDue(ip, who, t0 + 2), false, "two failures: no challenge yet");
-  loginGuard.recordFailure(ip, who, t0 + 3);
+  fail(ip, t0 + 3);
   assert.strictEqual(loginGuard.challengeDue(ip, who, t0 + 4), true, "three failures: challenge");
   assert.strictEqual(loginGuard.challengeDue("198.51.100.9", who, t0 + 4), true, "…for that address from any IP");
   assert.strictEqual(loginGuard.challengeDue(ip, "someone@else.test", t0 + 4), true, "…and for that IP whatever the address");
-  loginGuard.recordFailure(ip, who, t0 + 5);
-  assert.strictEqual(loginGuard.lockedUntil(who, null, t0 + 6), 0);
-  const fifth = loginGuard.recordFailure(ip, who, t0 + 7);
-  assert.strictEqual(fifth.locked, true);
-  assert.strictEqual(fifth.until, t0 + 7 + 15 * 60e3);
-  assert.strictEqual(loginGuard.lockedUntil(who, null, t0 + 8), fifth.until, "paused, account or no account");
-  assert.strictEqual(loginGuard.lockedUntil(who, null, fifth.until + 1), 0, "the pause ends by itself");
-  // A pause written to the account row counts after a restart (memory empty).
+  fail(ip, t0 + 5);
+  assert.strictEqual(loginGuard.clientWaitMs(ip, who, t0 + 6), 0, "four failures: this client need not wait yet");
+  fail(ip, t0 + 7);
+  // Five failures: THIS CLIENT waits a minute for THIS ADDRESS. Nobody else does, and the address is not paused.
+  assert.strictEqual(loginGuard.clientWaitMs(ip, who, t0 + 7), 60e3);
+  assert.strictEqual(loginGuard.clientWaitMs("198.51.100.9", who, t0 + 8), 0, "another client is not made to wait");
+  assert.strictEqual(loginGuard.clientWaitMs(ip, "someone@else.test", t0 + 8), 0, "nor is this client for another address");
+  assert.strictEqual(loginGuard.accountState(who, t0 + 8).busy, false, "five failures do not close the address");
+  assert.strictEqual(loginGuard.clientWaitMs(ip, who, t0 + 7 + 60e3), 0, "the wait ends by itself");
+  // Each further failure doubles the wait, up to 15 minutes.
+  const waits = [];
+  let at = t0 + 7 + 60e3;
+  for (let i = 0; i < 6; i++) { fail(ip, at); const w = loginGuard.clientWaitMs(ip, who, at); waits.push(w / 1000); at += w; }
+  assert.deepStrictEqual(waits, [120, 240, 480, 900, 900, 900]);
+  // A known device is counted on its own: its failures touch neither the address nor the client.
   loginGuard.resetForTests();
-  const stored = new Date(t0 + 60e3).toISOString();
-  assert.strictEqual(loginGuard.lockedUntil(who, { lockedUntil: stored }, t0), t0 + 60e3);
-  assert.strictEqual(loginGuard.lockedUntil(who, { lockedUntil: stored }, t0 + 61e3), 0);
+  for (let i = 0; i < 9; i++) fail(ip, t0 + i, "device-1");
+  assert.strictEqual(loginGuard.accountState(who, t0 + 10).count, 0);
+  assert.strictEqual(loginGuard.clientWaitMs(ip, who, t0 + 10), 0);
+  assert.strictEqual(loginGuard.deviceBlocked("device-1", t0 + 10), false);
+  fail(ip, t0 + 10, "device-1");
+  assert.strictEqual(loginGuard.deviceBlocked("device-1", t0 + 11), true, "ten failures: the device is treated as unknown for the window");
+  assert.strictEqual(loginGuard.deviceBlocked("device-1", t0 + 11 + 15 * 60e3), false);
+  // The address as a whole: the owner is told at 20 an hour; unknown devices are refused at 100 an hour.
+  loginGuard.resetForTests();
+  let notices = 0;
+  for (let i = 0; i < loginGuard.ACCOUNT_CEILING; i++) {
+    const r = loginGuard.recordFailure({ ip: `198.51.${Math.floor(i / 200)}.${i % 200}`, emailKey: who }, t0 + i);
+    if (r.noticeDue) notices++;
+    assert.strictEqual(loginGuard.accountState(who, t0 + i).busy, i + 1 >= loginGuard.ACCOUNT_CEILING, `after ${i + 1} failures`);
+  }
+  assert.strictEqual(notices, 1, "one notice, at the 20th failure");
+  assert.strictEqual(loginGuard.accountState(who, t0 + 60 * 60e3 + 200).busy, false, "an hour on, the address is open again");
+  assert.strictEqual(loginGuard.accountState("someone@else.test", t0 + 200).busy, false);
+  // Wrong second-step codes have their own count.
+  loginGuard.resetForTests();
+  for (let i = 0; i < 4; i++) loginGuard.recordSecondFactorFailure(who, null, t0 + i);
+  assert.strictEqual(loginGuard.secondFactorPaused(who, null, t0 + 5), 0);
+  loginGuard.recordSecondFactorFailure(who, null, t0 + 5);
+  assert.ok(loginGuard.secondFactorPaused(who, null, t0 + 6) > 14 * 60e3, "five wrong codes: the second step waits 15 minutes for unknown devices");
+  assert.strictEqual(loginGuard.secondFactorPaused(who, "device-1", t0 + 6), 0, "a known device has its own count");
   // Many addresses from one IP: the IP is stopped at 20 failures.
-  for (let i = 0; i < 19; i++) loginGuard.recordFailure(ip, `u${i}@x.test`, t0);
+  loginGuard.resetForTests();
+  for (let i = 0; i < 19; i++) loginGuard.recordFailure({ ip, emailKey: `u${i}@x.test` }, t0);
   assert.strictEqual(loginGuard.ipBlocked(ip, t0), false);
-  loginGuard.recordFailure(ip, "u19@x.test", t0);
+  loginGuard.recordFailure({ ip, emailKey: "u19@x.test" }, t0);
   assert.strictEqual(loginGuard.ipBlocked(ip, t0), true);
   assert.strictEqual(loginGuard.ipBlocked(ip, t0 + 15 * 60e3 + 1), false);
   loginGuard.clear(who);

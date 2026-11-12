@@ -21,6 +21,8 @@ const KINDS = {
   form: { ttl: 12 * 60 * 60 },
   "email-verify": { ttl: 24 * 60 * 60 },
   "password-reset": { ttl: 60 * 60 },
+  // "this browser has signed in to this account before" (security/deviceProof.js). Not a login.
+  device: { ttl: 180 * 24 * 60 * 60 },
 };
 
 function key(kind) {

@@ -28,6 +28,8 @@ const { usersDB } = require("../models");
 const { sanitizeString, isValidEmail } = require("../middleware/validate");
 const session = require("../security/session");
 const loginGuard = require("../security/loginGuard");
+const deviceProof = require("../security/deviceProof");
+const adminAccount = require("../security/adminAccount");
 const botGuard = require("../security/botGuard");
 const passwords = require("../security/passwords");
 const tokens = require("../security/tokens");
@@ -59,7 +61,9 @@ const CALL = `call ${brand.phone}`;
 
 const MSG = {
   badLogin: "That email and password didn't match.",
-  locked: (minutes) => `Too many wrong passwords for this address. Sign-in is paused for ${minutes} minute${minutes === 1 ? "" : "s"}. Wait, or reset your password to sign in now.`,
+  wait: (minutes) => `Too many wrong passwords from this connection. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}, or reset your password to sign in now.`,
+  busy: "There have been a lot of wrong passwords for this address, so sign-in from a browser it hasn't used before is paused for a while. Sign in from a browser you've used before, or reset your password to sign in now.",
+  codePaused: (minutes) => `Too many wrong codes. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
   ipBlocked: `Too many sign-in attempts from this connection. Try again in 15 minutes, or ${CALL}.`,
   resetSent: "If that address has an account, a link to choose a new password is on its way. It works for one hour.",
   resetBad: "This reset link has been used, replaced or has expired. Ask for a new one.",
@@ -89,7 +93,9 @@ const resetPerIp = createThrottle({ windowMs: HOUR, max: 5 });
 const resetPerAddress = createThrottle({ windowMs: HOUR, max: 3 });
 const resendPerMinute = createThrottle({ windowMs: 60 * 1000, max: 1 });
 const resendPerDay = createThrottle({ windowMs: 24 * HOUR, max: 5 });
-const lockMailPerDay = createThrottle({ windowMs: 24 * HOUR, max: 3 });
+// The "someone is trying to sign in" notice: one a day per account at most, however long the guessing
+// goes on, so it cannot be used to fill a customer's inbox.
+const lockMailPerDay = createThrottle({ windowMs: 24 * HOUR, max: 1 });
 
 /** Unsafe requests to this router carry JSON (or nothing). A form posted from another site is refused before it is read. */
 function jsonOnly(req, res, next) {
@@ -127,9 +133,21 @@ function dummyHash() {
 }
 dummyHash();
 
-function sessionBody(user, issued) {
+/**
+ * Does this caller hold its session itself (an API client, the test suites), and so need the token
+ * in the answer? The browser app never does: its session is the httpOnly cookie, and the token is
+ * not put in a response body it could be read from (independent review 2026-11-11, F7). A client
+ * asks with `X-Session-Token: body`, or is already using a Bearer token.
+ */
+function wantsTokenInBody(req) {
+  if (!req) return false;
+  if (req.user && req.user.via === "bearer") return true;
+  return String(req.headers["x-session-token"] || "").toLowerCase() === "body";
+}
+
+function sessionBody(user, issued, req) {
   return {
-    token: issued.token,
+    ...(wantsTokenInBody(req) ? { token: issued.token } : {}),
     csrfToken: issued.csrfToken,
     expiresAt: issued.expiresAt,
     user: session.publicUser(user),
@@ -153,18 +171,8 @@ function sendVerification(user, req) {
   return mailer.send({ to: u.email, replyTo: mailer.shopNotifyAddress(), ...templates.verifyEmail({ verifyUrl: verificationUrl(u, req) }) });
 }
 
-/**
- * The address named in ADMIN_EMAIL becomes the admin only once its email is
- * confirmed, so registering that address first on a new database gains nothing.
- */
-function promoteIfOwner(user) {
-  const adminEmail = String(process.env.ADMIN_EMAIL || "").toLowerCase().trim(); // our own setting: trimmed in full, as in security/adminAccount.js
-  if (adminEmail && user.email === adminEmail && session.isEmailVerified(user) && user.role !== "admin") {
-    console.log("  Promoted the ADMIN_EMAIL account to the admin role (email confirmed).");
-    return usersDB.update(user.id, { role: "admin" });
-  }
-  return user;
-}
+// No public route gives an account the admin role. The admin account is made by the one-time
+// setup (POST /admin-setup below, security/adminAccount.js) and by nothing else.
 
 // POST /api/auth/register
 router.post("/register", registerLimiter, async (req, res) => {
@@ -200,15 +208,16 @@ router.post("/register", registerLimiter, async (req, res) => {
       return res.status(400).json({ error: pwProblem, code: "weak-password" });
     }
 
-    if (findByEmail(normalizedEmail)) {
+    // The admin address is reserved: it is answered exactly like an address that already has an
+    // account (which, once the owner has set his account up, is what it is). It can never be registered here.
+    if (findByEmail(normalizedEmail) || adminAccount.isAdminAddress(normalizedEmail)) {
       botGuard.releaseForm(check);
       return res.status(409).json({ error: "An account with this email already exists. Sign in, or reset the password if you've forgotten it.", code: "account-exists" });
     }
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
 
-    // Every new account starts as a customer with an unconfirmed address.
-    // ADMIN_EMAIL is promoted when its address is confirmed (promoteIfOwner).
+    // Every new account starts as a customer with an unconfirmed address, and stays a customer.
     const user = usersDB.insert({
       email: normalizedEmail,
       passwordHash,
@@ -227,7 +236,7 @@ router.post("/register", registerLimiter, async (req, res) => {
     const sent = await sendVerification(user, req).catch(() => false);
 
     const issued = session.issue(user, res, req);
-    res.status(201).json({ ...sessionBody(user, issued), verificationSent: Boolean(sent) });
+    res.status(201).json({ ...sessionBody(user, issued, req), verificationSent: Boolean(sent) });
   } catch (err) {
     botGuard.releaseForm(check);
     console.error("Registration error:", err.message);
@@ -257,20 +266,30 @@ router.post("/login", async (req, res) => {
 
     const user = findByEmail(emailKey);
 
-    // Paused? Same answer whether or not the address has an account.
-    const until = loginGuard.lockedUntil(emailKey, user, now);
-    if (until) {
-      const minutes = Math.max(1, Math.ceil((until - now) / 60000));
-      return res.status(429).json({ error: MSG.locked(minutes), code: "account-locked", retryAfterSeconds: Math.ceil((until - now) / 1000) });
-    }
+    // A browser that has signed in to this account before is throttled on its own count, so nothing
+    // an outsider does to the address can shut its owner out (security/loginGuard.js, deviceProof.js).
+    const proof = user ? deviceProof.forUser(req, user) : null;
+    const deviceId = proof && !loginGuard.deviceBlocked(proof.id, now) ? proof.id : null;
 
-    // After repeated failures the bot check is part of signing in.
-    if (loginGuard.challengeDue(ip, emailKey, now)) {
-      const human = await botGuard.assess(req, { action: "login", allowAccount: false, allowHumanToken: false });
-      if (!human.verified && human.method !== "off") {
-        return human.method === "unavailable"
-          ? res.status(503).json({ error: botGuard.MESSAGES.humanUnavailable, code: "human-check-unavailable", challenge: true })
-          : res.status(403).json({ error: botGuard.MESSAGES.humanRequired, code: "human-check-required", challenge: true });
+    if (!deviceId) {
+      // This client's own wait for this address, after repeated wrong passwords. Same answer whether or not the address has an account.
+      const waitMs = loginGuard.clientWaitMs(ip, emailKey, now);
+      if (waitMs > 0) {
+        return res.status(429).json({ error: MSG.wait(Math.max(1, Math.ceil(waitMs / 60000))), code: "try-later", retryAfterSeconds: Math.ceil(waitMs / 1000) });
+      }
+      // The address as a whole, over every browser that has not signed in to it before.
+      const account = loginGuard.accountState(emailKey, now);
+      if (account.busy) {
+        return res.status(429).json({ error: MSG.busy, code: "account-busy", retryAfterSeconds: Math.max(60, Math.ceil(account.retryAfterMs / 1000)) });
+      }
+      // After repeated failures (from this client, or for this address from anywhere) the bot check is part of signing in.
+      if (loginGuard.challengeDue(ip, emailKey, now)) {
+        const human = await botGuard.assess(req, { action: "login", allowAccount: false, allowHumanToken: false });
+        if (!human.verified && human.method !== "off") {
+          return human.method === "unavailable"
+            ? res.status(503).json({ error: botGuard.MESSAGES.humanUnavailable, code: "human-check-unavailable", challenge: true })
+            : res.status(403).json({ error: botGuard.MESSAGES.humanRequired, code: "human-check-required", challenge: true });
+        }
       }
     }
 
@@ -278,12 +297,12 @@ router.post("/login", async (req, res) => {
     const valid = await bcrypt.compare(password, user ? user.passwordHash : await dummyHash());
 
     const fail = (extra = {}) => {
-      const r = loginGuard.recordFailure(ip, emailKey);
-      if (r.locked) lockAccount(user, emailKey, r.until, req);
+      const r = loginGuard.recordFailure({ ip, emailKey, deviceId });
+      if (r.noticeDue) notifyOfAttempts(user, emailKey, req);
       return res.status(401).json({
         error: MSG.badLogin, code: "invalid-credentials",
         // Tells the page to show the bot check before the next try.
-        challenge: loginGuard.challengeDue(ip, emailKey),
+        challenge: !deviceId && loginGuard.challengeDue(ip, emailKey),
         ...extra,
       });
     };
@@ -300,21 +319,27 @@ router.post("/login", async (req, res) => {
         // The password was right; nothing is counted. No session yet.
         return res.status(401).json({ error: "Enter the 6-digit code from your authenticator app.", code: "two-factor-required", twoFactor: true });
       }
+      // The second step is the real barrier for an account that has it: wrong codes have their own, tight count.
+      const pausedMs = loginGuard.secondFactorPaused(emailKey, deviceId, now);
+      if (pausedMs > 0) {
+        return res.status(429).json({ error: MSG.codePaused(Math.max(1, Math.ceil(pausedMs / 60000))), code: "two-factor-paused", twoFactor: true, retryAfterSeconds: Math.ceil(pausedMs / 1000) });
+      }
+      const wrongCode = (extra) => { loginGuard.recordSecondFactorFailure(emailKey, deviceId); return fail(extra); };
       if (code) {
         const secret = secretBox.open("totp", user.totpSecretEnc, user.id);
         totpStep = secret ? totp.verify(secret, code, { lastStep: user.totpLastStep }) : null;
-        if (totpStep === null) return fail({ error: "That code didn't match. Codes change every 30 seconds; enter the current one.", code: "two-factor-invalid", twoFactor: true });
+        if (totpStep === null) return wrongCode({ error: "That code didn't match. Codes change every 30 seconds; enter the current one.", code: "two-factor-invalid", twoFactor: true });
       } else {
         const hash = recoveryHash(user.id, recovery);
         const left = (user.recoveryCodes || []).filter((h) => !keys.safeEqual(h, hash));
-        if (left.length === (user.recoveryCodes || []).length) return fail({ error: "That recovery code isn't valid, or has been used already.", code: "two-factor-invalid", twoFactor: true });
+        if (left.length === (user.recoveryCodes || []).length) return wrongCode({ error: "That recovery code isn't valid, or has been used already.", code: "two-factor-invalid", twoFactor: true });
         usersDB.update(user.id, { recoveryCodes: left });
         usedRecovery = true;
       }
     }
 
-    // Signed in.
-    loginGuard.clear(emailKey);
+    // Signed in. This client's own waits for the address are over; what other clients ran up stands.
+    loginGuard.recordSuccess({ ip, emailKey, deviceId });
     const updates = { lastLoginAt: new Date().toISOString() };
     if (user.lockedUntil) updates.lockedUntil = null;
     if (totpStep !== null) updates.totpLastStep = totpStep;
@@ -322,7 +347,8 @@ router.post("/login", async (req, res) => {
     if (usedRecovery) mailer.send({ to: fresh.email, ...templates.twoFactorChanged({ change: "recovery-used" }) });
 
     const issued = session.issue(fresh, res, req);
-    res.json({ ...sessionBody(fresh, issued), ...(usedRecovery ? { recoveryCodesLeft: (fresh.recoveryCodes || []).length } : {}) });
+    deviceProof.issue(res, req, fresh); // this browser is a known device for this account from now on
+    res.json({ ...sessionBody(fresh, issued, req), ...(usedRecovery ? { recoveryCodesLeft: (fresh.recoveryCodes || []).length } : {}) });
   } catch (err) {
     console.error("Login error:", err.message);
     res.status(500).json({ error: "Login failed" });
@@ -330,24 +356,22 @@ router.post("/login", async (req, res) => {
 });
 
 /**
- * Start a pause. The in-memory pause is already in force; what is left is to
- * write it to the account (so it survives a restart) and tell the owner. Both
- * happen after the response has gone, so the answer takes the same time for an
- * address with no account.
+ * Many wrong passwords for one address from browsers that have never signed in to it: tell the
+ * account's owner, once a day at most. Nothing is paused for them (their own browser is a known
+ * device). Sent after the response has gone, so the answer takes the same time for an address
+ * with no account.
  */
-function lockAccount(user, emailKey, until, req) {
+function notifyOfAttempts(user, emailKey, req) {
   if (!user) return;
   const base = accountLinkBase(req);
   setImmediate(() => {
     try {
-      usersDB.update(user.id, { lockedUntil: new Date(until).toISOString(), lockNotifiedAt: new Date().toISOString() });
-      // At most a few of these a day per account, however long the guessing goes on.
-      if (!lockMailPerDay.peek(emailKey).limited) {
-        lockMailPerDay.hit(emailKey);
-        mailer.send({ to: user.email, ...templates.accountLocked({ minutes: loginGuard.LOCK_MINUTES, resetUrl: `${base}/forgot-password` }) });
-      }
+      if (lockMailPerDay.peek(emailKey).limited) return;
+      lockMailPerDay.hit(emailKey);
+      usersDB.update(user.id, { lockNotifiedAt: new Date().toISOString() });
+      mailer.send({ to: user.email, ...templates.signInAttempts({ resetUrl: `${base}/forgot-password` }) });
     } catch (err) {
-      console.error("Lock bookkeeping error:", err.message);
+      console.error("Sign-in notice error:", err.message);
     }
   });
 }
@@ -390,12 +414,15 @@ router.post("/verify-email", tokenLimiter, (req, res) => {
   if (!v.ok) return res.status(400).json({ error: MSG.verifyBad, code: v.reason === "expired" ? "link-expired" : "link-invalid" });
   const user = usersDB.getById(v.claims.uid);
   if (!user || user.email !== v.claims.email) return res.status(400).json({ error: MSG.verifyBad, code: "link-invalid" });
+  // An ordinary account that holds the admin address is never confirmed from a link (the link lands
+  // in the owner's inbox, not the account holder's). Answered like any dead link.
+  if (adminAccount.isReservedAccount(user)) return res.status(400).json({ error: MSG.verifyBad, code: "link-invalid" });
   if (session.isEmailVerified(user)) return res.json({ verified: true, already: true, email: user.email });
   if (!user.emailVerifyNonce || !v.claims.n || !keys.safeEqual(user.emailVerifyNonce, v.claims.n)) {
     return res.status(400).json({ error: MSG.verifyBad, code: "link-invalid" });
   }
-  let updated = usersDB.update(user.id, { emailVerifiedAt: new Date().toISOString(), emailVerifyNonce: null });
-  updated = promoteIfOwner(updated);
+  // Confirming an address confirms the address. It never changes a role.
+  const updated = usersDB.update(user.id, { emailVerifiedAt: new Date().toISOString(), emailVerifyNonce: null });
   res.json({ verified: true, already: false, email: updated.email, role: updated.role });
 });
 
@@ -407,6 +434,8 @@ router.post("/verify-email/resend", authenticate, async (req, res) => {
   if (resendPerDay.peek(user.id).limited) return res.status(429).json({ error: `That's the limit for today. If the email isn't arriving, ${CALL}.`, code: "rate-limited" });
   resendPerMinute.hit(user.id);
   resendPerDay.hit(user.id);
+  // An ordinary account holding the admin address gets the usual answer and no email.
+  if (adminAccount.isReservedAccount(user)) return res.json({ sent: mailer.configured(), verified: false, configured: mailer.configured() });
   const sent = await sendVerification(user, req).catch(() => false);
   res.json({ sent: Boolean(sent), verified: false, configured: mailer.configured() });
 });
@@ -450,6 +479,8 @@ router.post("/password-reset/request", async (req, res) => {
       try {
         const user = findByEmail(email);
         if (!user) return;
+        // Nothing is sent for an ordinary account that holds the admin address (same answer as for any address).
+        if (adminAccount.isReservedAccount(user)) return;
         if (resetPerAddress.peek(email).limited) return;
         resetPerAddress.hit(email);
         const token = tokens.sign("password-reset", { uid: user.id, b: resetBinding(user) });
@@ -470,6 +501,7 @@ function resetTarget(token) {
   if (!v.ok) return null;
   const user = usersDB.getById(v.claims.uid);
   if (!user || !v.claims.b || !keys.safeEqual(v.claims.b, resetBinding(user))) return null;
+  if (adminAccount.isReservedAccount(user)) return null; // a reset would confirm the address: not for the reserved one
   return user;
 }
 
@@ -493,20 +525,52 @@ router.post("/password-reset/confirm", tokenLimiter, async (req, res) => {
     if (!current || !keys.safeEqual(resetBinding(current), resetBinding(user))) return res.status(400).json({ error: MSG.resetBad, code: "link-invalid" });
 
     const now = new Date().toISOString();
-    let updated = session.bumpTokenVersion(current, {
+    const updated = session.bumpTokenVersion(current, {
       passwordHash,
       passwordChangedAt: now,
       lockedUntil: null,
       // Opening the link proves the mailbox, which is what confirming the address proves.
       ...(session.isEmailVerified(current) ? {} : { emailVerifiedAt: now, emailVerifyNonce: null }),
     });
-    updated = promoteIfOwner(updated);
     loginGuard.clear(updated.email);
     session.clearCookie(res, req);
+    // Completing a reset proves the mailbox: this browser is a known device for the account from now
+    // on, so its owner can sign in here whatever anyone else has been doing to the address.
+    deviceProof.issue(res, req, updated);
     mailer.send({ to: updated.email, ...templates.passwordChanged({ when: now }) });
     res.json({ ok: true });
   } catch (err) {
     console.error("Password reset confirm error:", err.message);
+    res.status(500).json({ error: `Something went wrong on our side. Try again, or ${CALL}.` });
+  }
+});
+
+// ─── Admin account: one-time setup ─────────────────────────────
+
+const setupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientKey,
+  message: { error: "Too many tries. Wait 15 minutes and try again.", code: "rate-limited" },
+});
+
+// POST /api/auth/admin-setup   { code, password }
+// The only way an admin account comes to exist (security/adminAccount.js). Open only while there is
+// no admin and the owner has set ADMIN_SETUP_CODE himself in the host's variables; every refusal that
+// is not about the new password is the same answer, so the route says nothing about its own state.
+router.post("/admin-setup", setupLimiter, async (req, res) => {
+  try {
+    const { code, password } = req.body || {};
+    const result = await adminAccount.attemptSetup({ code, password, client: clientKey(req) });
+    if (!result.ok) return res.status(result.status).json({ error: result.error, code: result.code });
+    const issued = session.issue(result.user, res, req);
+    deviceProof.issue(res, req, result.user);
+    res.set("Cache-Control", "no-store");
+    res.status(201).json({ ...sessionBody(result.user, issued, req), setup: true });
+  } catch (err) {
+    console.error("Admin setup error:", err.message);
     res.status(500).json({ error: `Something went wrong on our side. Try again, or ${CALL}.` });
   }
 });
@@ -635,7 +699,7 @@ router.post("/2fa/enable", twoFactorLimiter, authenticate, requireAdminAccount, 
   mailer.send({ to: updated.email, ...templates.twoFactorChanged({ change: "enabled" }) });
   const issued = session.issue(updated, res, req);
   res.set("Cache-Control", "no-store");
-  res.json({ enabled: true, recoveryCodes: codes, ...sessionBody(updated, issued) });
+  res.json({ enabled: true, recoveryCodes: codes, ...sessionBody(updated, issued, req) });
 });
 
 // POST /api/auth/2fa/recovery-codes   { code }
@@ -664,7 +728,7 @@ router.post("/2fa/disable", twoFactorLimiter, authenticate, requireAdminAccount,
     const updated = session.bumpTokenVersion(u, { totpSecretEnc: null, totpPendingEnc: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: [] });
     mailer.send({ to: updated.email, ...templates.twoFactorChanged({ change: "disabled" }) });
     const issued = session.issue(updated, res, req);
-    res.json({ enabled: false, ...sessionBody(updated, issued) });
+    res.json({ enabled: false, ...sessionBody(updated, issued, req) });
   } catch (err) {
     console.error("2FA disable error:", err.message);
     res.status(500).json({ error: "Could not switch it off. Try again." });
@@ -675,5 +739,4 @@ module.exports = router;
 module.exports.authenticate = authenticate;
 module.exports.optionalAuth = optionalAuth;
 module.exports.requireAdmin = requireAdmin;
-module.exports.promoteIfOwner = promoteIfOwner;
 module.exports.sendVerification = sendVerification;

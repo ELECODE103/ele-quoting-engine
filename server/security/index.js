@@ -116,7 +116,7 @@ function startupWarnings(log = console.warn) {
       "    - CAD upload and pricing: open to anyone without a verified-human token",
       "  Still running without keys: honeypot field, minimum time to submit,",
       "  per-IP and per-address limits, duplicate-submission suppression,",
-      "  per-account sign-in pause.",
+      "  per-client and per-address sign-in limits.",
       "════════════════════════════════════════════════════════════════════",
     );
   }
@@ -125,7 +125,7 @@ function startupWarnings(log = console.warn) {
       "WARNING: EMAIL VERIFICATION AND PASSWORD RESET CANNOT WORK — EMAIL_API_KEY / EMAIL_FROM are not set.",
       "  - new accounts cannot confirm their address, so checkout is NOT held back for unconfirmed accounts",
       "  - password-reset and sign-in-paused emails are not sent",
-      "  - a new ADMIN_EMAIL account cannot be confirmed by link (see ADMIN_RECOVERY=verify-email)",
+      "  - the admin's password cannot be reset by email (see ADMIN_RECOVERY=setup-code)",
     );
   }
   // Sessions, every signed link and the key that encrypts two-factor secrets all hang on JWT_SECRET.

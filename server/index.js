@@ -221,7 +221,7 @@ async function start() {
     for (const line of require("./security/testHooks").startupWarnings()) console.warn(line);
     if (!mailer.configured()) console.warn("WARNING: EMAIL_API_KEY / EMAIL_FROM not set — no email is sent: RFQ notices, firm quotes, order confirmations and shipping notices are only logged.");
     if (!process.env.STRIPE_WEBHOOK_SECRET) console.warn("WARNING: STRIPE_WEBHOOK_SECRET not set — Stripe webhooks are refused; orders are marked paid only when the buyer returns to the order page.");
-    if (!process.env.ADMIN_EMAIL) console.warn("WARNING: ADMIN_EMAIL not set — no account will be given the admin role.");
+    if (!process.env.ADMIN_EMAIL) console.warn("WARNING: ADMIN_EMAIL not set — the admin account cannot be set up (ADMIN_EMAIL names its address; ADMIN_SETUP_CODE opens the one-time setup).");
     if (!process.env.FRONTEND_URL) console.warn("WARNING: FRONTEND_URL not set — links in emails use the request's host only when it is one of ours, otherwise the brand URL. Set FRONTEND_URL=https://straightedgemfg.com.");
     if (!process.env.NORD_FILE_ENC_KEY) {
       console.warn("WARNING: NORD_FILE_ENC_KEY not set — customer files are stored UNENCRYPTED on the volume: CAD uploads (data/uploads), drawings attached to instant quotes (data/quote-drawings), RFQ attachments (data/rfq-drawings) and each part's preview mesh and geometry detail (data/part-payloads). Anyone with access to the volume or a volume backup can read them. To turn encryption on, follow docs/security/file-encryption.md (the owner creates the key in Railway).");
