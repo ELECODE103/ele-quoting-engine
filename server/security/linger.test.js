@@ -48,6 +48,13 @@ test("what a refused sender keeps sending counts against their day, like any oth
   // The day's allowance here is 6 MB and 8 MB were thrown away: an honest upload from the same address is now over it.
   const after = await s.upload([{ name: "cube.stl", data: cube }], { ip });
   assert.deepStrictEqual([after.status, after.body.code], [429, "daily-upload-limit"], after.text);
+  // A customer who runs into the allowance still gets the reading-on (so the browser shows the answer). A sender
+  // far past it (four full helpings of 64 MB here) is closed after about a megabyte.
+  const flood = async ({ write, isDone }) => { const chunk = Buffer.alloc(MB, 0x41); for (let i = 0; i < 80 && !isDone(); i++) { write(chunk); await sleep(2); } };
+  for (let i = 0; i < 4; i++) assert.deepStrictEqual((await raw(s.port, head, flood, 8000)).answers, ["HTTP/1.1 413"]);
+  const again = await raw(s.port, head, flood, 8000);
+  assert.deepStrictEqual(again.answers, ["HTTP/1.1 413"], "still answered");
+  assert.ok(again.sent < 24 * MB, `closed early on a sender far over its allowance (${Math.round(again.sent / MB)} MB left the client before it noticed)`);
   // Somebody else is not affected.
   const other = await s.upload([{ name: "cube.stl", data: cube }], { ip: "192.0.2.62" });
   assert.strictEqual(other.body.parts.length, 1, other.text);

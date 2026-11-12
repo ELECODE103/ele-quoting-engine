@@ -268,6 +268,8 @@ const dailyLimitMessage = () => `You've reached today's upload limit from this n
  */
 const DISCARD_MS = 5000;
 const DISCARD_BYTES = 64 * 1024 * 1024;
+const DISCARD_COURTESY_BYTES = 4 * DISCARD_BYTES;  // thrown-away bytes past the day's allowance that still get the full reading-on
+const DISCARD_BYTES_OVER_BUDGET = 1024 * 1024; // after that, per refused request
 
 /**
  * Close the connection of a refused upload without cutting the answer off.
@@ -301,7 +303,10 @@ function lingerThenClose(req, { key = "" } = {}) {
     seen += chunk.length;
     // What is read and thrown away still came from this sender: it counts against their day like any other byte.
     if (key) budget.add(key, chunk.length);
-    if (seen > DISCARD_BYTES) close();
+    // The reading-on is there so a browser gets to show our answer instead of "connection reset".
+    // A customer who runs into the day's allowance gets that courtesy a few times over; a sender
+    // who is hundreds of megabytes past it is closed after a megabyte.
+    if (seen > DISCARD_BYTES || (key && seen > DISCARD_BYTES_OVER_BUDGET && budget.used(key) > limits.uploadDailyBytesPerClient + DISCARD_COURTESY_BYTES)) close();
   });
   // The whole body has come: the answer is on its way out and our half is being finished. Give the
   // client a moment to finish its own, then close whatever is left.

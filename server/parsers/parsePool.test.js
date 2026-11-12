@@ -223,6 +223,33 @@ test("memory watchdog: one parse running by itself has the whole parsing share (
   assert.strictEqual(high.stats().rerunAlone, 1);
 });
 
+test("where the runtime cannot be asked for a worker's memory (Node 20), parsers are ranked by the memory their thread has touched, not by file size", async () => {
+  // A: a tiny drawing declared as a 40 MB file, kept busy by the test delay without touching memory.
+  // B: a 15 MB STL (300,000 triangles), whose arrays take a few hundred MB. By file size A would be
+  // picked; by memory touched, B.
+  const hooks = { SE_TEST_HOOKS: process.env.SE_TEST_HOOKS, PARSE_TEST_DELAY_MS: process.env.PARSE_TEST_DELAY_MS, PARSE_TEST_DELAY_EXT: process.env.PARSE_TEST_DELAY_EXT, PARSE_MEMORY_RANKING: process.env.PARSE_MEMORY_RANKING };
+  Object.assign(process.env, { SE_TEST_HOOKS: "1", PARSE_TEST_DELAY_MS: "6000", PARSE_TEST_DELAY_EXT: ".dxf", PARSE_MEMORY_RANKING: "faults" });
+  try {
+    const pool = make({ parseConcurrency: 2, parseTimeoutMs: 60000, parseRssLimitMb: 0 });
+    const quietDxf = write("quiet.dxf", "0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n10\n21\n0\n0\nENDSEC\n0\nEOF\n");
+    const hungry = write("hungry.stl", binaryStl(300000));
+    const a = settle(pool.run({ filePath: quietDxf, sizeBytes: 40 * 1024 * 1024, client: "a" }));
+    const b = settle(pool.run({ filePath: hungry, client: "b" }));
+    let picked = null; let bDone = false; b.then(() => { bDone = true; });
+    for (let i = 0; i < 60 && !bDone && picked !== "hungry.stl"; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      const e = await pool._heaviest();
+      if (e && pool.running.size === 2) picked = path.basename(e.job.filePath);
+    }
+    assert.strictEqual(picked, "hungry.stl", "the parser that has taken the memory is the one picked, though the other file is declared larger");
+    await b;
+    await pool.close();
+    await a;
+  } finally {
+    for (const [k, v] of Object.entries(hooks)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});
+
 test("fairness: one client's files queue behind each other, not in front of everyone else", async () => {
   const pool = make({ parseConcurrency: 2, parsePerClient: 1, parseQueueMax: 20, testDelayMs: 300 });
   const order = [];

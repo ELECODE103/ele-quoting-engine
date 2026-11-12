@@ -109,7 +109,7 @@ class PartsStore {
    */
   rowSizes() {
     if (typeof this.table._query === "function") {
-      return this.table._query(`SELECT id, created_at, client_tag, owner_id, stored_name, 300 + COALESCE(LENGTH(CAST(geometry_json AS BLOB)), 0) + COALESCE(LENGTH(CAST(dfm_json AS BLOB)), 0) + COALESCE(LENGTH(file_name), 0) AS n, COALESCE(file_size, 0) + COALESCE(mesh_bytes, 0) + COALESCE(detail_bytes, 0) AS f FROM ${this.tableName}`)
+      return this.table._query(`SELECT id, created_at, client_tag, owner_id, stored_name, 300 + COALESCE(OCTET_LENGTH(geometry_json), 0) + COALESCE(OCTET_LENGTH(dfm_json), 0) + COALESCE(LENGTH(file_name), 0) AS n, COALESCE(file_size, 0) + COALESCE(mesh_bytes, 0) + COALESCE(detail_bytes, 0) AS f FROM ${this.tableName}`)
         .map((r) => ({ id: r.id, createdAt: r.created_at, clientTag: r.client_tag || "", ownerId: r.owner_id || "", storedName: r.stored_name || "", bytes: Number(r.n) || 300, fileBytes: Number(r.f) || 0 }));
     }
     return this.table.getAll().map((r) => {

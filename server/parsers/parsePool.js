@@ -59,6 +59,25 @@ function threadCpuMs(tid) {
 }
 
 /**
+ * Pages of memory a thread has touched for the first time (its minor page faults), from the same
+ * file; -1 where it cannot be read. Memory belongs to the process, not to a thread, but the thread
+ * that first writes to new memory is the one that takes the fault, so the growth of this number
+ * during a parse ranks the parsers by how much memory each has taken. Used where the runtime
+ * cannot be asked for a worker's own figures (worker.getHeapStatistics is Node 22.16 and later).
+ */
+function threadFaults(tid) {
+  try {
+    const stat = fs.readFileSync(`/proc/${process.pid}/task/${tid}/stat`, "utf8");
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    const n = Number(fields[7]);
+    return Number.isFinite(n) ? n : -1;
+  } catch { return -1; }
+}
+const PAGE_BYTES = 4096;
+/** Test-only (SE_TEST_HOOKS): rank parsers by page faults even where the runtime could be asked, to exercise the path older runtimes take. */
+const rankByFaultsOnly = () => process.env.PARSE_MEMORY_RANKING === "faults" && require("../security/testHooks").enabled();
+
+/**
  * Test-only: with the explicit test switch (SE_TEST_HOOKS=1), PARSE_TEST_DELAY_MS makes the worker
  * spin that long before reading a file whose extension is PARSE_TEST_DELAY_EXT. A suite can then
  * have "a file that is slow to read" without depending on how fast the parser is this month.
@@ -347,6 +366,7 @@ class ParsePool {
     const timeoutMs = this._timeoutFor(entry.job);
     const wallMs = Math.max(timeoutMs, Math.min(this._opt("parseWallTimeoutMs"), timeoutMs * this._opt("parseWallFactor")));
     entry.cpuStart = slot.tid ? threadCpuMs(slot.tid) : 0; // a new worker's whole life is this job
+    entry.faultsStart = slot.tid ? Math.max(0, threadFaults(slot.tid)) : 0;
     const stop = () => {
       this.counters.timedOut++;
       this._markSuspect(entry.client);
@@ -496,6 +516,8 @@ class ParsePool {
    * asked for its own heap, external (typed arrays, WASM) and allocator figures. They do not add up
    * to resident memory, but they rank the workers, which "the largest file" did not: a 1 MB 3MF
    * can need ten times the memory of a 2 MB STEP (independent re-review 2026-11-12, RR-07).
+   * On a runtime that cannot be asked (Node 20), the ranking is by the memory each parser's thread
+   * has touched since its parse began (threadFaults above).
    * A client whose parse was already refused this hour comes first; ties go to the larger file,
    * then the longer-running parse.
    */
@@ -503,7 +525,9 @@ class ParsePool {
     const entries = [...this.running];
     const asked = await Promise.all(entries.map((e) => {
       const worker = e.slot && e.slot.worker;
-      if (!worker || typeof worker.getHeapStatistics !== "function") return null;
+      // Where the worker cannot be asked: the memory its thread has touched since this parse began.
+      const byFaults = () => { const f = e.slot && e.slot.tid ? threadFaults(e.slot.tid) : -1; return f < 0 ? null : Math.max(0, f - (e.faultsStart || 0)) * PAGE_BYTES; };
+      if (!worker || typeof worker.getHeapStatistics !== "function" || rankByFaultsOnly()) return byFaults();
       return Promise.race([
         worker.getHeapStatistics().then((h) => (Number(h.used_heap_size) || 0) + (Number(h.external_memory) || 0) + (Number(h.malloced_memory) || 0), () => null),
         new Promise((resolve) => { const t = setTimeout(() => resolve(null), 300); if (t.unref) t.unref(); }),

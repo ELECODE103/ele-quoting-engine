@@ -145,6 +145,17 @@ function levelDown(byHolder, need, floor = 0) {
 
 const turn = () => new Promise((resolve) => setImmediate(resolve));
 
+/**
+ * After a pass that found nothing it may remove: when to look again. PRESSURE_BACKOFF_MINUTES,
+ * or sooner if something was spared only for being new and stops being new before then (a pass
+ * that came while the flood's rows were two minutes old must not sleep five minutes on that).
+ */
+function quietUntil(nextMatureAt, now = Date.now()) {
+  const backoff = Date.now() + limits.pressureBackoffMinutes * MIN;
+  if (nextMatureAt == null) return backoff;
+  return Math.min(backoff, Date.now() + Math.max(1000, nextMatureAt - now + 1000));
+}
+
 /** Run `work` over `items` a few at a time, letting the event loop turn between groups (never more than ~`budgetMs` at a stretch). */
 async function inPieces(items, work, { budgetMs = 40, sync = false } = {}) {
   let i = 0;
@@ -173,6 +184,9 @@ async function inPieces(items, work, { budgetMs = 40, sync = false } = {}) {
 function planDatabaseRelief(models, { need, now = Date.now(), refs = rowRetention.references(models, { now }), floor = 0, graceMs = limits.draftSweepMinAgeMinutes * MIN } = {}) {
   const byHolder = new Map();
   const add = (holder, item) => { if (!byHolder.has(holder)) byHolder.set(holder, []); byHolder.get(holder).push(item); };
+  // Rows spared only for being new: when the first of them stops being new, a pass has work again.
+  let nextMatureAt = Infinity;
+  const sparedUntil = (at) => { if (at > now && at < nextMatureAt) nextMatureAt = at; };
 
   // Parts nothing refers to.
   const customerKeepMs = limits.customerPartKeepMinutes * MIN;
@@ -184,13 +198,14 @@ function planDatabaseRelief(models, { need, now = Date.now(), refs = rowRetentio
       const created = time(p.createdAt) || 0;
       const holder = rowRetention.holderOf(p.ownerId, p.clientTag);
       if (!loose.has(holder)) loose.set(holder, []);
-      loose.get(holder).push({ kind: "part", id: p.id, bytes: p.bytes, created, exempt: now - created < graceMs || (p.ownerId && now - created < customerKeepMs) });
+      const spareMs = Math.max(graceMs, p.ownerId ? customerKeepMs : 0);
+      loose.get(holder).push({ kind: "part", id: p.id, bytes: p.bytes, created, exempt: now - created < spareMs, matureAt: created + spareMs });
     }
   }
   for (const [holder, parts] of loose) {
     parts.sort((x, y) => x.created - y.created);
-    const removable = parts.slice(0, Math.max(0, parts.length - keepNewest)).filter((p) => !p.exempt);
-    for (const p of removable) add(holder, p);
+    const beyondKept = parts.slice(0, Math.max(0, parts.length - keepNewest));
+    for (const p of beyondKept) { if (p.exempt) sparedUntil(p.matureAt); else add(holder, p); }
   }
 
   // Drafts no order or request came from: each sender keeps its newest, up to the keep allowance.
@@ -202,7 +217,8 @@ function planDatabaseRelief(models, { need, now = Date.now(), refs = rowRetentio
     let kept = 0;
     const removable = [];
     for (const d of list) {
-      if (kept + d.bytes <= keepBytes || now - d.created < graceMs) { kept += d.bytes; continue; }
+      if (kept + d.bytes <= keepBytes) { kept += d.bytes; continue; }
+      if (now - d.created < graceMs) { kept += d.bytes; sparedUntil(d.created + graceMs); continue; }
       removable.push({ kind: "draft", id: d.id, bytes: d.bytes, created: d.created });
     }
     removable.reverse(); // oldest first
@@ -215,6 +231,7 @@ function planDatabaseRelief(models, { need, now = Date.now(), refs = rowRetentio
     partIds: chosen.filter((c) => c.kind === "part").map((c) => c.id),
     lapsed: refs.expiredQuotes.length,
     holders: byHolder.size,
+    nextMatureAt: Number.isFinite(nextMatureAt) ? nextMatureAt : null,
     removableBytes: [...byHolder.values()].reduce((sum, items) => sum + items.reduce((n, it) => n + it.bytes, 0), 0),
   };
 }
@@ -241,6 +258,7 @@ async function relieveDatabase(models, opt = {}) {
   let removedDrafts = 0;
   let removedParts = 0;
   let longest = 0;
+  let nextMatureAt = null;
   // Up to three rounds: removing drafts leaves their parts with nothing referring to them.
   for (let round = 0; round < 3; round++) {
     const used = typeof database.usedSize === "function" ? database.usedSize() : size();
@@ -249,6 +267,7 @@ async function relieveDatabase(models, opt = {}) {
     const t0 = Date.now();
     const plan = planDatabaseRelief(models, { need, now });
     longest = Math.max(longest, Date.now() - t0);
+    nextMatureAt = plan.nextMatureAt;
     if (plan.quoteIds.length === 0 && plan.partIds.length === 0) break;
     if (!opt.sync) await turn();
     longest = Math.max(longest, await inPieces(plan.quoteIds, (id) => models.quotesDB.delete(id), opt));
@@ -257,7 +276,7 @@ async function relieveDatabase(models, opt = {}) {
     removedParts += plan.partIds.length;
   }
   if (removedDrafts === 0 && removedParts === 0) {
-    state.databaseQuietUntil = Date.now() + limits.pressureBackoffMinutes * MIN;
+    state.databaseQuietUntil = quietUntil(nextMatureAt, now);
     const result = { removedDrafts: 0, removedParts: 0, bytesBefore, bytesAfter: bytesBefore, longestPieceMs: longest };
     state.lastDatabaseRelief = { at: new Date(now).toISOString(), ...result };
     return result;
@@ -334,17 +353,21 @@ function planStorageRelief(models, { need, now = Date.now(), refs = rowRetention
   const byHolder = new Map();
   const soft = new Map();
   const add = (map, holder, item) => { if (!map.has(holder)) map.set(holder, []); map.get(holder).push(item); };
+  let nextMatureAt = Infinity;
+  const sparedUntil = (at) => { if (at > now && at < nextMatureAt) nextMatureAt = at; };
   for (const p of models.partsDB.rowSizes()) {
     if (refs.partsHard.has(p.id)) continue;
     const created = time(p.createdAt) || 0;
-    if (now - created < graceMs || (p.ownerId && now - created < customerKeepMs)) continue;
+    const spareMs = Math.max(graceMs, p.ownerId ? customerKeepMs : 0);
+    if (now - created < spareMs) { sparedUntil(created + spareMs); continue; }
     const holder = rowRetention.holderOf(p.ownerId, p.clientTag);
     const item = { kind: "part", id: p.id, bytes: p.fileBytes, created };
     if (refs.partsProtected.has(p.id)) add(soft, holder, { ...item, rank: 2 });
     else add(byHolder, holder, { ...item, rank: refs.partsOnAnonymousDrafts.has(p.id) ? 1 : 0 });
   }
   for (const r of refs.softRequests) {
-    if (now - r.created < graceMs || !(r.drawingBytes > 0)) continue;
+    if (!(r.drawingBytes > 0)) continue;
+    if (now - r.created < graceMs) { sparedUntil(r.created + graceMs); continue; }
     add(soft, r.holder, { kind: "attachment", id: r.id, bytes: r.drawingBytes, created: r.created, rank: 2 });
   }
   // Of what a sender holds softly, its newest bytes up to the protected share stay.
@@ -357,7 +380,7 @@ function planStorageRelief(models, { need, now = Date.now(), refs = rowRetention
     }
   }
   for (const items of byHolder.values()) items.sort((x, y) => (x.rank - y.rank) || (x.created - y.created));
-  return { chosen: levelDown(byHolder, need, 0), holders: byHolder.size };
+  return { chosen: levelDown(byHolder, need, 0), holders: byHolder.size, nextMatureAt: Number.isFinite(nextMatureAt) ? nextMatureAt : null };
 }
 
 /**
@@ -402,7 +425,7 @@ async function relieveStorage(models, opt = {}) {
   const result = { removedUploads, removedDrafts: removedDraftIds.size, removedAttachments, bytesBefore, bytesAfter };
   state.lastStorageRelief = { at: new Date(now).toISOString(), ...result };
   if (removedUploads || removedAttachments) console.warn(`File storage at ${Math.round((bytesBefore / max) * 100)}% of its ceiling: removed ${removedUploads} upload(s) and ${removedAttachments} request attachment(s) that nothing paid for or answered refers to, from whoever held the most first; ${mb(bytesBefore)} MB → ${mb(bytesAfter)} MB.`);
-  else state.storageQuietUntil = Date.now() + limits.pressureBackoffMinutes * MIN;
+  else state.storageQuietUntil = quietUntil(plan.nextMatureAt, now);
   return result;
 }
 

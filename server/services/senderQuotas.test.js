@@ -175,6 +175,30 @@ test("RR-01: when the database IS over its line, the admin's button and the pass
 
 // ─── RR-11 ───────────────────────────────────────────────────
 
+test("a pass that came while the flood's rows were too new looks again as soon as they are not (it does not sleep its five minutes on them)", async () => {
+  const db = database.getDatabase();
+  const pressure = require("./storagePressure");
+  const blob = JSON.stringify({ $lines: 2, n: 1, z: crypto.randomBytes(60000).toString("base64") });
+  const t0 = Date.now();
+  // 95 saved quotes of 80 kB from one account, made 30 seconds ago: over the line, and every one of them still spared for being new.
+  for (let i = 0; i < 95; i++) db.run("INSERT INTO quotes (id, user_id, client_tag, status, line_items_json, config_json, part_ids, created_at, updated_at, expires_at) VALUES (?, 'account-that-just-flooded', '', 'draft', ?, '{}', '', ?, ?, ?)", [crypto.randomUUID(), blob, new Date(t0 - 30000 - i).toISOString(), new Date(t0 - 30000 - i).toISOString(), new Date(t0 + 30 * 24 * 3600 * 1000).toISOString()]);
+  database.compact();
+  assert.ok(dbMb() > 8 * 0.85, `database at ${dbMb().toFixed(2)} MB of 8`);
+  pressure.state.databaseQuietUntil = 0;
+  const first = await quietly(() => pressure.relieveDatabase(models, {}));
+  assert.deepStrictEqual([first.removedDrafts, first.removedParts], [0, 0], "nothing may go yet");
+  const wait = pressure.state.databaseQuietUntil - Date.now();
+  assert.ok(wait > 60 * 1000 && wait <= 95 * 1000, `the next look is when the first of them is two minutes old (in ${Math.round(wait / 1000)} s), not in five minutes`);
+  assert.strictEqual(await pressure.relieveDatabase(models, {}), null, "and not before");
+  // Two minutes after they were made:
+  pressure.state.databaseQuietUntil = 0;
+  const later = await quietly(() => pressure.relieveDatabase(models, { now: t0 + 2 * MIN }));
+  assert.ok(later.removedDrafts >= 20, `then they go (${later.removedDrafts} removed)`);
+  assert.ok(dbMb() < 8 * 0.8, `database back to ${dbMb().toFixed(2)} MB`);
+  db.run("DELETE FROM quotes WHERE user_id = 'account-that-just-flooded'"); database.compact();
+  pressure.state.databaseQuietUntil = 0;
+});
+
 test("RR-11: a pass over thousands of rows is done in pieces; the thread is never held for long", async () => {
   const db = database.getDatabase();
   const blob = JSON.stringify({ $lines: 2, n: 1, z: crypto.randomBytes(1500).toString("base64") });

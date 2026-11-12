@@ -90,7 +90,9 @@ function partIdsOf(record) {
 }
 
 /** SQL for the bytes a quote row takes (its JSON columns and notes; the fixed columns are a few hundred bytes). */
-const ROW_BYTES_SQL = "(300 + COALESCE(LENGTH(CAST(line_items_json AS BLOB)), 0) + COALESCE(LENGTH(CAST(config_json AS BLOB)), 0) + COALESCE(LENGTH(CAST(gate_json AS BLOB)), 0) + COALESCE(LENGTH(CAST(notes AS BLOB)), 0))";
+// OCTET_LENGTH reads a value's size from the row header without reading the value (SQLite 3.43 and later; sql.js
+// ships 3.49), so sizing every row costs a pass over the rows, not over their megabytes.
+const ROW_BYTES_SQL = "(300 + COALESCE(OCTET_LENGTH(line_items_json), 0) + COALESCE(OCTET_LENGTH(config_json), 0) + COALESCE(OCTET_LENGTH(gate_json), 0) + COALESCE(OCTET_LENGTH(notes), 0))";
 
 class QuotesStore {
   constructor(table) {

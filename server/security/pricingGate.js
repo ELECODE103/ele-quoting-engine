@@ -28,6 +28,11 @@
  *     router.post("/:id/reorder", authenticate, pricingGate.admit(), async (req, res) => {
  *       …
  *       result = await pricingMemo.run(() => saveQuote(input, req.user, pricingGate.context(req)), pricingGate.job(req, configs));
+ *
+ * A route that retries a refused pricing (reorder retries with the standard lead time) must not
+ * retry a refusal that is about load or allowances: HTTP 429 or 503, or code "quote-too-slow".
+ * Those are answered as they are, with their Retry-After
+ * (docs/security/availability-fixes-round2-2026-11-12.md, merge notes).
  */
 const { limits } = require("./limits");
 const { clientKey } = require("./clientKey");

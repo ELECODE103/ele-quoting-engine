@@ -6,6 +6,14 @@ merged in). This answers the availability and storage findings of
 reviewer's own script before anything was changed, fixed as a class rather than at the one line the
 script hit, and turned into a quick permanent test that fails on the old code.
 
+> **Corrected 2026-11-12.** An independent re-review (`docs/security/rereview-availability-2026-11-12.md`)
+> showed that several results below are best cases stated as the result: they were measured with
+> identical lines, the same part repeated on every line, and no account. Each such line now says so
+> ("Corrected 2026-11-12"). With lines that all differ, different dense parts, a confirmed account and
+> several addresses, the findings marked H3, H4 and C2 were not closed. What was done about the worst
+> cases, and the limits now in force where they differ from sections 3 to 5 here, is in
+> `docs/security/availability-fixes-round2-2026-11-12.md`.
+
 Nothing here changes a price, a pricing rule, a gate threshold, a DFM threshold or a geometry result
 for a legitimate file. The 300-quote vetting run is identical before and after (section 9).
 
@@ -118,6 +126,11 @@ anonymous line limit.
 | Requests in 30 s | 20 sent, none refused | 359: 119 refused for line count, 240 rate-limited | 886: 114 priced, 772 told to retry in 3 s |
 | Health, median / worst | 16,912 ms / 18,520 ms | 2 ms / 36 ms | 2 ms / 472 ms |
 
+Corrected 2026-11-12: every figure in this table is for ONE part repeated on every line, where the
+per-request memo prices the part once. With 25 different dense parts per quote and no account the
+re-review measured a health median of 93 ms from one address and 3 to 4.5 s from eight (RR-13), and
+the reorder route was not behind any of this (RR-05). See the round-2 write-up.
+
 In-process, 1,600-hole DXF on 100 identical lines: 1,209 ms with one 1,197 ms stall before; 73 ms
 with a worst stall of 37 ms after. The 472 ms above is a single sample out of 596 (the median is
 2 ms, and one whole 100-line pricing takes 70 ms, so it is not a unit of pricing). A second run made
@@ -227,7 +240,7 @@ recovers by itself; the admin purge; L6. `masterDatabase.test.js` (3) opens a da
 | | Before | After |
 |---|---|---|
 | Bytes per quote | 297,796 (100 lines) | 9,065 (25 lines, of which 2,000 are the script's note text) |
-| Quotes to trouble | 75 (21.3 MB, over the ceiling) | 1,574 from 53 addresses to reach 85 % (13.6 MB); it never passes the ceiling |
+| Quotes to trouble | 75 (21.3 MB, over the ceiling) | 1,574 from 53 addresses to reach 85 % (13.6 MB); it never passes the ceiling. **Corrected 2026-11-12: best case only.** That is 25 identical lines per quote (9 kB a draft) at a 16 MB ceiling. With lines that all differ a draft was 78 kB; one address with one confirmed account then filled the database to 100 %, and without an account 25 addresses in an hour paused every visitor (re-review RR-01, RR-02) |
 | Who is refused then | every upload, customers included; still refused after a restart | new quotes and uploads from visitors without an account (`quotes-paused`, `uploads-paused`); re-pricing an open quote: 200 |
 | Recovery | none without the owner | by itself: drafts and parts untouched for 5 minutes are removed |
 | Health during the flood, worst | not measured (server refused) | 258 ms |
@@ -406,7 +419,8 @@ sign in, and only at the very end refuse customers. Buying is never blocked.
 **Database** (`DB_MAX_MB`):
 1. Under 80 %: nothing happens.
 2. At 80 %: the pressure pass runs (every 5 minutes, and at once when a request is refused, at most
-   every 20 seconds). It removes lapsed drafts; uploaded parts that nothing refers to and nobody has
+   every 20 seconds; corrected 2026-11-12: only a refused *upload* set it off, a refused new *quote*
+   did not, which round 2 fixes). It removes lapsed drafts; uploaded parts that nothing refers to and nobody has
    touched for 30 minutes, the network that left the most first; then no-account drafts untouched
    for 30 minutes, longest-untouched first; down to 60 %. Then it compacts the file.
 3. At 85 %: a visitor without an account cannot start a new quote (`quotes-paused`) or upload
@@ -579,9 +593,9 @@ Reviewer's scripts, each run before and after (numbers in section 2):
 | `measure-pricing.js 4900 30` (signed in) | not possible to measure: 18 s per quote | health median 2 ms, worst 472 ms; 114 priced, 772 told to retry (loaded sandbox: median 6 ms, worst 1,212 ms) |
 | `price-nan.js` | `Infinity` variant priced with checkout open | every variant refused at upload |
 | `parser-abuse.js` (the 16 inputs in this lane) | 11 accepted that should not be, 2 stopped only at 60 s, 2 refused, 1 parsed and sent to a person | the 11 and the 2 refused in under 1 s; the other 3 as before |
-| `availability.js queue` | 2 of 3 customers refused at once | 3 of 3 served (loaded sandbox: 2 served, 1 `busy` after 30 s in line) |
+| `availability.js queue` | 2 of 3 customers refused at once | 3 of 3 served (loaded sandbox: 2 served, 1 `busy` after 30 s in line). Corrected 2026-11-12: "3 of 3" was one quiet run; the re-review, loaded, saw one of two customers refused `parse-memory` in 2 of 4 runs and in 1 of 3 rounds with no attacker (RR-07) |
 | `availability.js pool` | workers held 605 s (reviewer) | 1 s |
-| `availability.js db` | 75 quotes over the ceiling, customers refused, no recovery | 1,574 quotes to reach 85 %; only visitors without an account paused; recovers by itself |
+| `availability.js db` | 75 quotes over the ceiling, customers refused, no recovery | 1,574 quotes to reach 85 %; only visitors without an account paused; recovers by itself. Corrected 2026-11-12: identical lines only (the script's, which the new storage format made almost free); see the correction in section 2 |
 | `availability.js storage` | 196 MB of padding stored, then everyone refused | 0 MB stored, customers served |
 | `retention-encryption.js retention` | 4 findings | 0 findings, 5 passes |
 | `abuse-limits.js on` / `off` | token usable anywhere; 300 drafts per 15 min; 32 of 32 requests | 403 elsewhere; 30 drafts then refused; 30 requests an hour site-wide |
@@ -611,7 +625,7 @@ Could not be verified here, and why:
 |---|---|---|---|
 | Reorder prices on the main thread without the memo or the gate | Medium | review-fixes / order-lifecycle | Signed-in customers only; the call to add is in 7 |
 | Checkout does not call `partFilesPresent` | Low now that retention keeps the files | review-fixes | One-line call in 7 |
-| A flood from many addresses with the bot check off can still pause new quotes and uploads for visitors without an account | Medium | owner | It takes a few hundred addresses, each at its hourly limit, to hold the default database at 85 %. Customers with a confirmed email, re-pricing and checkout are unaffected, and it clears itself 5 minutes after the flood stops. The real answer is switching the bot check on (`TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`) |
+| A flood from many addresses with the bot check off can still pause new quotes and uploads for visitors without an account | Medium | owner | It takes a few hundred addresses, each at its hourly limit, to hold the default database at 85 % (corrected 2026-11-12: that was for identical lines; with lines that differ the re-review needed 25 addresses in an hour, 7 over a day, or one address with one confirmed account, and the clean-up removed real visitors' rows while the flood's stayed: RR-01, RR-02; round 2 replaces the rule). Customers with a confirmed email, re-pricing and checkout are unaffected, and it clears itself 5 minutes after the flood stops. The real answer is switching the bot check on (`TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`) |
 | File names, overall measurements, DFM notes with feature positions and quote lines are in the database in clear | Medium | owner decision | Encrypting the database file is a separate piece of work; the guide now says so plainly |
 | The whole database file is rewritten on every save | Medium (speed, not safety) | future work | 258 ms worst health at 13 MB during a flood. A native SQLite driver removes it |
 | During a storm of pricing requests for a 4,900-hole part, one health sample in about 600 was slow (472 ms; 1,212 ms with the sandbox loaded) | Low | not isolated | Median 2 ms. Not a unit of pricing (a whole 100-line pricing is 70 ms); candidates are garbage collection, the batched database save, and the loaded sandbox |
