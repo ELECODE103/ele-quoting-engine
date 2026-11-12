@@ -20,25 +20,55 @@ function key() {
   return crypto.createHmac("sha256", require("../security/keys").baseSecret()).update("rfq-quote-link-v1").digest();
 }
 
-/** @param {{id:string, quoteSentAt:string, validUntil:string}} rfq */
-function sign(rfq) {
-  const exp = Math.floor(new Date(rfq.validUntil).getTime() / 1000);
-  return jwt.sign({ rfqId: rfq.id, v: rfq.quoteSentAt, exp }, key(), { audience: AUDIENCE, algorithm: ALGORITHM });
+/** The quoted total in whole cents, or null when there is none. */
+function amountCents(rfq) {
+  const n = Number(rfq && rfq.quotedTotal);
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
 }
 
 /**
- * @returns {{rfqId:string, v:string, expired:boolean}|null} null when the token
+ * A fingerprint of the terms a firm quote offers: the total, the lines and their quantities,
+ * the lead time, the validity date, and what the price covers. It is stored on the request
+ * when the quote is sent (`sentTerms`). A quote whose terms no longer match what was sent has
+ * no usable link until the owner sends it again (review F-9): the buyer can never accept an
+ * amount, a quantity or a date other than the ones in the email they hold.
+ */
+function termsFingerprint(rfq) {
+  const terms = [
+    amountCents(rfq),
+    rfq.quotedLeadDays === undefined ? null : rfq.quotedLeadDays,
+    rfq.validUntil || null,
+    Boolean(rfq.paperwork),
+    Boolean(rfq.returnPart),
+    String(rfq.quoteNote || ""),
+    (rfq.parts || []).map((p) => [p.partId || "", p.fileName || "", p.quotedQuantity || p.quantity || null, p.process || "", p.materialSlug || "", p.finishSlug || ""]),
+  ];
+  return crypto.createHash("sha256").update(JSON.stringify(terms)).digest("hex").slice(0, 40);
+}
+
+/**
+ * @param {{id:string, quoteSentAt:string, validUntil:string, quotedTotal:number}} rfq
+ * The link names the request, the send it belongs to (`v`) and the amount it was issued for (`amt`, cents).
+ */
+function sign(rfq) {
+  const exp = Math.floor(new Date(rfq.validUntil).getTime() / 1000);
+  return jwt.sign({ rfqId: rfq.id, v: rfq.quoteSentAt, amt: amountCents(rfq), exp }, key(), { audience: AUDIENCE, algorithm: ALGORITHM });
+}
+
+/**
+ * @returns {{rfqId:string, v:string, amt:number|null, expired:boolean}|null} null when the token
  * is forged or malformed. An expired token still verifies (with `expired`) so
- * the caller can say "this quote expired" instead of "bad link".
+ * the caller can say "this quote expired" instead of "bad link". `amt` is null on
+ * a link issued before links carried an amount.
  */
 function verify(token) {
   try {
     const p = jwt.verify(String(token || ""), key(), { audience: AUDIENCE, algorithms: [ALGORITHM], ignoreExpiration: true });
     if (!p || !p.rfqId || !p.exp) return null;
-    return { rfqId: p.rfqId, v: p.v, expired: p.exp * 1000 < Date.now() };
+    return { rfqId: p.rfqId, v: p.v, amt: Number.isInteger(p.amt) ? p.amt : null, expired: p.exp * 1000 < Date.now() };
   } catch {
     return null;
   }
 }
 
-module.exports = { sign, verify };
+module.exports = { sign, verify, termsFingerprint, amountCents };

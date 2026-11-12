@@ -30,6 +30,9 @@
  *   GET  /api/rfq/quote/:token             customer: the firm quote behind an emailed link
  *   POST /api/rfq/quote/:token/accept      customer: accept → card checkout, or PO number
  *   POST /api/rfq/quote/:token/confirm-payment   customer: settle on return from Stripe
+ *   POST /api/rfq/return/confirm           the page Stripe sends a firm-quote buyer back to: "has this
+ *                                          order been paid?" for one order, by a short-lived return token.
+ *                                          The quote link itself is never given to Stripe.
  */
 const express = require("express");
 const multer = require("multer");
@@ -50,6 +53,9 @@ const shopFacts = require("../shopFacts");
 const crypto = require("crypto");
 const botGuard = require("../security/botGuard");
 const turnstile = require("../security/turnstile");
+const { singleLine, singleLines, poNumber: checkPoNumber, SHIPPING_RULES } = require("../middleware/singleLine");
+const returnToken = require("../services/returnToken");
+const lifecycle = require("../services/orderLifecycle");
 // Where a buyer ships a worn part. Server-side only: it is given out after a
 // request is sent by someone who passed the bot check (response + email),
 // never on a public page and never to an unverified sender.
@@ -188,7 +194,15 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
     const quoteId = sanitizeString(b.quoteId || "", 64);
     // Spaces around a pasted address are dropped; any other stray character (a line break, a NUL) is left for validation to refuse.
     const email = (typeof b.email === "string" ? b.email : "").replace(/^[ \t]+|[ \t]+$/g, "").toLowerCase();
-    const contactName = sanitizeString(b.contactName || "", 120).replace(/[\r\n]+/g, " ");
+    // Name, company and phone are one line each: they are printed on documents and shown in emails,
+    // so a value with a line break or hidden characters is refused here, not quietly rewritten.
+    const lines = singleLines(b, {
+      contactName: { label: "Your name", max: 120 },
+      company: { label: "The company name", max: 160 },
+      phone: { label: "The phone number", max: 40 },
+    });
+    if (!lines.ok) { await dropFile(); return res.status(400).json({ error: lines.error, code: lines.code, field: lines.field }); }
+    const contactName = lines.values.contactName;
 
     if (!contactName) { await dropFile(); return res.status(400).json({ error: "Your name is required" }); }
     if (!isValidEmail(email) || !mailer.cleanAddress(email)) { await dropFile(); return res.status(400).json({ error: "A valid email is required" }); }
@@ -260,8 +274,8 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       status: "new",
       contactName,
       email,
-      company: sanitizeString(b.company || "", 160),
-      phone: sanitizeString(b.phone || "", 40),
+      company: lines.values.company,
+      phone: lines.values.phone,
       process,
       quantities: sanitizeString(b.quantities || "", 200),
       tolerance: sanitizeString(b.tolerance || "", 200),
@@ -340,13 +354,28 @@ function acceptUrl(rfq, base) {
   return `${base}/firm-quote/${rfqToken.sign(rfq)}`;
 }
 
+/**
+ * Have the terms of a quote that is out changed since it was sent? Then the emailed link is
+ * dead until the owner sends the quote again (review F-9). A quote sent before the terms were
+ * recorded has nothing to compare with; it is stamped the first time it is looked at or edited.
+ */
+function termsChanged(rfq) {
+  return rfq.status === "quoted" && Boolean(rfq.sentTerms) && rfqToken.termsFingerprint(rfq) !== rfq.sentTerms;
+}
+function stampSentTerms(rfq) {
+  if (rfq.status === "quoted" && rfq.quoteSentAt && !rfq.sentTerms) return rfqsDB.update(rfq.id, { sentTerms: rfqToken.termsFingerprint(rfq) });
+  return rfq;
+}
+
 /** What the admin queue shows: the RFQ, its live accept link while open, and its order once accepted. */
 function adminView(rfq, base) {
   const { drawingPath, ...safe } = rfq;
   const order = rfq.orderId ? ordersDB.getById(rfq.orderId) : null;
   return {
     ...safe,
-    acceptUrl: rfq.status === "quoted" && rfq.quoteSentAt ? acceptUrl(rfq, base) : null,
+    // The link as it was emailed. None while the quote's terms differ from what was sent.
+    acceptUrl: rfq.status === "quoted" && rfq.quoteSentAt && !termsChanged(rfq) ? acceptUrl(rfq, base) : null,
+    needsResend: termsChanged(rfq),
     orderStatus: order?.status || null,
   };
 }
@@ -359,9 +388,20 @@ router.get("/admin/list", authenticate, requireAdmin, (req, res) => {
 });
 
 router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
-  const rfq = rfqsDB.getById(req.params.id);
+  let rfq = rfqsDB.getById(req.params.id);
   if (!rfq) return res.status(404).json({ error: "RFQ not found" });
+  rfq = stampSentTerms(rfq); // before anything is changed: what is out is what the buyer was sent
   const b = req.body || {};
+  // Once the customer has accepted there is an order at the quoted terms; they are not edited underneath it.
+  if (rfq.status === "accepted" && ["quotedTotal", "quotedLeadDays", "partQuantities", "paperwork", "returnPart", "quoteNote"].some((k) => b[k] !== undefined)) {
+    const same = (b.quotedTotal === undefined || Number(b.quotedTotal) === rfq.quotedTotal)
+      && (b.quotedLeadDays === undefined || b.quotedLeadDays === null || b.quotedLeadDays === "" || Number(b.quotedLeadDays) === rfq.quotedLeadDays)
+      && (b.quoteNote === undefined || sanitizeString(b.quoteNote, 2000) === (rfq.quoteNote || ""))
+      && (typeof b.paperwork !== "boolean" || b.paperwork === Boolean(rfq.paperwork))
+      && (typeof b.returnPart !== "boolean" || b.returnPart === Boolean(rfq.returnPart))
+      && !b.partQuantities;
+    if (!same) return res.status(409).json({ error: "The customer already accepted this quote, so its price and terms can no longer be changed here.", code: "quote-accepted" });
+  }
   const updates = {};
   if (b.status !== undefined) {
     if (!ADMIN_STATUSES.includes(b.status)) return res.status(400).json({ error: "Invalid status" });
@@ -406,6 +446,8 @@ router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
     updates.quotedAt = rfq.quotedAt || now.toISOString();
     updates.quoteSentAt = now.toISOString();
     updates.validUntil = new Date(now.getTime() + QUOTE_VALID_DAYS * 864e5).toISOString();
+    // The link that goes out is for exactly these terms.
+    updates.sentTerms = rfqToken.termsFingerprint({ ...next, ...updates });
   }
 
   const updated = rfqsDB.update(rfq.id, updates);
@@ -418,7 +460,9 @@ router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
       ...templates.rfqQuoted({ rfq: updated, acceptUrl: acceptUrl(updated, base), shipBy: shipBy.shipByDate(updated.quotedLeadDays) }),
     });
   }
-  res.json({ ...adminView(updated, base), quoteSent: sendQuote, emailSent });
+  // Terms saved without sending: the link the customer holds no longer works until this is sent again.
+  const linkInvalidated = !sendQuote && termsChanged(updated) && !termsChanged(rfq);
+  res.json({ ...adminView(updated, base), quoteSent: sendQuote, emailSent, ...(linkInvalidated ? { linkInvalidated: true } : {}) });
 });
 
 router.get("/admin/:id/drawing", authenticate, requireAdmin, (req, res) => {
@@ -442,7 +486,14 @@ function rfqFromToken(req, res) {
     res.status(410).json({ error: "This link was replaced by a newer quote. Use the link in the latest email from us.", code: "link-superseded" });
     return null;
   }
-  rfq = expireIfDue(rfq);
+  rfq = stampSentTerms(expireIfDue(rfq));
+  req.rfqClaim = claim;
+  // The link was issued for one set of terms and one amount. If the quote has been edited since
+  // and not sent again, the link does not open it: nobody accepts terms they were not sent.
+  if (rfq.status === "quoted" && (termsChanged(rfq) || (claim.amt !== null && claim.amt !== rfqToken.amountCents(rfq)))) {
+    res.status(409).json({ error: `This quote was changed after this link was sent, so the link no longer works. We'll email you the updated quote; use the link in that email, or call ${brand.phone}.`, code: "quote-changed" });
+    return null;
+  }
   // An expired link still opens for a buyer who accepted in time (it is their order page).
   if (claim.expired && rfq.status !== "accepted") {
     res.status(410).json({ error: `This quote expired on ${new Date(rfq.validUntil).toLocaleDateString("en-US", { timeZone: shipBy.SHOP_TZ, month: "long", day: "numeric", year: "numeric" })}. Reply to the quote email or call ${brand.phone} and we'll refresh it.`, code: "quote-expired" });
@@ -451,9 +502,12 @@ function rfqFromToken(req, res) {
   return rfq;
 }
 
-function customerView(rfq) {
+function customerView(rfq, claim) {
   const order = rfq.orderId ? ordersDB.getById(rfq.orderId) : null;
+  const pay = order ? lifecycle.paymentView(order) : null;
   return {
+    // The amount this link was issued for (a link from before links carried one shows the quote's own).
+    linkAmount: claim && claim.amt !== null && claim.amt !== undefined ? claim.amt / 100 : rfq.quotedTotal,
     reference: templates.shortId(rfq.id),
     status: rfq.status,
     contactName: rfq.contactName,
@@ -486,13 +540,19 @@ function customerView(rfq) {
       trackingNumber: order.trackingNumber || "",
       trackingUrl: templates.trackingUrl(order.carrier, order.trackingNumber),
       shippedAt: order.shippedAt || null,
+      // Payment facts in plain form: what was paid, any discount, anything refunded, and
+      // whether a payment is being checked by hand. The reason for a check stays with the shop.
+      amountPaid: pay.amountPaid,
+      discountAmount: pay.discountAmount,
+      refundedAmount: pay.refundedAmount,
+      paymentUnderReview: order.status === "pending_payment" && pay.needsAttention,
     } : null,
   };
 }
 
 router.get("/quote/:token", (req, res) => {
   const rfq = rfqFromToken(req, res);
-  if (rfq) res.json(customerView(rfq));
+  if (rfq) res.json(customerView(rfq, req.rfqClaim));
 });
 
 /** Split the quoted total across the RFQ's parts in proportion to their budgetary lines. */
@@ -519,11 +579,24 @@ function orderItemsFor(rfq) {
   });
 }
 
+/** Where Stripe sends a firm-quote buyer afterwards: the order id and a return token, never the quote link. */
+function returnUrls(base, orderId) {
+  const token = returnToken.sign(orderId, lifecycle.sessionMinutes() + 60);
+  const page = `${base}/firm-quote/return?o=${encodeURIComponent(orderId)}`;
+  return { successUrl: `${page}&r=${token}&paid=true`, cancelUrl: `${page}&cancelled=true`, returnKey: `firm-quote:${orderId}`, base };
+}
+
 /**
  * Accept the firm quote.
  *   method "card" → an order awaiting payment + a Stripe Checkout session
  *   method "po"   → an order awaiting PO confirmation; the PO number is stored.
  *                   Nothing is billed here: the shop confirms the PO by hand.
+ *
+ * ONE QUOTE, ONE ORDER. The quote is claimed (checked "quoted", order written, marked
+ * "accepted") in one synchronous step before anything waits on Stripe, so two accepts at the
+ * same moment cannot both pass the check (review F-11). If the card session cannot be made
+ * the claim is released and the quote is open again. A repeated accept is answered from the
+ * order that exists: the same order, and for a card the same payment page.
  */
 router.post("/quote/:token/accept", async (req, res) => {
   try {
@@ -531,19 +604,27 @@ router.post("/quote/:token/accept", async (req, res) => {
     if (!rfq) return;
     const b = req.body || {};
     const method = b.method;
-    if (method !== "card" && method !== "po") return res.status(400).json({ error: "Choose card or purchase order" });
+    if (method !== "card" && method !== "po") return res.status(400).json({ error: "Choose card or purchase order", code: "method-required" });
     const base = orderEvents.baseUrl(req);
-    const stripeUrls = {
-      successUrl: `${base}/firm-quote/${req.params.token}?paid=true`,
-      cancelUrl: `${base}/firm-quote/${req.params.token}?cancelled=true`,
-    };
+    const describe = `Firm quote ${templates.shortId(rfq.id)}`;
 
     if (rfq.status === "accepted") {
-      // Card checkout abandoned part-way: let them pay for the same order.
       const existing = rfq.orderId ? ordersDB.getById(rfq.orderId) : null;
-      if (method === "card" && existing && existing.status === "pending_payment") {
-        const session = await orderEvents.createCheckoutSession(existing, { itemCount: (rfq.parts || []).length || 1, description: `Firm quote ${templates.shortId(rfq.id)}`, ...stripeUrls, metadata: { rfqId: rfq.id } });
-        return res.json({ status: "accepted", method, sessionUrl: session.url });
+      const reference = existing ? templates.shortId(existing.id) : null;
+      // The same choice again (a double click, a retry, back from an unfinished card page): the same order.
+      if (existing && method === "card" && existing.paymentMethod === "card" && existing.status === "pending_payment") {
+        try {
+          const session = await orderEvents.createCheckoutSession(existing, { itemCount: (rfq.parts || []).length || 1, description: describe, ...returnUrls(base, existing.id), metadata: { rfqId: rfq.id } });
+          return res.json({ status: "accepted", method, sessionUrl: session.url, order: reference, repeat: true });
+        } catch (err) {
+          if (err.code === "order-not-payable") return res.status(409).json({ error: "This quote has already been accepted", code: "already-accepted" });
+          console.error("RFQ accept: checkout session failed:", err.code || err.message);
+          return res.status(502).json({ error: `We couldn't start the card payment. Try again, or call ${brand.phone}.`, code: err.code === "payment-session-busy" ? err.code : "card-unavailable" });
+        }
+      }
+      // The same PO again is the same acceptance. A different PO number is a second acceptance, and is refused.
+      if (existing && method === "po" && existing.paymentMethod === "po" && existing.status === "pending_po" && typeof b.poNumber === "string" && b.poNumber.trim() === existing.poNumber) {
+        return res.json({ status: "accepted", method, sessionUrl: null, order: reference, repeat: true });
       }
       return res.status(409).json({ error: "This quote has already been accepted", code: "already-accepted" });
     }
@@ -551,21 +632,32 @@ router.post("/quote/:token/accept", async (req, res) => {
       return res.status(409).json({ error: `This quote is no longer open. Call ${brand.phone} and we'll sort it out.`, code: "not-open" });
     }
 
-    const shipping = {
-      shippingName: sanitizeString(b.shippingName || "", 200),
-      shippingAddress: sanitizeString(b.shippingAddress || "", 500),
-      shippingCity: sanitizeString(b.shippingCity || "", 100),
-      shippingState: sanitizeString(b.shippingState || "", 100),
-      shippingZip: sanitizeString(b.shippingZip || "", 20),
-      shippingCountry: sanitizeString(b.shippingCountry || "US", 5),
-    };
-    if (!shipping.shippingName || !shipping.shippingAddress || !shipping.shippingCity || !shipping.shippingState || !shipping.shippingZip) {
-      return res.status(400).json({ error: "Add the full ship-to address" });
+    // The amount is the owner's, read from the request row. It has to be an amount.
+    const total = Number(rfq.quotedTotal);
+    if (!Number.isFinite(total) || !(Math.round(total * 100) > 0)) {
+      return res.status(409).json({ error: `This quote has no price to accept. Call ${brand.phone} and we'll sort it out.`, code: "quote-not-payable" });
     }
-    const poNumber = sanitizeString(b.poNumber || "", 60);
-    if (method === "po" && !poNumber) return res.status(400).json({ error: "Enter your purchase order number" });
-    if (method === "card" && !stripeClient.get()) return res.status(503).json({ error: `Card payment isn't available right now. Call ${brand.phone}.` });
+    // The page says what total the buyer was looking at; if that is not the quote's total, stop.
+    if (b.seenTotal !== undefined && b.seenTotal !== null && Math.round(Number(b.seenTotal) * 100) !== Math.round(total * 100)) {
+      return res.status(409).json({ error: "This quote's price has changed since you opened this page. Reload the page to see it.", code: "quote-changed" });
+    }
 
+    // Ship-to and PO number: one printable line each, refused (not rewritten) when they are not.
+    const ship = singleLines({ ...b, shippingCountry: b.shippingCountry || "US" }, SHIPPING_RULES);
+    if (!ship.ok) return res.status(400).json({ error: ship.error, code: ship.code, field: ship.field });
+    const shipping = ship.values;
+    if (!shipping.shippingName || !shipping.shippingAddress || !shipping.shippingCity || !shipping.shippingState || !shipping.shippingZip) {
+      return res.status(400).json({ error: "Add the full ship-to address", code: "address-required" });
+    }
+    let poNumber = "";
+    if (method === "po") {
+      const po = checkPoNumber(b.poNumber);
+      if (!po.ok) return res.status(400).json({ error: po.error, code: po.code, field: "poNumber" });
+      poNumber = po.value;
+    }
+    if (method === "card" && !stripeClient.get()) return res.status(503).json({ error: `Card payment isn't available right now. Call ${brand.phone}.`, code: "card-unavailable" });
+
+    // ── The claim. Everything from here to the end of this block is synchronous. ──
     const days = rfq.quotedLeadDays;
     const order = ordersDB.insert({
       userId: rfq.userId || null,
@@ -575,17 +667,18 @@ router.post("/quote/:token/accept", async (req, res) => {
       ...shipping,
       shippingMethod: "standard",
       shippingCost: 0,
-      subtotal: rfq.quotedTotal,
+      subtotal: total,
       // Asked for on the request and priced into the firm quote: flagged on the order so the
       // shop does it, with no separate amount (the quoted total already covers it).
       paperwork: Boolean(rfq.paperwork),
       paperworkFee: 0,
       returnPart: Boolean(rfq.returnPart),
       tax: 0,
-      total: rfq.quotedTotal,
+      total,
+      currency: "usd",
       notes: "",
       paymentMethod: method,
-      poNumber: method === "po" ? poNumber : "",
+      poNumber,
       customerEmail: rfq.email,
       customerName: rfq.contactName,
       leadTimeName: `${days} business day${days === 1 ? "" : "s"}`,
@@ -596,37 +689,44 @@ router.post("/quote/:token/accept", async (req, res) => {
       drawingPath: rfq.drawingPath || "",
     });
     const items = orderItemsFor(rfq).map((it) => orderItemsDB.insert({ orderId: order.id, ...it }));
-
-    let session = null;
-    if (method === "card") {
-      try {
-        session = await orderEvents.createCheckoutSession(order, { itemCount: items.length, description: `Firm quote ${templates.shortId(rfq.id)}`, ...stripeUrls, metadata: { rfqId: rfq.id } });
-      } catch (err) {
-        // No session, no order: leave the quote open so the buyer can try again.
-        for (const it of items) orderItemsDB.delete(it.id);
-        ordersDB.delete(order.id);
-        console.error("RFQ accept: checkout session failed:", err.message);
-        return res.status(502).json({ error: `We couldn't start the card payment. Try again, or call ${brand.phone}.` });
-      }
-    }
-
     const accepted = rfqsDB.update(rfq.id, {
       status: "accepted",
       acceptedAt: new Date().toISOString(),
       acceptedVia: method,
-      poNumber: method === "po" ? poNumber : "",
+      poNumber,
       orderId: order.id,
     });
+    // ── Claimed. ──
+
+    let session = null;
+    if (method === "card") {
+      try {
+        session = await orderEvents.createCheckoutSession(order, { itemCount: items.length, description: describe, ...returnUrls(base, order.id), metadata: { rfqId: rfq.id } });
+      } catch (err) {
+        // No session, no order: release the claim so the buyer can try again. Only if the quote
+        // is still held by THIS order and nothing was paid in the meantime.
+        const nowRfq = rfqsDB.getById(rfq.id);
+        const nowOrder = ordersDB.getById(order.id);
+        if (nowOrder && nowOrder.status === "pending_payment" && nowRfq && nowRfq.status === "accepted" && nowRfq.orderId === order.id) {
+          for (const it of items) orderItemsDB.delete(it.id);
+          ordersDB.delete(order.id);
+          rfqsDB.update(rfq.id, { status: "quoted", acceptedAt: null, acceptedVia: null, poNumber: "", orderId: null });
+        }
+        console.error("RFQ accept: checkout session failed:", err.code || err.message);
+        return res.status(502).json({ error: `We couldn't start the card payment. Try again, or call ${brand.phone}.`, code: err.code === "payment-session-busy" ? err.code : "card-unavailable" });
+      }
+    }
 
     // The shop hears about every acceptance. A PO buyer gets their confirmation
     // now; a card buyer gets it when the payment clears.
     const sends = [mailer.send({ to: mailer.shopNotifyAddress(), replyTo: rfq.email, ...templates.rfqAcceptedShop({ rfq: accepted, order, adminUrl: `${base}/admin` }) })];
     if (method === "po") {
+      lifecycle.recordEvent({ kind: "po-order", order, amountCents: Math.round(total * 100), currency: "usd", detail: "accepted on a purchase order", notified: true });
       sends.push(mailer.send({ to: rfq.email, replyTo: mailer.shopNotifyAddress(), ...templates.orderConfirmation({ order, items, orderUrl: orderEvents.orderUrl(order, base) }) }));
     }
     await Promise.all(sends);
 
-    res.status(201).json({ status: "accepted", method, sessionUrl: session?.url || null });
+    res.status(201).json({ status: "accepted", method, sessionUrl: session?.url || null, order: templates.shortId(order.id) });
   } catch (err) {
     console.error("RFQ accept error:", err.message);
     res.status(500).json({ error: `Something went wrong on our side. Call ${brand.phone} and we'll take the order by phone.` });
@@ -637,12 +737,46 @@ router.post("/quote/:token/confirm-payment", async (req, res) => {
   try {
     const rfq = rfqFromToken(req, res);
     if (!rfq) return;
-    const order = rfq.orderId ? ordersDB.getById(rfq.orderId) : null;
-    if (order) await orderEvents.confirmPayment(order, { base: orderEvents.baseUrl(req) });
-    res.json(customerView(rfq));
+    // The same checks as the webhook (amount, currency, session, payment status): services/orderLifecycle.js.
+    if (rfq.orderId) await orderEvents.confirmPayment(rfq.orderId, { base: orderEvents.baseUrl(req) });
+    res.json(customerView(rfqsDB.getById(rfq.id) || rfq, req.rfqClaim));
   } catch (err) {
     console.error("RFQ confirm payment error:", err.message);
     res.status(502).json({ error: "Could not confirm the payment yet" });
+  }
+});
+
+/**
+ * The page Stripe sends a firm-quote buyer back to. It holds the order id and a return token
+ * (services/returnToken.js), which is good for this one question about this one order and
+ * nothing else. The answer says where the order stands and no more: no name, no address,
+ * no email, no quote.
+ */
+router.post("/return/confirm", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const orderId = typeof b.order === "string" ? b.order : "";
+    if (!orderId || !returnToken.verify(b.token, orderId)) {
+      return res.status(404).json({ error: "This page has expired. Open the link in your quote email to see your order.", code: "return-link-invalid" });
+    }
+    let order = ordersDB.getById(orderId);
+    if (!order || !order.rfqId) return res.status(404).json({ error: "This page has expired. Open the link in your quote email to see your order.", code: "return-link-invalid" });
+    try {
+      await orderEvents.confirmPayment(order.id, { base: orderEvents.baseUrl(req) });
+    } catch (err) {
+      console.error("Return confirm error:", err.code || err.name || "Error"); // answered below from what we have
+    }
+    order = ordersDB.getById(orderId) || order;
+    res.json({
+      reference: templates.shortId(order.id),
+      status: order.status,
+      total: order.total,
+      shipBy: order.shipBy || null,
+      paymentUnderReview: order.status === "pending_payment" && Boolean(order.attention),
+    });
+  } catch (err) {
+    console.error("Return confirm error:", err.message);
+    res.status(502).json({ error: "Could not confirm the payment yet", code: "confirm-failed" });
   }
 });
 
