@@ -280,7 +280,7 @@ const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#toke
     const onDisk = fs.readdirSync(path.join(SCRATCH, "data", "part-payloads")).filter((f) => f.endsWith(".mesh.json"));
     s.note = `session answer ${(text.length / 1024).toFixed(1)} kB with no mesh in it; ${vertices} vertices fetched from ${first.mesh && first.mesh.url}; ${onDisk.length} mesh file(s); canvas ${canvas.w}×${canvas.h}`;
     if (session.status() !== 200) throw new Error(`session answered ${session.status()}`);
-    if (first.meshPreview && first.meshPreview.positions) throw new Error("the session answer still carries the mesh");
+    if (first.meshPreview && first.meshPreview.positions && first.meshPreview.positions.length) throw new Error("the session answer still carries the mesh");
     if (!first.mesh || !/^\/api\/parts\/[0-9a-f-]{36}\/mesh$/.test(first.mesh.url)) throw new Error("the session answer does not say where the preview is");
     if (!call || call.status !== 200 || !(vertices > 1000)) throw new Error(`the preview route gave ${vertices} vertices (status ${call && call.status})`);
     if (first.previewUnavailable) throw new Error("the preview was reported unavailable");
@@ -306,8 +306,9 @@ const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#toke
     const text = await session.text();
     const body = JSON.parse(text);
     const ids = body.parts.map((p) => p.partId);
-    const lazy = ids.filter((id) => body.partsById[id].mesh && body.partsById[id].mesh.url);
-    const inline = ids.filter((id) => body.partsById[id].meshPreview && body.partsById[id].meshPreview.positions);
+    // a preview small enough to live in the part's row travels with it; any other is named by URL and fetched
+    const inline = ids.filter((id) => body.partsById[id].meshPreview && body.partsById[id].meshPreview.positions && body.partsById[id].meshPreview.positions.length > 0);
+    const lazy = ids.filter((id) => !inline.includes(id) && body.partsById[id].mesh && body.partsById[id].mesh.url);
     if (ids.length !== 3) throw new Error(`the reopened quote has ${ids.length} parts, not 3`);
     await waitForMeshes(lazy.length);
     await settle(800);

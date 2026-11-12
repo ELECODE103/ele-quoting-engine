@@ -103,8 +103,8 @@ test("time by file kind: 10 s for a DXF, a base plus time per megabyte for the o
   assert.strictEqual(pool._timeoutFor({ filePath: "a.dxf", sizeBytes: 40 * MB }), 10000);
   assert.strictEqual(pool._timeoutFor({ filePath: "a.stl", sizeBytes: 1 * MB }), 17000);
   assert.strictEqual(pool._timeoutFor({ filePath: "a.3mf", sizeBytes: 10 * MB }), 35000);
-  assert.strictEqual(pool._timeoutFor({ filePath: "a.step", sizeBytes: 2 * MB }), 42000);
-  assert.strictEqual(pool._timeoutFor({ filePath: "a.igs", sizeBytes: 12 * 1024 }), 30070);
+  assert.strictEqual(pool._timeoutFor({ filePath: "a.step", sizeBytes: 2 * MB }), 50000);
+  assert.strictEqual(pool._timeoutFor({ filePath: "a.igs", sizeBytes: 12 * 1024 }), 30117);
   assert.strictEqual(pool._timeoutFor({ filePath: "a.step", sizeBytes: 49 * MB }), 60000, "capped by PARSE_TIMEOUT_MS");
   assert.strictEqual(pool._timeoutFor({ filePath: "/x/y.enc", options: { ext: ".dxf" }, buffer: Buffer.alloc(10) }), 10000, "a decrypted re-read is judged by its real kind");
   process.env.PARSE_TIMEOUT_MS = "5000";

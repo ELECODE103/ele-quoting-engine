@@ -119,7 +119,7 @@ const limits = {
   get parseTimeoutMeshPerMbMs() { return envInt("PARSE_TIMEOUT_MESH_PER_MB_MS", 2000, 0, 600000); },
   /** STEP / IGES (the CAD kernel is slower to start and to mesh): base and per-megabyte allowance, ms. */
   get parseTimeoutCadBaseMs() { return envInt("PARSE_TIMEOUT_CAD_BASE_MS", 30000, 100, 600000); },
-  get parseTimeoutCadPerMbMs() { return envInt("PARSE_TIMEOUT_CAD_PER_MB_MS", 6000, 0, 600000); },
+  get parseTimeoutCadPerMbMs() { return envInt("PARSE_TIMEOUT_CAD_PER_MB_MS", 10000, 0, 600000); },
   /** V8 heap ceiling of one parse worker, MB (resourceLimits.maxOldGenerationSizeMb). Derived: 3/8 of MEMORY_BUDGET_MB (384 at 1 GB, 768 at 2 GB). */
   get parseMaxHeapMb() { return envInt("PARSE_MAX_HEAP_MB", Math.max(128, Math.min(4096, Math.floor(this.memoryBudgetMb * 3 / 8))), 64, 8192); },
   /** Parse jobs one client address may have running at once (the rest of its files wait their turn). */
