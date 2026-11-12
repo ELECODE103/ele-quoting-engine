@@ -316,7 +316,7 @@ const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#toke
   });
   let orderUrl = "";
   await step("checkout: shipping form, pay, back from the payment page to the paid order", async (s) => {
-    const pay = page.getByRole("button", { name: /Pay & Place Order/ });
+    const pay = page.getByRole("button", { name: /Pay and place order/ }); // button wording changed in the journey pass
     await page.getByLabel("Full Name").fill("Browser Check");
     await page.getByLabel("Street Address").fill("1 Test Street");
     await page.getByLabel("City").fill("Elgin");
