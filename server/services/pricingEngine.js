@@ -15,6 +15,7 @@
 const { DEFAULT_PRICING_RULES } = require("../config/defaults");
 const { resolveProcess } = require("../processes/registry");
 const dxf = require("../geometry/dxf");
+const shipping = require("./shipping");
 
 // Back-compat map from legacy PricingEngine method names to the standalone
 // pricing module `calculate` functions. Used to dispatch process definitions
@@ -128,8 +129,11 @@ class PricingEngine {
     const subtotal = cents(lineItems.reduce((sum, li) => sum + li.lineTotal, 0));
     const totalWeight = lineItems.reduce((sum, li) => sum + li.weight.total, 0);
 
-    // Shipping estimate
-    const shippingEstimate = r.shippingBaseRate + totalWeight * r.shippingPerKg;
+    // Shipping: how the "we ship it" line is charged is a setting (services/shipping.js). The default,
+    // "formula", is r.shippingBaseRate + totalWeight * r.shippingPerKg, the same expression this
+    // line always held. A manual result (oversize, overweight, weight unknown) carries no amount.
+    const shippingQuote = shipping.forQuote({ parts, totalWeightKg: totalWeight, subtotal }, r);
+    const shippingEstimate = shippingQuote.amount;
 
     // Lead time surcharge
     const leadTimeSurcharge = subtotal * (leadTimeMultiplier - 1);
@@ -171,6 +175,7 @@ class PricingEngine {
       leadTimeMultiplier,
       leadTimeSurcharge,
       shippingEstimate,
+      shipping: shippingQuote,
       paperwork: paperworkOn,
       paperworkFee,
       paperworkOffer,
