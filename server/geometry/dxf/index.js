@@ -53,6 +53,10 @@ function parseDXF(input, opts = {}) {
   const profile = analyseCurves(curves, { maxLoops: MAX_CONTOURS });
   if (!profile) throw new Error("No cut geometry found in this DXF.");
 
+  // More than a kilometre across: said in the words every other out-of-range model gets (parsers/saneGeometry.js),
+  // with the firm-quote offer. (It used to reach the customer as "this file is damaged or incomplete".)
+  if (profile.tooLarge) throw require("../../parsers/saneGeometry").refusal("geometry-out-of-range");
+
   const contours = profile.tooManyLoops ? profile.loopCount : profile.loops.length;
   if (contours > MAX_CONTOURS) {
     throw new Error(`This DXF has ${contours.toLocaleString()} contours — more than the instant quote reads (${MAX_CONTOURS.toLocaleString()}). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ.`);

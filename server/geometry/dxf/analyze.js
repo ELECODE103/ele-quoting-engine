@@ -30,7 +30,7 @@ const SLIVER_WIDTH_MM = 0.02;    // area / perimeter below this = a zero-area lo
 const MAX_MARKS = 40;
 const TAU = Math.PI * 2;
 
-const { CoverGrid, SegmentIndex, LoopIndex, Buckets, usable } = require("./spatial");
+const { CoverGrid, SegmentIndex, LoopIndex, Buckets, usable, MAX_EXTENT_MM } = require("./spatial");
 
 const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
 
@@ -704,6 +704,8 @@ function insideCorners(L) {
  * @param {object} [opts]
  * @param {number} [opts.maxLoops]    stop after counting the contours when there are more than this;
  *                                    returns { tooManyLoops: true, loopCount }
+ * A drawing more than MAX_EXTENT_MM (a kilometre) across is not analysed either:
+ *                                    returns { tooLarge: true, width, height } (mm)
  * @param {boolean} [opts.exhaustive] search without the spatial indexes (the original loops; for tests)
  * @param {"always"|"never"} [opts.rayIndex] force the ray index on or off (for tests)
  */
@@ -725,6 +727,17 @@ function analyseCurves(curves, opts = {}) {
   // Overall extents
   const bbox = [Infinity, Infinity, -Infinity, -Infinity];
   for (const L of all) { bbox[0] = Math.min(bbox[0], L.bbox[0]); bbox[1] = Math.min(bbox[1], L.bbox[1]); bbox[2] = Math.max(bbox[2], L.bbox[2]); bbox[3] = Math.max(bbox[3], L.bbox[3]); }
+
+  // A drawing more than a kilometre across is not a part, and it is not searched. Beyond that size
+  // the indexes stand aside (spatial.js usable()) and the original searches can outgrow memory before
+  // they finish: 400 four-metre circles on a 2 km sheet ended in "Set maximum size exceeded" after
+  // 12 s and 1.5 GB, which reached the customer as "this file is damaged" (or, in the worker, as a
+  // memory refusal). The caller says what is true: the drawing is too large. Nothing changes for a
+  // drawing up to a kilometre across, and one that large was never priced: a part over
+  // GEOMETRY_MAX_EXTENT_MM (10 m) is refused by the measurement check whatever its shape.
+  if (bbox[2] - bbox[0] > MAX_EXTENT_MM || bbox[3] - bbox[1] > MAX_EXTENT_MM) {
+    return { tooLarge: true, width: bbox[2] - bbox[0], height: bbox[3] - bbox[1] };
+  }
 
   // Crossings first: a loop that crosses itself (a bow-tie has zero net area) is not a sliver,
   // and two loops that cross each other belong to one part.
