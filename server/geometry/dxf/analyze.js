@@ -116,20 +116,67 @@ function cleanCurves(curves) {
     if (c.segs.length === 1) exploded.push(c);
     else for (const s of c.segs) exploded.push({ segs: [s], closed: false, layer: c.layer, src: c.src, approx: c.approx });
   }
+  // Two primitives are duplicates when their quantised end points (in either order), mid point,
+  // primitive count and length agree. That used to be one string key per primitive; a spline
+  // flattened to hundreds of chords made millions of them. The eight numbers are now hashed and
+  // compared as numbers (a key with a non-finite number keeps the string form).
+  const key = new Float64Array(8), seenKey = new Float64Array(8);
+  const keyOf = (c, len, mid, out) => {
+    const a = c.segs[0].a, b = c.segs[c.segs.length - 1].b;
+    let ax = q(a[0]), ay = q(a[1]), bx = q(b[0]), by = q(b[1]);
+    if (bx < ax || (bx === ax && by < ay)) { let t = ax; ax = bx; bx = t; t = ay; ay = by; by = t; } // unordered pair of ends
+    out[0] = ax; out[1] = ay; out[2] = bx; out[3] = by;
+    out[4] = q(mid[0]); out[5] = q(mid[1]); out[6] = c.segs.length; out[7] = Math.round(len / WELD_TOL_MM);
+    let h = 0, finite = true;
+    for (let i = 0; i < 8; i++) {
+      const v = out[i];
+      if (!Number.isFinite(v)) finite = false;
+      h = Math.imul(h ^ (v | 0), 0x9e3779b1) ^ Math.imul((v / 4294967296) | 0, 0x85ebca6b);
+      h = (h << 13) | (h >>> 19);
+    }
+    return finite ? h : null;
+  };
+  const curveLength = (c) => c.segs.reduce((s, x) => s + segLength(x), 0);
+  const curveMid = (c) => segPoint(c.segs[Math.floor(c.segs.length / 2)], 0.5);
+  let tableSize = 16;
+  while (tableSize < exploded.length * 2) tableSize *= 2;
+  const table = new Int32Array(tableSize).fill(-1); // slot → index in `kept`
+  const keptHash = new Int32Array(exploded.length);
   for (const c of exploded) {
-    const len = c.segs.reduce((s, x) => s + segLength(x), 0);
+    const len = curveLength(c);
     if (!(len > WELD_TOL_MM)) { degenerate++; continue; }
-    const first = c.segs[0], lastSeg = c.segs[c.segs.length - 1];
-    const ends = [pkey(first.a), pkey(lastSeg.b)].sort();
-    const mid = segPoint(c.segs[Math.floor(c.segs.length / 2)], 0.5);
-    const key = `${ends[0]}|${ends[1]}|${pkey(mid)}|${c.segs.length}|${Math.round(len / WELD_TOL_MM)}`;
-    if (seen.has(key)) { duplicates++; if (problems.length < MAX_MARKS) problems.push({ code: "duplicate", at: mid, layer: c.layer }); continue; }
-    seen.set(key, true);
+    const mid = curveMid(c);
+    const h = keyOf(c, len, mid, key);
+    let duplicate = false, slot = -1;
+    if (h === null) {
+      const first = c.segs[0], lastSeg = c.segs[c.segs.length - 1];
+      const ends = [pkey(first.a), pkey(lastSeg.b)].sort();
+      const text = `${ends[0]}|${ends[1]}|${pkey(mid)}|${c.segs.length}|${Math.round(len / WELD_TOL_MM)}`;
+      duplicate = seen.has(text);
+      if (!duplicate) seen.set(text, true);
+    } else {
+      slot = h & (tableSize - 1);
+      for (; table[slot] >= 0; slot = (slot + 1) & (tableSize - 1)) {
+        const k = table[slot];
+        if (keptHash[k] !== h) continue;
+        const o = kept[k];
+        keyOf(o, curveLength(o), curveMid(o), seenKey);
+        let same = true;
+        for (let i = 0; i < 8 && same; i++) same = key[i] === seenKey[i];
+        if (same) { duplicate = true; break; }
+      }
+    }
+    if (duplicate) { duplicates++; if (problems.length < MAX_MARKS) problems.push({ code: "duplicate", at: mid, layer: c.layer }); continue; }
+    if (slot >= 0) { table[slot] = kept.length; keptHash[kept.length] = h; }
     kept.push(c);
   }
 
   // Overlapping collinear single lines: merge each overlapping run into one line.
-  const groups = new Map();
+  // Lines are grouped by (direction, offset) bucket: a map per direction bucket keyed by the
+  // offset bucket, and the groups listed in the order they were first seen (the order the merged
+  // lines are emitted in).
+  const byAngle = new Map();
+  const groups = [];
   const others = [];
   for (const c of kept) {
     if (c.segs.length !== 1 || c.segs[0].k !== "L" || c.closed) { others.push(c); continue; }
@@ -139,15 +186,17 @@ function cleanCurves(curves) {
     dx /= len; dy /= len;
     if (dx < -1e-12 || (Math.abs(dx) <= 1e-12 && dy < 0)) { dx = -dx; dy = -dy; }
     const off = -dy * s.a[0] + dx * s.a[1];
-    const key = `${Math.round(Math.atan2(dy, dx) * 1e4)}:${Math.round(off / WELD_TOL_MM)}`;
+    const angleKey = Math.round(Math.atan2(dy, dx) * 1e4), offsetKey = Math.round(off / WELD_TOL_MM);
     const t0 = dx * s.a[0] + dy * s.a[1], t1 = dx * s.b[0] + dy * s.b[1];
-    let g = groups.get(key);
-    if (!g) { g = { dx, dy, off, items: [] }; groups.set(key, g); }
+    let byOffset = byAngle.get(angleKey);
+    if (!byOffset) { byOffset = new Map(); byAngle.set(angleKey, byOffset); }
+    let g = byOffset.get(offsetKey);
+    if (!g) { g = { dx, dy, off, items: [] }; byOffset.set(offsetKey, g); groups.push(g); }
     g.items.push({ lo: Math.min(t0, t1), hi: Math.max(t0, t1), c });
   }
   let overlaps = 0;
   const lines = [];
-  for (const g of groups.values()) {
+  for (const g of groups) {
     g.items.sort((a, b) => a.lo - b.lo);
     let run = [g.items[0]], hi = g.items[0].hi;
     const flush = () => {
@@ -188,30 +237,69 @@ function chain(curves) {
     if (c.closed || dist(a, b) <= WELD_TOL_MM) loops.push({ segs: c.segs, closed: true, approx: !!c.approx });
     else open.push(c);
   }
-  // Cluster the open ends (union-find over a grid with 3×3 neighbourhood lookup)
-  const ends = [];
-  open.forEach((c, i) => { ends.push({ p: c.segs[0].a, curve: i, end: 0 }, { p: c.segs[c.segs.length - 1].b, curve: i, end: 1 }); });
-  const parent = ends.map((_, i) => i);
+  // Cluster the open ends (union-find over a grid with 3×3 neighbourhood lookup).
+  // End 2i is the start of open curve i, end 2i + 1 its finish.
+  const endCount = open.length * 2;
+  const endPoint = (i) => { const c = open[i >> 1]; return i & 1 ? c.segs[c.segs.length - 1].b : c.segs[0].a; };
+  const parent = new Int32Array(endCount);
+  for (let i = 0; i < endCount; i++) parent[i] = i;
   const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
   const cell = WELD_TOL_MM;
-  const grid = new Map();
-  ends.forEach((e, i) => {
-    const cx = Math.floor(e.p[0] / cell), cy = Math.floor(e.p[1] / cell);
-    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
-      const b = grid.get(`${cx + dx},${cy + dy}`);
-      if (!b) continue;
-      for (const j of b) if (dist(ends[j].p, e.p) <= WELD_TOL_MM) parent[find(i)] = find(j);
+  const weld2 = WELD_TOL_MM * WELD_TOL_MM * (1 + 1e-9);
+  const weld = (i, p, j) => {
+    const o = endPoint(j), ex = o[0] - p[0], ey = o[1] - p[1];
+    if (ex * ex + ey * ey > weld2) return; // clearly apart: the exact test below would say so too
+    if (dist(o, p) <= WELD_TOL_MM) parent[find(i)] = find(j);
+  };
+  // cell → ends. When the cell indices fit 32-bit integers (coordinates within ±40 km) the cells
+  // live in an open-addressing table with the ends of a cell chained through `nextEnd`; otherwise
+  // in a Map keyed by text, as before. Which ends share a cluster does not depend on the order
+  // they are met in.
+  let intCells = true;
+  for (let i = 0; i < endCount && intCells; i++) { const p = endPoint(i); intCells = Math.abs(p[0]) < 4e7 && Math.abs(p[1]) < 4e7; }
+  if (intCells) {
+    let cap = 16;
+    while (cap < endCount * 2) cap *= 2;
+    const mask = cap - 1;
+    const slotX = new Int32Array(cap), slotY = new Int32Array(cap), head = new Int32Array(cap).fill(-1), nextEnd = new Int32Array(endCount);
+    for (let i = 0; i < endCount; i++) {
+      const p = endPoint(i);
+      const cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const x = cx + dx, y = cy + dy;
+        let h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) & mask;
+        while (head[h] !== -1 && (slotX[h] !== x || slotY[h] !== y)) h = (h + 1) & mask;
+        for (let j = head[h]; j !== -1; j = nextEnd[j]) weld(i, p, j);
+      }
+      let h = (Math.imul(cx, 73856093) ^ Math.imul(cy, 19349663)) & mask;
+      while (head[h] !== -1 && (slotX[h] !== cx || slotY[h] !== cy)) h = (h + 1) & mask;
+      if (head[h] === -1) { slotX[h] = cx; slotY[h] = cy; }
+      nextEnd[i] = head[h]; head[h] = i;
     }
-    const k = `${cx},${cy}`;
-    if (!grid.has(k)) grid.set(k, []);
-    grid.get(k).push(i);
-  });
-  const nodes = new Map(); // root → [end indices]
-  ends.forEach((_, i) => { const r = find(i); if (!nodes.has(r)) nodes.set(r, []); nodes.get(r).push(i); });
-  const nodeOf = (i) => nodes.get(find(i));
-
+  } else {
+    const grid = new Map();
+    for (let i = 0; i < endCount; i++) {
+      const p = endPoint(i);
+      const cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const b = grid.get(`${cx + dx},${cy + dy}`);
+        if (b) for (const j of b) weld(i, p, j);
+      }
+      const k = `${cx},${cy}`;
+      const here = grid.get(k);
+      if (here) here.push(i); else grid.set(k, [i]);
+    }
+  }
+  // Nodes (clusters of ends): size, and for a node of exactly two ends, each end's partner.
+  const root = new Int32Array(endCount), nodeSize = new Int32Array(endCount), nodeFirst = new Int32Array(endCount).fill(-1), partner = new Int32Array(endCount).fill(-1);
+  for (let i = 0; i < endCount; i++) { const r = find(i); root[i] = r; nodeSize[r]++; }
   const junctions = [];
-  for (const members of nodes.values()) if (members.length > 2) junctions.push(ends[members[0]].p);
+  for (let i = 0; i < endCount; i++) {
+    const r = root[i];
+    if (nodeFirst[r] < 0) { nodeFirst[r] = i; if (nodeSize[r] > 2) junctions.push(endPoint(i)); } // nodes in order of their first end
+    else if (nodeSize[r] === 2) { partner[i] = nodeFirst[r]; partner[nodeFirst[r]] = i; }
+  }
+  const degree = (i) => nodeSize[root[i]];
 
   const used = new Uint8Array(open.length);
   const openChains = [];
@@ -223,15 +311,14 @@ function chain(curves) {
       used[ci] = 1;
       const c = open[ci];
       approx = approx || !!c.approx;
-      if (enter === 0) segs.push(...c.segs); else for (let k = c.segs.length - 1; k >= 0; k--) segs.push(reverseSeg(c.segs[k]));
+      if (enter === 0) for (let k = 0; k < c.segs.length; k++) segs.push(c.segs[k]); else for (let k = c.segs.length - 1; k >= 0; k--) segs.push(reverseSeg(c.segs[k]));
       const exitIdx = ci * 2 + (enter === 0 ? 1 : 0);
-      const node = nodeOf(exitIdx);
-      if (node.length !== 2) return { segs, closed: false, approx, endNode: node };
-      const other = node[0] === exitIdx ? node[1] : node[0];
-      const oc = ends[other].curve;
-      if (oc === startCurve && ends[other].end === startEnd) return { segs, closed: true, approx };
-      if (used[oc]) return { segs, closed: false, approx, endNode: node };
-      ci = oc; enter = ends[other].end;
+      if (degree(exitIdx) !== 2) return { segs, closed: false, approx };
+      const other = partner[exitIdx];
+      const oc = other >> 1, oe = other & 1;
+      if (oc === startCurve && oe === startEnd) return { segs, closed: true, approx };
+      if (used[oc]) return { segs, closed: false, approx };
+      ci = oc; enter = oe;
     }
   };
   // Start open chains at loose ends / junctions first so they are walked end to end
@@ -239,7 +326,7 @@ function chain(curves) {
     if (used[i]) continue;
     for (const e of [0, 1]) {
       if (used[i]) break;
-      if (nodeOf(i * 2 + e).length !== 2) openChains.push(walkFrom(i, e));
+      if (degree(i * 2 + e) !== 2) openChains.push(walkFrom(i, e));
     }
   }
   for (let i = 0; i < open.length; i++) {
