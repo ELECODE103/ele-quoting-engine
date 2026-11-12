@@ -293,10 +293,14 @@ function mergeCollinear(xy, count, size) {
  * covered(x, y) is true when some triangle whose bounding box spans the
  * point's cell contains the point. A triangle used to be listed in every cell
  * its box spans; the long faces of a lattice span hundreds of cells each and
- * made that hundreds of megabytes. A triangle spanning more than WIDE cells is
- * now listed once per row (or per column, whichever is fewer) with its span,
- * and the span is checked when the list is read — the same triangles are
- * tried for a cell as before.
+ * made that hundreds of megabytes. Now a triangle is listed where that takes
+ * at most LIST_MAX entries:
+ *   - in the cells themselves when it spans few of them;
+ *   - in the blocks of a coarser level (4, 16, 64 … cells on a side) when it is large both ways;
+ *   - once per row, or per column, when it is long and thin.
+ * Its span in cells is kept and checked when a coarser list is read, so the
+ * triangles tried for a cell are exactly those that span it, as before (the
+ * answer is "any of them", so their order does not matter).
  */
 function buildGrid(mesh, px, py, facing, minx, miny, maxx, maxy) {
   const n = mesh.n, vidx = mesh.vidx;
@@ -305,50 +309,73 @@ function buildGrid(mesh, px, py, facing, minx, miny, maxx, maxy) {
   const cells = Math.max(8, Math.min(1024, Math.ceil(Math.sqrt(count / 2))));
   const W = (maxx - minx) || 1, H = (maxy - miny) || 1;
   const cellW = W / cells, cellH = H / cells;
-  const WIDE = 16;
-  const span = (t, out) => {
+  const LIST_MAX = 16, THIN = 2;
+  // levels: level k has blocks of 4^k cells on a side
+  const shift = [0], side = [cells];
+  while (side[side.length - 1] > 1) { shift.push(shift.length * 2); side.push(Math.ceil(cells / (1 << (shift.length - 1) * 2))); }
+  const LEVELS = shift.length;
+  // span of every triangle in cells: x0, x1, y0, y1 (-1 = not in the grid)
+  const span = new Int16Array(n * 4).fill(-1);
+  const where = new Int8Array(n); // 0..LEVELS-1 = that level, 100 = row lists, 101 = column lists, -1 = nowhere
+  const levelStart = [], rowStart = new Int32Array(cells + 1), colStart = new Int32Array(cells + 1);
+  for (let k = 0; k < LEVELS; k++) levelStart.push(new Int32Array(side[k] * side[k] + 1));
+  for (let t = 0; t < n; t++) {
+    where[t] = -1;
+    if (facing[t] === 0) continue;
     const i0 = vidx[t * 3], i1 = vidx[t * 3 + 1], i2 = vidx[t * 3 + 2];
     const x0 = Math.min(px[i0], px[i1], px[i2]), x1 = Math.max(px[i0], px[i1], px[i2]);
     const y0 = Math.min(py[i0], py[i1], py[i2]), y1 = Math.max(py[i0], py[i1], py[i2]);
-    out[0] = clampCell((x0 - minx) / cellW, cells); out[1] = clampCell((x1 - minx) / cellW, cells);
-    out[2] = clampCell((y0 - miny) / cellH, cells); out[3] = clampCell((y1 - miny) / cellH, cells);
-  };
-  // pass 1: sizes
-  const cellStart = new Int32Array(cells * cells + 1), rowStart = new Int32Array(cells + 1), colStart = new Int32Array(cells + 1);
-  const sp = [0, 0, 0, 0];
-  for (let t = 0; t < n; t++) {
-    if (facing[t] === 0) continue;
-    span(t, sp);
-    const nx = sp[1] - sp[0] + 1, ny = sp[3] - sp[2] + 1;
-    if (!(nx * ny > WIDE)) { for (let cy = sp[2]; cy <= sp[3]; cy++) for (let cx = sp[0]; cx <= sp[1]; cx++) cellStart[cy * cells + cx + 1]++; }
-    else if (ny <= nx) { for (let cy = sp[2]; cy <= sp[3]; cy++) rowStart[cy + 1]++; }
-    else { for (let cx = sp[0]; cx <= sp[1]; cx++) colStart[cx + 1]++; }
+    const cx0 = clampCell((x0 - minx) / cellW, cells), cx1 = clampCell((x1 - minx) / cellW, cells);
+    const cy0 = clampCell((y0 - miny) / cellH, cells), cy1 = clampCell((y1 - miny) / cellH, cells);
+    if (!(cx0 <= cx1 && cy0 <= cy1)) continue; // a NaN coordinate: the triangle was in no cell before either
+    span[t * 4] = cx0; span[t * 4 + 1] = cx1; span[t * 4 + 2] = cy0; span[t * 4 + 3] = cy1;
+    const nx = cx1 - cx0 + 1, ny = cy1 - cy0 + 1;
+    if (nx * ny > LIST_MAX && Math.min(nx, ny) <= THIN) {
+      if (ny <= nx) { where[t] = 100; for (let cy = cy0; cy <= cy1; cy++) rowStart[cy + 1]++; }
+      else { where[t] = 101; for (let cx = cx0; cx <= cx1; cx++) colStart[cx + 1]++; }
+      continue;
+    }
+    let k = 0;
+    while (((cx1 >> shift[k]) - (cx0 >> shift[k]) + 1) * ((cy1 >> shift[k]) - (cy0 >> shift[k]) + 1) > LIST_MAX) k++;
+    where[t] = k;
+    const st = levelStart[k], sd = side[k], sh = shift[k];
+    for (let by = cy0 >> sh; by <= cy1 >> sh; by++) for (let bx = cx0 >> sh; bx <= cx1 >> sh; bx++) st[by * sd + bx + 1]++;
   }
-  for (let k = 0; k < cells * cells; k++) cellStart[k + 1] += cellStart[k];
-  for (let k = 0; k < cells; k++) { rowStart[k + 1] += rowStart[k]; colStart[k + 1] += colStart[k]; }
-  // pass 2: fill. Row and column lists hold (triangle, first cell, last cell) of the other axis.
-  const cellTris = new Int32Array(cellStart[cells * cells]);
-  const rowTris = new Int32Array(rowStart[cells] * 3), colTris = new Int32Array(colStart[cells] * 3);
-  const cellFill = cellStart.slice(0, cells * cells), rowFill = rowStart.slice(0, cells), colFill = colStart.slice(0, cells);
+  const levelTris = [], levelFill = [];
+  for (let k = 0; k < LEVELS; k++) {
+    const st = levelStart[k], m = side[k] * side[k];
+    for (let i = 0; i < m; i++) st[i + 1] += st[i];
+    levelTris.push(new Int32Array(st[m])); levelFill.push(st.slice(0, m));
+  }
+  for (let i = 0; i < cells; i++) { rowStart[i + 1] += rowStart[i]; colStart[i + 1] += colStart[i]; }
+  const rowTris = new Int32Array(rowStart[cells]), colTris = new Int32Array(colStart[cells]);
+  const rowFill = rowStart.slice(0, cells), colFill = colStart.slice(0, cells);
   for (let t = 0; t < n; t++) {
-    if (facing[t] === 0) continue;
-    span(t, sp);
-    const nx = sp[1] - sp[0] + 1, ny = sp[3] - sp[2] + 1;
-    if (!(nx * ny > WIDE)) { for (let cy = sp[2]; cy <= sp[3]; cy++) for (let cx = sp[0]; cx <= sp[1]; cx++) cellTris[cellFill[cy * cells + cx]++] = t; }
-    else if (ny <= nx) { for (let cy = sp[2]; cy <= sp[3]; cy++) { const o = rowFill[cy]++ * 3; rowTris[o] = t; rowTris[o + 1] = sp[0]; rowTris[o + 2] = sp[1]; } }
-    else { for (let cx = sp[0]; cx <= sp[1]; cx++) { const o = colFill[cx]++ * 3; colTris[o] = t; colTris[o + 1] = sp[2]; colTris[o + 2] = sp[3]; } }
+    const k = where[t];
+    if (k < 0) continue;
+    const cx0 = span[t * 4], cx1 = span[t * 4 + 1], cy0 = span[t * 4 + 2], cy1 = span[t * 4 + 3];
+    if (k === 100) { for (let cy = cy0; cy <= cy1; cy++) rowTris[rowFill[cy]++] = t; continue; }
+    if (k === 101) { for (let cx = cx0; cx <= cx1; cx++) colTris[colFill[cx]++] = t; continue; }
+    const fill = levelFill[k], tris = levelTris[k], sd = side[k], sh = shift[k];
+    for (let by = cy0 >> sh; by <= cy1 >> sh; by++) for (let bx = cx0 >> sh; bx <= cx1 >> sh; bx++) tris[fill[by * sd + bx]++] = t;
   }
   const inside = (t, x, y) => {
     const i0 = vidx[t * 3], i1 = vidx[t * 3 + 1], i2 = vidx[t * 3 + 2];
     return pointInTri(x, y, px[i0], py[i0], px[i1], py[i1], px[i2], py[i2]);
   };
+  const spans = (t, cx, cy) => span[t * 4] <= cx && cx <= span[t * 4 + 1] && span[t * 4 + 2] <= cy && cy <= span[t * 4 + 3];
+  const fineStart = levelStart[0], fineTris = levelTris[0];
   const covered = (x, y) => {
     if (x < minx || x > maxx || y < miny || y > maxy) return false;
     const cx = clampCell((x - minx) / cellW, cells), cy = clampCell((y - miny) / cellH, cells);
-    const k = cy * cells + cx;
-    for (let m = cellStart[k], e = cellStart[k + 1]; m < e; m++) if (inside(cellTris[m], x, y)) return true;
-    for (let m = rowStart[cy] * 3, e = rowStart[cy + 1] * 3; m < e; m += 3) if (rowTris[m + 1] <= cx && cx <= rowTris[m + 2] && inside(rowTris[m], x, y)) return true;
-    for (let m = colStart[cx] * 3, e = colStart[cx + 1] * 3; m < e; m += 3) if (colTris[m + 1] <= cy && cy <= colTris[m + 2] && inside(colTris[m], x, y)) return true;
+    const c = cy * cells + cx;
+    for (let m = fineStart[c], e = fineStart[c + 1]; m < e; m++) if (inside(fineTris[m], x, y)) return true;
+    for (let k = 1; k < LEVELS; k++) {
+      const st = levelStart[k], tris = levelTris[k], b = (cy >> shift[k]) * side[k] + (cx >> shift[k]);
+      for (let m = st[b], e = st[b + 1]; m < e; m++) { const t = tris[m]; if (spans(t, cx, cy) && inside(t, x, y)) return true; }
+    }
+    for (let m = rowStart[cy], e = rowStart[cy + 1]; m < e; m++) { const t = rowTris[m]; if (spans(t, cx, cy) && inside(t, x, y)) return true; }
+    for (let m = colStart[cx], e = colStart[cx + 1]; m < e; m++) { const t = colTris[m]; if (spans(t, cx, cy) && inside(t, x, y)) return true; }
     return false;
   };
   return { covered };
