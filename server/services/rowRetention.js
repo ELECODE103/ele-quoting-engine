@@ -15,52 +15,117 @@
  * Removed:
  *   - draft quotes whose hold has run out (expiresAt passed; for old rows with
  *     no expiry, last touched more than `quoteDays` ago)
+ *   - draft quotes of visitors without an account that were never opened again,
+ *     QUOTE_ANON_DRAFT_HOURS (48 h) after they were last priced
  *   - parts older than the upload window that none of the above refers to
  */
 const DAY = 24 * 60 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
 const OPEN_RFQ = ["new", "in-review", "quoted", "accepted", "won"];
+const { limits } = require("../security/limits");
 
 const time = (v) => { const t = v ? Date.parse(v) : NaN; return Number.isFinite(t) ? t : null; };
 
-/** Which rows may go. Pure: reads the tables, deletes nothing. */
-function plan({ ordersDB, orderItemsDB, rfqsDB, partsDB, quotesDB }, opts = {}) {
-  const now = opts.now || Date.now();
-  const partMaxAge = (opts.partHours || Number(process.env.UPLOAD_RETENTION_HOURS) || 168) * 60 * 60 * 1000;
-  const quoteMaxAge = (opts.quoteDays || 30) * DAY;
+/** The part ids a stored quote row names, without unpacking its priced lines. */
+function quotePartIds(row) {
+  const ids = new Set();
+  const lines = row.lineItems;
+  const list = Array.isArray(lines) ? lines : (lines && Array.isArray(lines.pool) ? lines.pool : []);
+  for (const li of list) if (li && li.partId) ids.add(li.partId);
+  for (const c of row.config?.parts || []) if (c && c.partId) ids.add(c.partId);
+  return ids;
+}
 
-  const keepParts = new Set();
+/** Roughly how many bytes a quote row takes in the database. */
+function quoteRowBytes(row) {
+  let n = 400;
+  for (const key of ["lineItems", "config", "gate"]) {
+    if (row[key] === undefined || row[key] === null) continue;
+    try { n += JSON.stringify(row[key]).length; } catch { /* not counted */ }
+  }
+  return n + String(row.notes || "").length;
+}
+
+/**
+ * Who refers to what, in one pass over the tables. Pure: deletes nothing.
+ *
+ * A draft quote is LIVE until its price hold runs out — except the draft of a
+ * visitor without an account that was never opened again, which lapses
+ * QUOTE_ANON_DRAFT_HOURS (48 h) after it was last priced. (Most quotes are
+ * someone trying the tool once; a buyer who comes back, or signs in, keeps the
+ * full hold.)
+ *
+ * @returns {{
+ *   expiredQuotes: string[],                 draft quotes that have lapsed
+ *   keepQuotes: Set<string>,                 every quote that stays
+ *   partsProtected: Set<string>,             parts on a live order, an open request, a quote that became one,
+ *                                            or a signed-in customer's (or a reopened) live quote
+ *   partsOnAnonymousDrafts: Map<string, Array>,  parts only a never-reopened no-account draft refers to → those drafts
+ *   anonymousDrafts: Array<{id, lastActivity, bytes, partIds}>   live no-account drafts no order or request refers to
+ * }}
+ */
+function references({ ordersDB, orderItemsDB, rfqsDB, quotesDB }, opts = {}) {
+  const now = opts.now || Date.now();
+  const quoteMaxAge = (opts.quoteDays || 30) * DAY;
+  const anonMaxAge = (opts.anonDraftHours || limits.anonDraftHours) * HOUR;
+
+  const partsProtected = new Set();
   const keepQuotes = new Set();
+  const referenced = new Set(); // quotes an order or a request came from
 
   const orders = ordersDB.getAll();
   const live = new Set(orders.filter((o) => o.status !== "cancelled").map((o) => o.id));
-  for (const o of orders) if (o.quoteId) keepQuotes.add(o.quoteId);
-  for (const it of orderItemsDB.getAll()) if (it.partId && live.has(it.orderId)) keepParts.add(it.partId);
+  for (const o of orders) if (o.quoteId) referenced.add(o.quoteId);
+  for (const it of orderItemsDB.getAll()) if (it.partId && live.has(it.orderId)) partsProtected.add(it.partId);
   for (const r of rfqsDB.getAll()) {
-    if (r.quoteId) keepQuotes.add(r.quoteId);
-    if (OPEN_RFQ.includes(r.status)) for (const p of r.parts || []) if (p.partId) keepParts.add(p.partId);
+    if (r.quoteId) referenced.add(r.quoteId);
+    if (OPEN_RFQ.includes(r.status)) for (const p of r.parts || []) if (p.partId) partsProtected.add(p.partId);
   }
 
-  const quotes = quotesDB.getAll();
+  // The rows as stored (lines still packed): only ids and dates are read here.
+  const quotes = quotesDB ? (quotesDB.table || quotesDB).getAll() : [];
   const expiredQuotes = [];
+  const anonymousDrafts = [];
+  const softParts = new Map();
   for (const q of quotes) {
     const isDraft = !q.status || q.status === "draft";
     const expires = time(q.expiresAt);
     const touched = time(q.updatedAt) ?? time(q.createdAt);
+    const opened = time(q.lastOpenedAt);
     // A row with no usable date is left alone rather than guessed at.
-    const lapsed = expires != null ? expires < now : touched != null && now - touched > quoteMaxAge;
-    if (isDraft && lapsed && !keepQuotes.has(q.id)) { expiredQuotes.push(q.id); continue; }
+    const holdOver = expires != null ? expires < now : touched != null && now - touched > quoteMaxAge;
+    const anonymous = !q.userId;
+    const abandoned = anonymous && opened == null && touched != null && now - touched > anonMaxAge;
+    if (isDraft && (holdOver || abandoned) && !referenced.has(q.id)) { expiredQuotes.push(q.id); continue; }
     keepQuotes.add(q.id);
-    for (const li of q.lineItems || []) if (li && li.partId) keepParts.add(li.partId);
-    for (const c of q.config?.parts || []) if (c && c.partId) keepParts.add(c.partId);
+    const partIds = quotePartIds(q);
+    if (isDraft && anonymous && !referenced.has(q.id)) {
+      const draft = { id: q.id, lastActivity: Math.max(touched || 0, opened || 0) || null, bytes: quoteRowBytes(q), partIds, reopened: opened != null };
+      anonymousDrafts.push(draft);
+      // A draft somebody came back to protects its files like a customer's quote; one nobody reopened only softly.
+      if (draft.reopened) { for (const id of partIds) partsProtected.add(id); }
+      else for (const id of partIds) { if (!softParts.has(id)) softParts.set(id, []); softParts.get(id).push(draft); }
+    } else {
+      for (const id of partIds) partsProtected.add(id);
+    }
   }
+  const partsOnAnonymousDrafts = new Map();
+  for (const [id, drafts] of softParts) if (!partsProtected.has(id)) partsOnAnonymousDrafts.set(id, drafts);
+  return { expiredQuotes, keepQuotes, partsProtected, partsOnAnonymousDrafts, anonymousDrafts, now };
+}
 
+/** Which rows may go. Pure: reads the tables, deletes nothing. */
+function plan(models, opts = {}) {
+  const now = opts.now || Date.now();
+  const partMaxAge = (opts.partHours || Number(process.env.UPLOAD_RETENTION_HOURS) || 168) * 60 * 60 * 1000;
+  const refs = references(models, { ...opts, now });
   const staleParts = [];
-  for (const p of partsDB.getAll()) {
-    if (keepParts.has(p.id)) continue;
+  for (const p of models.partsDB.getAll()) {
+    if (refs.partsProtected.has(p.id) || refs.partsOnAnonymousDrafts.has(p.id)) continue;
     const created = time(p.createdAt);
     if (created != null && now - created > partMaxAge) staleParts.push(p.id);
   }
-  return { expiredQuotes, staleParts };
+  return { expiredQuotes: refs.expiredQuotes, staleParts };
 }
 
 /**
@@ -81,4 +146,4 @@ function sweepRows(models, opts = {}) {
   return { quotes: expiredQuotes.length, parts: staleParts.length, bytesBefore, bytesAfter };
 }
 
-module.exports = { plan, sweepRows };
+module.exports = { plan, sweepRows, references, quotePartIds, OPEN_RFQ };
