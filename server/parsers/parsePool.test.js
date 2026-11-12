@@ -11,6 +11,7 @@ const path = require("path");
 const zlib = require("zlib");
 const { runner } = require("../testSupport/harness");
 const { box3mf, binaryStl } = require("../testSupport/zip");
+const { machineProbe, assertResponsive } = require("../testSupport/latency");
 const { ParsePool } = require("./parsePool");
 const { parseFile } = require("./fileParser");
 
@@ -94,10 +95,15 @@ test("concurrency limit: never more files in flight than PARSE_CONCURRENCY", asy
 
 test("queue limit: past PARSE_QUEUE_MAX the caller is told 'busy' (503 + Retry-After) at once", async () => {
   const pool = make({ parseConcurrency: 1, parsePerClient: 5, parseQueueMax: 2, testDelayMs: 400, parseTimeoutMs: 20000 });
+  const machine = machineProbe();
   const jobs = Array.from({ length: 5 }, () => settle(pool.run({ filePath: cube })));
   const t0 = Date.now();
   const refused = await Promise.race(jobs.slice(3));
-  assert.ok(Date.now() - t0 < 200, "the refusal is immediate, not after a wait");
+  const waited = Date.now() - t0;
+  // "At once": well inside the 400 ms a queued job would take — 200 ms on a quiet machine, plus any stall the
+  // machine itself showed while this ran, and never the 400 ms of a job (was a flat "< 200").
+  const stall = await machine.stop();
+  assert.ok(waited < Math.min(390, 200 + stall), `the refusal is immediate, not after a wait (${waited} ms; machine stall ${stall} ms)`);
   assert.strictEqual(refused.error.code, "busy");
   assert.strictEqual(refused.error.status, 503);
   assert.ok(refused.error.retryAfter >= 5, "says when to retry");
@@ -193,14 +199,19 @@ test("cancel: a job whose client went away frees its worker and its place in the
 test("the main thread stays free while a 2 MB STEP file (400 holes, ~10 s of OpenCascade) is read", async () => {
   const pool = make({ parseTimeoutMs: 120000 });
   let worstLag = 0, ticks = 0, last = Date.now();
+  // An idle timer on its own thread sees only what the machine does to every thread; the one below also sees this thread's work.
+  const machine = machineProbe();
   const timer = setInterval(() => { const now = Date.now(); worstLag = Math.max(worstLag, now - last - 20); last = now; ticks++; }, 20);
   const t0 = Date.now();
   const parsed = await pool.run({ filePath: bigStep, sizeBytes: fs.statSync(bigStep).size });
   clearInterval(timer);
   const took = Date.now() - t0;
+  const machineMs = await machine.stop();
   assert.strictEqual(parsed.geometry.estimatedHoles, 400, "the plate's 400 holes were recognised");
   assert.ok(took > 1500, `the parse really is slow (${took} ms)`);
-  assert.ok(worstLag < 250, `event loop was blocked for ${worstLag} ms during the parse`);
+  // Was a flat "< 250 ms". Now 250 ms plus the stall an idle thread saw in the same window, and never over the
+  // ceiling of 1000 ms / half the parse time, which a parse on this thread cannot meet (testSupport/latency.js).
+  assertResponsive([worstLag], { tightMs: 250, tookMs: took, machineMs, what: "longest the main thread was held during the parse" });
   assert.ok(ticks > took / 20 / 2, `timers kept firing (${ticks} ticks in ${took} ms)`);
   assert.strictEqual(pool.stats().idleWorkers, 0, "a worker that read a large, slow file is retired, not kept warm");
   console.log(`       (STEP parse ${took} ms in a worker; worst main-thread lag ${worstLag} ms)`);

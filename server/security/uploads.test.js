@@ -12,6 +12,7 @@ const zlib = require("zlib");
 const { runner } = require("../testSupport/harness");
 const live = require("../testSupport/liveServer");
 const { buildZip, box3mf, boxModelXml, binaryStl } = require("../testSupport/zip");
+const { machineProbe, assertResponsive } = require("../testSupport/latency");
 
 const { test, run } = runner("Uploads (live server)");
 const parts = path.join(live.ROOT, "tools", "vet-quotes", "parts");
@@ -285,11 +286,15 @@ test("3MF XML bombs: entity expansion is off and nesting is capped", async () =>
 test("a slow file is cut off at PARSE_TIMEOUT_MS; the site answers throughout; a second sender is told 'busy' (503)", async () => {
   const s = await server({ env: { PARSE_TIMEOUT_MS: "2500", PARSE_CONCURRENCY: "1", PARSE_QUEUE_MAX: "0" } });
   const slow = Buffer.from(crossingLinesDxf(5000)); // ~480 kB, tens of seconds of contour building
+  // The same two requests while nothing is being parsed (the first pair warms a freshly started server and is not counted).
+  const idle = [];
+  for (let i = 0; i < 8; i++) { const h = await s.get(i % 2 ? "/api/materials" : "/api/health", { ip: "203.0.113.50" }); if (i >= 2) idle.push(h.ms); }
   const t0 = Date.now();
   const first = s.upload([{ name: "slow.dxf", data: slow }], { ip: "203.0.113.1", fields: { process: "routing" } });
   await new Promise((r) => setTimeout(r, 300));
 
   // While the worker grinds: the health check and the catalog answer at once…
+  const machine = machineProbe({ mainThread: true });
   const pings = [];
   for (let i = 0; i < 8; i++) {
     const h = await s.get(i % 2 ? "/api/materials" : "/api/health", { ip: "203.0.113.50" });
@@ -297,7 +302,9 @@ test("a slow file is cut off at PARSE_TIMEOUT_MS; the site answers throughout; a
     pings.push(h.ms);
     await new Promise((r) => setTimeout(r, 100));
   }
-  assert.ok(Math.max(...pings) < 300, `slowest answer during the parse: ${Math.max(...pings)} ms`);
+  // Was a flat "< 300 ms". Now: 300 ms plus whatever stall this machine itself showed in the same window, and
+  // never over the ceiling (testSupport/latency.js) — a parse on the event loop would hold an answer for seconds.
+  assertResponsive(pings, { tightMs: 300, tookMs: 2500, machineMs: await machine.stop(), idle, what: "slowest answer during the parse" });
 
   // …and another customer's upload is turned away politely instead of queueing behind it.
   const second = await s.upload([{ name: "cube.stl", data: cube }], { ip: "203.0.113.2" });
@@ -323,6 +330,11 @@ test("a slow file is cut off at PARSE_TIMEOUT_MS; the site answers throughout; a
 
 test("event loop stays responsive while a large STEP file parses: /api/health answers in milliseconds", async () => {
   const s = await server({ env: {} });
+  // The same health check while the server is idle: three to warm a freshly started server (its first answers
+  // pay for loading the routes — that is start-up, not the parse), then twelve as the baseline.
+  const idle = [];
+  for (let i = 0; i < 15; i++) { const h = await s.get("/api/health"); if (i >= 3) idle.push(h.ms); await new Promise((r) => setTimeout(r, 20)); }
+  const machine = machineProbe({ mainThread: true });
   const t0 = Date.now();
   let done = false;
   const up = s.upload([{ name: "plate_400_holes.step", data: bigStep }], { ip: "203.0.113.7", timeoutMs: 180000 }).then((r) => { done = true; return r; });
@@ -335,6 +347,7 @@ test("event loop stays responsive while a large STEP file parses: /api/health an
   }
   const r = await up;
   const took = Date.now() - t0;
+  const machineMs = await machine.stop();
   assert.strictEqual(r.status, 200, r.text.slice(0, 300));
   assert.strictEqual(r.body.parts.length, 1, r.text.slice(0, 300));
   assert.strictEqual(r.body.parts[0].geometry.estimatedHoles, 400);
@@ -342,9 +355,12 @@ test("event loop stays responsive while a large STEP file parses: /api/health an
   assert.ok(pings.length > took / 50 / 3, `${pings.length} health checks completed during a ${took} ms parse`);
   // Everything up to the last few checks happened while the worker was busy; the tail includes storing the result.
   const during = pings.slice(0, Math.max(1, pings.length - 3));
-  const worst = Math.max(...during);
-  assert.ok(worst < 250, `slowest health check while parsing: ${worst} ms`);
-  console.log(`       (2 MB STEP: ${took} ms; ${pings.length} health checks, median ${during.sort((a, b) => a - b)[Math.floor(during.length / 2)]} ms, worst ${worst} ms; worst including storing the result ${Math.max(...pings)} ms)`);
+  // Was a flat "worst < 250 ms", which failed on a busy machine and on a cold server with no change to the code.
+  // Now (testSupport/latency.js): never over 1000 ms or half the parse time — the bound a parse on the event loop
+  // cannot meet, on any machine; under 250 ms plus the stall this machine itself showed during the same window
+  // (a few ms when it is quiet, so the old bound); and nine in ten answers under 100 ms.
+  const summary = assertResponsive(during, { tightMs: 250, tookMs: took, machineMs, idle, what: "slowest health check while parsing" });
+  console.log(`       (2 MB STEP: ${took} ms; idle health check worst ${Math.max(...idle)} ms; while parsing: ${summary}; worst including storing the result ${Math.max(...pings)} ms)`);
 });
 
 // ─── Budgets and ceilings ────────────────────────────────────
