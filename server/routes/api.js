@@ -1150,7 +1150,9 @@ router.get("/admin/stats", authenticate, requireAdmin, (req, res) => {
     // Fulfilled order statuses — money we actually got (or will get on shipment)
     const PAID_STATUSES = ["paid", "received", "in_production", "quality_check", "packing", "shipped", "delivered"];
     const paidOrders = orders.filter((o) => PAID_STATUSES.includes(o.status));
-    const paidRevenue = paidOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+    // What was collected, not what was listed: after a promotion code (amountPaid) and less anything refunded.
+    const collected = (o) => (o.amountPaid !== null && o.amountPaid !== undefined ? Number(o.amountPaid) || 0 : o.total || 0) - (Number(o.refundedAmount) || 0);
+    const paidRevenue = paidOrders.reduce((sum, o) => sum + Math.max(0, collected(o)), 0);
 
     // Open pipeline: draft quotes waiting to be purchased
     const openQuotes = quotes.filter((q) => q.status === "draft").length;
