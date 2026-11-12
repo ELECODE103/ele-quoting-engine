@@ -15,7 +15,7 @@
  *       that is not reclaimed; plus depowder/blast minutes.
  * Each sub-process keeps its own price floor (Shop group).
  */
-const { clampNumber, PRINT_SUBPROCESSES, costBuildup, round, applyCommercialTerms, finishCost } = require("../shared");
+const { clampNumber, PRINT_SUBPROCESSES, costBuildup, round, applyCommercialTerms, finishCost, requiredPrice } = require("../shared");
 const { resolveFeatures } = require("../featureAdapter");
 
 function calculate(params, rules) {
@@ -24,7 +24,7 @@ function calculate(params, rules) {
   const qty = Math.max(1, Number(quantity) || 1);
   const cb = costBuildup();
   const materialDensity = clampNumber(material.density, 0.1, 25, 1.2); // g/cm³
-  const pricePerCm3 = Number(material.pricePerCm3) || 0.1;
+  const pricePerCm3 = requiredPrice(material.pricePerCm3, "the material's price per cm³"); // no built-in price
   const laborRate = clampNumber(r.laborRatePerHour, 1, 1e4, 65);
 
   const layerHeightMm = clampNumber(layerHeight > 0 ? layerHeight : material.defaultLayerHeight, 0.02, 1.0, 0.2);

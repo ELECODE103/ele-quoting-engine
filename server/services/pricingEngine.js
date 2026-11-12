@@ -67,11 +67,13 @@ class PricingEngine {
    * @returns {Object} detailed price breakdown
    */
   calculatePartPrice(params) {
-    const def = resolveProcess(params.process || 'sheetmetal');
+    // No process, or one the registry does not know, is refused (resolveProcess throws): a part
+    // is never priced by a model picked for it by default.
+    const def = resolveProcess(params.process);
     const calculate =
       (def.pricing && def.pricing.calculate) ||
-      PRICE_METHOD_CALCULATORS[def.priceMethod] ||
-      PRICE_METHOD_CALCULATORS.calculateSheetMetalPrice;
+      PRICE_METHOD_CALCULATORS[def.priceMethod];
+    if (typeof calculate !== "function") throw new Error(`Process ${def.slug} has no pricing model`);
     // 2D input (DXF): extrude the profile to the selected stock thickness so
     // the routing model sees the same features a STEP plate gives it.
     if (dxf.is2D(params.geometry)) {

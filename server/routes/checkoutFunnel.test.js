@@ -157,7 +157,14 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.notStrictEqual(r.body.quoteId, QUOTE_ID);
     assert.strictEqual(quotesDB.getById(QUOTE_ID).orderTotal, before.orderTotal);
     // A stranger sending the same id can't overwrite it either.
-    const stranger = await h.post("/api/quote", { quoteId: QUOTE_ID, parts: [h.cncConfig(partId, 1)], leadTimeSlug: "standard" });
+    // (Since the review of 2026-11-11 the buyer's part is the buyer's: a stranger cannot price it at all,
+    // so the stranger brings a part of their own.)
+    const theirs = await h.post("/api/quote", { quoteId: QUOTE_ID, parts: [h.cncConfig(partId, 1)], leadTimeSlug: "standard" });
+    assert.strictEqual(theirs.status, 400);
+    assert.strictEqual(theirs.body.code, "part-not-found", "the buyer's part is not found for anyone else");
+    const strangerPart = await h.uploadCube();
+    const stranger = await h.post("/api/quote", { quoteId: QUOTE_ID, parts: [h.cncConfig(strangerPart, 1)], leadTimeSlug: "standard" });
+    assert.strictEqual(stranger.status, 200, stranger.text);
     assert.notStrictEqual(stranger.body.quoteId, QUOTE_ID);
     assert.strictEqual(quotesDB.getById(QUOTE_ID).lineItems[0].quantity, 7);
   });
@@ -363,23 +370,38 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     const { materialsDB } = h.models;
     const sls = materialsDB.getAll().find((m) => m.subProcess === "sls" && m.active);
     assert.ok(sls, "the seed carries an SLS material the owner has not confirmed");
-    const hidden = await h.post("/api/quote", { parts: [{ partId, materialSlug: sls.slug, quantity: 1, process: "3d-printing", subProcess: "sls" }] });
+    // (As the buyer: the part is theirs. Each refusal is checked by its code, so a 400 for any other reason cannot pass for it.)
+    const hidden = await h.post("/api/quote", { parts: [{ partId, materialSlug: sls.slug, quantity: 1, process: "3d-printing", subProcess: "sls" }] }, buyer);
     assert.strictEqual(hidden.status, 400);
+    assert.strictEqual(hidden.body.code, "material-not-offered");
     const off = materialsDB.getAll().find((m) => m.process === "cnc" && !m.active);
-    if (off) assert.strictEqual((await h.post("/api/quote", { parts: [{ ...h.cncConfig(partId, 1), materialSlug: off.slug }] })).status, 400, "an inactive material is refused");
+    if (off) {
+      const inactive = await h.post("/api/quote", { parts: [{ ...h.cncConfig(partId, 1), materialSlug: off.slug, grade: "" }] }, buyer);
+      assert.strictEqual(inactive.status, 400, "an inactive material is refused");
+      assert.strictEqual(inactive.body.code, "material-not-offered");
+    }
     const pla = materialsDB.getAll().find((m) => m.subProcess === "fdm" && m.active);
-    const dyed = await h.post("/api/quote", { parts: [{ partId, materialSlug: pla.slug, finishSlug: "3dp-vapor-smooth", quantity: 1, process: "3d-printing", subProcess: "fdm" }] });
+    const dyed = await h.post("/api/quote", { parts: [{ partId, materialSlug: pla.slug, finishSlug: "3dp-vapor-smooth", quantity: 1, process: "3d-printing", subProcess: "fdm" }] }, buyer);
     assert.strictEqual(dyed.status, 400);
+    assert.strictEqual(dyed.body.code, "finish-not-offered");
     for (const slug of ["rush", "same-day"]) {
-      assert.strictEqual((await h.post("/api/quote", { parts: [h.cncConfig(partId, 1)], leadTimeSlug: slug })).status, 400, `${slug} cannot be priced`);
+      const fast = await h.post("/api/quote", { parts: [h.cncConfig(partId, 1)], leadTimeSlug: slug }, buyer);
+      assert.strictEqual(fast.status, 400, `${slug} cannot be priced`);
+      assert.strictEqual(fast.body.code, "lead-time-not-offered");
     }
   });
 
-  test("quantities are whole pieces", async () => {
-    const r = await h.post("/api/quote", { parts: [{ ...h.cncConfig(partId, 1), quantity: 2.7 }] });
-    assert.strictEqual(r.body.lineItems[0].quantity, 2);
-    const neg = await h.post("/api/quote", { parts: [{ ...h.cncConfig(partId, 1), quantity: -4 }] });
-    assert.strictEqual(neg.body.lineItems[0].quantity, 1);
+  // Until the review of 2026-11-11 a quantity that was not a whole number of pieces was turned into one
+  // (2.7 → 2, −4 → 1) and priced. Nothing a request sends is replaced by another value now: it is refused.
+  test("quantities are whole pieces: anything else is refused, not rounded", async () => {
+    for (const quantity of [2.7, -4, 0, "three"]) {
+      const r = await h.post("/api/quote", { parts: [{ ...h.cncConfig(partId, 1), quantity }] }, buyer);
+      assert.strictEqual(r.status, 400, `${quantity}: ${r.text}`);
+      if (typeof quantity === "number") assert.strictEqual(r.body.code, "quantity-invalid");
+      assert.strictEqual(r.body.lineItems, undefined);
+    }
+    const ok = await h.post("/api/quote", { parts: [{ ...h.cncConfig(partId, 1), quantity: 3 }] }, buyer);
+    assert.strictEqual(ok.body.lineItems[0].quantity, 3);
   });
 
   test("a stored quote on a lead time that is no longer offered cannot be checked out", async () => {
@@ -405,7 +427,9 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     const second = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP, shippingAddress: "200 Dock Rd" }, buyer);
     assert.strictEqual(second.status, 200);
     assert.strictEqual(second.body.orderId, first.body.orderId);
-    assert.notStrictEqual(second.body.sessionUrl, first.body.sessionUrl, "a fresh Stripe session");
+    // Review 2026-11-11 (F8): the order's Stripe session is still open for the same amount, so the buyer
+    // is sent back to it; a new one is not minted for every return. (This used to assert "a fresh Stripe session".)
+    assert.strictEqual(second.body.sessionUrl, first.body.sessionUrl, "the same Stripe session, while it is open and the amount is unchanged");
     assert.strictEqual(ordersDB.query((o) => o.quoteId === q.body.quoteId).length, 1);
     assert.strictEqual(ordersDB.getById(first.body.orderId).shippingAddress, "200 Dock Rd", "the corrected address is kept");
   });

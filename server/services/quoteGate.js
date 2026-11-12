@@ -33,14 +33,23 @@ function num(v, fallback) {
 }
 
 /**
+ * Limits are applied to what is being bought, not to how it was typed in (payments review
+ * 2026-11-11, F-03): the quantity limit is applied to each line, to each part summed over its
+ * lines (and over lines whose stored geometry is identical), and to the order; the big-ticket
+ * limit to each line and to the order's parts total; and each line is judged on the DFM result
+ * of ITS process and configuration, never on another line's result for the same part.
+ *
  * @param {Array} lineItems — pricing-engine line items (with meta + quantity)
- * @param {Object} dfmByPartId — { [partId]: { summary, checks } } for each line's chosen process
+ * @param {Array|Object} dfmByLine — the DFM result of each line, in line order: [{ summary, checks }, …].
+ *   (An object keyed by part id is still accepted for callers with one line per part.)
  * @param {Object} [rules] — pricing rules; the gate thresholds (rfqQuantityThreshold,
  *   bigTicketLineTotal, lowVolumeRatio) are read from here when present so the
  *   admin pricing console can tune them. Missing keys fall back to the constants.
+ * @param {Object} [opts] — { geometryKeys: string[] } a key per line that is equal for lines whose
+ *   stored geometry is identical (the same drawing uploaded twice), so their quantities are summed
  * @returns {{ requiresRfq: boolean, reasons: Array<{partId, code, message}> }}
  */
-function evaluate(lineItems = [], dfmByPartId = {}, rules = {}) {
+function evaluate(lineItems = [], dfmByLine = {}, rules = {}, opts = {}) {
   const reasons = [];
   const num = (v, fallback) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
   const qtyThreshold = num(rules.rfqQuantityThreshold, RFQ_QTY_THRESHOLD);
@@ -49,7 +58,8 @@ function evaluate(lineItems = [], dfmByPartId = {}, rules = {}) {
   const reviewLegacy = num(rules.gateReviewOnLegacyFeatures, 1) >= 1;
   const thinWallMm = num(rules.gateReviewThinWallMm, 1.0);
 
-  for (const li of lineItems) {
+  const person = shopFacts.when("quote-turnaround", (v) => ` within ${v}`);
+  for (const [index, li] of lineItems.entries()) {
     const partId = li.partId;
     const process = li.meta?.process || "";
     const qty = Number(li.quantity) || 1;
@@ -62,7 +72,7 @@ function evaluate(lineItems = [], dfmByPartId = {}, rules = {}) {
       });
     }
 
-    const dfm = dfmByPartId[partId];
+    const dfm = Array.isArray(dfmByLine) ? dfmByLine[index] : dfmByLine[partId];
     if (dfm && dfm.summary && dfm.summary.manufacturable === false) {
       const fails = (dfm.checks || []).filter((c) => c.severity === "fail").map((c) => c.label);
       reasons.push({
@@ -125,6 +135,48 @@ function evaluate(lineItems = [], dfmByPartId = {}, rules = {}) {
         message: `Line total over $${bigTicket.toLocaleString()} — we confirm the price by hand before you pay`,
       });
     }
+  }
+
+  // ── What the lines add up to ────────────────────────────────────────────────
+  const qtyOf = (li) => Number(li.quantity) || 1;
+  const flagged = (code, ids) => reasons.some((r) => r.code === code && (!ids || ids.has(r.partId)));
+  // The same part on several lines, or the same geometry uploaded more than once: one run.
+  const geometryKeys = Array.isArray(opts.geometryKeys) ? opts.geometryKeys : [];
+  const groups = new Map();
+  lineItems.forEach((li, i) => {
+    for (const key of [`part:${li.partId}`, geometryKeys[i] ? `geometry:${geometryKeys[i]}` : null]) {
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, { lines: 0, pieces: 0, partIds: new Set(), first: li.partId });
+      const g = groups.get(key);
+      g.lines++; g.pieces += qtyOf(li); g.partIds.add(li.partId);
+    }
+  });
+  const summed = new Set();
+  for (const g of groups.values()) {
+    if (g.lines < 2 || g.pieces <= qtyThreshold || flagged("quantity", g.partIds) || summed.has(g.first)) continue;
+    summed.add(g.first);
+    reasons.push({
+      partId: g.first,
+      code: "quantity",
+      message: `${g.pieces} pieces of this part across ${g.lines} lines is over our ${qtyThreshold}-piece instant-order limit — production runs are quoted by a person${person}`,
+    });
+  }
+  const orderPieces = lineItems.reduce((sum, li) => sum + qtyOf(li), 0);
+  if (lineItems.length > 1 && orderPieces > qtyThreshold && !flagged("quantity")) {
+    reasons.push({
+      partId: null,
+      code: "order-quantity",
+      message: `${orderPieces} pieces in one order is over our ${qtyThreshold}-piece instant-order limit — production runs are quoted by a person${person}`,
+    });
+  }
+  // The big-ticket limit is the same figure for a line and for the order's parts total.
+  const partsTotal = lineItems.reduce((sum, li) => sum + (Number(li.lineTotal) || 0), 0);
+  if (lineItems.length > 1 && partsTotal > bigTicket && !flagged("big-ticket")) {
+    reasons.push({
+      partId: null,
+      code: "big-ticket-order",
+      message: `Order total over $${bigTicket.toLocaleString()} — we confirm the price by hand before you pay`,
+    });
   }
 
   return { requiresRfq: reasons.length > 0, reasons, threshold: qtyThreshold };

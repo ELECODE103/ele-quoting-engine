@@ -6,7 +6,7 @@ import { formatCurrency, formatDim } from '../utils/format';
 import ThreeViewer from '../components/ThreeViewer';
 import DxfPreview from '../components/DxfPreview';
 import DFMPanel from '../components/DFMPanel';
-import PartConfigurator from '../components/PartConfigurator';
+import PartConfigurator, { finishFits } from '../components/PartConfigurator';
 import OrderSummary from '../components/OrderSummary';
 import ProcessPicker from '../components/ProcessPicker';
 import { when, SENT_OUT_FINISHES } from '../facts';
@@ -132,10 +132,13 @@ export default function QuoteBuilder() {
     if (parts.length === 0) return;
     const todo = parts.map(dxfTodo).find(Boolean);
     if (todo) { setQuote(null); setQuoteError(todo); return; }
+    // Nothing is asked of the server until the material and finish lists are here and every part has a choice from them.
+    if (materials.length === 0 || finishes.length === 0 || parts.some((p) => !p.materialSlug || !p.finishSlug)) return;
     setQuoteLoading(true);
     try {
       const configs = parts.map((p) => ({
         partId: p.partId,
+        editKey: p.editKey, // shows this browser uploaded the part (needed until the part belongs to an account)
         materialSlug: p.materialSlug,
         grade: p.grade,
         thicknessMm: p.thicknessMm,
@@ -154,12 +157,85 @@ export default function QuoteBuilder() {
       setQuote(q);
       setDrawingName(q.drawingFileName || '');
       setQuoteError(null);
+      lastReset.current = '';
     } catch (err) {
       console.error('Quote error:', err);
-      setQuoteError(err?.message || `We couldn't price this setup. Change the material or quantity and try again, or call ${brand.phone}.`);
+      // The server refused one setting (it is no longer offered, or does not go with the rest):
+      // put that one selector back to a value that is offered and say so. The price then refreshes.
+      // Once per refusal: if the same one comes back, it is shown and left for the buyer.
+      const fix = resetFor(err);
+      const signature = `${err?.code}:${err?.data?.partId || ''}`;
+      if (fix && lastReset.current !== signature) {
+        lastReset.current = signature;
+        fix.apply();
+        setQuoteError(fix.message);
+      } else {
+        setQuoteError(err?.message || `We couldn't price this setup. Change the material or quantity and try again, or call ${brand.phone}.`);
+      }
     }
     setQuoteLoading(false);
-  }, [parts, selectedLeadTime, selectedProcess, notes, paperwork]);
+  }, [parts, selectedLeadTime, selectedProcess, notes, paperwork, materials, finishes]);
+
+  // A file dropped before the material and finish lists arrived (a quick upload on a slow connection)
+  // gets its starting choices once they are here, so a request never carries a placeholder.
+  useEffect(() => {
+    if (materials.length === 0 || finishes.length === 0) return;
+    if (!parts.some((p) => !p.materialSlug || !p.finishSlug)) return;
+    setParts((prev) => prev.map((p) => {
+      if (p.materialSlug && p.finishSlug) return p;
+      const m = materials.find((x) => x.slug === p.materialSlug) || materials.find((x) => x.slug === preferredMaterial) || materials[0];
+      const fresh = !p.materialSlug;
+      return {
+        ...p,
+        ...(fresh ? {
+          materialSlug: m.slug, grade: m.grades?.[0]?.name || '', thicknessMm: pickThickness(m, p.geometry),
+          subProcess: (p.process || selectedProcess) === 'cnc' ? 'milling' : (m.subProcess || ''), layerHeight: m.defaultLayerHeight || 0,
+        } : {}),
+        finishSlug: p.finishSlug || (finishes.find((f) => finishFits(f, m.slug)) || finishes[0]).slug,
+      };
+    }));
+  }, [materials, finishes, parts, preferredMaterial, selectedProcess]);
+
+  // What to put back when the server names a setting it will not price (`code`, with the part it is on).
+  const lastReset = useRef('');
+  function resetFor(err) {
+    const code = err?.code;
+    if (code === 'lead-time-not-offered') {
+      if (selectedLeadTime === 'standard') return null;
+      return { apply: () => setSelectedLeadTime('standard'), message: 'That lead time isn\'t available, so we set it back to Standard. The price below is for Standard.' };
+    }
+    const part = parts.find((p) => p.partId === err?.data?.partId);
+    if (!part) return null;
+    const mat = materials.find((m) => m.slug === part.materialSlug) || materials[0];
+    if (!mat) return null;
+    const firstFinish = (slug) => (finishes.find((f) => finishFits(f, slug)) || finishes[0])?.slug;
+    const set = (updates, what) => ({
+      apply: () => updatePart(part.partId, updates),
+      message: `The ${what} chosen for ${part.fileName} isn't available, so we set it back. Check the setup; the price below is for what is shown now.`,
+    });
+    switch (code) {
+      case 'material-not-offered':
+      case 'material-process-mismatch':
+      case 'material-unavailable': {
+        const m = materials.find((x) => x.slug !== part.materialSlug) || materials[0];
+        return set({
+          materialSlug: m.slug, grade: m.grades?.[0]?.name || '', thicknessMm: pickThickness(m, part.geometry),
+          subProcess: (part.process || selectedProcess) === 'cnc' ? 'milling' : (m.subProcess || ''),
+          layerHeight: m.defaultLayerHeight || 0, finishSlug: firstFinish(m.slug),
+        }, 'material');
+      }
+      case 'grade-not-offered': return set({ grade: mat.grades?.[0]?.name || '' }, 'grade');
+      case 'finish-not-offered':
+      case 'finish-not-for-material': return set({ finishSlug: firstFinish(mat.slug) }, 'finish');
+      case 'thickness-not-offered':
+      case 'thickness-required': return set({ thicknessMm: pickThickness(mat, part.geometry) }, 'stock thickness');
+      case 'layer-height-not-offered': return set({ layerHeight: mat.defaultLayerHeight || 0 }, 'layer height');
+      case 'infill-out-of-range': return set({ infill: 0.2 }, 'infill');
+      case 'sub-process-not-offered': return set({ subProcess: (part.process || selectedProcess) === 'cnc' ? 'milling' : (mat.subProcess || '') }, 'operation');
+      case 'quantity-invalid': return set({ quantity: 1 }, 'quantity');
+      default: return null;
+    }
+  }
 
   async function attachDrawing(file) {
     if (!file || !quote?.quoteId) return;
@@ -213,10 +289,10 @@ export default function QuoteBuilder() {
         geometry: p.geometry,
         dfm: p.dfm,
         meshPreview: p.meshPreview,
-        materialSlug: defaultMat?.slug || 'cnc-delrin',
+        materialSlug: defaultMat?.slug || '', // blank only if the lists have not arrived yet: filled in below when they do
         grade: defaultMat?.grades?.[0]?.name || '',
         thicknessMm: pickThickness(defaultMat, p.geometry),
-        finishSlug: fins[0]?.slug || 'raw',
+        finishSlug: fins[0]?.slug || '',
         quantity: 1,
         process: proc,
         subProcess: proc === 'cnc' ? 'milling' : (defaultMat?.subProcess || ''),
@@ -276,7 +352,7 @@ export default function QuoteBuilder() {
         materialSlug: mats[0].slug,
         grade: mats[0].grades?.[0]?.name || '',
         thicknessMm: pickThickness(mats[0], p.geometry),
-        finishSlug: fins[0]?.slug || 'raw',
+        finishSlug: fins[0]?.slug || '',
         layerHeight: mats[0].defaultLayerHeight || 0,
         infill: 0.2,
       })));

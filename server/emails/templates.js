@@ -581,6 +581,27 @@ function accountLocked({ minutes, resetUrl }) {
   });
 }
 
+/**
+ * Many wrong passwords were tried on the account from browsers that have never signed in to it.
+ * Nothing is paused for the owner (review 2026-11-11, F4), so this says what happened and what to do.
+ */
+function signInAttempts({ resetUrl }) {
+  return layout({
+    subject: `${brand.name}: wrong passwords tried on your account`,
+    preheader: "Someone tried several wrong passwords. Nobody got in.",
+    heading: "Wrong passwords were tried on your account",
+    paragraphs: [
+      "Hello,",
+      `Someone entered the wrong password for your ${brand.name} account a number of times. Nobody got in.`,
+      "You can still sign in as usual from a browser you have used before. If you have forgotten the password, choose a new one with the button below.",
+    ],
+    cta: resetUrl ? { label: "Choose a new password", url: resetUrl } : undefined,
+    after: [
+      `If it wasn't you, your password held. Make sure it is one you use nowhere else. Questions: ${brand.phone}.`,
+    ],
+  });
+}
+
 /** Two-step sign-in was switched on or off, or new recovery codes were made. */
 function twoFactorChanged({ change }) {
   const what = {
@@ -601,7 +622,7 @@ function twoFactorChanged({ change }) {
 // Every message carries the name of its template (`template`), which is all
 // the mailer writes to the log about it.
 const MESSAGES = {
-  verifyEmail, passwordResetRequested, passwordChanged, accountLocked, twoFactorChanged,
+  verifyEmail, passwordResetRequested, passwordChanged, accountLocked, signInAttempts, twoFactorChanged,
   rfqReceivedBuyer, partRequestBuyer, rfqReceivedShop, rfqQuoted, rfqAcceptedShop,
   orderConfirmation, newOrderShop, orderShipped,
 };

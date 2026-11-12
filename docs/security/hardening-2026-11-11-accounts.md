@@ -16,7 +16,7 @@ Scope: bot checks, the two request forms and their emails, accounts (registratio
 | 5 | Sign-in: five failures from one IP lock that IP out even with the right password; nothing slows a spread-out attack on one account | High | Fixed |
 | 5a | Password rules: 8 characters, no common-password check, over 72 bytes silently cut | Medium | Fixed |
 | 5b | Registration tells a visitor that an address already has an account | Low | Open by decision (section 13) |
-| 6 | Whoever registers the `ADMIN_EMAIL` address first is the admin | Critical on a new database | Fixed |
+| 6 | Whoever registers the `ADMIN_EMAIL` address first is the admin | Critical on a new database | Fixed here in part; closed by the review fixes (F3): the address cannot be registered at all and the admin account is made by a one-time setup |
 | 6a | Admin protected by one password | High | Fixed in code; the owner must enrol (section 9) |
 | 6b | Admin role read from the token, not the database | Medium | Fixed |
 | 7 | Session token in browser storage for 24 h, no way to end it | Medium | Fixed: httpOnly cookie, CSRF token, server-side sign-out |
@@ -141,7 +141,7 @@ Correct sign-ins were not counted (the limiter had `skipSuccessfulRequests`), so
 **Fix** (`server/security/loginGuard.js`, `server/routes/auth.js`). Failures only, two counters over 15 minutes:
 
 - Per IP: after 3 failures the bot check is required (with keys); after 20 the IP is refused.
-- Per address: 5 failures pause sign-in to that address for 15 minutes from every connection. The account owner is emailed (at most 3 a day). A password reset lifts the pause at once.
+- Per address: **no longer a pause.** (It was "5 failures pause sign-in to that address for 15 minutes from every connection", which let anyone who knew an address keep its owner out: review finding F4.) Now: a browser that has signed in to the account before holds a signed device proof and is counted on its own; any other browser gets the bot check after 3 failures for the address, each guessing connection waits 1, 2, 4, 8 then 15 minutes from its fifth wrong password, the owner is emailed once a day at 20 failures an hour, and browsers the account has never used are refused at 100 failures an hour. A completed password reset makes that browser a known device. Guess rates: 11 in the first hour then 4 an hour from one address; 100 an hour from any number of addresses. See `server/security/loginGuard.js` and `docs/security/review-fixes-2026-11-11.md`.
 - The per-address counter is keyed on the address as typed whether or not an account exists, and unknown addresses are paused the same way with the same words.
 - One bcrypt comparison always runs (against a throwaway hash for an unknown address). Measured over 15 attempts each: wrong password median 369 ms, unknown address median 368 ms. The pause is written to the account and the email sent after the response has gone.
 
@@ -162,7 +162,7 @@ role changed to "customer" in the database → GET /api/admin/stats with the old
 
 **Admin role.**
 
-- Every new account is a customer. The `ADMIN_EMAIL` account is promoted when its email is confirmed (by link or by reset), at that moment or at the next start. An unconfirmed account with that address is an ordinary customer.
+- Every new account is a customer and stays one: no public route gives the admin role. The `ADMIN_EMAIL` address cannot be registered, confirmed or reset from the public pages (it is answered like any address that already has an account). The admin account is made by the one-time setup below ("First admin account"). An admin that already exists in the database is not touched at startup. *(This replaces the earlier rule, "promoted when its email is confirmed", which the independent review showed could promote an account someone else had registered: F3.)*
 - `authenticate` loads the account from the database on every request. Role, email-confirmed flag and token version come from the row; the role inside the token is ignored.
 - Admin sessions last 4 hours (`ADMIN_SESSION_HOURS`), customers 24. An account that became admin after sign-in is held to the 4 hours.
 - The startup log names any admin account whose address is not `ADMIN_EMAIL`.
@@ -174,7 +174,7 @@ role changed to "customer" in the database → GET /api/admin/stats with the old
 - The secret is stored as AES-256-GCM ciphertext under a key derived from `JWT_SECRET`, bound to the account id. It is not logged and no endpoint returns it after setup. Starting setup again makes a new secret.
 - Sign-in with the right password and no code answers `two-factor-required` and creates no session. A code is accepted one 30-second step either side and never twice. Wrong codes count toward the pause. A used recovery code is spent and the owner is emailed.
 - A red banner sits on every admin page until enrolment is done.
-- `ADMIN_RECOVERY=reset-2fa` (lost phone and codes) and `ADMIN_RECOVERY=verify-email` (no mailer) act on the `ADMIN_EMAIL` account at startup and print a warning until removed.
+- `ADMIN_RECOVERY=reset-2fa` (lost phone and codes) acts on the `ADMIN_EMAIL` account at startup; `ADMIN_RECOVERY=setup-code` (lost password and no working mailbox) re-opens the one-time setup for it with a new `ADMIN_SETUP_CODE`. Both print a warning until removed. `ADMIN_RECOVERY=verify-email` no longer exists.
 
 **Sessions** (`server/security/session.js`).
 
@@ -218,7 +218,8 @@ Confirmed correct, now under test:
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | switch the Turnstile check on (both needed) | off |
 | `EMAIL_API_KEY`, `EMAIL_FROM` | existing; now also required for email confirmation, reset and pause emails | off |
 | `ADMIN_SESSION_HOURS` | admin session length, 0.25 to 24 | 4 |
-| `ADMIN_RECOVERY` | `verify-email` or `reset-2fa`, acts on the `ADMIN_EMAIL` account at start; remove after use | unset |
+| `ADMIN_RECOVERY` | `setup-code` (re-open the one-time admin setup; needs a new `ADMIN_SETUP_CODE`) or `reset-2fa`; acts on the `ADMIN_EMAIL` account; remove after use | unset |
+| `ADMIN_SETUP_CODE` | a code the owner invents (20 characters or more) to open the one-time admin setup at `/admin/setup`; works once, only while there is no admin; remove after use | unset |
 | `JWT_SECRET` | existing; a warning now prints if shorter than 32 characters | — |
 | `FRONTEND_URL` | existing; now the only source of the host in emailed links apart from our own hostnames | — |
 | `RAILWAY_PUBLIC_DOMAIN` | set by Railway; that host is accepted for links when `FRONTEND_URL` is unset | — |
@@ -231,6 +232,19 @@ Confirmed correct, now under test:
 4. Check the deploy log: the `BOT CHECK IS OFF` box is gone. Open `/rfq` in a private window: a small Cloudflare box appears above the send button.
 
 **Email confirmation and reset.** Nothing to do beyond `EMAIL_API_KEY` and `EMAIL_FROM`. Set `FRONTEND_URL=https://straightedgemfg.com`.
+
+**First admin account (owner).** The admin account is not made by registering. Do this once, on a new database (an admin account that already exists is left exactly as it is, and none of this is needed):
+
+1. Make sure `ADMIN_EMAIL` is set in Railway → the service → Variables to the address the admin account will use.
+2. Invent a setup code: 20 characters or more, not a word or a repeated letter. Nobody gives it to you and the site never shows it. Add it in the same place as a new variable named `ADMIN_SETUP_CODE`. Railway redeploys.
+3. In the deploy log, find the line "there is no admin account yet. The one-time admin setup is OPEN at /admin/setup".
+4. Open `https://straightedgemfg.com/admin/setup` (it is not linked from anywhere). Enter the setup code and choose the password you will sign in with.
+5. You are taken to the admin pages, which ask you to set up two-step sign-in before anything else opens (next paragraph). Do it now.
+6. Go back to Railway and delete the `ADMIN_SETUP_CODE` variable. The code has stopped working (setup closes the moment the account exists, and a code is accepted once), and the deploy log reminds you to remove it until you do.
+
+If someone had already registered the admin address as an ordinary account, step 4 takes that account over: its password, sessions and emailed links stop working and it becomes your admin account. The deploy log and the admin Change log record that this happened.
+
+Locked out later, with no working mailbox to reset the password: set `ADMIN_RECOVERY=setup-code` and a *new* `ADMIN_SETUP_CODE`, redeploy, open `/admin/setup` again, then remove both variables. Lost only the phone and the recovery codes: `ADMIN_RECOVERY=reset-2fa`, redeploy, sign in, enrol again, remove the variable. Five wrong setup codes from one connection stop that connection for 15 minutes; twenty from anywhere lock setup until the next deploy.
 
 **Admin two-step sign-in (owner).** Sign in → Admin → the red banner → "Set it up now" → password → scan the QR code with an authenticator app → enter the 6-digit code → save the ten recovery codes somewhere that is not the phone.
 
@@ -265,7 +279,7 @@ Screenshots at 1360 px are in `docs/screenshots/hardening-2026-11-11/` (27 files
 | Checkout, existing accounts | none (existing accounts are treated as confirmed) | none |
 | Firm-quote or send-the-part request | the Cloudflare box; a visitor whose browser blocks it is told to call or email | none when it passes |
 | Send-the-part request with no keys set | accepted, but the address comes in a reply from a person, not on the screen | the buyer waits for a reply. This is the state until the keys are set |
-| Wrong password | after three, the Cloudflare box; after five, a 15-minute pause and an email | by design |
+| Wrong password | after three, the Cloudflare box; from the fifth, that connection waits (1, 2, 4, 8, 15 minutes); the account is not paused | by design (changed by the review fixes, F4) |
 | Forgotten password | new: a reset link by email | — |
 | Signing out | ends the session everywhere it was copied | none |
 | After deploy | everyone signs in again once | one sign-in |
@@ -294,7 +308,7 @@ Screenshots at 1360 px are in `docs/screenshots/hardening-2026-11-11/` (27 files
 | `JWT_SECRET` strength unknown | Medium | Startup warns under 32 characters |
 | Registration reveals that an address has an account | Low | Bot-checked and limited to 10 an hour per IP. Removing it means a new account is not signed in until the emailed link is opened |
 | A visitor whose browser blocks Cloudflare cannot send a form | Low | Told to call or email. Alternative: accept as an unverified sender |
-| An attacker who knows an address can keep its sign-in paused | Low | 15 minutes per five guesses; reset lifts it; existing sessions unaffected |
+| An attacker who knows an address can keep its sign-in paused | Closed by the review fixes (F4) | the address is no longer paused; a browser the owner has used before is never affected, and a password reset makes any browser one |
 | Throttles and the duplicate cache are in memory | Low | Reset on restart; correct for one process |
 | The verified-human token can be replayed for its hour | Low | Not accepted by the forms or registration; the global API limit still applies |
 | Sign-in and registration responses still include the token in JSON | Low | For API clients and the suites; the browser app ignores it |

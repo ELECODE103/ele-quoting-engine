@@ -231,6 +231,7 @@ export const APP_ROUTES = [
   { pattern: '^/reset-password$', title: 'Choose a New Password' },
   { pattern: '^/verify-email$', title: 'Confirm Your Email' },
   { pattern: '^/admin$', title: 'Admin' },
+  { pattern: '^/admin/setup$', title: 'Admin Setup' },
   { pattern: '^/dashboard$', title: 'My Orders' },
   { pattern: '^/checkout/[^/]+$', title: 'Checkout' },
   { pattern: '^/orders/[^/]+$', title: 'Order' },

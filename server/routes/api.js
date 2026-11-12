@@ -12,7 +12,10 @@ const ruleSchema = require("../config/ruleSchema");
 const { createPricingAdmin } = require("../services/pricingAdmin");
 const pricingPreview = require("../services/pricingPreview");
 const calibration = require("../services/calibration");
-const { resolveProcess, activeProcesses } = require("../processes/registry");
+const { activeProcesses } = require("../processes/registry");
+const quoteIntegrity = require("../services/quoteIntegrity"); // the whitelist, the price floor and the fingerprint every price passes through
+const partAccess = require("../security/partAccess");        // who may use an uploaded part
+const adminAudit = require("../services/adminAudit");        // append-only log of admin changes
 const { authenticate, optionalAuth, requireAdmin } = require("./auth");
 const { sanitizeString, isValidSlug, isValidUUID, nonNegativeNumber, positiveInt } = require("../middleware/validate");
 const shipBy = require("../services/shipBy");
@@ -134,7 +137,31 @@ function loadPricingRules() {
   // one validated and clamped — a database from an older version always
   // yields a complete, sane rule set.
   pricingEngine.rules = pricingAdmin.currentRules();
+  syncLeadTimeMultipliers(pricingEngine.rules);
   return pricingEngine.rules;
+}
+
+/**
+ * ONE number per lead time (payments review 2026-11-11, F-14). What a customer is charged for a
+ * lead time has always come from the rate card's rush table (rules.rushMultipliers) whenever it
+ * names that lead time; the multiplier on the lead-time record was only read for a lead time the
+ * table does not name. The Lead Times admin tab edited the record, so its number was shown, saved
+ * and never used. Nothing about what is charged changes here: the record is brought into step
+ * with the rate card (at startup and after every rate-card change), and an edit on the Lead Times
+ * tab is written to the rate card (PUT /admin/lead-times/:id), so the two can never differ again.
+ */
+function syncLeadTimeMultipliers(rules) {
+  const table = (rules && rules.rushMultipliers) || {};
+  let changed = 0;
+  for (const lt of leadTimesDB.getAll()) {
+    if (!Object.prototype.hasOwnProperty.call(table, lt.slug)) continue;
+    const charged = Number(table[lt.slug]);
+    if (!Number.isFinite(charged) || charged < 1 || Number(lt.multiplier) === charged) continue;
+    leadTimesDB.update(lt.id, { multiplier: charged });
+    changed++;
+  }
+  if (changed) console.log(`  Lead times: ${changed} multiplier(s) on the Lead Times tab brought into step with the rate card (what is charged did not change).`);
+  return changed;
 }
 
 // ─── Admin field whitelists (prevent mass assignment) ────────
@@ -342,6 +369,8 @@ router.post(
           fileSize: file.size,
           geometry: parsed.geometry,
           dfm: parsed.dfm,
+          // The part belongs to the account that uploaded it; without one, to the holder of its edit key.
+          userId: req.user?.userId || null,
         });
         pending.delete(storedPath); // the part row owns the file now
         uploadGuards.storage.add(file.size);
@@ -432,6 +461,9 @@ router.post("/parts/:partId/units", async (req, res) => {
       return res.status(422).json({ error: failure.error, ...(failure.code ? { code: failure.code } : {}) });
     }
     const updated = partsDB.update(part.id, { geometry: parsed.geometry, dfm: parsed.dfm }) || { ...part, geometry: parsed.geometry };
+    // The part is not the part that was priced any more: every draft quote that holds it is priced
+    // again now (or marked stale when it cannot be), so no stored total outlives the size it was for.
+    refreshDraftQuotesFor(part.id);
     res.json(partPayload({ id: part.id, fileName: updated.fileName || part.fileName }, parsed));
   } catch (err) {
     if (err.name === "PayloadError" && err.code === "storage-full") {
@@ -460,7 +492,7 @@ const CONFIG_FIELDS = ["partId", "materialSlug", "grade", "thicknessMm", "finish
 // Every line is priced and DFM-checked on the main thread, so a quote is capped.
 // The builder adds parts ten at a time; a job of more lines than this is a firm quote.
 const MAX_QUOTE_LINES = 100;
-const MAX_QUANTITY = 1000000;
+const MAX_QUANTITY = quoteIntegrity.MAX_QUANTITY;
 
 /**
  * A part configuration from a request body, reduced to the known fields in the
@@ -471,7 +503,8 @@ const MAX_QUANTITY = 1000000;
 function cleanConfig(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const out = {};
-  for (const key of ["partId", "materialSlug", "grade", "finishSlug", "process", "subProcess"]) {
+  // `editKey` proves the sender may use a part uploaded without an account (security/partAccess.js); it is never stored.
+  for (const key of ["partId", "materialSlug", "grade", "finishSlug", "process", "subProcess", "editKey"]) {
     const v = raw[key];
     if (v === undefined || v === null) continue;
     if (typeof v !== "string" || v.length > 120) return null;
@@ -480,11 +513,13 @@ function cleanConfig(raw) {
   for (const key of ["thicknessMm", "quantity", "layerHeight", "infill"]) {
     const v = raw[key];
     if (v === undefined || v === null || v === "") continue;
-    const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
+    // A number, or the plain decimal a form field holds ("25", "6.35"): not "1e2", "0x10" or " 12 ".
+    const n = typeof v === "number" ? v : (typeof v === "string" && /^-?\d{1,9}(\.\d{1,6})?$/.test(v) ? Number(v) : NaN);
     if (!Number.isFinite(n)) return null;
     out[key] = n;
   }
-  if (out.quantity !== undefined) out.quantity = Math.min(MAX_QUANTITY, out.quantity);
+  // Nothing is clamped or rounded here: a quantity that is not a whole number of pieces within
+  // the limit is refused by the whitelist (services/quoteIntegrity.js), not turned into another one.
   return out;
 }
 
@@ -504,98 +539,103 @@ function rushMultiplier(leadTime) {
  * `paperwork` adds the first-article report + certificate of conformance fee as its own line.
  * @returns {{ quote, gate, dfmByPartId, leadTime }}
  */
-function priceQuote(partConfigs, leadTimeSlug = "standard", { paperwork = false } = {}) {
-  const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === leadTimeSlug);
+function priceQuote(partConfigs, leadTimeSlug = "standard", { paperwork = false, access = {} } = {}) {
+  // THE CHOKE POINT. Every price the site shows, stores or charges is computed here: the
+  // instant quote, a saved quote, a reorder, and the re-pricing at checkout. What may be priced
+  // is a whitelist (quoteIntegrity.resolveLine): a registered, active process; a listed material
+  // of that process; grade, sub-process, thickness, finish, layer height and quantity from the
+  // catalog entry they belong to. Nothing unknown is replaced by a default.
+  const rules = pricingEngine.rules;
+  quoteIntegrity.assertRulesComplete(rules);
   // A lead time the shop has not confirmed it offers cannot be bought, even by a hand-built request.
-  if (!leadTime || !leadTime.active || !shopFacts.leadTimeListed(leadTime)) {
-    throw quoteError(400, "Invalid lead time");
-  }
-  // Anodize and powder coat go out to a finisher, so those parts ship on Standard only.
-  if (!shopFacts.leadTimeAllowsFinishes(leadTime, (partConfigs || []).map((c) => c && c.finishSlug))) {
-    throw quoteError(400, `Anodize and powder coat are sent out to a finisher, so a part with either one ships on the Standard lead time. Choose Standard, or a finish done here.`, { code: "finish-lead-time" });
-  }
+  const leadTime = quoteIntegrity.resolveLeadTime(leadTimeSlug, leadTimesDB.getAll());
+  const materials = materialsDB.getAll();
+  const finishes = finishesDB.getAll();
 
   // Build pricing input
   const pricingParts = [];
-  const dfmByPartId = {};
+  const dfmByLine = []; // one DFM result per line: its process, its material, its thickness
+  const lines = [];
+  const parts = [];
   for (const config of partConfigs) {
-    const part = partsDB.getById(config.partId);
-    if (!part) {
-      throw quoteError(400, `Part not found: ${config.partId}`);
+    const part = isValidUUID(config.partId) ? partsDB.getById(config.partId) : null;
+    // A part the caller may not use is answered exactly like one that does not exist.
+    if (!part || !partAccess.canUse(part, { ...access, key: config.editKey })) {
+      throw quoteError(400, "Part not found. Upload the file again.", { code: "part-not-found", partId: typeof config.partId === "string" ? config.partId.slice(0, 64) : undefined });
     }
     // A part whose measurements are kept in a file (a very detailed model) cannot be priced from a
     // partial copy: if that file cannot be read, say so instead of quoting a wrong number.
     if (part.payloadError) {
       throw quoteError(409, `${part.fileName}: we can no longer read what we measured from this file. Upload it again and it will be priced as before.`, { partId: config.partId, code: "part-data-unavailable" });
     }
-    const material = materialsDB.getAll().find((m) => m.slug === config.materialSlug);
-    // Same rule as the lead time: a material the catalog does not list (switched
-    // off in admin, or not confirmed by the owner) cannot be priced or bought.
-    if (!material || !material.active || !shopFacts.materialListed(material)) {
-      throw quoteError(400, `Material not found: ${config.materialSlug}`);
-    }
-
-    const defaultFinishSlug = resolveProcess(config.process).defaultFinishSlug || 'raw';
-    const finish = finishesDB.getAll().find((f) => f.slug === (config.finishSlug || defaultFinishSlug)) || null;
-    if (finish && config.finishSlug && (finish.active === false || !shopFacts.finishListed(finish))) {
-      throw quoteError(400, `Finish not available: ${config.finishSlug}`);
-    }
-
-    const process = config.process || material.process || defaultProcessSlug();
-    // A DXF is a 2D profile: routing only, and nothing is assumed for it —
-    // the customer confirms ambiguous units and picks the stock thickness.
-    if (dxf.is2D(part.geometry)) {
-      const extra = { partId: config.partId };
-      if (process !== "routing") throw quoteError(400, `${part.fileName}: ${DXF_ROUTING_ONLY}`, { ...extra, code: "dxf-routing-only" });
-      if (part.geometry.profile2d.units?.needsConfirmation) {
-        throw quoteError(400, `${part.fileName}: choose whether this drawing is in inches or millimetres before we price it.`, { ...extra, code: "dxf-units-required" });
-      }
-      if (!(Number(config.thicknessMm) > 0)) {
-        throw quoteError(400, `${part.fileName}: select a stock thickness — a DXF has no thickness of its own.`, { ...extra, code: "dxf-thickness-required" });
-      }
-    }
-    const thicknessMm = Number(config.thicknessMm) > 0 ? Number(config.thicknessMm) : (material.thicknesses?.[2]?.mm || material.thicknesses?.[0]?.mm || 0);
+    const line = quoteIntegrity.resolveLine(config, { part, materials, finishes });
+    lines.push(line);
+    parts.push(part);
     pricingParts.push({
       partId: config.partId,
       fileName: part.fileName,
       geometry: part.geometry,
-      material,
-      grade: config.grade || material.grades?.[0]?.name || '',
-      thicknessMm,
-      finish,
-      // Whole pieces only: 1.5 or -5 from a hand-built request becomes 1.
-      quantity: positiveInt(config.quantity, 1),
-      process,
-      subProcess: config.subProcess || '',
-      // Pass through only when actually provided — `|| 0` made an unset infill
-      // look like an intentional 0% (the engine then under-costed FDM material).
-      layerHeight: offeredLayerHeight(material, config.layerHeight),
-      infill: config.infill != null ? Number(config.infill) : undefined,
+      material: line.material,
+      grade: line.grade,
+      thicknessMm: line.thicknessMm,
+      finish: line.finish,
+      quantity: line.quantity,
+      process: line.process,
+      subProcess: line.subProcess,
+      // Only where the process has the option, and only a value the material offers.
+      layerHeight: line.layerHeight,
+      infill: line.infill,
     });
 
     // DFM for the chosen process/material/thickness — drives the checkout-vs-RFQ gate.
-    dfmByPartId[config.partId] = runDFMAnalysis(part.geometry, {
-      process,
-      subProcess: config.subProcess || resolveProcess(process).previewSubProcess,
-      thicknessMm,
-      materialType: /plastic|composite/i.test(material.category || "") ? "plastic" : "metal",
+    dfmByLine.push(runDFMAnalysis(part.geometry, {
+      process: line.process,
+      subProcess: line.subProcess,
+      thicknessMm: line.thicknessMm,
+      materialType: /plastic|composite/i.test(line.material.category || "") ? "plastic" : "metal",
       // Material identity for material-aware thresholds (acrylic brittle, nylon moisture, PEEK cost …)
-      materialSlug: material.slug,
-      materialName: material.name,
-    });
+      materialSlug: line.material.slug,
+      materialName: line.material.name,
+    }));
+  }
+  // Anodize and powder coat go out to a finisher, so those parts ship on Standard only.
+  if (!shopFacts.leadTimeAllowsFinishes(leadTime, lines.map((l) => l.finish.slug))) {
+    throw quoteError(400, `Anodize and powder coat are sent out to a finisher, so a part with either one ships on the Standard lead time. Choose Standard, or a finish done here.`, { code: "finish-lead-time" });
   }
 
   const leadTimeMultiplier = rushMultiplier(leadTime);
-  const quote = pricingEngine.calculateOrderQuote({
-    parts: pricingParts,
-    leadTimeMultiplier,
-    paperwork: paperwork === true,
-  });
+  let quote;
+  try {
+    quote = pricingEngine.calculateOrderQuote({
+      parts: pricingParts,
+      leadTimeMultiplier,
+      paperwork: paperwork === true,
+    });
+  } catch (err) {
+    // The engine could not produce a price (its own guard against NaN, or a model that threw).
+    quoteIntegrity.reportToOwner("pricing engine error", { error: String(err && err.message).slice(0, 160), parts: lines.map((l) => ({ partId: l.normalized.partId, process: l.process, material: l.material.slug })) });
+    throw new quoteIntegrity.Refusal(422, "price-check-failed", "We couldn't price this setup automatically. Send us the part and we'll quote it by hand.", { offerRfq: true });
+  }
+  // The floor under every computed price: refused and reported to the owner, never sold, when it fails.
+  quoteIntegrity.assertSane(quote, lines, parts, rules);
 
   // Instant checkout or RFQ? Stored with the quote so checkout can enforce it.
-  const gate = quoteGate.evaluate(quote.lineItems, dfmByPartId, pricingEngine.rules);
+  // Each line is judged on its own DFM result; quantities and totals are summed over the lines
+  // of a part, over identical geometry, and over the order (services/quoteGate.js).
+  const geometryKeys = parts.map((p) => quoteIntegrity.geometryHash(p.geometry));
+  const gate = quoteIntegrity.withIntegrityReasons(quoteGate.evaluate(quote.lineItems, dfmByLine, rules, { geometryKeys }), lines, parts);
+  // For the page, which shows one DFM panel per part: when a part is on several lines, the
+  // result of the line that needs the most attention (never the last one's by accident).
+  const dfmByPartId = {};
+  const severity = (d) => (d.summary?.manufacturable === false ? 1e6 : 0) + (d.summary?.failCount || 0) * 1000 + (d.summary?.warnCount || 0);
+  lines.forEach((l, i) => {
+    const id = l.normalized.partId;
+    if (!dfmByPartId[id] || severity(dfmByLine[i]) > severity(dfmByPartId[id])) dfmByPartId[id] = dfmByLine[i];
+  });
+  // What exactly was priced (stored geometry + validated configuration), for checkout to compare.
+  const integrity = quoteIntegrity.fingerprintQuote({ lines, parts, leadTimeSlug: leadTime.slug, paperwork: paperwork === true, rules, leadTimeMultiplier, gate });
 
-  return { quote, gate, dfmByPartId, leadTime, leadTimeMultiplier };
+  return { quote, gate, dfmByPartId, dfmByLine, leadTime, leadTimeMultiplier, integrity, parts };
 }
 
 /** Ship-by date and surcharge in dollars for every active lead time, for the option list. */
@@ -626,21 +666,26 @@ function quoteEditableBy(quote, user) {
  * updated; otherwise a row is inserted (under `quoteId` if it is unused).
  * Every re-price restarts the 30-day price hold.
  */
-function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, process: builderProcess, notes, paperwork }, user) {
+function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, process: builderProcess, notes, paperwork }, user, { access = {} } = {}) {
   if (!Array.isArray(rawConfigs) || rawConfigs.length === 0) throw quoteError(400, "No parts configured");
   if (rawConfigs.length > MAX_QUOTE_LINES) {
     throw quoteError(400, `An instant quote holds up to ${MAX_QUOTE_LINES} lines. For a larger job, send us the files for a firm quote.`, { code: "too-many-lines", offerRfq: true });
   }
   const partConfigs = rawConfigs.map(cleanConfig);
-  if (partConfigs.some((c) => !c || !c.partId)) throw quoteError(400, "The quote request is not in the expected format.");
-  if (typeof leadTimeSlug !== "string") throw quoteError(400, "Invalid lead time");
+  if (partConfigs.some((c) => !c || !c.partId)) throw quoteError(400, "The quote request is not in the expected format.", { code: "config-invalid" });
+  if (typeof leadTimeSlug !== "string") throw quoteError(400, "Invalid lead time", { code: "lead-time-not-offered", field: "leadTime" });
   // The only thing the client says about the paperwork is yes or no. The fee is
   // worked out here from the rate card and the number of lines; any amount sent
   // with the request is ignored.
-  const priced = priceQuote(partConfigs, leadTimeSlug, { paperwork: wantsPaperwork(paperwork) });
+  const priced = priceQuote(partConfigs, leadTimeSlug, { paperwork: wantsPaperwork(paperwork), access: { user, ...access } });
+  // A visitor who uploaded without an account and has since signed in: the parts are theirs now.
+  // (Not an admin pricing a customer's part on their behalf.)
+  if (user && user.userId && !partAccess.isAdmin(user)) for (const part of priced.parts) partAccess.claim(part, user, partsDB);
   const config = {
     process: sanitizeString(String(builderProcess || partConfigs[0]?.process || ""), 40),
     parts: partConfigs.map((c) => whitelist(c, CONFIG_FIELDS)),
+    // The fingerprint of what was priced; checkout prices again and compares (services/quoteIntegrity.js).
+    integrity: priced.integrity,
   };
   const existing = isValidUUID(quoteId) ? quotesDB.getById(quoteId) : null;
   const record = {
@@ -668,6 +713,123 @@ function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, proc
   return { saved, ...priced };
 }
 
+// ─── Stored quotes: priced again before anything is charged ────
+
+/** The saved configuration of a stored quote (quotes from before it was saved: rebuilt from the priced lines). */
+function storedConfigs(quote) {
+  return quote.config?.parts || (quote.lineItems || []).map((li) => ({
+    partId: li.partId, quantity: li.quantity, process: li.meta?.process, subProcess: li.meta?.subProcess,
+    materialSlug: li.meta?.materialSlug, grade: li.meta?.grade, finishSlug: li.meta?.finishSlug,
+    ...(Number(li.meta?.thicknessMm) > 0 ? { thicknessMm: li.meta.thicknessMm } : {}),
+  }));
+}
+
+/**
+ * Price a stored quote again from its saved configuration, through the same
+ * choke point as a new quote: each part's CURRENT stored geometry, the CURRENT
+ * rules and catalog, the whitelist, the floor, and the gate run again.
+ * Throws what priceQuote throws.
+ */
+function repriceStoredQuote(quote, user) {
+  const configs = storedConfigs(quote).map(cleanConfig);
+  if (configs.length === 0 || configs.some((c) => !c || !c.partId)) {
+    throw new quoteIntegrity.Refusal(400, "config-invalid", "This quote can't be priced as it was saved.");
+  }
+  // The parts were authorised when they went into this quote; the caller owns (or holds) the quote.
+  return priceQuote(configs, quote.leadTimeSlug || "standard", { paperwork: Boolean(quote.paperwork), access: { user, allowAnonymous: true } });
+}
+
+/**
+ * The check in front of every order and every Stripe session made from an
+ * instant quote: price the stored quote again and compare (quoteIntegrity.judgeCheckout).
+ *
+ * @returns {{ok: true, quote, priced, basis} | {ok: false, status: number, body: object}}
+ *   ok: `quote` is the row to build the order from (refreshed when today's price is the stored
+ *   price), `priced.integrity` is the snapshot to keep with the order.
+ *   not ok: the refusal to send — `quote-changed` (with the quote at today's price, already
+ *   saved for the buyer to confirm), `quote-needs-update`, `rfq-required`, `price-check-failed`.
+ */
+function verifyQuoteForOrder(quote, user, { confirmedTotal } = {}) {
+  let priced;
+  try {
+    priced = repriceStoredQuote(quote, user);
+  } catch (err) {
+    if (!err.expose) throw err;
+    const code = err.extra?.code || err.code || "";
+    if (code === "price-check-failed" || code === "pricing-unavailable") {
+      return { ok: false, status: err.status === 503 ? 503 : 409, body: { error: err.message, ...(err.extra || {}) } };
+    }
+    return { ok: false, status: 409, body: { error: "Something on this quote is no longer available the way it was priced. Reopen the quote to see today's options and price.", code: "quote-needs-update", reason: code || null, reopen: true } };
+  }
+  const verdict = quoteIntegrity.judgeCheckout({ quote, priced, isAdmin: partAccess.isAdmin(user) });
+  if (verdict.action === "review") {
+    return { ok: false, status: 409, body: { error: "This quote needs a firm quote from us before it can be ordered", code: "rfq-required", reasons: verdict.reasons } };
+  }
+  const changed = (current, previousTotal) => ({
+    ok: false,
+    status: 409,
+    body: {
+      error: "The price of this quote has changed since it was last priced. Check the new total, then continue to payment.",
+      code: "quote-changed",
+      previousTotal,
+      newTotal: current.orderTotal,
+      // A quote that is no longer a draft cannot be re-priced in place: the builder makes a new one from it.
+      reopen: current.status !== "draft",
+      quote: quoteView(current),
+    },
+  });
+  if (verdict.action === "changed") {
+    let current = quote;
+    if (quote.status === "draft") {
+      // Save today's price, so the buyer is looking at the number they will be charged when they confirm.
+      current = quotesDB.update(quote.id, {
+        ...priced.quote,
+        gate: priced.gate,
+        config: { ...(quote.config || {}), parts: storedConfigs(quote), integrity: priced.integrity },
+        expiresAt: new Date(Date.now() + QUOTE_VALID_DAYS * 864e5).toISOString(),
+      });
+    }
+    console.warn(`[quote-integrity] quote ${String(quote.id).slice(0, 8)} re-priced at checkout: ${verdict.previousTotal} → ${verdict.newTotal} (${verdict.why})`);
+    return changed(current.status === "draft" ? current : { ...quote, orderTotal: verdict.newTotal }, verdict.previousTotal);
+  }
+  // The stored row is left as it is: its total is today's price (or a held one), and the checks the
+  // order routes make on a stored quote still see exactly what was stored.
+  const current = quote;
+  // The total the buyer's page was showing when they pressed pay, when the page says so.
+  if (confirmedTotal !== undefined && confirmedTotal !== null) {
+    const seen = Number(confirmedTotal);
+    if (!Number.isFinite(seen) || Math.abs(seen - Number(current.orderTotal)) > 0.01) return changed(current, Number.isFinite(seen) ? seen : null);
+  }
+  return { ok: true, quote: current, priced, basis: verdict.basis };
+}
+
+/**
+ * A part's stored geometry changed (a DXF's units): price every draft quote
+ * that holds it again, in place. A draft that cannot be priced as it stands
+ * (the new size needs a setting it does not have) is marked stale instead;
+ * either way checkout prices again before it charges.
+ */
+function refreshDraftQuotesFor(partId) {
+  let touched = 0;
+  for (const q of quotesDB.query((x) => x.status === "draft" && storedConfigs(x).some((c) => c && c.partId === partId))) {
+    try {
+      // Server-side refresh on behalf of the quote's owner (a part that belongs to another account stays closed).
+      const priced = repriceStoredQuote(q, q.userId ? { userId: q.userId } : null);
+      quotesDB.update(q.id, {
+        ...priced.quote,
+        gate: priced.gate,
+        config: { ...(q.config || {}), parts: storedConfigs(q), integrity: priced.integrity },
+        expiresAt: new Date(Date.now() + QUOTE_VALID_DAYS * 864e5).toISOString(),
+      });
+    } catch (err) {
+      if (!err.expose) console.error("Draft quote refresh error:", err.message);
+      quotesDB.update(q.id, { config: { ...(q.config || {}), integrity: { ...(q.config?.integrity || {}), v: 1, stale: true, staleAt: new Date().toISOString() } } });
+    }
+    touched++;
+  }
+  return touched;
+}
+
 router.post("/quote", optionalAuth, (req, res) => {
   try {
     const { parts: partConfigs } = req.body;
@@ -676,7 +838,7 @@ router.post("/quote", optionalAuth, (req, res) => {
       return res.status(400).json({ error: "No parts configured" });
     }
 
-    const { saved, quote, gate, dfmByPartId, leadTime } = saveQuote(req.body, req.user);
+    const { saved, quote, gate, dfmByPartId, dfmByLine, leadTime } = saveQuote(req.body, req.user);
 
     res.json({
       quoteId: saved.id,
@@ -690,6 +852,8 @@ router.post("/quote", optionalAuth, (req, res) => {
       dfmByPartId: Object.fromEntries(
         Object.entries(dfmByPartId).map(([id, d]) => [id, { summary: d.summary, checks: d.checks }])
       ),
+      // The same, line by line (a part can be on more than one line, in more than one process).
+      dfmByLine: dfmByLine.map((d) => ({ summary: d.summary, checks: d.checks })),
     });
   } catch (err) {
     if (err.expose) return res.status(err.status).json({ error: err.message, ...(err.extra || {}) });
@@ -751,6 +915,9 @@ router.get("/quote/:id/session", optionalAuth, (req, res) => {
     // The preview mesh is read from the part's file here, and only here.
     const part = partsDB.getById(config.partId, { mesh: true });
     if (!part) continue;
+    // A part that belongs to an account is shown (and its edit key handed out) to that account only;
+    // a part uploaded without one goes with the quote that holds it.
+    if (!partAccess.canUse(part, { user: req.user, allowAnonymous: true })) continue;
     const { meshData, ...geometry } = part.geometry || {};
     parts.push({
       ...config,
@@ -865,7 +1032,9 @@ router.get("/processes", (req, res) => {
   res.json(activeProcesses());
 });
 router.get("/materials", (req, res) => {
-  let mats = materialsDB.getAll().filter((m) => m.active && shopFacts.materialListed(m));
+  // Listed materials of processes the site offers: nothing of a process that is switched off.
+  const offered = new Set(activeProcesses().map((p) => p.slug));
+  let mats = materialsDB.getAll().filter((m) => m.active && shopFacts.materialListed(m) && offered.has(m.process));
   if (req.query.process) {
     // Materials without a process field are legacy sheet metal
     mats = mats.filter((m) => (m.process || 'sheetmetal') === req.query.process);
@@ -877,12 +1046,21 @@ router.get("/materials", (req, res) => {
 });
 
 router.get("/finishes", (req, res) => {
-  let fins = finishesDB.getAll().filter((f) => f.active && shopFacts.finishListed(f));
+  // Listed finishes of processes the site offers (the sheet-metal finishes are in the table but that process is off).
+  const offered = new Set(activeProcesses().map((p) => p.slug));
+  let fins = finishesDB.getAll().filter((f) => f.active && shopFacts.finishListed(f) && offered.has(f.process));
   if (req.query.process) {
     // Finishes without a process field are legacy sheet metal
     fins = fins.filter((f) => (f.process || 'sheetmetal') === req.query.process);
   }
-  res.json(fins);
+  // A finish that only goes on some materials (anodize on aluminum, edge polish on clear sheet)
+  // says which, so the page lists it only where it can be ordered. Same rule as the pricing whitelist.
+  const mats = materialsDB.getAll().filter((m) => quoteIntegrity.materialOffered(m));
+  res.json(fins.map((f) => {
+    const own = mats.filter((m) => m.process === f.process);
+    const fits = own.filter((m) => quoteIntegrity.finishFitsMaterial(f, m));
+    return fits.length === own.length ? f : { ...f, materialSlugs: fits.map((m) => m.slug) };
+  }));
 });
 
 router.get("/lead-times", (req, res) => {
@@ -945,11 +1123,34 @@ function validateMaterial(body) {
   return { ok: true, values: safe };
 }
 
+/**
+ * A material is never stored without the price its process is charged from (payments review
+ * 2026-11-11, F-13): a blank or zero price used to be saved as "no price" and the part was then
+ * priced at a figure built into the pricing code. Printed materials are sold by the cm³, everything
+ * else by the kilo. Checked on the record as it will be stored (what was there plus this change).
+ * @returns {string|null}
+ */
+function materialPriceProblem(record) {
+  const usable = (v) => { const n = Number(v); return v !== null && v !== undefined && v !== "" && Number.isFinite(n) && n > 0; };
+  if (record.process === "3d-printing") {
+    if (!usable(record.pricePerCm3)) return "pricePerCm3 must be a price above zero ($ per cm³): a printed material cannot be saved without one";
+    return null;
+  }
+  if (!usable(record.pricePerKg) && !usable(record.costPerKg)) return "pricePerKg must be a price above zero ($ per kg): a material cannot be saved without one";
+  return null;
+}
+const MATERIAL_AUDIT_FIELDS = MATERIAL_FIELDS.filter((f) => f !== "description");
+
 router.put("/admin/materials/:id", authenticate, requireAdmin, (req, res) => {
   const v = validateMaterial(req.body || {});
   if (!v.ok) return res.status(400).json({ error: v.error });
+  const before = materialsDB.getById(req.params.id);
+  if (!before) return res.status(404).json({ error: "Material not found" });
+  const problem = materialPriceProblem({ ...before, ...v.values });
+  if (problem) return res.status(400).json({ error: problem, code: "price-required" });
   const updated = materialsDB.update(req.params.id, v.values);
   if (!updated) return res.status(404).json({ error: "Material not found" });
+  adminAudit.record(req.user, { area: "material", action: "update", target: updated.slug, changes: adminAudit.diff(before, updated, MATERIAL_AUDIT_FIELDS) });
   res.json(updated);
 });
 
@@ -957,7 +1158,10 @@ router.post("/admin/materials", authenticate, requireAdmin, (req, res) => {
   const v = validateMaterial(req.body || {});
   if (!v.ok) return res.status(400).json({ error: v.error });
   if (!v.values.name || !v.values.slug) return res.status(400).json({ error: "name and slug are required" });
+  const problem = materialPriceProblem(v.values);
+  if (problem) return res.status(400).json({ error: problem, code: "price-required" });
   const material = materialsDB.insert({ active: false, ...v.values });
+  adminAudit.record(req.user, { area: "material", action: "create", target: material.slug, changes: adminAudit.diff({}, material, MATERIAL_AUDIT_FIELDS) });
   res.status(201).json(material);
 });
 
@@ -974,12 +1178,15 @@ router.post("/admin/materials/:id/duplicate", authenticate, requireAdmin, (req, 
   let slug = `${src.slug}-copy`;
   for (let n = 2; taken.has(slug); n++) slug = `${src.slug}-copy-${n}`;
   const copy = materialsDB.insert({ ...rest, slug, name: `${src.name} (copy)`, active: false });
+  adminAudit.record(req.user, { area: "material", action: "duplicate", target: copy.slug, changes: { from: [null, src.slug] } });
   res.status(201).json(copy);
 });
 
 router.delete("/admin/materials/:id", authenticate, requireAdmin, (req, res) => {
+  const gone = materialsDB.getById(req.params.id);
   const deleted = materialsDB.delete(req.params.id);
   if (!deleted) return res.status(404).json({ error: "Material not found" });
+  adminAudit.record(req.user, { area: "material", action: "delete", target: gone ? gone.slug : req.params.id, changes: gone ? { pricePerKg: [gone.pricePerKg ?? null, null], pricePerCm3: [gone.pricePerCm3 ?? null, null] } : {} });
   res.json({ success: true });
 });
 
@@ -993,8 +1200,10 @@ router.get("/admin/finishes", authenticate, requireAdmin, (req, res) => {
 router.put("/admin/finishes/:id", authenticate, requireAdmin, (req, res) => {
   const v = validateFinish(req.body);
   if (!v.ok) return res.status(400).json({ error: v.error });
+  const before = finishesDB.getById(req.params.id);
   const updated = finishesDB.update(req.params.id, v.values);
   if (!updated) return res.status(404).json({ error: "Finish not found" });
+  adminAudit.record(req.user, { area: "finish", action: "update", target: updated.slug, changes: adminAudit.diff(before, updated, FINISH_FIELDS) });
   res.json(updated);
 });
 
@@ -1003,6 +1212,7 @@ router.post("/admin/finishes", authenticate, requireAdmin, (req, res) => {
   if (!v.ok) return res.status(400).json({ error: v.error });
   if (!v.values.name || !v.values.slug) return res.status(400).json({ error: "name and slug are required" });
   const finish = finishesDB.insert(v.values);
+  adminAudit.record(req.user, { area: "finish", action: "create", target: finish.slug, changes: adminAudit.diff({}, finish, FINISH_FIELDS) });
   res.status(201).json(finish);
 });
 
@@ -1013,6 +1223,12 @@ router.post("/admin/finishes", authenticate, requireAdmin, (req, res) => {
 //   preview  → price 6 reference parts with candidate rules, no save
 //   history / restore / reset
 // ═══════════════════════════════════════════════════════════════
+
+/** A rate-card change in the admin change log: which rules moved (the values and the note are in the pricing history). */
+function logRateCard(user, action, result) {
+  if (!result || !result.audit) return;
+  adminAudit.record(user, { area: "rate-card", action, target: "pricing rules", changes: { rules: [null, Object.keys(result.audit.diff || {}).slice(0, 40).join(", ")] } });
+}
 
 router.get("/admin/pricing/schema", authenticate, requireAdmin, (req, res) => {
   res.json({ groups: ruleSchema.RULE_GROUPS, rules: ruleSchema.RULE_SCHEMA });
@@ -1035,6 +1251,7 @@ router.put("/admin/pricing", authenticate, requireAdmin, (req, res) => {
   const result = pricingAdmin.save(candidate, { note, user: req.user });
   if (!result.ok) return res.status(result.status || 400).json({ error: result.error, errors: result.errors || [] });
   const rules = loadPricingRules();
+  logRateCard(req.user, "save", result);
   res.json({ rules, audit: result.audit ? { id: result.audit.id, createdAt: result.audit.createdAt } : null, unchanged: !!result.unchanged });
 });
 
@@ -1067,12 +1284,14 @@ router.get("/admin/pricing/history", authenticate, requireAdmin, (req, res) => {
 router.post("/admin/pricing/restore/:id", authenticate, requireAdmin, (req, res) => {
   const result = pricingAdmin.restore(req.params.id, { note: req.body?.note, user: req.user });
   if (!result.ok) return res.status(result.status || 400).json({ error: result.error, errors: result.errors || [] });
+  logRateCard(req.user, "restore", result);
   res.json({ rules: loadPricingRules(), audit: result.audit ? { id: result.audit.id, createdAt: result.audit.createdAt } : null });
 });
 
 router.post("/admin/pricing/reset", authenticate, requireAdmin, (req, res) => {
   const result = pricingAdmin.reset({ note: req.body?.note, user: req.user });
   if (!result.ok) return res.status(result.status || 400).json({ error: result.error, errors: result.errors || [] });
+  logRateCard(req.user, "reset", result);
   res.json({ rules: loadPricingRules(), audit: result.audit ? { id: result.audit.id, createdAt: result.audit.createdAt } : null });
 });
 
@@ -1126,9 +1345,23 @@ router.get("/admin/lead-times", authenticate, requireAdmin, (req, res) => {
 router.put("/admin/lead-times/:id", authenticate, requireAdmin, (req, res) => {
   const v = validateTyped(whitelist(req.body || {}, LEAD_TIME_FIELDS), LEAD_TIME_SPEC);
   if (!v.ok) return res.status(400).json({ error: v.error });
+  const before = leadTimesDB.getById(req.params.id);
+  if (!before) return res.status(404).json({ error: "Lead time not found" });
+  // The multiplier that is charged lives in the rate card's rush table. An edit here is written
+  // there (validated and recorded like any rate-card change), so this tab shows what is charged.
+  if (v.values.multiplier !== undefined && Number(v.values.multiplier) !== Number(before.multiplier)) {
+    const table = pricingAdmin.currentRules().rushMultipliers || {};
+    if (Object.prototype.hasOwnProperty.call(table, before.slug)) {
+      const saved = pricingAdmin.save({ rushMultipliers: { ...table, [before.slug]: Number(v.values.multiplier) } }, { note: `Lead Times tab: ${before.name || before.slug} multiplier`, user: req.user });
+      if (!saved.ok) return res.status(saved.status || 400).json({ error: saved.error, errors: saved.errors || [] });
+      logRateCard(req.user, "save", saved);
+    }
+  }
   const updated = leadTimesDB.update(req.params.id, v.values);
   if (!updated) return res.status(404).json({ error: "Lead time not found" });
-  res.json(updated);
+  loadPricingRules(); // the engine and the lead-time records agree from this request on
+  adminAudit.record(req.user, { area: "lead-time", action: "update", target: updated.slug, changes: adminAudit.diff(before, updated, LEAD_TIME_FIELDS.filter((f) => f !== "description")) });
+  res.json(leadTimesDB.getById(req.params.id));
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1138,6 +1371,38 @@ router.put("/admin/lead-times/:id", authenticate, requireAdmin, (req, res) => {
 router.get("/admin/quotes", authenticate, requireAdmin, (req, res) => {
   const quotes = quotesDB.getAll().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   res.json(quotes);
+});
+
+/**
+ * POST /api/admin/quotes/void-open   { note }
+ * For use after a price change the owner does not want to honour on quotes already saved: ends
+ * the price hold on every open (draft) quote now. Nothing is deleted — the buyer's parts and
+ * setup stay — but checkout answers "this price has expired" until the quote is reopened and
+ * priced at today's rules. The same goes for a quote whose order was started and never paid: it
+ * can no longer be handed a payment page at the old price. Paid orders and firm-quote requests
+ * are not touched.
+ */
+router.post("/admin/quotes/void-open", authenticate, requireAdmin, (req, res) => {
+  const note = sanitizeString(String(req.body?.note || ""), 200);
+  const now = new Date();
+  const ended = new Date(now.getTime() - 1000).toISOString();
+  let voided = 0;
+  require("../models/database").batch(() => {
+    const { ordersDB } = require("../models");
+    const unpaid = new Set(ordersDB.query((o) => o.status === "pending_payment" && !o.rfqId && o.quoteId).map((o) => o.quoteId));
+    for (const q of quotesDB.query((x) => (x.status === "draft" || unpaid.has(x.id)) && !(x.expiresAt && new Date(x.expiresAt) < now))) {
+      quotesDB.update(q.id, { expiresAt: ended, config: { ...(q.config || {}), integrity: { ...(q.config?.integrity || {}), voidedAt: now.toISOString() } } });
+      voided++;
+    }
+  });
+  adminAudit.record(req.user, { area: "quotes", action: "void-open", target: "open quotes", changes: { voided: [null, voided], ...(note ? { note: [null, note] } : {}) } });
+  res.json({ voided });
+});
+
+/** GET /api/admin/audit — the admin change log, newest first: who changed what and when. */
+router.get("/admin/audit", authenticate, requireAdmin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(adminAudit.list({ limit: req.query.limit }).map(({ id, createdAt, userEmail, area, action, target, changes }) => ({ id, createdAt, userEmail, area, action, target, changes })));
 });
 
 router.get("/admin/stats", authenticate, requireAdmin, (req, res) => {
@@ -1283,5 +1548,9 @@ router.get("/parts/:partId/download", authenticate, requireAdmin, async (req, re
 module.exports = router;
 module.exports.loadPricingRules = loadPricingRules;
 module.exports.saveQuote = saveQuote;
+module.exports.priceQuote = priceQuote;
+module.exports.repriceStoredQuote = repriceStoredQuote;
+module.exports.verifyQuoteForOrder = verifyQuoteForOrder;
+module.exports.refreshDraftQuotesFor = refreshDraftQuotesFor;
 module.exports.wantsPaperwork = wantsPaperwork;
 module.exports.QUOTE_VALID_DAYS = QUOTE_VALID_DAYS;

@@ -114,6 +114,8 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
     // In production mode the mailer only honours it together with the test switch.
     EMAIL_OUTBOX_DIR: path.join(tmp, "outbox"),
     SE_TEST_HOOKS: "1",
+    // The admin account is made by the one-time setup with a code the owner sets himself; a throwaway one here.
+    ADMIN_SETUP_CODE: `setup-${crypto.randomBytes(18).toString("base64url")}`,
     ...env,
   };
   for (const k of ["EMAIL_API_KEY", "EMAIL_FROM", "STRIPE_WEBHOOK_SECRET", "HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY", "ADMIN_RECOVERY", "STRIPE_WEBHOOK_ALLOW_UNSIGNED"]) if (!(k in env)) delete childEnv[k];
@@ -141,6 +143,7 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
 
   const s = {
     port, tmp, dataDir, adminEmail, child,
+    setupCode: childEnv.ADMIN_SETUP_CODE,
     base: `http://127.0.0.1:${port}`,
     exited: () => exited,
     log: () => output,
@@ -152,13 +155,26 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
      *                    ip (sent as X-Forwarded-For, the way Railway's edge reports the client)
      */
     req(o = {}) {
-      const headers = { ...(o.headers || {}) };
+      // These helpers are an API client holding its own session token, so they ask for it in the answer
+      // (`X-Session-Token: body`); a browser never does. `{ browser: true }` leaves the header off.
+      const headers = { ...(o.browser ? {} : { "X-Session-Token": "body" }), ...(o.headers || {}) };
       if (o.ip) headers["X-Forwarded-For"] = o.ip;
       if (o.token) headers.Authorization = `Bearer ${o.token}`;
       let body = o.body;
-      if (o.json !== undefined) { body = Buffer.from(JSON.stringify(o.json)); headers["Content-Type"] = "application/json"; headers["Content-Length"] = String(body.length); }
-      return request(port, { method: o.method || (body ? "POST" : "GET"), url: o.url, headers, body, timeoutMs: o.timeoutMs });
+      let json = o.json;
+      // As the quote page does: each part of a quote request carries the edit key its upload answer gave
+      // (security/partAccess.js). `{ partKeys: false }` sends the body exactly as written.
+      if (o.partKeys !== false && json && typeof json === "object" && Array.isArray(json.parts) && String(o.url).split("?")[0] === "/api/quote") {
+        json = { ...json, parts: json.parts.map((p) => (p && typeof p === "object" && !Array.isArray(p) && typeof p.partId === "string" && p.editKey === undefined && s.editKeys[p.partId] ? { ...p, editKey: s.editKeys[p.partId] } : p)) };
+      }
+      if (json !== undefined) { body = Buffer.from(JSON.stringify(json)); headers["Content-Type"] = "application/json"; headers["Content-Length"] = String(body.length); }
+      return request(port, { method: o.method || (body ? "POST" : "GET"), url: o.url, headers, body, timeoutMs: o.timeoutMs }).then((r) => {
+        if (r.body && Array.isArray(r.body.parts)) for (const p of r.body.parts) if (p && p.partId && p.editKey) s.editKeys[p.partId] = p.editKey;
+        return r;
+      });
     },
+    /** partId → edit key, for every part uploaded through this helper. */
+    editKeys: {},
     get: (url, o = {}) => s.req({ ...o, url, method: "GET" }),
     post: (url, json, o = {}) => s.req({ ...o, url, method: "POST", json }),
     /** POST multipart to `url` (default the CAD upload). files: [{ name, data, field }] */
@@ -208,14 +224,17 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
       return v.body;
     },
     /**
-     * The owner's account as the owner sets it up: register ADMIN_EMAIL, confirm the emailed link
-     * (that gives the admin role), switch two-step sign-in on (without it every admin route is 403).
+     * The owner's account as the owner sets it up: the one-time setup with the code from the host's
+     * variables (POST /api/auth/admin-setup), then two-step sign-in on (without it every admin route is 403).
      * Returns the session token issued at enrolment; `{ enrol: false }` stops before the second step.
      */
     async admin(o = {}) {
-      const token = await s.register(adminEmail, o);
-      if (o.enrol === false) return token;
-      return s.enrol(token, o);
+      const password = o.password || `Aa1-${crypto.randomBytes(9).toString("base64url")}`;
+      const r = await s.post("/api/auth/admin-setup", { code: s.setupCode, password }, { ip: o.ip, headers: o.headers });
+      if (r.status !== 201) throw new Error(`admin setup failed (${r.status}): ${r.text}`);
+      s.passwords[adminEmail] = password;
+      if (o.enrol === false) return r.body.token;
+      return s.enrol(r.body.token, o);
     },
     /** Switch two-step sign-in on for the owner's account, as the enrolment screen does. Returns the new session token. */
     async enrol(token, o = {}) {

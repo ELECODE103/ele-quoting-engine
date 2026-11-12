@@ -55,6 +55,8 @@ const turnstile = require("../security/turnstile");
 // never on a public page and never to an unverified sender.
 const shipFrom = require("../config/shipFrom.json");
 
+const quoteIntegrity = require("../services/quoteIntegrity");
+
 const router = express.Router();
 
 /** Reference + address a buyer needs to ship a part in for measuring. */
@@ -368,9 +370,13 @@ router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
     updates.status = b.status;
   }
   if (b.quotedTotal !== undefined) {
-    const n = Number(b.quotedTotal);
-    if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: "Invalid quoted total" });
-    updates.quotedTotal = n;
+    // The owner's amount is the owner's, honoured as typed — but it has to be an amount of money:
+    // a finite number of dollars and cents within reason (services/quoteIntegrity.js).
+    // A quote that is already out with the customer is live at whatever is saved here, so it cannot be
+    // saved at nothing (payments review F-09b): the same rule as sending it.
+    const amount = quoteIntegrity.firmQuoteAmount(b.quotedTotal, { sending: rfq.status === "quoted" });
+    if (!amount.ok) return res.status(400).json({ error: rfq.status === "quoted" && amount.error !== "Invalid quoted total" ? "This quote is out with the customer: enter the amount it should be, or withdraw it." : amount.error, code: "quoted-total-invalid" });
+    updates.quotedTotal = amount.total;
   }
   if (b.quotedLeadDays !== undefined && b.quotedLeadDays !== null && b.quotedLeadDays !== "") {
     const n = Number(b.quotedLeadDays);
@@ -400,7 +406,8 @@ router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
   const sendQuote = b.status === "quoted" && (rfq.status !== "quoted" || b.resend === true || revised);
   if (sendQuote) {
     if (rfq.status === "accepted") return res.status(409).json({ error: "The customer already accepted this quote" });
-    if (!(next.quotedTotal > 0)) return res.status(400).json({ error: "Enter the quoted total before sending the quote" });
+    const sendable = quoteIntegrity.firmQuoteAmount(next.quotedTotal, { sending: true });
+    if (!sendable.ok) return res.status(400).json({ error: sendable.error, code: "quoted-total-invalid" });
     if (next.quotedLeadDays === null || next.quotedLeadDays === undefined) return res.status(400).json({ error: "Enter the lead time in business days before sending the quote" });
     const now = new Date();
     updates.quotedAt = rfq.quotedAt || now.toISOString();
@@ -418,7 +425,14 @@ router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
       ...templates.rfqQuoted({ rfq: updated, acceptUrl: acceptUrl(updated, base), shipBy: shipBy.shipByDate(updated.quotedLeadDays) }),
     });
   }
-  res.json({ ...adminView(updated, base), quoteSent: sendQuote, emailSent });
+  // A firm price far under the budgetary price the buyer was shown is allowed (the owner decides) but
+  // worth a second look before it goes out: a slipped digit is the usual cause.
+  const budget = Number(updated.budgetTotal) || 0;
+  const priceWarning = updates.quotedTotal !== undefined && updated.quotedTotal > 0 && budget > 0 && updated.quotedTotal < budget * 0.25
+    ? `The quoted total is less than a quarter of the online estimate the buyer saw (${templates.money(budget)}). Check the amount.`
+    : null;
+  if (priceWarning) console.warn(`[quote-integrity] firm quote ${templates.shortId(updated.id)} set to ${updated.quotedTotal} against a budgetary ${budget}`);
+  res.json({ ...adminView(updated, base), quoteSent: sendQuote, emailSent, ...(priceWarning ? { priceWarning } : {}) });
 });
 
 router.get("/admin/:id/drawing", authenticate, requireAdmin, (req, res) => {
@@ -564,7 +578,6 @@ router.post("/quote/:token/accept", async (req, res) => {
     }
     const poNumber = sanitizeString(b.poNumber || "", 60);
     if (method === "po" && !poNumber) return res.status(400).json({ error: "Enter your purchase order number" });
-    if (method === "card" && !stripeClient.get()) return res.status(503).json({ error: `Card payment isn't available right now. Call ${brand.phone}.` });
 
     const days = rfq.quotedLeadDays;
     const order = ordersDB.insert({

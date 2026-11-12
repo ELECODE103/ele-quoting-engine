@@ -20,6 +20,11 @@ export default function CheckoutPage() {
   const [country, setCountry] = useState('US');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Set when the server says the price is no longer the one this page was showing: the new quote is
+  // shown, with the old total beside it, and the buyer presses pay again to accept it.
+  const [priceChange, setPriceChange] = useState(null);
+  // Refusals that are settled somewhere else (back in the quote, on the order page, by a firm quote).
+  const [next, setNext] = useState(null);
 
   const wasCancelled = searchParams.get('cancelled') === 'true';
   // Paying needs a confirmed email address (when confirmation emails can be sent at all).
@@ -35,6 +40,7 @@ export default function CheckoutPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setNext(null);
     setLoading(true);
 
     try {
@@ -45,7 +51,7 @@ export default function CheckoutPage() {
         shippingState: state,
         shippingZip: zip,
         shippingCountry: country,
-      });
+      }, Number(quoteData?.orderTotal));
 
       if (result.sessionUrl) {
         // Redirect to Stripe Checkout
@@ -54,8 +60,19 @@ export default function CheckoutPage() {
         setError('Could not create payment session');
       }
     } catch (err) {
+      const data = err.data || {};
       if (err.code === 'email-unverified') { await refresh(); setError(''); }
-      else setError(err.message || 'Failed to start checkout');
+      else if (err.code === 'quote-changed' && data.quote && !data.reopen) {
+        // Nothing was charged. Show today's price; the same button accepts it.
+        setPriceChange({ was: Number.isFinite(data.previousTotal) ? data.previousTotal : quoteData?.orderTotal, now: data.quote.orderTotal });
+        setQuoteData(data.quote);
+      } else if (err.code === 'quote-changed' || err.code === 'quote-needs-update') {
+        setNext({ text: 'Something on this quote has changed since it was priced, so we have not charged you.', link: `/quote?quote=${quoteId}`, label: 'Reopen the quote to see today\'s price' });
+      } else if (err.code === 'rfq-required' || err.code === 'price-check-failed') {
+        setNext({ text: 'This order needs a firm quote from us before it can be paid for. Nothing was charged.', link: `/rfq/${quoteId}`, label: 'Send it to us for a firm quote' });
+      } else if (err.code === 'quote-already-ordered') {
+        setNext({ text: 'This quote has already been ordered.', link: data.orderId ? `/orders/${data.orderId}` : '/dashboard', label: data.orderId ? 'Open that order' : 'See your orders' });
+      } else setError(err.message || 'Failed to start checkout');
     } finally {
       setLoading(false);
     }
@@ -85,6 +102,22 @@ export default function CheckoutPage() {
           <div role="alert" className="gate-box" style={{ marginBottom: 24 }}>
             This price was held until {formatDate(quoteData.expiresAt)} and has expired.{' '}
             <a href={`/quote?quote=${quoteId}`} style={{ color: 'inherit', fontWeight: 600 }}>Reopen the quote</a> to get today's price. Your parts are still there.
+          </div>
+        )}
+
+        {priceChange && (
+          <div role="alert" className="gate-box" style={{ marginBottom: 24 }} data-testid="price-changed">
+            <b>The price of this quote has changed.</b>{' '}
+            {Number.isFinite(priceChange.was) ? <>It was {formatCurrency(priceChange.was)}; it is now <b>{formatCurrency(priceChange.now)}</b>.</> : <>It is now <b>{formatCurrency(priceChange.now)}</b>.</>}{' '}
+            We have not charged you. Check the new total in the summary, then press the pay button again to go ahead at this price,
+            or <a href={`/quote?quote=${quoteId}`} style={{ color: 'inherit', fontWeight: 600 }}>go back to the quote</a>.
+          </div>
+        )}
+
+        {next && (
+          <div role="alert" className="gate-box" style={{ marginBottom: 24 }} data-testid="checkout-next">
+            {next.text}{' '}
+            <a href={next.link} style={{ color: 'inherit', fontWeight: 600 }}>{next.label}</a>.
           </div>
         )}
 

@@ -27,8 +27,9 @@ const fs = require("fs");
 const path = require("path");
 const { MANUFACTURING_PROCESSES } = require("../config/defaults");
 
-// Fallback wiring for an unknown/new process that hasn't declared behavior yet —
-// treat it like sheet metal so it degrades safely rather than throwing.
+// Wiring for a process listed in MANUFACTURING_PROCESSES that has no folder of its own yet
+// (used only while seeding the built-ins below). It is NOT a fallback for an unknown slug:
+// resolveProcess refuses those (see below).
 const FALLBACK_BEHAVIOR = {
   priceMethod: "calculateSheetMetalPrice",
   dfmFn: "runSheetMetalDFM",
@@ -50,9 +51,37 @@ function getProcess(slug) {
   return processes.get(slug);
 }
 
-/** Get a process definition by slug, falling back to sheet metal wiring. */
+/** Thrown by resolveProcess for a slug that is not a registered process. */
+class UnknownProcessError extends Error {
+  constructor(slug) {
+    super("Unknown manufacturing process");
+    this.name = "UnknownProcessError";
+    this.code = "process-unknown";
+    // Kept short and printable for the log; never echoed to a customer.
+    this.slug = typeof slug === "string" ? slug.slice(0, 40) : typeof slug;
+  }
+}
+
+/**
+ * Get a process definition by slug, or throw UnknownProcessError.
+ *
+ * There is no fallback. This used to answer with the sheet-metal definition for
+ * any slug it did not know (a typo, a made-up word, "__proto__"), so a part
+ * could be priced by a model that had nothing to do with it (independent review
+ * 2026-11-11, F1). A caller that cannot name a registered process must stop,
+ * not price. The registry is a Map, so "constructor" / "__proto__" are just
+ * unknown slugs.
+ */
 function resolveProcess(slug) {
-  return processes.get(slug) || processes.get("sheetmetal") || { slug: "sheetmetal", ...FALLBACK_BEHAVIOR };
+  const def = typeof slug === "string" ? processes.get(slug) : undefined;
+  if (!def) throw new UnknownProcessError(slug);
+  return def;
+}
+
+/** A registered process that is switched on (what a customer may price and buy), or null. */
+function activeProcess(slug) {
+  const def = typeof slug === "string" ? processes.get(slug) : undefined;
+  return def && def.active !== false ? def : null;
 }
 
 /** All registered process definitions. */
@@ -86,6 +115,8 @@ module.exports = {
   defineProcess,
   getProcess,
   resolveProcess,
+  activeProcess,
+  UnknownProcessError,
   listProcesses,
   activeProcesses,
 };

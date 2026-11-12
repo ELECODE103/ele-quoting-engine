@@ -31,6 +31,11 @@ const MATERIAL_GUIDANCE = [
   { match: ['brass'], text: 'Free-machining, corrosion-resistant, conductive. Fittings, bushings, contacts.' },
 ];
 
+// The server says which materials a finish goes on (`materialSlugs`); a finish without the list goes on any.
+export function finishFits(finish, materialSlug) {
+  return !Array.isArray(finish?.materialSlugs) || finish.materialSlugs.includes(materialSlug);
+}
+
 // What a layer height means depends on the material's own range: the default
 // is "standard", anything finer is slower, anything coarser is faster.
 function layerNote(lh, mat) {
@@ -103,8 +108,14 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
       layerHeight: mat.defaultLayerHeight || 0.2,
     };
     if (mat.thicknesses?.length) updates.thicknessMm = closestThickness(mat);
+    // A finish that is not done on the new material (anodize on a plastic) goes back to the standard one.
+    const fits = finishes.filter((f) => finishFits(f, slug));
+    if (fits.length && !fits.some((f) => f.slug === part.finishSlug)) updates.finishSlug = fits[0].slug;
     onChange(updates);
   }
+
+  // Only the finishes that can be ordered on this material are listed.
+  const shownFinishes = finishes.filter((f) => finishFits(f, part.materialSlug));
 
   const guidance = getGuidance(currentMat);
   const tier = priceTier(currentMat);
@@ -196,7 +207,7 @@ export default function PartConfigurator({ part, materials, finishes, onChange, 
         <label style={{ gridColumn: '1 / -1' }}>
           <span className="field-label">Finish</span>
           <select className="input" value={part.finishSlug} onChange={(e) => onChange({ finishSlug: e.target.value })}>
-            {finishes.map((f) => (
+            {shownFinishes.map((f) => (
               <option key={f.slug} value={f.slug}>
                 {f.name}{SENT_OUT_FINISHES.has(f.slug) ? ' — sent out to a finisher' : ''}{f.pricePerPart > 0 ? ` (+$${f.pricePerPart.toFixed(2)} each)` : ''}
               </option>

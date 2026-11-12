@@ -211,7 +211,7 @@ test("A5: sign-in, registration and form limits count an IPv6 /64 as one client 
     if (/\breq\.ip\b/.test(fs.readFileSync(path.join(root, f), "utf8"))) users.push(f);
   }
   assert.deepStrictEqual(users, []);
-  assert.strictEqual(fs.readFileSync(path.join(root, "server/routes/auth.js"), "utf8").match(/keyGenerator: clientKey/g).length, 3, "the three express-rate-limit limiters in auth.js use the shared key");
+  assert.strictEqual(fs.readFileSync(path.join(root, "server/routes/auth.js"), "utf8").match(/keyGenerator: clientKey/g).length, 4, "the four express-rate-limit limiters in auth.js (the admin setup route's is the fourth) use the shared key");
 });
 
 test("W1: an unsigned Stripe webhook is refused unless the test switch is set — and in production even then", async () => {

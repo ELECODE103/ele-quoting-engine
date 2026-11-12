@@ -162,7 +162,8 @@ async function main() {
       for (const qty of QTYS) {
         const body = {
           parts: [{
-            partId: up.partId, materialSlug: cfg.materialSlug, grade: mat.grades?.[0]?.name,
+            // The upload's edit key: an anonymous part is only priced for whoever uploaded it.
+            partId: up.partId, editKey: up.editKey, materialSlug: cfg.materialSlug, grade: mat.grades?.[0]?.name,
             thicknessMm: cfg.thicknessMm || undefined, finishSlug: cfg.finishSlug || undefined,
             quantity: qty, process: cfg.process, subProcess: cfg.subProcess || undefined,
           }],
@@ -201,7 +202,7 @@ async function main() {
           quoteId: q.quoteId,
         };
         if (twin) {
-          const tq = await api("POST", "/api/quote", { json: { ...body, parts: [{ ...body.parts[0], partId: twin.partId }] } });
+          const tq = await api("POST", "/api/quote", { json: { ...body, parts: [{ ...body.parts[0], partId: twin.partId, editKey: twin.editKey }] } });
           const tu = tq.lineItems[0].perUnit.final;
           row.twinFile = part.twin; row.twinUnitPrice = tu; row.twinDiff = li.perUnit.final / tu - 1;
           pr.parity.push({ label: cfg.label, qty, dxf: li.perUnit.final, step: tu, diff: row.twinDiff, floor: !!meta.floorApplied });

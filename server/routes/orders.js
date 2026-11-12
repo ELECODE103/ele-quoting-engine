@@ -14,6 +14,8 @@ const shipBy = require("../services/shipBy");
 const { trackingUrl } = require("../emails/templates");
 const shopFacts = require("../shopFacts");
 const mailer = require("../services/mailer");
+const checkoutGuard = require("../services/checkoutGuard"); // per-account checkout limit; what-was-priced snapshot
+const partAccess = require("../security/partAccess");
 
 const QUOTE_VALID_DAYS = 30; // same hold as routes/api.js
 
@@ -58,7 +60,7 @@ function orderView(order, { admin = false } = {}) {
 // ═══════════════════════════════════════════════════════════════
 // POST /api/orders/checkout-session — Create Stripe Checkout Session
 // ═══════════════════════════════════════════════════════════════
-router.post("/checkout-session", authenticate, requireConfirmedEmail, async (req, res) => {
+router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGuard.limiter, async (req, res) => {
   try {
     if (!stripeClient.get()) {
       return res.status(503).json({ error: "Payment processing is not configured" });
@@ -71,7 +73,7 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, async (req
     }
 
     // Retrieve the quote
-    const quote = quotesDB.getById(quoteId);
+    let quote = typeof quoteId === "string" ? quotesDB.getById(quoteId) : null;
     if (!quote) {
       return res.status(404).json({ error: "Quote not found" });
     }
@@ -81,8 +83,23 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, async (req
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const orderTotal = quote.orderTotal || quote.subtotal || 0;
-    if (orderTotal <= 0) {
+    // One quote, one order (payments review 2026-11-11, F-04): an order that is paid, or waiting to
+    // be paid, has used this quote up. The buyer's own unpaid order is resumed further down; anything
+    // else is refused. (To buy the same parts again there is Reorder, which prices them at today's rules.)
+    const taken = ordersDB.query((o) => o.quoteId === quoteId && o.status !== "cancelled");
+    const resumable = taken.find((o) => o.userId === req.user.userId && o.status === "pending_payment" && !o.rfqId && Math.abs((o.total || 0) - Number(quote.orderTotal)) < 0.005);
+    if (taken.length > 0 && !resumable) {
+      const mine = taken.find((o) => o.userId === req.user.userId);
+      return res.status(409).json({
+        error: "This quote has already been ordered. To order the same parts again, open that order and choose Reorder.",
+        code: "quote-already-ordered",
+        ...(mine ? { orderId: mine.id } : {}),
+      });
+    }
+
+    // The quote's own total, and only that: a quote without one is not charged from another field.
+    const orderTotal = Number(quote.orderTotal);
+    if (!Number.isFinite(orderTotal) || orderTotal <= 0) {
       return res.status(400).json({ error: "Invalid order total" });
     }
 
@@ -117,6 +134,20 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, async (req
         code: "lead-time-unavailable",
       });
     }
+    // PRICE INTEGRITY (independent review 2026-11-11, F2). The stored total is not charged on
+    // trust: the saved configuration is priced again here, through the same choke point as a new
+    // quote, from each part's CURRENT geometry under the CURRENT rules, and the gate is run again.
+    // The buyer is charged only when that agrees with the stored total to the cent, or when the
+    // quote is inside its price hold and its parts, configuration and gate result are exactly what
+    // was priced. Otherwise: 409 `quote-changed` with today's price for the buyer to confirm.
+    // An order of the buyer's that is still waiting for payment gets the same check before it is
+    // handed a payment page again (payments review F-04): its parts have been locked since it was
+    // made, but the rate card, the catalog and the gate have not. If it no longer passes, the quote
+    // has to be reopened (it is not a draft any more, so the builder makes a new one from it).
+    const checked = require("./api").verifyQuoteForOrder(quote, req.user, { confirmedTotal: req.body.confirmedTotal });
+    if (!checked.ok) return res.status(checked.status).json(resumable ? { ...checked.body, reopen: true, orderId: resumable.id } : checked.body);
+    quote = checked.quote;
+
     const leadDays = leadTime ? shipBy.leadDays(leadTime) : null;
     const account = usersDB.getById(req.user.userId);
     const shipping = shippingFields(req.body);
@@ -138,8 +169,9 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, async (req
     if (pending && Math.abs((pending.total || 0) - orderTotal) < 0.005) {
       const reused = ordersDB.update(pending.id, { ...shipping, shipBy: leadDays !== null ? shipBy.shipByDate(leadDays) : pending.shipBy });
       const items = orderItemsDB.query((i) => i.orderId === reused.id);
-      const session = await orderEvents.createCheckoutSession(reused, { itemCount: items.length, description: describe(items), ...stripeUrls(reused.id) });
-      return res.json({ sessionUrl: session.url, orderId: reused.id });
+      // The session this order already has, while it is still open for the same amount; a new one only when it is not.
+      const again = await checkoutGuard.sessionFor(reused, { itemCount: items.length, description: describe(items), ...stripeUrls(reused.id) });
+      return res.json({ sessionUrl: again.paid ? stripeUrls(reused.id).successUrl : again.session.url, orderId: reused.id });
     }
 
     // What the total is made of, so the order page, emails and documents can show it.
@@ -197,7 +229,7 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, async (req
     // The engine's line items carry slugs; orders and emails show names.
     const materialNames = Object.fromEntries(materialsDB.getAll().map((m) => [m.slug, m.name]));
     const finishNames = Object.fromEntries(finishesDB.getAll().map((f) => [f.slug, f.name]));
-    for (const item of lineItems) {
+    for (const [index, item] of lineItems.entries()) {
       // Map from the pricing-engine line-item shape: per-unit price lives at
       // perUnit.final and material/finish/process live under meta.
       orderItemsDB.insert({
@@ -216,9 +248,13 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, async (req
         // grade/thicknessMm for sheet metal, subProcess/layerHeightMm for printing,
         // machinability for CNC, etc.). Stored as one JSON blob — no per-process columns.
         // `input` is what the buyer configured, kept so the order can be re-quoted (reorder).
-        config: { ...(item.meta || {}), input: inputs[item.partId] || null },
+        // `priced` is the snapshot of exactly what was charged for: the fingerprint of the stored
+        // geometry and configuration, its units and its dimensions, for the traveler to be checked against.
+        config: { ...(item.meta || {}), input: (quote.config?.parts || [])[index] || inputs[item.partId] || null, priced: checkoutGuard.pricedSnapshot(checked.priced, index, checked.basis) },
       });
     }
+    // Parts uploaded before the buyer had an account belong to the buyer from here on.
+    if (req.user.role !== "admin") for (const part of checked.priced.parts) partAccess.claim(part, req.user, partsDB);
 
     let session;
     try {
@@ -263,7 +299,7 @@ router.post("/", authenticate, requireAdmin, (req, res) => {
     }
 
     // Retrieve the quote
-    const quote = quotesDB.getById(quoteId);
+    let quote = typeof quoteId === "string" ? quotesDB.getById(quoteId) : null;
     if (!quote) {
       return res.status(404).json({ error: "Quote not found" });
     }
@@ -280,6 +316,12 @@ router.post("/", authenticate, requireAdmin, (req, res) => {
         reasons: quote.gate.reasons || [],
       });
     }
+
+    // A phone order is priced again like any other (same check as /checkout-session): the stored
+    // total is used only when it is today's price or a held price for exactly what was priced.
+    const checked = require("./api").verifyQuoteForOrder(quote, req.user, { confirmedTotal: req.body.confirmedTotal });
+    if (!checked.ok) return res.status(checked.status).json(checked.body);
+    quote = checked.quote;
 
     // Sanitize all user-provided shipping fields
     const cleanShippingCost = nonNegativeNumber(shippingCost, 0);
@@ -298,11 +340,12 @@ router.post("/", authenticate, requireAdmin, (req, res) => {
       shippingMethod: sanitizeString(shippingMethod || "standard", 50),
       shippingCost: cleanShippingCost,
       // The quote's total with the paperwork fee taken out, so the fee stays its own line.
-      subtotal: Math.round(((quote.orderTotal || quote.subtotal || 0) - (quote.paperwork ? Number(quote.paperworkFee) || 0 : 0)) * 100) / 100,
+      subtotal: Math.round(((Number(quote.orderTotal) || 0) - (quote.paperwork ? Number(quote.paperworkFee) || 0 : 0)) * 100) / 100,
       paperwork: Boolean(quote.paperwork),
       paperworkFee: quote.paperwork ? Number(quote.paperworkFee) || 0 : 0,
       tax: 0,
-      total: (quote.orderTotal || quote.subtotal || 0) + cleanShippingCost,      notes: sanitizeString(notes || "", 2000),
+      total: Math.round(((Number(quote.orderTotal) || 0) + cleanShippingCost) * 100) / 100,
+      notes: sanitizeString(notes || "", 2000),
     });
 
     // Create order items from quote line items
@@ -310,12 +353,12 @@ router.post("/", authenticate, requireAdmin, (req, res) => {
     // Same mapping as the Stripe checkout path: the pricing-engine line item
     // keeps per-unit price at perUnit.final and process/material under meta.
     // `config` (= meta) carries the engine's time estimate for calibration.
-    for (const item of lineItems) {
+    for (const [index, item] of lineItems.entries()) {
       orderItemsDB.insert({
         orderId: order.id,
         partId: item.partId,
         fileName: item.fileName,
-        process: item.meta?.process || "sheetmetal",
+        process: item.meta?.process || "",
         materialSlug: item.meta?.materialSlug || item.materialSlug || "",
         materialName: item.meta?.materialName || item.materialName || "",
         finishSlug: item.meta?.finishSlug || item.finishSlug || "",
@@ -323,7 +366,7 @@ router.post("/", authenticate, requireAdmin, (req, res) => {
         quantity: item.quantity || 1,
         unitPrice: item.perUnit?.final ?? item.unitPrice ?? 0,
         lineTotal: item.lineTotal || 0,
-        config: item.meta || {},
+        config: { ...(item.meta || {}), input: (quote.config?.parts || [])[index] || null, priced: checkoutGuard.pricedSnapshot(checked.priced, index, checked.basis) },
       });
     }
 
@@ -443,6 +486,11 @@ router.put("/:id/status", authenticate, requireAdmin, async (req, res) => {
     }
 
     const updated = ordersDB.update(req.params.id, updates);
+    // Who moved the order by hand, from what to what (the admin change log; no customer text, no notes).
+    require("../services/adminAudit").record(req.user, {
+      area: "order", action: "status", target: String(existing.id).slice(0, 8),
+      changes: { status: [existing.status || null, updated.status], ...(updates.trackingNumber !== undefined ? { tracking: [existing.trackingNumber ? "set" : null, updated.trackingNumber ? "set" : null] } : {}), ...(updates.carrier !== undefined && updates.carrier !== existing.carrier ? { carrier: [existing.carrier || null, updated.carrier || null] } : {}) },
+    });
 
     // Shipped (or tracking added afterwards) → tell the customer.
     const emailed = await orderEvents.notifyStatusChange(existing, updated, { base: orderEvents.baseUrl(req) });
@@ -496,6 +544,7 @@ router.post("/:id/reorder", authenticate, (req, res) => {
         process: it.process,
         subProcess: it.config?.subProcess || "",
         grade: it.config?.grade || "",
+        ...(Number(it.config?.thicknessMm) > 0 ? { thicknessMm: Number(it.config.thicknessMm) } : {}),
         ...(it.config?.input || {}),
         partId: it.partId,
         quantity: it.quantity,
@@ -507,15 +556,18 @@ router.post("/:id/reorder", authenticate, (req, res) => {
       });
     }
     const { saveQuote } = require("./api");
+    // The caller owns this order (checked above), which is what entitles them to its parts: a part
+    // nobody owns yet needs no edit key here. A part that belongs to another account stays closed.
+    const fromOrder = { allowAnonymous: true };
     // The reorder keeps the paperwork choice (re-priced at today's fee, like everything else).
     const input = { parts: configs, process: configs[0].process, paperwork: Boolean(order.paperwork) };
     let result;
     try {
-      result = saveQuote({ ...input, leadTimeSlug: order.leadTimeSlug || "standard" }, req.user);
+      result = saveQuote({ ...input, leadTimeSlug: order.leadTimeSlug || "standard" }, req.user, { access: fromOrder });
     } catch (err) {
       if (!err.expose) throw err;
       // A retired lead time shouldn't block a reorder; anything else (a retired material) does.
-      try { result = saveQuote({ ...input, leadTimeSlug: "standard" }, req.user); }
+      try { result = saveQuote({ ...input, leadTimeSlug: "standard" }, req.user, { access: fromOrder }); }
       catch (err2) {
         if (!err2.expose) throw err2;
         return res.status(409).json({ error: `This order can't be re-quoted as it was: ${err2.message}. Start a new quote instead.`, code: "reorder-failed" });
@@ -557,10 +609,15 @@ router.get("/:id/traveler", authenticate, requireAdmin, (req, res) => {
     // Enrich items with part geometry data
     const enrichedItems = items.map((item) => {
       const part = item.partId ? partsDB.getById(item.partId) : null;
+      // What was charged for, and whether the stored part is still that part (it is locked once
+      // ordered, so `false` means something is wrong and the job must not be cut from this file).
+      const check = checkoutGuard.checkAgainst(item, part);
       return {
         ...item,
         geometry: part?.geometry || null,
         dfm: part?.dfm || null,
+        priced: check ? check.priced : null,
+        matchesPriced: check ? check.matches : null,
       };
     });
 

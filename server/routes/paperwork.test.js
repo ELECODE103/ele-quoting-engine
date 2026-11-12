@@ -154,12 +154,14 @@ const LABEL = "First-article inspection report and certificate of conformance";
   });
 
   test("the owner changes the fees in the pricing console: new quotes use them, a saved quote keeps its held price", async () => {
+    // The buyer prices the part while signed in, so from here on it is the buyer's part (review 2026-11-11, F5):
+    // the rest of this journey is made with the buyer's session, as it would be in a browser that stayed signed in.
     const held = await h.post("/api/quote", { parts: [h.cncConfig(partA, 10)], paperwork: true }, buyer);
     assert.strictEqual(held.body.paperworkFee, 60);
     const put = await h.put("/api/admin/pricing", { rules: { paperworkFeePerPart: 80, paperworkFeePerOrder: 25 }, note: "FAI takes longer than I guessed" }, owner);
     assert.strictEqual(put.status, 200, put.text);
     assert.strictEqual(put.body.rules.paperworkFeePerPart, 80);
-    const fresh = await h.post("/api/quote", { parts: [h.cncConfig(partA, 10)], paperwork: true });
+    const fresh = await h.post("/api/quote", { parts: [h.cncConfig(partA, 10)], paperwork: true }, buyer);
     assert.strictEqual(fresh.body.paperworkFee, 105);
     assert.deepStrictEqual(fresh.body.paperworkOffer, { perPart: 80, perOrder: 25, parts: 1, fee: 105 });
     assert.strictEqual(quotesDB.getById(held.body.quoteId).paperworkFee, 60, "the earlier quote still holds $60 for its 30 days");
@@ -173,15 +175,15 @@ const LABEL = "First-article inspection report and certificate of conformance";
 
   // ─── A hand-built request cannot get the paperwork without paying for it ──
   test("a hand-built quote request cannot set, zero or shrink the fee", async () => {
-    const free = await h.post("/api/quote", { parts: [h.cncConfig(partA, 10)], paperwork: true, paperworkFee: 0, paperworkOffer: { fee: 0 }, orderTotal: 1 });
+    const free = await h.post("/api/quote", { parts: [h.cncConfig(partA, 10)], paperwork: true, paperworkFee: 0, paperworkOffer: { fee: 0 }, orderTotal: 1 }, buyer);
     assert.strictEqual(free.body.paperworkFee, 60, "an amount sent by the client is ignored");
     const stored = quotesDB.getById(free.body.quoteId);
     assert.strictEqual(stored.paperworkFee, 60);
     assert.ok(stored.orderTotal > 60);
-    const flagOnly = await h.post("/api/quote", { parts: [h.cncConfig(partA, 10)], paperwork: false, paperworkFee: 60 });
+    const flagOnly = await h.post("/api/quote", { parts: [h.cncConfig(partA, 10)], paperwork: false, paperworkFee: 60 }, buyer);
     assert.strictEqual(flagOnly.body.paperwork, false);
     assert.strictEqual(flagOnly.body.paperworkFee, 0, "no flag, no fee, whatever amount came with it");
-    const perLine = await h.post("/api/quote", { parts: [{ ...h.cncConfig(partA, 10), paperwork: true }] });
+    const perLine = await h.post("/api/quote", { parts: [{ ...h.cncConfig(partA, 10), paperwork: true }] }, buyer);
     assert.strictEqual(perLine.body.paperwork, false, "the option is on the order, not smuggled in on a line");
     assert.ok(!("paperwork" in quotesDB.getById(perLine.body.quoteId).config.parts[0]));
   });
@@ -212,20 +214,20 @@ const LABEL = "First-article inspection report and certificate of conformance";
   // ─── The funnel with the option on ─────────────────────────
   let orderId, quoteId, quoted;
   test("session reload brings the ticked box back", async () => {
-    quoted = await h.post("/api/quote", { parts: [h.cncConfig(partA, 10)], leadTimeSlug: "expedited", paperwork: true, process: "cnc" });
+    quoted = await h.post("/api/quote", { parts: [h.cncConfig(partA, 10)], leadTimeSlug: "expedited", paperwork: true, process: "cnc" }, buyer);
     quoteId = quoted.body.quoteId;
-    const s = await h.get(`/api/quote/${quoteId}/session`);
+    const s = await h.get(`/api/quote/${quoteId}/session`, buyer);
     assert.strictEqual(s.body.paperwork, true);
-    const view = await h.get(`/api/quote/${quoteId}`);
+    const view = await h.get(`/api/quote/${quoteId}`, buyer);
     assert.strictEqual(view.body.paperwork, true);
     assert.strictEqual(view.body.paperworkFee, 60);
     near(view.body.subtotal + view.body.leadTimeSurcharge + view.body.paperworkFee + view.body.shippingEstimate, view.body.orderTotal, "what the checkout page shows adds up");
     // Unticking re-prices the same quote back down.
-    const off = await h.post("/api/quote", { quoteId, parts: [h.cncConfig(partA, 10)], leadTimeSlug: "expedited", paperwork: false, process: "cnc" });
+    const off = await h.post("/api/quote", { quoteId, parts: [h.cncConfig(partA, 10)], leadTimeSlug: "expedited", paperwork: false, process: "cnc" }, buyer);
     assert.strictEqual(off.body.quoteId, quoteId);
     near(off.body.orderTotal, quoted.body.orderTotal - 60);
-    assert.strictEqual((await h.get(`/api/quote/${quoteId}/session`)).body.paperwork, false);
-    quoted = await h.post("/api/quote", { quoteId, parts: [h.cncConfig(partA, 10)], leadTimeSlug: "expedited", paperwork: true, process: "cnc" });
+    assert.strictEqual((await h.get(`/api/quote/${quoteId}/session`, buyer)).body.paperwork, false);
+    quoted = await h.post("/api/quote", { quoteId, parts: [h.cncConfig(partA, 10)], leadTimeSlug: "expedited", paperwork: true, process: "cnc" }, buyer);
   });
 
   test("checkout: the order carries the flag and the fee as its own line, and Stripe gets two lines that sum to the total", async () => {

@@ -164,17 +164,29 @@ test("quote pricing: a body cannot set the price, the status or the owner, and o
   assert.strictEqual(many.body.code, "too-many-lines");
   assert.ok(/firm quote/i.test(many.body.error));
   assert.strictEqual((await h.post("/api/quote", { parts: Array.from({ length: 100 }, () => config) })).status, 200, "one hundred lines is still an instant quote");
-  // a quantity beyond reason is clamped, not multiplied through to infinity
-  const huge = await h.post("/api/quote", { parts: [{ ...config, quantity: 1e300 }] });
-  assert.strictEqual(huge.status, 200, huge.text);
-  assert.ok(Number.isFinite(huge.body.orderTotal));
+  // A quantity beyond reason is refused. (It used to be clamped to the ceiling and priced; since the
+  // review of 2026-11-11 nothing a request sends is turned into a different value and priced.)
+  for (const quantity of [1e300, 1000001, 0, -5, 2.5]) {
+    const huge = await h.post("/api/quote", { parts: [{ ...config, quantity }] });
+    assert.strictEqual(huge.status, 400, `${quantity}: ${huge.text}`);
+    assert.strictEqual(huge.body.code, "quantity-invalid");
+    assert.strictEqual(huge.body.orderTotal, undefined, "and no price comes back");
+  }
+  assert.strictEqual((await h.post("/api/quote", { parts: [{ ...config, quantity: 1000000 }] })).status, 200, "the ceiling itself is still priced (and gated to a person)");
 });
 
 test("admin records: only the listed fields, only in their types — a blank multiplier can no longer null out the price", async () => {
   admin = await h.admin();
   const { leadTimesDB, finishesDB, materialsDB } = h.models;
   // Deleting through the admin route answers that it worked (it used to answer 404 after deleting), and a second try is a 404.
-  const made = await h.post("/api/admin/materials", { name: "Scrap test material", slug: "scrap-test-material", process: "cnc" }, admin);
+  // A material cannot be saved without the price it is charged from (payments review 2026-11-11, F-13);
+  // this used to be created with no price at all and was then priced at a figure built into the code.
+  for (const price of [undefined, "", null, 0, -3, "abc"]) {
+    const unpriced = await h.post("/api/admin/materials", { name: "Scrap test material", slug: "scrap-test-material", process: "cnc", ...(price === undefined ? {} : { pricePerKg: price }) }, admin);
+    assert.strictEqual(unpriced.status, 400, `pricePerKg ${JSON.stringify(price)}: ${unpriced.text}`);
+  }
+  assert.strictEqual(materialsDB.getAll().some((x) => x.slug === "scrap-test-material"), false, "nothing was stored");
+  const made = await h.post("/api/admin/materials", { name: "Scrap test material", slug: "scrap-test-material", process: "cnc", pricePerKg: 9.5 }, admin);
   assert.strictEqual(made.status, 201, made.text);
   const del = await h.del(`/api/admin/materials/${made.body.id}`, admin);
   assert.deepStrictEqual([del.status, del.body], [200, { success: true }]);
@@ -254,7 +266,9 @@ test("a DXF's units cannot be changed once the part is on an order (the shop bui
   assert.strictEqual(q.status, 200, q.text);
   const before = h.models.partsDB.getById(partId).geometry.boundingBox.width;
   h.models.orderItemsDB.insert({ orderId: h.models.ordersDB.getAll()[0].id, partId, fileName: "guard.dxf", quantity: 1 });
-  const r = await units({ units: "mm" });
+  // The buyer priced the part while signed in, so it is the buyer's now: the edit key alone no longer opens it.
+  assert.strictEqual((await units({ units: "mm" })).status, 404, "claimed by an account: the key without that account is not enough");
+  const r = await h.raw("POST", `/api/parts/${partId}/units`, { json: { units: "mm" }, headers: key, token: buyer });
   assert.strictEqual(r.status, 409, r.text);
   assert.strictEqual(r.body.code, "part-locked");
   assert.strictEqual(h.models.partsDB.getById(partId).geometry.boundingBox.width, before, "the stored geometry did not move");

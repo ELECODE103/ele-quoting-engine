@@ -50,6 +50,10 @@ async function start(opts = {}) {
   delete process.env.EMAIL_FROM;
   delete process.env.STRIPE_WEBHOOK_SECRET;
   delete process.env.ADMIN_RECOVERY;
+  // The admin account is made by the one-time setup, with a code the owner sets himself
+  // (security/adminAccount.js). A throwaway one, made here at run time; `{ setupCode: false }` leaves it unset.
+  if (opts.setupCode === false) delete process.env.ADMIN_SETUP_CODE;
+  else process.env.ADMIN_SETUP_CODE = `setup-${crypto.randomBytes(18).toString("base64url")}`;
   process.env.NODE_ENV = "test";
   // The explicit test switch (security/testHooks.js): the suites post Stripe webhooks without a signature.
   process.env.SE_TEST_HOOKS = "1";
@@ -128,9 +132,14 @@ async function start(opts = {}) {
   /** A form token issued ten seconds ago, as if a person had been filling the form in. */
   const formToken = (form, agoMs = 10000) => botGuard.issueFormToken(form, { now: Date.now() - agoMs });
 
-  /** Send exactly this request: no token, header or address is added. */
-  async function raw(method, url, { headers = {}, json, body, token, ip } = {}) {
-    const hdrs = { "X-Forwarded-For": ip || h.ip || nextIp(), ...headers };
+  /**
+   * Send this request as written. Two things are added: the caller's address, and — because the
+   * suites are API clients that hold their session token themselves — the header that asks for the
+   * token in the answer (`X-Session-Token: body`). A browser never sends it and never gets the token:
+   * `{ browser: true }` leaves it off, as the site's own pages do.
+   */
+  async function raw(method, url, { headers = {}, json, body, token, ip, browser = false } = {}) {
+    const hdrs = { "X-Forwarded-For": ip || h.ip || nextIp(), ...(browser ? {} : { "X-Session-Token": "body" }), ...headers };
     if (token) hdrs.Authorization = `Bearer ${token}`;
     let payload = body;
     if (json !== undefined) { hdrs["Content-Type"] = "application/json"; payload = JSON.stringify(json); }
@@ -141,11 +150,21 @@ async function start(opts = {}) {
     return { status: res.status, body: parsed, text, headers: res.headers };
   }
 
-  /** A request as the site's own pages send it: the verified-human token rides along. */
+  /**
+   * A request as the site's own pages send it: the verified-human token rides along, and a quote
+   * request carries, for each part this harness uploaded, the edit key the upload answer gave it
+   * (that key is what lets a visitor without an account price their own part; security/partAccess.js).
+   */
   async function call(method, url, body, token, rawBody, extraHeaders = {}) {
     const headers = { ...extraHeaders };
     if (h.humanToken) headers["X-Human-Token"] = h.humanToken;
-    return raw(method, url, { headers, json: rawBody ? undefined : body, body: rawBody, token });
+    if (method === "POST" && url === "/api/quote" && body && Array.isArray(body.parts)) {
+      body = { ...body, parts: body.parts.map((p) => (p && typeof p === "object" && !Array.isArray(p) && typeof p.partId === "string" && p.editKey === undefined && h.editKeys[p.partId] ? { ...p, editKey: h.editKeys[p.partId] } : p)) };
+    }
+    const r = await raw(method, url, { headers, json: rawBody ? undefined : body, body: rawBody, token });
+    // Remember the edit key of every part an upload (or a reopened quote) hands back, as the page does.
+    if (r.body && Array.isArray(r.body.parts)) for (const p of r.body.parts) if (p && p.partId && p.editKey) h.editKeys[p.partId] = p.editKey;
+    return r;
   }
 
   const h = {
@@ -172,6 +191,8 @@ async function start(opts = {}) {
     password: PASSWORD,
     turnstile: turnstileStub,
     humanToken: "",
+    /** partId → edit key, for every part uploaded through this harness. */
+    editKeys: {},
     ip: "",
     limits: false,
     /**
@@ -204,17 +225,21 @@ async function start(opts = {}) {
       return r.body.token;
     },
     /**
-     * The owner's account, set up the way the owner does it: register the
-     * ADMIN_EMAIL address, confirm the emailed link (that is what gives the
-     * admin role), then switch two-step sign-in on — without it every admin
-     * route answers 403. Returns the session token issued at enrolment.
+     * The owner's account, set up the way the owner does it: the one-time
+     * setup with the code he put in the host's variables (POST
+     * /api/auth/admin-setup), then two-step sign-in switched on — without it
+     * every admin route answers 403. Returns the session token issued at enrolment.
      * `{ enrol: false }` stops before the second step.
      */
     async admin(name = "Owner", { password = PASSWORD, enrol = true } = {}) {
       const email = process.env.ADMIN_EMAIL;
-      let token = await h.register(email, name, { password });
+      // The one-time setup: the code from the host's variables and a new password. (The admin address
+      // cannot be registered, and no public route gives the admin role.)
+      const made = await raw("POST", "/api/auth/admin-setup", { json: { code: process.env.ADMIN_SETUP_CODE, password } });
+      if (made.status !== 201) throw new Error(`admin setup failed: ${made.text}`);
+      const token = made.body.token;
+      h.adminPassword = password;
       if (!enrol) return token;
-      // The role came with the confirmation; this session predates it but the role is read from the database.
       const setup = await raw("POST", "/api/auth/2fa/setup", { json: { password }, token });
       if (setup.status !== 200) throw new Error(`2fa setup failed: ${setup.text}`);
       h.adminSecret = setup.body.setupKey.replace(/\s/g, "");

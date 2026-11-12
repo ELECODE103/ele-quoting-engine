@@ -20,7 +20,8 @@ const botGuard = require("./botGuard");
 const tokens = require("./tokens");
 const session = require("./session");
 const mailer = require("../services/mailer");
-const { orderItemsDB, rfqsDB } = require("../models");
+const { orderItemsDB, rfqsDB, partsDB } = require("../models");
+const partAccess = require("./partAccess");
 
 /** Add each part's edit key to an upload / quote-session response, so the browser that holds the part can set its units. */
 function addPartEditKeys(req, res, next) {
@@ -48,6 +49,12 @@ function partEditGate(req, res, next) {
   const partId = req.params.partId;
   const key = req.headers["x-part-key"] || (req.body && req.body.editKey);
   if (!tokens.partEditKeyOk(partId, key)) {
+    return res.status(404).json({ error: "Part not found" });
+  }
+  // The key alone opens a part that was uploaded without an account. A part that belongs to an
+  // account is changed by that account only (security/partAccess.js); the answer does not say which.
+  const part = partsDB.getById(partId);
+  if (!part || !partAccess.canUse(part, { user: req.user, key })) {
     return res.status(404).json({ error: "Part not found" });
   }
   const ordered = orderItemsDB.query((i) => i.partId === partId).length > 0
@@ -109,7 +116,7 @@ function startupWarnings(log = console.warn) {
       "    - CAD upload and pricing: open to anyone without a verified-human token",
       "  Still running without keys: honeypot field, minimum time to submit,",
       "  per-IP and per-address limits, duplicate-submission suppression,",
-      "  per-account sign-in pause.",
+      "  per-client and per-address sign-in limits.",
       "════════════════════════════════════════════════════════════════════",
     );
   }
@@ -118,7 +125,7 @@ function startupWarnings(log = console.warn) {
       "WARNING: EMAIL VERIFICATION AND PASSWORD RESET CANNOT WORK — EMAIL_API_KEY / EMAIL_FROM are not set.",
       "  - new accounts cannot confirm their address, so checkout is NOT held back for unconfirmed accounts",
       "  - password-reset and sign-in-paused emails are not sent",
-      "  - a new ADMIN_EMAIL account cannot be confirmed by link (see ADMIN_RECOVERY=verify-email)",
+      "  - the admin's password cannot be reset by email (see ADMIN_RECOVERY=setup-code)",
     );
   }
   // Sessions, every signed link and the key that encrypts two-factor secrets all hang on JWT_SECRET.

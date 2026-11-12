@@ -206,7 +206,9 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
   test("with no mailer configured, confirmation cannot work, so checkout is not held back", async () => {
     const keep = { k: process.env.EMAIL_API_KEY, f: process.env.EMAIL_FROM };
     const t = await h.register("nomail@buyer.test", "No Mail", { verify: false });
-    const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 3)], leadTimeSlug: "standard" }, t);
+    const ownPart = await h.uploadCube(); // a part of this buyer's own (the first one is Dana's since she priced it signed in)
+    const q = await h.post("/api/quote", { parts: [h.cncConfig(ownPart, 3)], leadTimeSlug: "standard" }, t);
+    assert.strictEqual(q.status, 200, q.text);
     assert.strictEqual((await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, t)).status, 403, "held back while the mailer is configured");
     delete process.env.EMAIL_API_KEY; delete process.env.EMAIL_FROM;
     try {
@@ -218,23 +220,28 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
 
   // ═══ Admin role ═══════════════════════════════════════════════
   let owner, ownerPw;
-  test("registering the ADMIN_EMAIL address does not make an admin; confirming its email does", async () => {
+  // Rewritten after the independent review of 2026-11-11 (F3). This test used to end with "confirming its
+  // email does [make an admin]" — the rule that promoted whoever had registered the address when the real
+  // owner clicked the link in his inbox. The admin address cannot be registered at all now, and the account
+  // is made by the one-time setup. The full behaviour is in routes/adminSetup.test.js.
+  test("the ADMIN_EMAIL address cannot be registered; the admin account comes from the one-time setup and must enrol two-step sign-in", async () => {
     ownerPw = pw(); secretsSeen.push(ownerPw);
-    owner = await h.register("owner@shop.test", "Owner", { verify: false, password: ownerPw });
-    assert.strictEqual(byEmail("owner@shop.test").role, "customer");
-    assert.strictEqual((await h.get("/api/admin/stats", owner)).status, 403);
-    assert.strictEqual((await h.get("/api/rfq/admin/list", owner)).status, 403);
-    // A restart does not promote it either.
+    const taken = await h.raw("POST", "/api/auth/register", { json: { email: "dana@buyer.test", password: pw(), name: "x" }, headers: regHeaders() });
+    const grab = await h.raw("POST", "/api/auth/register", { json: { email: "owner@shop.test", password: pw(), name: "x" }, headers: regHeaders() });
+    assert.deepStrictEqual([grab.status, grab.body], [taken.status, taken.body], "answered exactly like an address that already has an account");
+    assert.strictEqual(grab.status, 409);
+    assert.strictEqual(byEmail("owner@shop.test"), undefined, "no account was made");
+    assert.strictEqual(mailTo("owner@shop.test").length, 0, "and nothing was sent to the owner's inbox");
+    // A restart gives nobody the role either.
     const boot = adminAccount.ensureAtStartup();
-    assert.deepStrictEqual({ promoted: boot.promoted, pending: boot.pending }, { promoted: false, pending: true });
-    assert.strictEqual(byEmail("owner@shop.test").role, "customer");
-    await h.confirmEmail("owner@shop.test");
+    assert.deepStrictEqual({ promoted: boot.promoted, adminExists: boot.adminExists, setupOpen: boot.setupOpen }, { promoted: false, adminExists: false, setupOpen: true });
+    owner = await h.admin("Owner", { password: ownerPw, enrol: false });
     assert.strictEqual(byEmail("owner@shop.test").role, "admin");
-    // The same session is now an admin account: the role is read per request. Two-step sign-in is
-    // required for the role to count, so the refusal changes from "not an admin" to "enrol first",
-    // and the enrolment endpoints open.
+    // Two-step sign-in is required for the role to count: every admin route says "enrol first",
+    // and the enrolment endpoints are open.
     const stats = await h.get("/api/admin/stats", owner);
     assert.deepStrictEqual([stats.status, stats.body.code], [403, "two-factor-enrolment-required"]);
+    assert.strictEqual((await h.get("/api/rfq/admin/list", owner)).status, 403);
     assert.strictEqual((await h.get("/api/auth/2fa", owner)).status, 200);
     const view = (await h.get("/api/auth/session", owner)).body.user;
     assert.deepStrictEqual([view.role, view.twoFactorEnabled, view.twoFactorRequired], ["admin", false, true]);
@@ -316,37 +323,43 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
     assert.strictEqual((await login("dana@buyer.test", danaPw, {}, { ip: "198.51.100.201" })).status, 200);
   });
 
-  test("five wrong passwords pause the address for 15 minutes from every connection, the owner is emailed, and an unknown address behaves the same", async () => {
+  // Rewritten after the independent review of 2026-11-11 (F4). These two tests used to assert that five
+  // wrong passwords "pause the address for 15 minutes from every connection" — which is how anyone who
+  // knew an address could keep its owner out. The address is no longer paused; the guessing client is
+  // slowed instead. The whole design is tested in routes/signInThrottle.test.js.
+  test("five wrong passwords do NOT pause the address: the guessing connection waits, the owner signs in, and an unknown address behaves the same", async () => {
     loginGuard.resetForTests();
     h.sent.length = 0;
-    const attempt = (email, n) => login(email, "Wrong-password-1", {}, { ip: `198.51.100.${n + 1}`, headers: { "X-Turnstile-Token": "pass-login" } });
+    const ip = "198.51.100.77";
+    const attempt = (email, from) => login(email, "Wrong-password-1", {}, { ip: from, headers: { "X-Turnstile-Token": "pass-login" } });
     const known = [], unknown = [];
-    for (let i = 0; i < 5; i++) { known.push(await attempt("dana@buyer.test", i)); unknown.push(await attempt("ghost@nowhere.test", i + 50)); }
+    for (let i = 0; i < 5; i++) { known.push(await attempt("dana@buyer.test", ip)); unknown.push(await attempt("ghost@nowhere.test", "198.51.100.78")); }
     assert.deepStrictEqual(known.map((r) => r.status), [401, 401, 401, 401, 401]);
-    assert.deepStrictEqual(unknown.map((r) => [r.status, r.body]), known.map((r) => [r.status, r.body]), "identical answers all the way to the pause");
-    // Paused: the right password, from a new address, with the bot check passed.
+    assert.deepStrictEqual(unknown.map((r) => [r.status, r.body]), known.map((r) => [r.status, r.body]), "identical answers for an address with no account");
+    // The guessing connection now has to wait before its next try at that address — right password or not.
+    const sixth = await login("dana@buyer.test", danaPw, {}, { ip, headers: { "X-Turnstile-Token": "pass-login" } });
+    assert.deepStrictEqual([sixth.status, sixth.body.code], [429, "try-later"]);
+    assert.ok(sixth.body.retryAfterSeconds > 50 && sixth.body.retryAfterSeconds <= 60, `a minute, less however long the five guesses took: ${sixth.body.retryAfterSeconds}`);
+    const ghost = await login("ghost@nowhere.test", "anything-At-all-1", {}, { ip: "198.51.100.78", headers: { "X-Turnstile-Token": "pass-login" } });
+    assert.deepStrictEqual([ghost.status, ghost.body.code, ghost.body.error], [sixth.status, sixth.body.code, sixth.body.error], "no way to tell which address has an account");
+    // The account's owner, on another connection, signs in (with the bot check, which the failures switched on).
     const right = await login("dana@buyer.test", danaPw, {}, { ip: "203.0.113.99", headers: { "X-Turnstile-Token": "pass-login" } });
-    assert.strictEqual(right.status, 429);
-    assert.strictEqual(right.body.code, "account-locked");
-    assert.ok(/paused for 15 minutes/.test(right.body.error) && /reset your password/.test(right.body.error));
-    const ghost = await login("ghost@nowhere.test", "anything-At-all-1", {}, { ip: "203.0.113.98", headers: { "X-Turnstile-Token": "pass-login" } });
-    assert.deepStrictEqual([ghost.status, ghost.body.code, ghost.body.error], [right.status, right.body.code, right.body.error], "no way to tell which address has an account");
-    await sleep(50); // the pause is written and the email sent after the response
-    const row = byEmail("dana@buyer.test");
-    assert.ok(new Date(row.lockedUntil).getTime() > Date.now() + 14 * 60e3, "the pause is stored on the account, so it survives a restart");
-    const mails = mailTo("dana@buyer.test", /sign-in paused/);
-    assert.strictEqual(mails.length, 1, "one email to the account's owner");
-    assert.ok(/Nobody got in/.test(mails[0].text) && mails[0].text.includes("https://shop.test/forgot-password"));
-    assert.strictEqual(mailTo("ghost@nowhere.test").length, 0, "nothing is sent to an address with no account");
-    // A session that already exists keeps working: the pause is on signing in.
+    assert.strictEqual(right.status, 200, right.text);
+    await sleep(50);
+    assert.ok(!byEmail("dana@buyer.test").lockedUntil, "nothing is written to the account");
+    assert.strictEqual(mailTo("dana@buyer.test").length, 0, "and five failures are not worth an email");
+    // A session that already exists keeps working throughout.
     assert.strictEqual((await h.get("/api/auth/profile", dana)).status, 200);
   });
 
-  test("the pause ends after 15 minutes without anyone doing anything", async () => {
-    advance(15 * 60e3 + 1000);
-    const r = await login("dana@buyer.test", danaPw, {}, { ip: "203.0.113.97" });
+  test("the connection's wait ends by itself", async () => {
+    loginGuard.resetForTests();
+    const ip = "198.51.100.79";
+    for (let i = 0; i < 5; i++) await login("dana@buyer.test", "Wrong-password-1", {}, { ip, headers: { "X-Turnstile-Token": "pass-login" } });
+    assert.strictEqual((await login("dana@buyer.test", danaPw, {}, { ip, headers: { "X-Turnstile-Token": "pass-login" } })).status, 429);
+    advance(60e3 + 1000);
+    const r = await login("dana@buyer.test", danaPw, {}, { ip, headers: { "X-Turnstile-Token": "pass-login" } });
     assert.strictEqual(r.status, 200, r.text);
-    assert.ok(!byEmail("dana@buyer.test").lockedUntil, "the stored pause is cleared on a good sign-in");
   });
 
   test("one connection trying many addresses is stopped at 20 failures; other connections are not", async () => {
@@ -449,21 +462,30 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
     danaPw = newPw;
   });
 
-  test("a reset lifts a sign-in pause at once", async () => {
+  // Rewritten (F4): there is no pause on the address to lift any more. What a reset does now is make the
+  // browser that completes it a known device, so its owner gets in even while the address is being hammered.
+  test("a reset always gets the owner in: the browser that completes it is a known device, whatever is being done to the address", async () => {
     loginGuard.resetForTests();
     advance(61 * 60e3); // a fresh hour for the per-address reset limit
-    for (let i = 0; i < 5; i++) await login("dana@buyer.test", "Wrong-password-1", {}, { ip: `198.51.100.${i + 60}`, headers: { "X-Turnstile-Token": "pass-login" } });
-    assert.strictEqual((await login("dana@buyer.test", danaPw, {}, { headers: { "X-Turnstile-Token": "pass-login" } })).status, 429);
+    // A hundred wrong passwords from a hundred connections: sign-in from browsers the account has never used is refused.
+    for (let i = 0; i < loginGuard.ACCOUNT_CEILING; i++) loginGuard.recordFailure({ ip: `198.51.${100 + Math.floor(i / 200)}.${i % 200}`, emailKey: "dana@buyer.test" });
+    const shut = await login("dana@buyer.test", danaPw, {}, { headers: { "X-Turnstile-Token": "pass-login" } });
+    assert.deepStrictEqual([shut.status, shut.body.code], [429, "account-busy"]);
+    assert.ok(/reset your password/.test(shut.body.error));
     h.sent.length = 0;
     await requestReset("dana@buyer.test");
     await sleep(60);
     const link = linkToken(mailTo("dana@buyer.test", /reset your password/)[0]);
     const unlockPw = pw(); secretsSeen.push(unlockPw);
-    assert.strictEqual((await h.raw("POST", "/api/auth/password-reset/confirm", { json: { token: link, password: unlockPw } })).status, 200);
-    const r = await login("dana@buyer.test", unlockPw);
+    const done = await h.raw("POST", "/api/auth/password-reset/confirm", { json: { token: link, password: unlockPw } });
+    assert.strictEqual(done.status, 200);
+    const device = done.headers.getSetCookie().find((c) => c.startsWith("se_device="));
+    assert.ok(device && /; HttpOnly/.test(device) && /; SameSite=Strict/.test(device), "the reset hands this browser a device proof");
+    const r = await login("dana@buyer.test", unlockPw, {}, { headers: { Cookie: device.split(";")[0] } });
     assert.strictEqual(r.status, 200, r.text);
     assert.ok(!byEmail("dana@buyer.test").lockedUntil);
     dana = r.body.token; danaPw = unlockPw;
+    loginGuard.resetForTests();
   });
 
   test("a reset proves the mailbox, so it also confirms an unconfirmed address", async () => {
@@ -524,8 +546,11 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
 
   test("the browser session is an httpOnly, SameSite=Strict cookie, and cookie requests that change anything need the CSRF token", async () => {
     const r = await login("dana@buyer.test", danaPw);
+    // Two cookies since the review of 2026-11-11: the session, and the "known device" proof (httpOnly too; not a login).
     const setCookie = r.headers.getSetCookie();
-    assert.strictEqual(setCookie.length, 1);
+    assert.strictEqual(setCookie.length, 2);
+    assert.ok(setCookie[1].startsWith("se_device=") && /; HttpOnly/.test(setCookie[1]) && /; SameSite=Strict/.test(setCookie[1]));
+    assert.strictEqual((await h.raw("GET", "/api/auth/profile", { headers: { Cookie: setCookie[1].split(";")[0] } })).status, 401, "the device proof is not a session");
     const c = setCookie[0];
     assert.ok(c.startsWith("se_session="), c.split("=")[0]);
     assert.ok(/; HttpOnly/.test(c) && /; SameSite=Strict/.test(c) && /; Path=\//.test(c) && /; Max-Age=86400/.test(c));
@@ -555,7 +580,11 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
     assert.strictEqual((await h.raw("POST", "/api/orders/checkout-session", { json: { quoteId, ...SHIP }, headers: { Cookie: cookie } })).status, 403);
     // Where sign-in is optional (pricing), a cookie without the token is simply a guest.
     await h.refreshHuman(); // the suite's clock has moved more than the token's hour
-    const guestLike = await h.raw("POST", "/api/quote", { json: { parts: [h.cncConfig(partId, 1)] }, headers: { Cookie: cookie, "X-Human-Token": h.humanToken } });
+    // (With a part nobody owns yet, and its edit key: Dana's own part needs Dana's session — review 2026-11-11, F5.)
+    const loosePart = await h.uploadCube();
+    const asGuestOnHers = await h.raw("POST", "/api/quote", { json: { parts: [h.cncConfig(partId, 1)] }, headers: { Cookie: cookie, "X-Human-Token": h.humanToken } });
+    assert.deepStrictEqual([asGuestOnHers.status, asGuestOnHers.body.code], [400, "part-not-found"], "a cookie without the CSRF token is a guest, and a guest cannot price Dana's part");
+    const guestLike = await h.raw("POST", "/api/quote", { json: { parts: [{ ...h.cncConfig(loosePart, 1), editKey: h.editKeys[loosePart] }] }, headers: { Cookie: cookie, "X-Human-Token": h.humanToken } });
     assert.strictEqual(guestLike.status, 200);
     assert.strictEqual(h.models.quotesDB.getById(guestLike.body.quoteId).userId, null, "not bound to the account");
     // Sign-out clears the cookie and ends the session.
@@ -696,13 +725,15 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
     loginGuard.resetForTests();
   });
 
-  test("wrong codes count toward the sign-in pause like wrong passwords", async () => {
+  // Rewritten (F4): wrong codes used to run up the address-wide pause. They now have their own count —
+  // the second step is the real barrier for an account that has it — and it still stops at five.
+  test("five wrong codes pause the second step for browsers the account has never used, from every connection", async () => {
     loginGuard.resetForTests();
     for (let i = 0; i < 5; i++) assert.strictEqual((await login("owner@shop.test", ownerPw, { totp: "000000" }, { ip: `198.51.100.${i + 80}`, headers: { "X-Turnstile-Token": "pass-login" } })).status, 401);
     advance(30_000);
     const r = await login("owner@shop.test", ownerPw, { totp: code() }, { headers: { "X-Turnstile-Token": "pass-login" } });
     assert.strictEqual(r.status, 429);
-    assert.strictEqual(r.body.code, "account-locked");
+    assert.strictEqual(r.body.code, "two-factor-paused");
     await sleep(40);
     advance(15 * 60e3 + 1000);
     loginGuard.resetForTests();
@@ -793,18 +824,23 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
     assert.strictEqual((await h.get("/api/admin/stats", r.body.token)).status, 401, "on the new session only");
   });
 
-  test("ADMIN_RECOVERY=verify-email confirms the owner's address when no link can be sent; it does nothing for any other account", async () => {
+  // Rewritten (F3). ADMIN_RECOVERY=verify-email used to mark whatever account held the admin address as
+  // confirmed and promote it — the documented recovery that promoted a squatter. It no longer exists.
+  test("ADMIN_RECOVERY=verify-email is gone: it confirms nothing and promotes nobody", async () => {
     const row = byEmail("owner@shop.test");
     usersDB.update(row.id, { role: "customer", emailVerifiedAt: null });
-    assert.strictEqual(adminAccount.ensureAtStartup().promoted, false);
-    process.env.ADMIN_RECOVERY = "verify-email";
     try {
-      const boot = adminAccount.ensureAtStartup();
-      assert.deepStrictEqual({ recovery: boot.recovery, promoted: boot.promoted }, { recovery: "verify-email", promoted: true });
-    } finally { delete process.env.ADMIN_RECOVERY; }
-    assert.strictEqual(byEmail("owner@shop.test").role, "admin");
-    assert.ok(!byEmail("nomail@buyer.test").emailVerifiedAt, "other unconfirmed accounts are untouched");
-    assert.strictEqual(byEmail("nomail@buyer.test").role, "customer");
+      assert.strictEqual(adminAccount.ensureAtStartup().promoted, false);
+      process.env.ADMIN_RECOVERY = "verify-email";
+      try {
+        const boot = adminAccount.ensureAtStartup();
+        assert.deepStrictEqual({ recovery: boot.recovery, promoted: boot.promoted, reserved: boot.reserved }, { recovery: null, promoted: false, reserved: true });
+      } finally { delete process.env.ADMIN_RECOVERY; }
+      assert.strictEqual(byEmail("owner@shop.test").role, "customer", "an ordinary account holding the admin address stays ordinary");
+      assert.ok(!byEmail("owner@shop.test").emailVerifiedAt, "and unconfirmed");
+      assert.ok(logged.some((l) => /ADMIN_RECOVERY=verify-email no longer exists/.test(l)), "the owner is told what to use instead");
+      assert.ok(!byEmail("nomail@buyer.test").emailVerifiedAt, "other unconfirmed accounts are untouched");
+    } finally { usersDB.update(row.id, { role: "admin", emailVerifiedAt: row.emailVerifiedAt }); }
   });
 
   test("nothing secret was written to a log: no password, session token, emailed link, setup key or recovery code", async () => {
