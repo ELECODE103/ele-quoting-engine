@@ -87,19 +87,36 @@ function segmentMesh(mesh) {
   for (const r of regions) {
     const rn = regionNormal(mesh, r.tris);
     r.normal = rn.normal; r.area = rn.area;
-    r.boundary = new Set(); // welded ids of the region's boundary vertices (the extremes of a planar region lie on them)
   }
 
   // Region adjacency: for each pair, the longest shared edge direction.
+  // Boundary vertices of each region (welded ids; the extremes of a planar
+  // region lie on them) are collected as (region, vertex) events in flat
+  // arrays and de-duplicated per region below — one Set per region cost
+  // hundreds of megabytes on a mesh where every facet is its own region.
   const pairInfo = new Map(); // key a*R+b (a<b) -> {len, dir}
   const { adj, vidx, verts } = mesh;
+  const bCount = new Int32Array(R + 1);
   for (let t = 0; t < mesh.n; t++) {
     const ra = regionOf[t];
     if (ra < 0) continue;
     for (let e = 0; e < 3; e++) {
       const o = adj[t * 3 + e];
       const rbAny = o < 0 ? -1 : regionOf[o];
-      if (rbAny !== ra) { regions[ra].boundary.add(vidx[t * 3 + e]); regions[ra].boundary.add(vidx[t * 3 + ((e + 1) % 3)]); }
+      if (rbAny !== ra) bCount[ra + 1] += 2;
+    }
+  }
+  for (let i = 0; i < R; i++) bCount[i + 1] += bCount[i];
+  const bStart = bCount; // bStart[r] .. bStart[r+1] = that region's boundary-vertex events
+  const bFill = bStart.slice(0, R);
+  const bVerts = new Int32Array(bStart[R]);
+  for (let t = 0; t < mesh.n; t++) {
+    const ra = regionOf[t];
+    if (ra < 0) continue;
+    for (let e = 0; e < 3; e++) {
+      const o = adj[t * 3 + e];
+      const rbAny = o < 0 ? -1 : regionOf[o];
+      if (rbAny !== ra) { bVerts[bFill[ra]++] = vidx[t * 3 + e]; bVerts[bFill[ra]++] = vidx[t * 3 + ((e + 1) % 3)]; }
       if (o < 0) continue;
       const rb = rbAny;
       if (rb < 0 || rb === ra || rb < ra) continue;
@@ -120,7 +137,16 @@ function segmentMesh(mesh) {
   const unite = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[a] = b; };
 
   const smoothCosMax = COPLANAR_COS, smoothCosMin = Math.cos(SMOOTH_MAX_DEG * DEG);
-  for (const r of regions) { r.vertIds = r.boundary.size <= MAX_BOUNDARY_VERTS ? Array.from(r.boundary) : null; r.boundary = null; }
+  // Distinct boundary vertices per region (only their set matters: the extent
+  // below is a min/max). A region with more than MAX_BOUNDARY_VERTS of them
+  // gets none, as before.
+  const stamp = new Int32Array(mesh.nv).fill(-1);
+  for (const r of regions) {
+    const lo = bStart[r.id], hi = bStart[r.id + 1];
+    let w = lo;
+    for (let i = lo; i < hi; i++) { const id = bVerts[i]; if (stamp[id] !== r.id) { stamp[id] = r.id; bVerts[w++] = id; } }
+    r.vertIds = w - lo <= MAX_BOUNDARY_VERTS ? bVerts.subarray(lo, w) : null;
+  }
   for (const info of pairInfo.values()) {
     const A = regions[info.a], B = regions[info.b];
     if (!A.vertIds || !B.vertIds) continue; // a face with a huge outline is a real planar face
@@ -147,6 +173,7 @@ function segmentMesh(mesh) {
   const patches = [];
   const patchOf = new Int32Array(mesh.n).fill(-1);
   const pushPatch = (p) => { p.id = patches.length; for (const t of p.tris) patchOf[t] = p.id; patches.push(p); };
+  let upper = null; // adjacent regions with a larger id, per region (built when the first curved group needs it)
 
   for (const members of groups.values()) {
     if (members.length === 1) {
@@ -156,7 +183,8 @@ function segmentMesh(mesh) {
     }
     const tris = [];
     for (const m of members) for (const t of regions[m].tris) tris.push(t);
-    const fit = fitGroup(mesh, tris, members.map((m) => regions[m]), pairInfo, R);
+    if (!upper) upper = upperNeighbours(pairInfo, R);
+    const fit = fitGroup(mesh, tris, members.map((m) => regions[m]), upper);
     if (fit.kind === "cylinder" || fit.kind === "cone") {
       pushPatch(Object.assign(fit, { tris, area: sumArea(mesh, tris), source: "mesh" }));
     } else if (members.length <= 3) {
@@ -180,8 +208,33 @@ function makePlane(mesh, tris, normal, area) {
   return { kind: "plane", tris, normal, offset: A > 0 ? off / A : 0, area, source: "mesh" };
 }
 
-/** Fit a curved group using per-region normals (one sample per planar facet) and region adjacency pairs. */
-function fitGroup(mesh, tris, members, pairInfo, R) {
+/**
+ * For every region, the adjacent regions with a larger id, ascending:
+ * { start: Int32Array(R + 1), list: Int32Array } (list[start[a] .. start[a+1]]).
+ */
+function upperNeighbours(pairInfo, R) {
+  const start = new Int32Array(R + 1);
+  for (const info of pairInfo.values()) start[info.a + 1]++;
+  for (let i = 0; i < R; i++) start[i + 1] += start[i];
+  const fill = start.slice(0, R);
+  const list = new Int32Array(start[R]);
+  for (const info of pairInfo.values()) list[fill[info.a]++] = info.b;
+  for (let a = 0; a < R; a++) if (start[a + 1] - start[a] > 1) list.subarray(start[a], start[a + 1]).sort();
+  return { start, list };
+}
+
+/**
+ * Fit a curved group using per-region normals (one sample per planar facet) and region adjacency pairs.
+ *
+ * `pairs` lists every adjacent pair of members as [index of the lower region
+ * id, index of the higher], ordered by the lower id and then the higher —
+ * the order the fit sums them in. It used to be found by testing every pair
+ * of members against the adjacency map (members² lookups: a minute for the
+ * 50,000 facets of a sphere); walking each member's sorted neighbour list
+ * gives the same pairs in the same order. Pairs and vertices are only built
+ * if the fit reaches the step that reads them.
+ */
+function fitGroup(mesh, tris, members, upper) {
   const normals = [], points = [], weights = [];
   const index = new Map();
   members.forEach((r, i) => {
@@ -190,16 +243,29 @@ function fitGroup(mesh, tris, members, pairInfo, R) {
     for (const t of r.tris) { cx += mesh.centroid[t * 3] * mesh.area[t]; cy += mesh.centroid[t * 3 + 1] * mesh.area[t]; cz += mesh.centroid[t * 3 + 2] * mesh.area[t]; }
     normals.push(r.normal); points.push([cx / r.area, cy / r.area, cz / r.area]); weights.push(r.area);
   });
-  const pairs = [];
-  for (const r of members) {
-    for (const s of members) {
-      if (s.id <= r.id) continue;
-      if (pairInfo.has(r.id * R + s.id)) pairs.push([index.get(r.id), index.get(s.id)]);
-    }
-  }
-  const vertIds = regionVertexIds(mesh, tris);
-  const vertices = vertIds.map((id) => [mesh.verts[id * 3], mesh.verts[id * 3 + 1], mesh.verts[id * 3 + 2]]);
-  return fitCurved({ normals, points, weights, vertices, pairs });
+  let pairs = null, vertices = null;
+  return fitCurved({
+    normals, points, weights,
+    get pairs() {
+      if (pairs) return pairs;
+      pairs = [];
+      const { start, list } = upper;
+      for (let i = 0; i < members.length; i++) {
+        const a = members[i].id;
+        for (let k = start[a]; k < start[a + 1]; k++) {
+          const j = index.get(list[k]);
+          if (j !== undefined) pairs.push([i, j]);
+        }
+      }
+      return pairs;
+    },
+    get vertices() {
+      if (vertices) return vertices;
+      const vertIds = regionVertexIds(mesh, tris);
+      vertices = vertIds.map((id) => [mesh.verts[id * 3], mesh.verts[id * 3 + 1], mesh.verts[id * 3 + 2]]);
+      return vertices;
+    },
+  });
 }
 
 /**
