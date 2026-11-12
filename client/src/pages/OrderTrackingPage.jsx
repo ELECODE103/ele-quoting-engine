@@ -150,12 +150,15 @@ export default function OrderTrackingPage() {
                   Placed {new Date(order.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
                 </p>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <button className="btn btn-primary" onClick={reorder} disabled={reordering}>
-                  {reordering ? 'Rebuilding the quote…' : 'Reorder'}
-                </button>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>Opens these parts as a new quote at today's price.</div>
-              </div>
+              {/* Reorder is for an order that was paid for; one that never was has nothing to reorder (the server refuses it too). */}
+              {order.canReorder !== false && (
+                <div style={{ textAlign: 'right' }}>
+                  <button className="btn btn-primary" onClick={reorder} disabled={reordering}>
+                    {reordering ? 'Rebuilding the quote…' : 'Reorder'}
+                  </button>
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>Opens these parts as a new quote at today's price.</div>
+                </div>
+              )}
             </div>
             {reorderError && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginBottom: 16 }}>{reorderError}</div>}
 

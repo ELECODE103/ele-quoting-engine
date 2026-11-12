@@ -89,6 +89,19 @@ function hasPaymentOnRecord(order) {
 }
 
 /**
+ * Did this order ever become a real order? Paid at some point (still paid, in work, shipped,
+ * refunded afterwards, or cancelled after payment), or accepted on a purchase order and taken into
+ * work by the shop. An order still awaiting payment or a PO confirmation, one that lapsed unpaid,
+ * and one cancelled before any payment never did. Reorder is offered only for the first kind
+ * (re-review RR-14: an abandoned checkout was a free ticket to the re-pricing route).
+ */
+function wasPlaced(order) {
+  if (!order) return false;
+  if (hasPaymentOnRecord(order)) return true;
+  return FULFILMENT.includes(order.status) || order.status === "refunded";
+}
+
+/**
  * May the owner move this order to `to` by hand?
  * @returns {{ok: true, needsReason: boolean} | {ok: false, code: string, error: string}}
  */
@@ -143,4 +156,4 @@ function isWork(order) {
   return Boolean(order) && WORK_QUEUE.includes(order.status);
 }
 
-module.exports = { STATES, FULFILMENT, WORK_QUEUE, ACTIVE, AUTOMATIC, MANUAL, ATTENTION, MANUAL_PAID_METHODS, manualTransition, hasPaymentOnRecord, holdsQuote, label, isWork };
+module.exports = { STATES, FULFILMENT, WORK_QUEUE, ACTIVE, AUTOMATIC, MANUAL, ATTENTION, MANUAL_PAID_METHODS, manualTransition, hasPaymentOnRecord, wasPlaced, holdsQuote, label, isWork };

@@ -143,6 +143,15 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'lead-time-unavailable': { '*': { text: 'The lead time on this quote is no longer offered. Reopen the quote and pick a lead time to see today\'s price.', action: 'reopen-quote' } },
     'quote-inconsistent': { '*': { text: 'The total on this quote no longer adds up, so we won\'t charge it. Reopen the quote for today\'s price.', action: 'reopen-quote' } },
     'parts-unavailable': { '*': { text: 'We no longer hold the part files for this order. Upload them again for a new quote.' } },
+    // Reorder is for an order that was paid for (or accepted on a PO and started). The order page does not
+    // offer the button otherwise; this is for a page left open while the order lapsed, and for other clients.
+    'reorder-not-available': {
+      '*': {
+        text: ({ data }) => (data && data.status === 'pending_payment'
+          ? `This order hasn't been paid for yet, so there is nothing to reorder and nothing was changed. Go back to checkout to pay for it. Questions: ${PHONE}.`
+          : `This order was never paid for, so there is nothing to reorder and nothing was changed. Start a new quote with the same files, or ${REACH}.`),
+      },
+    },
     'reorder-failed': { '*': { text: `This order can't be re-quoted as it was. Start a new quote with the same files, or ${REACH}.`, keep: true } },
     'already-accepted': { '*': { text: `This quote has already been accepted, so there is nothing more to do here. Questions about the order: ${PHONE}.` } },
     'not-open': { '*': { text: `This quote is no longer open. ${REACH_CAP} and we'll sort it out.` } },

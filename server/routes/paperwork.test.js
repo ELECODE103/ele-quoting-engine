@@ -358,7 +358,14 @@ const LABEL = "First-article inspection report and certificate of conformance";
     assert.strictEqual(q.paperworkFee, 65, "re-priced: $50 + $15");
     assert.strictEqual((await h.get(`/api/quote/${r.body.quoteId}/session`, buyer)).body.paperwork, true);
     const plain = ordersDB.getAll().find((o) => !o.paperwork && o.userId === ordersDB.getById(orderId).userId);
+    // (relaunch merge, re-review RR-14) Reorder is refused for an order that was never paid for, and this one is
+    // still awaiting payment: assert that, then pay it — the paperwork choice on a reorder is what this case holds.
+    if (ordersDB.getById(plain.id).status === "pending_payment") {
+      assert.deepStrictEqual([(await h.post(`/api/orders/${plain.id}/reorder`, {}, buyer)).body.code], ["reorder-not-available"]);
+      assert.strictEqual((await h.completed(ordersDB.getById(plain.id).stripeSessionId)).status, 200);
+    }
     const r2 = await h.post(`/api/orders/${plain.id}/reorder`, {}, buyer);
+    assert.strictEqual(r2.status, 201, r2.text);
     assert.strictEqual(quotesDB.getById(r2.body.quoteId).paperwork, false, "an order without it reorders without it");
     await h.put("/api/admin/pricing", { rules: { paperworkFeePerPart: 45 }, note: "back to the starting value" }, owner);
   });
@@ -402,7 +409,10 @@ const LABEL = "First-article inspection report and certificate of conformance";
     assert.strictEqual(old.body.paperwork, false);
     const pdf = pdfText(await documents.buildOrderConfirmationPdf({ order: ordersDB.getById(order.id), items: orderItemsDB.query((i) => i.orderId === order.id) }));
     assert.ok(pdf.includes(money(order.total)));
+    // (relaunch merge, re-review RR-14) an order has to have been paid for before it can be reordered: pay this one.
+    assert.strictEqual((await h.completed(ordersDB.getById(order.id).stripeSessionId)).status, 200);
     const reorder = await h.post(`/api/orders/${order.id}/reorder`, {}, buyer);
+    assert.strictEqual(reorder.status, 201, reorder.text);
     assert.strictEqual(quotesDB.getById(reorder.body.quoteId).paperwork, false);
   });
 

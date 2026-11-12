@@ -64,6 +64,8 @@ function orderView(order, { admin = false } = {}) {
     paymentUnderReview: order.status === "pending_payment" && payment.needsAttention,
     hasDrawing: Boolean(drawingPath),
     trackingUrl: trackingUrl(order.carrier, order.trackingNumber),
+    // Whether the order page offers Reorder (an order that was never paid for has nothing to reorder).
+    canReorder: orderState.wasPlaced(order),
   };
 }
 
@@ -623,6 +625,22 @@ router.post("/:id/reorder", authenticate, (req, res) => {
   try {
     const order = ownedOrder(req, res);
     if (!order) return;
+    // Reorder is for an order that was really placed: paid at some point, or accepted on a PO and taken
+    // into work (services/orderState.js wasPlaced). An abandoned checkout is not a ticket to this route
+    // (re-review 2026-11-12, RR-14); an admin may rebuild a quote from any order.
+    if (!orderState.wasPlaced(order) && req.user.role !== "admin") {
+      return res.status(409).json({
+        error: order.status === "pending_payment"
+          ? "This order hasn't been paid for yet, so there is nothing to reorder. Go back to checkout to pay for it."
+          : "This order was never paid for, so there is nothing to reorder. Start a new quote for these parts.",
+        code: "reorder-not-available",
+        status: order.status,
+      });
+    }
+    // NOTE FOR THE availability-fixes MERGE (re-review RR-05): saveQuote below prices every line on the
+    // main thread, with no memo, no line budget and no per-account wait. On a dense part with many lines
+    // it holds the site the way the pricing route did (uploads review C2). The fix needs modules that
+    // only exist on availability-fixes; wrap THIS call the way that branch wraps POST /api/quote.
     const items = orderItemsDB.query((i) => i.orderId === order.id);
     const configs = items
       .filter((it) => it.partId && partsDB.getById(it.partId))
