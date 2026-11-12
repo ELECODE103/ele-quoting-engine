@@ -73,4 +73,34 @@ test("retention sweep removes files older than the window, keeps fresh ones", ()
   assert.ok(fs.existsSync(newF), "fresh file kept");
 });
 
+test("start-up key check reads every encrypted file, not the newest few: old files under another key are counted after many new uploads (RR-12)", () => {
+  const dir = path.join(tmp, "keycheck");
+  fs.mkdirSync(dir, { recursive: true });
+  const write = (key, name) => {
+    process.env.NORD_FILE_ENC_KEY = key;
+    delete process.env.NORD_FILE_ENC_KEY_PREVIOUS;
+    const fc = freshCrypto();
+    const p = path.join(dir, name);
+    fs.writeFileSync(p, "PART " + name);
+    return fc.encryptFileInPlace(p);
+  };
+  const long = (c) => c.repeat(40);
+  // Eight parts under the first key, made to look a month old; then sixty uploads under a new key.
+  const monthAgo = (Date.now() - 30 * 24 * 3600 * 1000) / 1000;
+  for (let i = 0; i < 8; i++) { const out = write(long("a"), `old-${i}.stl`); fs.utimesSync(out, monthAgo, monthAgo); }
+  for (let i = 0; i < 60; i++) write(long("b"), `new-${i}.stl`);
+  process.env.NORD_FILE_ENC_KEY = long("b");
+  let check = freshCrypto().checkKeysAgainst([dir, path.join(tmp, "no-such-folder")]);
+  assert.deepStrictEqual(check, { checked: 68, locked: 8, total: 68 });
+  // With the earlier key listed, nothing is locked.
+  process.env.NORD_FILE_ENC_KEY_PREVIOUS = long("a");
+  check = freshCrypto().checkKeysAgainst([dir]);
+  assert.deepStrictEqual(check, { checked: 68, locked: 0, total: 68 });
+  // Past the per-folder maximum the oldest and the newest halves are read: the old ones are still seen.
+  delete process.env.NORD_FILE_ENC_KEY_PREVIOUS;
+  check = freshCrypto().checkKeysAgainst([dir], 20);
+  assert.deepStrictEqual(check, { checked: 20, locked: 8, total: 68 });
+  delete process.env.NORD_FILE_ENC_KEY;
+});
+
 console.log(`\n${passed} checks passed` + (process.exitCode ? " (with failures above)" : ""));

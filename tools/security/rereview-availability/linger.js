@@ -111,6 +111,7 @@ async function pipeline() {
     // never learns of the server's close (see hold()), so the server's own side is measured as well, the
     // way hold() does it: its count of open sockets back to where it was.
     const fds = () => { try { return require("fs").readdirSync(`/proc/${s.pid}/fd`).length; } catch { return -1; } };
+    await c.sleep(6500); // the admin's own connection for the count above has gone by now
     const baseFds = fds(); const tFd = Date.now(); let serverSideClosedAfterMs = null; let sawOpen = false;
     const watch = setInterval(() => { const now = fds(); if (now > baseFds) sawOpen = true; else if (sawOpen && serverSideClosedAfterMs === null) serverSideClosedAfterMs = Date.now() - tFd; }, 50);
     const r = await rawRequest(s.port, head, { maxMs: 20000, feed: async ({ write, isDone }) => {
