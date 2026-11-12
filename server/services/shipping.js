@@ -122,13 +122,20 @@ function measure(parts = [], rules = {}) {
   let pieces = 0;
   let sizeKnown = parts.length > 0;
   if (!parts.length) unknown.push("no parts");
+  // A drawing at a thickness is worked out once per call, however many lines use it: giving a dense
+  // drawing its thickness is real work, and a quote can hold a hundred lines of one drawing.
+  const extruded = new Map(); // stored geometry → Map(thickness → geometry at that thickness, or null)
+  const atThickness = (flat, thicknessMm) => {
+    let byThickness = extruded.get(flat);
+    if (!byThickness) { byThickness = new Map(); extruded.set(flat, byThickness); }
+    if (!byThickness.has(thicknessMm)) { let g = null; try { g = dxf.materialize(flat, thicknessMm); } catch { g = null; } byThickness.set(thicknessMm, g); }
+    return byThickness.get(thicknessMm);
+  };
   for (const part of parts) {
     const name = String((part && part.fileName) || "a part").slice(0, 80);
     let geometry = part && part.geometry;
     // A DXF is a flat profile: its volume exists only at the stock thickness the buyer picked.
-    if (dxf.is2D(geometry)) {
-      if (Number(part.thicknessMm) > 0) { try { geometry = dxf.materialize(geometry, Number(part.thicknessMm)); } catch { geometry = null; } } else geometry = null;
-    }
+    if (dxf.is2D(geometry)) geometry = Number(part.thicknessMm) > 0 ? atThickness(geometry, Number(part.thicknessMm)) : null;
     const qty = Math.max(1, Math.floor(Number(part && part.quantity) || 1));
     pieces += qty;
     const volumeMm3 = Number(geometry && geometry.volume);
