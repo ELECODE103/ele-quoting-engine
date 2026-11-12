@@ -64,6 +64,8 @@ const limits = {
   get dbReservedFraction() { return envInt("DB_RESERVED_PERCENT", 15, 0, 50) / 100; },
   /** A no-account draft is left alone by the emergency sweep until nobody has touched it for this long, minutes. */
   get draftSweepMinAgeMinutes() { return envInt("DRAFT_SWEEP_MIN_AGE_MINUTES", 30, 0, 100000); },
+  /** The same, once the database is so full that visitors without an account are being turned away: shorter, so the pause is short. */
+  get draftSweepUrgentMinAgeMinutes() { return envInt("DRAFT_SWEEP_URGENT_MIN_AGE_MINUTES", 5, 0, 100000); },
   /** A draft quote of a visitor without an account that is never opened again lapses after this many hours. */
   get anonDraftHours() { return envInt("QUOTE_ANON_DRAFT_HOURS", 48, 1, 24 * 365); },
   /** Bytes one client address may have STORED at once (CAD files and what is derived from them, request attachments). */
@@ -83,7 +85,9 @@ const limits = {
    * to a few tens of kB and the database no longer grows by megabytes per upload.
    */
   get partInlineMeshBytes() { return envInt("PART_INLINE_MESH_KB", 16, 0, 1024) * 1024; },
-  get partInlineGeometryBytes() { return envInt("PART_INLINE_GEOMETRY_KB", 64, 8, 4096) * 1024; },
+  // 8 kB since the availability fixes (it was 64): a 4 kB DXF with 150 holes used to leave a 50 kB row,
+  // ten times its own size, and rows are what fills the database (independent review 2026-11-11, L6).
+  get partInlineGeometryBytes() { return envInt("PART_INLINE_GEOMETRY_KB", 8, 8, 4096) * 1024; },
   /** Share of the ceiling at which a warning is logged. */
   get storageWarnFraction() { return envInt("UPLOAD_DIR_WARN_PERCENT", 80, 10, 99) / 100; },
   /** Largest drawing (PDF) attached to an instant quote, bytes. */

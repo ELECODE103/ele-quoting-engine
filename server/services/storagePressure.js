@@ -77,31 +77,62 @@ function relieveDatabase(models, opt = {}) {
   const bytesBefore = database.fileSize();
   if (!opt.force && bytesBefore < max * limits.dbSweepFraction) return null;
   const target = max * Math.max(0.1, limits.dbSweepFraction - 0.2);
-  const minAgeMs = opt.minAgeMs ?? limits.draftSweepMinAgeMinutes * MIN;
+  // Two speeds. Up to the line where visitors without an account are turned away, only drafts nobody
+  // has touched for half an hour go. Past it, the site is already refusing people, so the wait is
+  // minutes: a flood's drafts sit untouched from the moment they are made, a visitor's own draft is
+  // touched every time they change something.
+  const refusing = bytesBefore >= max * (1 - limits.dbReservedFraction);
+  const minAgeMs = opt.minAgeMs ?? (refusing ? Math.min(limits.draftSweepUrgentMinAgeMinutes, limits.draftSweepMinAgeMinutes) : limits.draftSweepMinAgeMinutes) * MIN;
 
   const refs = rowRetention.references(models, { now });
-  const candidates = refs.anonymousDrafts
-    .filter((d) => d.lastActivity == null || now - d.lastActivity >= minAgeMs)
-    .sort((a, b) => (a.lastActivity || 0) - (b.lastActivity || 0));
   const need = bytesBefore - target;
   let freed = 0;
   const ids = [...refs.expiredQuotes];
+
+  // 1. Uploaded parts that never made it onto a quote, an order or a request (the quote tool prices a
+  //    part seconds after it is uploaded, so one that nothing refers to after this long was abandoned,
+  //    or is a script's). Their rows are what a flood of small files fills the database with. The
+  //    network that left the most of them goes first, oldest first within it, so the one part a
+  //    visitor is still choosing a material for is the last to be touched.
+  const partIds = [];
+  if (typeof models.partsDB.rowSizes === "function") {
+    const loose = models.partsDB.rowSizes()
+      .map((p) => ({ ...p, created: time(p.createdAt) || 0 }))
+      .filter((p) => !refs.partsProtected.has(p.id) && !refs.partsOnAnonymousDrafts.has(p.id) && now - p.created >= minAgeMs);
+    const perClient = new Map();
+    for (const p of loose) perClient.set(p.clientTag, (perClient.get(p.clientTag) || 0) + 1);
+    loose.sort((a, b) => (perClient.get(b.clientTag) - perClient.get(a.clientTag)) || (a.created - b.created));
+    for (const p of loose) {
+      if (freed >= need) break;
+      partIds.push(p.id);
+      freed += p.bytes;
+    }
+  }
+
+  // 2. Draft quotes of visitors without an account, longest untouched first.
+  const candidates = refs.anonymousDrafts
+    .filter((d) => d.lastActivity == null || now - d.lastActivity >= minAgeMs)
+    .sort((a, b) => (a.lastActivity || 0) - (b.lastActivity || 0));
   for (const d of candidates) {
     if (freed >= need) break;
     ids.push(d.id);
     freed += d.bytes;
   }
-  if (ids.length === 0) {
-    const result = { removedDrafts: 0, bytesBefore, bytesAfter: bytesBefore };
+  if (ids.length === 0 && partIds.length === 0) {
+    const result = { removedDrafts: 0, removedParts: 0, bytesBefore, bytesAfter: bytesBefore };
     state.lastDatabaseRelief = { at: new Date(now).toISOString(), ...result };
     return result;
   }
-  database.batch(() => { for (const id of ids) models.quotesDB.delete(id); });
+  database.batch(() => {
+    for (const id of ids) models.quotesDB.delete(id);
+    for (const id of partIds) { const row = models.partsDB.getRow(id); if (row) evictPart(models, row); }
+  });
   if (database.compact) database.compact();
+  if (partIds.length) guards().storage.invalidate();
   const bytesAfter = database.fileSize();
-  const result = { removedDrafts: ids.length, bytesBefore, bytesAfter };
+  const result = { removedDrafts: ids.length, removedParts: partIds.length, bytesBefore, bytesAfter };
   state.lastDatabaseRelief = { at: new Date(now).toISOString(), ...result };
-  console.warn(`Database at ${Math.round((bytesBefore / max) * 100)}% of its ceiling: removed ${ids.length} old draft quote(s) of visitors without an account; ${mb(bytesBefore)} MB → ${mb(bytesAfter)} MB.`);
+  console.warn(`Database at ${Math.round((bytesBefore / max) * 100)}% of its ceiling: removed ${partIds.length} uploaded part(s) that nothing refers to and ${ids.length} old draft quote(s) of visitors without an account; ${mb(bytesBefore)} MB → ${mb(bytesAfter)} MB.`);
   return result;
 }
 

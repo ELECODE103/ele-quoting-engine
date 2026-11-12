@@ -102,6 +102,19 @@ class PartsStore {
     return this.table.getAll().map((r) => String(r.storedName || "").split(/[\\/]/).pop()).filter(Boolean);
   }
 
+  /** How much room each part's row takes in the database, without reading the rows' contents. */
+  rowSizes() {
+    if (typeof this.table._query === "function") {
+      return this.table._query(`SELECT id, created_at, client_tag, 300 + COALESCE(LENGTH(geometry_json), 0) + COALESCE(LENGTH(dfm_json), 0) + COALESCE(LENGTH(file_name), 0) AS n FROM ${this.tableName}`)
+        .map((r) => ({ id: r.id, createdAt: r.created_at, clientTag: r.client_tag || "", bytes: Number(r.n) || 300 }));
+    }
+    return this.table.getAll().map((r) => {
+      let bytes = 300;
+      try { bytes += JSON.stringify(r.geometry || "").length + JSON.stringify(r.dfm || "").length; } catch { /* not counted */ }
+      return { id: r.id, createdAt: r.createdAt, clientTag: r.clientTag || "", bytes };
+    });
+  }
+
   /** Bytes stored for one client tag: uploads plus what was derived from them. */
   storedBytesFor(clientTag) {
     if (!clientTag) return 0;

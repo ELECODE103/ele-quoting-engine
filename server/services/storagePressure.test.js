@@ -180,11 +180,17 @@ test("database nearly full: new drafts and uploads from visitors without an acco
   assert.ok(models.ordersDB.getAll().some((o) => o.quoteId === customers.body.quoteId), "the order was written");
 
   // Recovery, with nobody doing anything: the pressure pass that runs on a timer (and is nudged by
-  // every refused request). Half an hour on, the flood's drafts are old enough to go.
+  // every refused request). While visitors are being turned away the wait is short: a draft nobody
+  // has touched for five minutes goes (thirty when the database is only at the sweep line).
   const before = dbMb();
   const quiet = console.warn; console.warn = () => {};
   let result;
-  try { result = pressure.relieveDatabase(models, { now: Date.now() + 31 * MIN }); } finally { console.warn = quiet; }
+  try {
+    const tooSoon = pressure.relieveDatabase(models, { now: Date.now() + 2 * MIN });
+    assert.strictEqual(tooSoon.removedDrafts, 0, "two minutes on, nothing is old enough: a visitor's draft is not taken from under them");
+    await h.post("/api/quote", { quoteId: mine.body.quoteId, parts: [cncLine(partIds[0], 5)] }); // the visitor changes a quantity
+    result = pressure.relieveDatabase(models, { now: Date.now() + 6 * MIN });
+  } finally { console.warn = quiet; }
   assert.ok(result && result.removedDrafts >= 5, `${result && result.removedDrafts} of the flood's ${made} drafts removed, oldest first`);
   assert.ok(models.quotesDB.getById(mine.body.quoteId), "the visitor's own draft, re-priced a moment before, outlives the older junk");
   assert.ok(dbMb() < ceiling * 0.8 && dbMb() < before, `database ${before.toFixed(2)} MB → ${dbMb().toFixed(2)} MB`);
@@ -217,6 +223,40 @@ test("admin: 'clear old drafts' deletes idle no-account drafts and nothing else"
   for (const [what, id] of [["a fresh draft", fresh.body.quoteId], ["a customer's quote", customers.body.quoteId], ["a quote that became a request", sent.body.quoteId]]) {
     assert.ok(models.quotesDB.getById(id), `${what} is kept`);
   }
+});
+
+test("L6: uploads that are never quoted fill the database with part rows — the relief pass lets those go, the busiest network first; parts on a quote stay", async () => {
+  const quiet = console.warn; console.warn = () => {};
+  const ceiling = 8; // MB, for this test: room for a flood that is larger than what has to be cleared
+  process.env.DB_MAX_MB = String(ceiling);
+  try {
+    const db = database.getDatabase();
+    const tenMinutesAgo = new Date(Date.now() - 10 * MIN).toISOString();
+    const quoted = await h.uploadCube();
+    const q = await h.post("/api/quote", { parts: [cncLine(quoted, 1)] }, buyer);
+    assert.strictEqual(q.status, 200, q.text);
+    const waiting = await h.uploadCube(); // a visitor's part they have not chosen a material for yet
+    db.run("UPDATE parts SET created_at = ?, client_tag = ? WHERE id IN (?, ?)", [tenMinutesAgo, "a-visitor", quoted, waiting]);
+    // The flood: small files, each leaving a 40 kB row (what a 4 kB DXF with 150 holes left), none ever priced.
+    const geometry = JSON.stringify({ boundingBox: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 10, z: 0 } }, is2D: true, filler: "x".repeat(40000) });
+    let flood = 0;
+    while (dbMb() < ceiling * 0.9 && flood < 400) {
+      for (let i = 0; i < 10; i++, flood++) db.run("INSERT INTO parts (id, file_name, stored_name, file_size, geometry_json, dfm_json, created_at, client_tag) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [crypto.randomUUID(), "plate.dxf", `${crypto.randomUUID()}.dxf`, 4400, geometry, "{}", tenMinutesAgo, "a-script"]);
+      database.compact();
+    }
+    assert.ok(dbMb() >= ceiling * 0.85, `the flood took the database to ${dbMb().toFixed(2)} MB of ${ceiling} with ${flood} unquoted parts`);
+    assert.strictEqual(guards.database.hasRoom({ reserved: false }), false, "visitors without an account are being turned away");
+    const before = dbMb();
+    const result = pressure.relieveDatabase(models);
+    const left = db.exec("SELECT COUNT(*) FROM parts WHERE client_tag = 'a-script'")[0].values[0][0];
+    assert.ok(result.removedParts >= 20 && left > 0 && left === flood - result.removedParts, `${result.removedParts} of the ${flood} unquoted parts removed, all of them the script's (${left} left)`);
+    assert.ok(dbMb() < ceiling * 0.8 && dbMb() < before, `database ${before.toFixed(2)} MB → ${dbMb().toFixed(2)} MB`);
+    assert.strictEqual(guards.database.hasRoom({ reserved: false }), true, "and visitors can upload again");
+    assert.ok(models.partsDB.getRow(quoted), "a part on a customer's quote is never touched");
+    assert.ok(models.partsDB.getRow(waiting), "the one part a visitor has not priced yet outlives the script's hundreds");
+    assert.ok(models.quotesDB.getById(q.body.quoteId), "and so does the quote");
+    db.run("DELETE FROM parts WHERE client_tag = 'a-script'"); database.compact();
+  } finally { console.warn = quiet; process.env.DB_MAX_MB = "4"; }
 });
 
 // ─── H5: retention keeps what can still be ordered ───────────
