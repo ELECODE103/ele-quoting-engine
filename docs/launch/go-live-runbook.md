@@ -136,6 +136,13 @@ Take a copy before anything changes.
 3. Same tab → backup schedules: switch on **Daily** (kept 6 days) and **Weekly** (kept 27 days).
 4. Write down the time. If step 5 goes wrong, this backup is what you come back to (Rollback,
    option C).
+5. **If you have ever changed a material or finish in Admin on the live site** (a price, a
+   thickness, switched one on or off): open Admin → Materials and Admin → Finishes now and write
+   down what you changed. The new version carries a newer default catalogue, and on its first
+   start it replaces the materials, finishes and processes lists with those defaults (four SLA
+   resins go, eight arrive). Your pricing rules (rates, markups, minimums) are kept as you set
+   them. After step 5, re-enter anything you wrote down.
+   *If you never touched those two tabs:* nothing to do.
 
 ---
 
@@ -323,6 +330,9 @@ The next step puts the site back on the public internet. Before you press the bu
 
 *Then, in **Deploy Logs**, in this order:*
 - `entrypoint: making /app/data writable by node (volume mounted as root)` — the first time only
+- `Upgrading catalogs: seed v3 → v4 (materials, finishes, processes)...` — the first time only:
+  the default catalogue being brought up to date (step 1, item 5), followed by `Seeding materials...` and the
+  like, and `Pricing rules: added 2 new key(s), seed v4.`
 - `Admin account <your address>: present.` — your existing admin account was found and left as
   it is. (If you see `NOTICE: there is no admin account yet` or `WARNING: an ordinary account …
   already uses the ADMIN_EMAIL address` instead, go to step 6's table: "No admin account".)

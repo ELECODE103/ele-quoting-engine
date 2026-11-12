@@ -24,6 +24,14 @@ const NOBODY_UID = Number(nobody.stdout);
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "se-entry-"));
 fs.chmodSync(tmp, 0o755);
+// The cases below run the script as an unprivileged user, who has to be able to read it. In the image it sits in
+// /app; a checkout may sit under a folder only its owner can enter (a home directory, a private scratch folder),
+// and there `sh <script>` fails for that user before the script says anything. So they run a byte-for-byte copy
+// from the same world-readable temporary folder the test volumes are in. (Found at the relaunch merge: a fresh
+// clone under a 0700 folder failed one case with exit 2, "cannot open", instead of the script's own exit 1.)
+const RUN = path.join(tmp, "docker-entrypoint.sh");
+fs.copyFileSync(SCRIPT, RUN);
+fs.chmodSync(RUN, 0o755);
 
 function volume(name) {
   const dir = path.join(tmp, name);
@@ -32,7 +40,7 @@ function volume(name) {
   fs.writeFileSync(path.join(dir, "uploads", "a.stl.enc"), "file");
   return dir; // owned by root, like a freshly mounted Railway volume with restored data on it
 }
-const start = (dir, args, extraEnv = {}) => spawnSync("sh", [SCRIPT, ...args], { encoding: "utf8", env: { ...process.env, SE_DATA_DIR: dir, SE_RUN_USER: "nobody", ...extraEnv } });
+const start = (dir, args, extraEnv = {}) => spawnSync("sh", [RUN, ...args], { encoding: "utf8", env: { ...process.env, SE_DATA_DIR: dir, SE_RUN_USER: "nobody", ...extraEnv } });
 
 test("the script is plain POSIX sh and executable", () => {
   assert.ok(fs.statSync(SCRIPT).mode & 0o111, "executable bit set in the repository");
@@ -40,6 +48,7 @@ test("the script is plain POSIX sh and executable", () => {
   assert.ok(text.startsWith("#!/bin/sh\n"));
   assert.ok(!/\r/.test(text), "no Windows line endings (the script would not start)");
   assert.strictEqual(spawnSync("sh", ["-n", SCRIPT]).status, 0, "syntax check");
+  assert.ok(fs.readFileSync(RUN).equals(fs.readFileSync(SCRIPT)), "the copy the other cases run is the repository's script, byte for byte");
 });
 
 if (!can) {
@@ -79,19 +88,19 @@ if (!can) {
 
   test("started as a non-root user on a root-owned volume: it stops with the reason instead of failing later on the first save", () => {
     const dir = volume("vol3");
-    const r = spawnSync("setpriv", [`--reuid=${NOBODY_UID}`, `--regid=${NOBODY_UID}`, "--clear-groups", "sh", SCRIPT, "sh", "-c", "echo should-not-run"], { encoding: "utf8", env: { ...process.env, SE_DATA_DIR: dir } });
+    const r = spawnSync("setpriv", [`--reuid=${NOBODY_UID}`, `--regid=${NOBODY_UID}`, "--clear-groups", "sh", RUN, "sh", "-c", "echo should-not-run"], { encoding: "utf8", env: { ...process.env, SE_DATA_DIR: dir } });
     assert.strictEqual(r.status, 1);
     assert.ok(/FATAL: .* is not writable by uid/.test(r.stderr) && /RAILWAY_RUN_UID/.test(r.stderr), r.stderr);
     assert.ok(!r.stdout.includes("should-not-run"));
     // …and when the folder is writable for that user, it simply runs.
     fs.chownSync(dir, NOBODY_UID, NOBODY_UID);
-    const ok = spawnSync("setpriv", [`--reuid=${NOBODY_UID}`, `--regid=${NOBODY_UID}`, "--clear-groups", "sh", SCRIPT, "sh", "-c", "echo runs"], { encoding: "utf8", env: { ...process.env, SE_DATA_DIR: dir } });
+    const ok = spawnSync("setpriv", [`--reuid=${NOBODY_UID}`, `--regid=${NOBODY_UID}`, "--clear-groups", "sh", RUN, "sh", "-c", "echo runs"], { encoding: "utf8", env: { ...process.env, SE_DATA_DIR: dir } });
     assert.strictEqual(ok.stdout, "runs\n");
   });
 
   test("the server replaces the script (same process id) and receives SIGTERM itself", async () => {
     const dir = volume("vol4");
-    const child = spawn("sh", [SCRIPT, process.execPath, "-e", "process.on('SIGTERM',()=>{console.log('SIGTERM uid '+process.getuid()+' pid '+process.pid);process.exit(0)});console.log('up '+process.pid);setTimeout(()=>{},10000)"], { env: { ...process.env, SE_DATA_DIR: dir, SE_RUN_USER: "nobody" }, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("sh", [RUN, process.execPath, "-e", "process.on('SIGTERM',()=>{console.log('SIGTERM uid '+process.getuid()+' pid '+process.pid);process.exit(0)});console.log('up '+process.pid);setTimeout(()=>{},10000)"], { env: { ...process.env, SE_DATA_DIR: dir, SE_RUN_USER: "nobody" }, stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     child.stdout.on("data", (d) => { out += d; });
     await new Promise((resolve) => { const t = setInterval(() => { if (/up \d+/.test(out)) { clearInterval(t); resolve(); } }, 20); });

@@ -17,6 +17,7 @@ where to click, what you should see, and what to do if you do not. **R** = requi
 - [ ] **R** Volume mount path reads `/app/data`
 - [ ] **R** Manual backup `before-go-live` is in the list
 - [ ] **R** Daily and Weekly backup schedules are on
+- [ ] **R** Any material or finish you changed in Admin on the live site is written down (the first start replaces those lists with the new defaults; pricing rules are kept)
 
 ## 2. Variables (Railway → service → Variables)
 
