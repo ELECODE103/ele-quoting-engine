@@ -43,10 +43,14 @@ router.get("/traveler/:orderId", authenticate, requireAdmin, async (req, res) =>
         }
       }
 
+      // Is the part on file still the part that was priced? (It is locked once ordered; `false` is printed
+      // on the traveler in capitals. null: an order from before the snapshot existed, or a firm quote.)
+      const check = require("../services/checkoutGuard").checkAgainst(item, part);
       return {
         ...item,
         geometry,
         dfm,
+        matchesPriced: check ? check.matches : null,
       };
     });
 

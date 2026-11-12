@@ -2,7 +2,7 @@
  * Post-login destination + session quote id. Run: `node client/src/utils/returnTo.test.js`
  */
 import assert from 'node:assert';
-import { safeNext, nextFrom, destinationAfterAuth, authPath, sessionQuoteId, storedQuoteId, storeQuoteId } from './returnTo.js';
+import { safeNext, nextFrom, destinationAfterAuth, authPath, sessionQuoteId, storedQuoteId, storeQuoteId, notePendingCheckout, pendingCheckout, saveCheckoutDraft, loadCheckoutDraft, clearCheckoutDraft } from './returnTo.js';
 
 let passed = 0;
 function test(name, fn) {
@@ -65,6 +65,37 @@ test('one quote id per session: created once, then reused', () => {
 test('storage that throws (private mode) does not break quoting', () => {
   const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); }, removeItem: () => {} };
   assert.match(sessionQuoteId(broken), /^[0-9a-f-]{36}$/);
+});
+
+test('the checkout a browser was heading for is remembered across tabs, for a week, and only as a checkout path', () => {
+  const s = memoryStorage();
+  const path = '/checkout/3f0c7c1e-58a4-4d0b-9b57-5f0a4e7b9a11';
+  assert.strictEqual(pendingCheckout(s), null);
+  notePendingCheckout(path, s, 1000);
+  assert.strictEqual(pendingCheckout(s, 2000), path);
+  assert.strictEqual(pendingCheckout(s, 1000 + 8 * 24 * 3600 * 1000), null, 'forgotten after a week');
+  for (const bad of ['https://evil.test/checkout/abc', '//evil.test', '/admin', '/checkout/../admin', '/checkout/abc?next=//evil.test', '']) {
+    notePendingCheckout(bad, s);
+    assert.strictEqual(pendingCheckout(s), null, bad);
+  }
+  s.setItem('straightedge.checkout', '{"path":"https://evil.test","at":' + Date.now() + '}');
+  assert.strictEqual(pendingCheckout(s), null, 'a tampered value is not a destination');
+  s.setItem('straightedge.checkout', 'not json');
+  assert.strictEqual(pendingCheckout(s), null);
+});
+
+test('ship-to details typed at checkout come back for the same quote in the same tab, and only then', () => {
+  const s = memoryStorage();
+  const typed = { name: 'Dana Whitfield', street: '410 Industrial Dr', city: 'Rockford', state: 'IL', zip: '61109', country: 'US', card: '4242' };
+  saveCheckoutDraft('quote-a', typed, s);
+  assert.deepStrictEqual(loadCheckoutDraft('quote-a', s), { name: 'Dana Whitfield', street: '410 Industrial Dr', city: 'Rockford', state: 'IL', zip: '61109', country: 'US' });
+  assert.strictEqual(loadCheckoutDraft('quote-b', s), null, 'another quote starts empty');
+  clearCheckoutDraft(s);
+  assert.strictEqual(loadCheckoutDraft('quote-a', s), null);
+  const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); }, removeItem: () => { throw new Error('denied'); } };
+  saveCheckoutDraft('quote-a', typed, broken);
+  assert.strictEqual(loadCheckoutDraft('quote-a', broken), null);
+  clearCheckoutDraft(broken);
 });
 
 console.log(`\n${passed} passed`);

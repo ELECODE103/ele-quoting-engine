@@ -757,7 +757,7 @@ router.post("/quote/:token/confirm-payment", async (req, res) => {
     res.json(customerView(rfqsDB.getById(rfq.id) || rfq, req.rfqClaim));
   } catch (err) {
     console.error("RFQ confirm payment error:", err.message);
-    res.status(502).json({ error: "Could not confirm the payment yet" });
+    res.status(502).json({ error: "Could not confirm the payment yet", code: "confirm-failed" });
   }
 });
 

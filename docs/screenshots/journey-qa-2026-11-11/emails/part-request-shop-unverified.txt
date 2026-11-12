@@ -1,0 +1,31 @@
+Subject: RFQ: 5D21C7AA — ? part(s) [unverified sender]
+Preheader: Unverified sender: check the address before you reply.
+
+NEW RFQ FROM AN UNVERIFIED SENDER
+=================================
+
+UNVERIFIED SENDER: this request did not pass the bot check and did not come from a signed-in account with a confirmed email. No confirmation was emailed to the address below. Read it before you reply: the address may not belong to whoever typed it.
+
+Send-the-part request: the sender was NOT given the ship-to address. If the request is real, reply with reference 5D21C7AA and the address.
+
+Sam Maintenance <sam@example.com> — Plant Co — 262-555-0117
+
+Notes: NO DRAWING. The customer is sending the part.
+What it is and does: guides cartons into the sealer; rides on a stainless rail. Worn on the leading edge.
+Machine it is from: case sealer, line 3
+Material, if known: white, waxy
+How soon: next shutdown
+
+Quantities: 2 now, 6 a year
+Drawing: none
+FAI + CoC: Not requested
+Budgetary total shown: $0.00
+Sender: UNVERIFIED (no bot check, no confirmed account)
+Reference: 5D21C7AA
+
+Open the RFQ queue:
+https://straightedgemfg.com/admin
+
+--
+Straightedge · 224-213-6727 · quotes@straightedgemfg.com
+Straightedge, Wauconda, IL · https://straightedgemfg.com

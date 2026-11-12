@@ -81,7 +81,9 @@ module.exports = {
   "account-verify-email": () => templates.verifyEmail({ verifyUrl: `${base}/verify-email#token=SAMPLE-NOT-A-TOKEN` }),
   "account-password-reset": () => templates.passwordResetRequested({ resetUrl: `${base}/reset-password#token=SAMPLE-NOT-A-TOKEN` }),
   "account-password-changed": () => templates.passwordChanged({ when: "2026-11-11T15:04:00Z" }),
-  "account-locked": () => templates.accountLocked({ minutes: 15, resetUrl: `${base}/forgot-password` }),
+  // (The "sign-in paused" email is gone with the per-address lock it announced; this is the notice that is sent now,
+  //  once a day at most, when many wrong passwords are tried on an account from browsers it has never used.)
+  "account-sign-in-attempts": () => templates.signInAttempts({ resetUrl: `${base}/forgot-password` }),
   "account-two-factor-on": () => templates.twoFactorChanged({ change: "enabled" }),
   "account-recovery-code-used": () => templates.twoFactorChanged({ change: "recovery-used" }),
   "part-request-buyer": () => templates.rfqReceivedBuyer({ rfq: partRfq, part }),

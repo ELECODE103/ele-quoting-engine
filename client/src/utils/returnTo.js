@@ -62,3 +62,60 @@ export function sessionQuoteId(storage = globalThis.sessionStorage) {
   if (!id) { id = newId(); storeQuoteId(id, storage); }
   return id;
 }
+
+// ─── The checkout this browser was heading for ────────────────
+// The quote id above lives in sessionStorage, which a new tab does not share. The link in a
+// confirmation or reset email opens in a new tab, so without this the buyer who has just confirmed
+// their address would be looking at a page that no longer knows which quote they were buying.
+// What is kept is the path of their own checkout page and when it was noted; it is forgotten after
+// a week, when the order is placed, and on sign-out. Nothing about the session is stored here.
+const CHECKOUT_KEY = 'straightedge.checkout';
+const CHECKOUT_DAYS = 7;
+
+/** Remember (or with no path, forget) the checkout page this browser is on its way to. */
+export function notePendingCheckout(path, storage = globalThis.localStorage, now = Date.now()) {
+  try {
+    const safe = safeNext(path);
+    if (safe && /^\/checkout\/[A-Za-z0-9-]{8,64}$/.test(safe)) storage?.setItem(CHECKOUT_KEY, JSON.stringify({ path: safe, at: now }));
+    else storage?.removeItem(CHECKOUT_KEY);
+  } catch { /* private mode */ }
+}
+
+/** "/checkout/<quoteId>" this browser was heading for in the last week, or null. */
+export function pendingCheckout(storage = globalThis.localStorage, now = Date.now()) {
+  try {
+    const saved = JSON.parse(storage?.getItem(CHECKOUT_KEY) || 'null');
+    if (!saved || typeof saved.path !== 'string' || !/^\/checkout\/[A-Za-z0-9-]{8,64}$/.test(saved.path)) return null;
+    if (!(now - Number(saved.at) < CHECKOUT_DAYS * 24 * 60 * 60 * 1000)) { storage?.removeItem(CHECKOUT_KEY); return null; }
+    return saved.path;
+  } catch { return null; }
+}
+
+// ─── What the buyer typed on the checkout page ────────────────
+// Kept for this tab only (sessionStorage), per quote, so the ship-to details survive a reload, the
+// trip to sign in again when a session ends mid-checkout, and the way back from the card page.
+const DRAFT_KEY = 'straightedge.checkoutDraft';
+const DRAFT_FIELDS = ['name', 'street', 'city', 'state', 'zip', 'country'];
+
+export function saveCheckoutDraft(quoteId, fields, storage = globalThis.sessionStorage) {
+  try {
+    if (!quoteId) return;
+    const kept = {};
+    for (const k of DRAFT_FIELDS) kept[k] = String(fields?.[k] ?? '').slice(0, 200);
+    storage?.setItem(DRAFT_KEY, JSON.stringify({ quoteId, fields: kept }));
+  } catch { /* private mode */ }
+}
+
+export function loadCheckoutDraft(quoteId, storage = globalThis.sessionStorage) {
+  try {
+    const saved = JSON.parse(storage?.getItem(DRAFT_KEY) || 'null');
+    if (!saved || saved.quoteId !== quoteId || !saved.fields) return null;
+    const out = {};
+    for (const k of DRAFT_FIELDS) out[k] = typeof saved.fields[k] === 'string' ? saved.fields[k] : '';
+    return out;
+  } catch { return null; }
+}
+
+export function clearCheckoutDraft(storage = globalThis.sessionStorage) {
+  try { storage?.removeItem(DRAFT_KEY); } catch { /* private mode */ }
+}

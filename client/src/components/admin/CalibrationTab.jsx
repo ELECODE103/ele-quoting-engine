@@ -64,7 +64,7 @@ export default function CalibrationTab({ onApplySuggestion }) {
         </div>
       )}
 
-      <div className="card" style={{ overflow: 'hidden' }}>
+      <div className="card table-scroll" tabIndex={0} role="region" aria-label="Calibration table" style={{ overflow: 'hidden' }}>
         {data.items.length === 0 ? (
           <div className="empty">No finished order lines yet. Lines appear here once an order is in production or later ({data.statuses.join(', ').replace(/_/g, ' ')}).</div>
         ) : (

@@ -5,6 +5,7 @@ import { api } from '../utils/api';
 import { formatCurrency, formatDate, formatShipDate, orderStatusLabel } from '../utils/format';
 import brand, { PROCESS_LABELS } from '../brand';
 import { QUOTE_LINK_KEY } from './FirmQuoteReturnPage';
+import { describeOrderState } from '../utils/messages';
 
 /** Remember this quote's link in this tab, so the page the card processor returns to can come back here. */
 function rememberLink(token) {
@@ -183,7 +184,7 @@ export default function FirmQuotePage() {
                     <p style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', margin: '6px 0 12px' }}>{orderStatusLabel(order.status)}</p>
                     {order.status === 'pending_po' && (
                       <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                        We have PO <b>{quote.poNumber}</b>. Nothing has been charged. We'll confirm the PO with you and then start work.
+                        {describeOrderState('awaiting-po', { poNumber: quote.poNumber })}
                       </p>
                     )}
                     {order.status === 'paid' && (
@@ -193,7 +194,7 @@ export default function FirmQuotePage() {
                     )}
                     {underReview && (
                       <p role="status" style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                        We received a payment for this order and need to look at it before we confirm the order. We'll email {quote.email} today. Questions: {brand.phone}.
+                        {describeOrderState('payment-under-review', { email: quote.email })}
                       </p>
                     )}
                     {order.discountAmount > 0 && order.amountPaid !== null && (
@@ -203,17 +204,17 @@ export default function FirmQuotePage() {
                     )}
                     {order.status === 'refunded' && (
                       <p role="status" style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                        We refunded {formatCurrency(order.refundedAmount || order.total)} to your card. Banks usually show a refund within 5 to 10 business days.
+                        {describeOrderState('refunded', { amount: order.refundedAmount || order.total })}
                       </p>
                     )}
                     {order.status !== 'refunded' && order.refundedAmount > 0 && (
                       <p role="status" style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                        We refunded {formatCurrency(order.refundedAmount)} of this order to your card. The rest of the order stands.
+                        {describeOrderState('partially-refunded', { amount: order.refundedAmount })}
                       </p>
                     )}
                     {order.status === 'cancelled' && (
                       <p role="status" style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                        This order was cancelled and won't be made. Call {brand.phone} if that isn't what you expected.
+                        {describeOrderState('cancelled')}
                       </p>
                     )}
                     {!['refunded', 'cancelled'].includes(order.status) && !underReview && (

@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { api, setCsrfToken, setSessionEndedHandler, setEnrolmentRequiredHandler } from './api';
 import { setAccountVerified } from './security';
+import { notePendingCheckout, clearCheckoutDraft } from './returnTo';
 
 export const AuthContext = createContext(null);
 
@@ -21,6 +22,9 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [verificationEnforced, setVerificationEnforced] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // True from the moment the server says this browser's session is over until the next sign-in:
+  // the sign-in page uses it to say why the buyer is looking at it again.
+  const [sessionEnded, setSessionEnded] = useState(false);
 
   const apply = useCallback((session) => {
     const account = session && (session.authenticated !== false) ? session.user || null : null;
@@ -39,7 +43,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     // The token used to be kept in localStorage. Remove any left over from an earlier visit.
     try { localStorage.removeItem('authToken'); } catch { /* private mode */ }
-    setSessionEndedHandler(() => apply(null));
+    setSessionEndedHandler(() => { setSessionEnded(true); apply(null); });
     // An admin request was refused because two-step sign-in is not on: read the account again
     // (the admin page then shows the enrolment screen and nothing else) and go there.
     setEnrolmentRequiredHandler(() => {
@@ -55,18 +59,21 @@ export function AuthProvider({ children }) {
   }, [apply]);
 
   /** After a successful sign-in or registration: `session` is the server's answer. */
-  const login = useCallback((session) => apply({ ...session, authenticated: true }), [apply]);
+  const login = useCallback((session) => { setSessionEnded(false); return apply({ ...session, authenticated: true }); }, [apply]);
 
   /** Ends the session on the server (the token stops working everywhere), then here. */
   const logout = useCallback(async () => {
     try { await api.logout(); } catch { /* signed out locally regardless */ }
+    // A deliberate sign-out on this browser: forget where its checkout was and what was typed there.
+    notePendingCheckout(null);
+    clearCheckoutDraft();
     apply(null);
   }, [apply]);
 
   const isAuthenticated = !!user;
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, refresh, isAuthenticated, isLoading, verificationEnforced }}>
+    <AuthContext.Provider value={{ user, login, logout, refresh, isAuthenticated, isLoading, verificationEnforced, sessionEnded }}>
       {children}
     </AuthContext.Provider>
   );

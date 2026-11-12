@@ -5,7 +5,8 @@
  *
  *   NODE_PATH=<dir holding playwright> \
  *   env -u HTTPS_PROXY -u HTTP_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost \
- *   node scripts/e2e/order-lifecycle.mjs --scratch <dir> [--shots docs/screenshots/order-lifecycle-2026-11-11]
+ *   node scripts/e2e/order-lifecycle.mjs --scratch <dir> [--shots <dir>]
+ *   (screenshots default to <scratch>/shots; --shots docs/screenshots/order-lifecycle-2026-11-11 refreshes the committed set)
  *
  * What it drives, in a real Chromium at 1360 px, with a double click on every pay and accept button:
  *   A  instant checkout: one order and one payment page from a double click; pay; the paid order page
@@ -46,7 +47,8 @@ const { routeStandIn } = require(path.join(ROOT, 'scripts', 'e2e', 'turnstile-st
 const arg = (name, fallback) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : fallback; };
 if (!arg('scratch', '')) { console.error('--scratch <dir> is required (database, outbox, Stripe session files, server logs)'); process.exit(2); }
 const SCRATCH = path.resolve(arg('scratch', ''));
-const SHOTS = path.resolve(ROOT, arg('shots', 'docs/screenshots/order-lifecycle-2026-11-11'));
+// Screenshots go to the scratch folder unless --shots names one (a plain run must not overwrite the committed set).
+const SHOTS = arg('shots', '') ? path.resolve(ROOT, arg('shots', '')) : path.join(SCRATCH, 'shots');
 const PORT = Number(arg('port', 3893));
 const BASE = `http://localhost:${PORT}`;
 const OUTBOX = path.join(SCRATCH, 'outbox');
@@ -55,7 +57,12 @@ const DATA = path.join(SCRATCH, 'data');
 const OWNER = 'owner@straightedge.test';
 const BUYER = 'dana@buyer.test';
 const CUBE = path.join(ROOT, 'tools', 'vet-quotes', 'parts', 'cube_20mm.stl');
-const SECRETS = { jwt: crypto.randomBytes(32).toString('hex'), whsec: `whsec_${crypto.randomBytes(24).toString('hex')}`, site: `e2e-site-${crypto.randomBytes(6).toString('hex')}`, turnstile: `e2e-secret-${crypto.randomBytes(12).toString('hex')}` };
+// The words a buyer reads for an order state come from the site's own catalogue (one source); the checks below
+// compare the page with it instead of holding a second copy of the sentences.
+const { createCatalogue } = await import(path.join(ROOT, 'client', 'src', 'utils', 'messageCatalogue.js'));
+const catalogue = createCatalogue(JSON.parse(fs.readFileSync(path.join(ROOT, 'shared', 'brand.json'), 'utf8')));
+const squash = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+const SECRETS = { setupCode: `setup-${crypto.randomBytes(18).toString('base64url')}`, jwt: crypto.randomBytes(32).toString('hex'), whsec: `whsec_${crypto.randomBytes(24).toString('hex')}`, site: `e2e-site-${crypto.randomBytes(6).toString('hex')}`, turnstile: `e2e-secret-${crypto.randomBytes(12).toString('hex')}` };
 const newPassword = () => `Qz8-${crypto.randomBytes(9).toString('base64url')}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const money = (n) => `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -100,6 +107,11 @@ async function startServer(extra = {}) {
     E2E_STRIPE_DIR: STRIPE_DIR,
     E2E_STRIPE_DELAY_MS: '250', // Stripe's own API call takes a moment; a double click lands inside it
     SE_TEST_HOOKS: '1',
+    // (merge 2026-11-12) The admin account is made by the one-time setup, with a code the owner sets (review F3).
+    ADMIN_SETUP_CODE: SECRETS.setupCode,
+    // One buyer checks out dozens of times in this run; the per-account checkout limiter (12 in 15 minutes, review F8,
+    // tested in server/routes/priceIntegrity.test.js) is raised to its ceiling so the run is about the lifecycle.
+    CHECKOUT_PER_ACCOUNT_15MIN: '1000',
     ...extra,
   };
   for (const k of ['ADMIN_RECOVERY', 'HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy', 'STRIPE_PROMOTION_CODES', 'CHECKOUT_SESSION_MINUTES']) if (!(k in extra)) delete env[k];
@@ -149,7 +161,8 @@ function formToken(form) {
   finally { if (prev === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = prev; }
 }
 async function call(method, url, { json, token, headers = {}, body } = {}) {
-  const h = { 'X-Forwarded-For': nextIp(), ...headers };
+  // This script is an API client, not the browser app: it asks for the session token in the answer (review F7).
+  const h = { 'X-Forwarded-For': nextIp(), 'X-Session-Token': 'body', ...headers };
   if (token) h.Authorization = `Bearer ${token}`;
   if (json !== undefined) { h['Content-Type'] = 'application/json'; body = JSON.stringify(json); }
   const res = await fetch(`${BASE}${url}`, { method, headers: h, body });
@@ -171,10 +184,11 @@ async function human() {
   if (!humanToken) humanToken = (await call('POST', '/api/human/verify', { json: { turnstileToken: 'e2e-pass-quote' } })).body.humanToken;
   return humanToken;
 }
-async function uploadCube() {
+/** Upload the cube as the signed-in buyer: a part belongs to whoever uploaded it (part ownership, review F5). */
+async function uploadCube(token) {
   const fd = new FormData();
   fd.append('files', new Blob([fs.readFileSync(CUBE)]), 'cube_20mm.stl');
-  const r = await call('POST', '/api/upload', { body: fd, headers: { 'X-Human-Token': await human() } });
+  const r = await call('POST', '/api/upload', { body: fd, token, headers: { 'X-Human-Token': await human() } });
   if (r.status !== 200 || !r.body.parts.length) throw new Error(`upload: ${r.status} ${r.text}`);
   return r.body.parts[0].partId;
 }
@@ -322,13 +336,16 @@ async function main() {
   // Accounts and parts, set up the way the pages do it (form token, bot check passed, emailed link opened).
   const ownerPw = newPassword();
   const buyerPw = newPassword();
-  let ownerToken = await register(OWNER, 'Owner', ownerPw);
+  // The owner's account: the one-time setup with the code from the host's variables (no public route gives the admin role).
+  const made = await call('POST', '/api/auth/admin-setup', { json: { code: SECRETS.setupCode, password: ownerPw } });
+  if (made.status !== 201) throw new Error(`admin setup: ${made.status} ${made.text}`);
+  let ownerToken = made.body.token;
   const setup = await call('POST', '/api/auth/2fa/setup', { json: { password: ownerPw }, token: ownerToken });
   const setupKey = setup.body.setupKey.replace(/\s/g, '');
   const enrolStep = totp.stepAt();
   ownerToken = (await call('POST', '/api/auth/2fa/enable', { json: { code: totp.codeAt(setupKey) }, token: ownerToken })).body.token;
   const buyerToken = await register(BUYER, 'Dana Buyer', buyerPw);
-  const partId = await uploadCube();
+  const partId = await uploadCube(buyerToken);
   const admin = (method, url, json) => call(method, url, { json, token: ownerToken });
   const orderRow = async (id) => (await admin('GET', `/api/orders/${id}`)).body;
   const ordersOfQuote = async (quoteId) => (await admin('GET', '/api/orders')).body.filter((o) => o.quoteId === quoteId);
@@ -342,7 +359,7 @@ async function main() {
     const q = await quote(partId, quantity, buyerToken);
     await buyer.goto(`${BASE}/checkout/${q.quoteId}`);
     await fillCheckout(buyer);
-    const pay = buyer.getByRole('button', { name: /Pay & Place Order/ });
+    const pay = buyer.getByRole('button', { name: /Pay and place order/ });
     await pay.waitFor();
     if (shots) await shot(buyer, shots[0], { fullPage: false });
     await pay.dblclick();
@@ -357,7 +374,7 @@ async function main() {
   await step('A. Instant checkout: a double click on pay', async () => {
     const a = await checkoutWithDoubleClick(3, { shots: ['instant-01-checkout', 'instant-02-payment-page-stand-in'] });
     state.a = a;
-    check('a double click on "Pay & Place Order" makes one order', a.orders.length === 1, `${a.orders.length} orders`);
+    check('a double click on "Pay and place order" makes one order', a.orders.length === 1, `${a.orders.length} orders`);
     check('and one open payment page for it', openSessionsOf(a.orderId).length === 1 && sessionsOf(a.orderId).length === 1, `${sessionsOf(a.orderId).length} sessions`);
     const s = session(a.sessionId);
     const minutes = (s.expires_at * 1000 - Date.now()) / 60000;
@@ -376,7 +393,7 @@ async function main() {
     // Back from the payment page without paying, then pay again: the same page, not a second one.
     await buyer.goto(`${BASE}/checkout/${a.quoteId}?cancelled=true`);
     await fillCheckout(buyer);
-    await buyer.getByRole('button', { name: /Pay & Place Order/ }).click();
+    await buyer.getByRole('button', { name: /Pay and place order/ }).click();
     await buyer.waitForURL(/checkout\.stripe\.test\/pay\//, { timeout: 20000 });
     check('pressing pay again after coming back opens the same payment page', stripeSessionIn(buyer.url()) === a.sessionId && sessionsOf(a.orderId).length === 1);
 
@@ -401,11 +418,12 @@ async function main() {
     await buyer.goto(`${BASE}/orders/${b.orderId}`);
     await buyer.getByTestId('order-expired').waitFor({ timeout: 15000 });
     await shot(buyer, 'customer-order-not-paid-closed');
-    check('the order page says it was not paid and has closed, in plain words, with the way back to checkout', /This order was not paid for, so it has closed\. Nothing was charged\./.test(await buyer.getByTestId('order-expired').textContent()));
-    await buyer.getByRole('link', { name: 'go back to checkout' }).click();
+    const closedText = squash(await buyer.getByTestId('order-expired').textContent());
+    check('the order page says it was not paid and has closed, in plain words (the catalogue\'s), with the way back to checkout', closedText.startsWith(catalogue.orderState('expired')) && /never paid for, so it has closed\. Nothing was charged\./.test(closedText), closedText);
+    await buyer.getByRole('link', { name: 'Go back to checkout' }).click();
     await buyer.waitForURL(new RegExp(`/checkout/${b.quoteId}`));
     await fillCheckout(buyer);
-    await buyer.getByRole('button', { name: /Pay & Place Order/ }).dblclick();
+    await buyer.getByRole('button', { name: /Pay and place order/ }).dblclick();
     await buyer.waitForURL(/checkout\.stripe\.test\/pay\//, { timeout: 20000 });
     const again = (await ordersOfQuote(b.quoteId)).filter((o) => o.status === 'pending_payment');
     check('the quote can be ordered again: a new order, one payment page', again.length === 1 && again[0].id !== b.orderId && openSessionsOf(again[0].id).length === 1);
@@ -425,7 +443,8 @@ async function main() {
     await buyer.goto(`${BASE}/orders/${m.orderId}?paid=true`);
     await buyer.getByTestId('payment-under-review').waitFor({ timeout: 20000 });
     await shot(buyer, 'customer-order-payment-being-checked');
-    check('the customer sees that the payment is being checked, not why', /We're checking your payment/.test(await buyer.textContent('body')) && !/mismatch|attention|Stripe reports/i.test(await buyer.textContent('body')));
+    const reviewText = squash(await buyer.getByTestId('payment-under-review').textContent());
+    check('the customer sees that the payment is being checked, not why, and is promised no time', reviewText === catalogue.orderState('payment-under-review', { email: BUYER }) && /checking it by hand/.test(reviewText) && !/\btoday\b|business days/i.test(reviewText) && !/mismatch|attention|Stripe reports/i.test(await buyer.textContent('body')), reviewText);
 
     // Refunds, as Stripe reports them.
     const a = await orderRow(state.a.orderId);
@@ -434,7 +453,8 @@ async function main() {
     await buyer.goto(`${BASE}/orders/${state.a.orderId}`);
     await buyer.getByTestId('order-refunded').waitFor({ timeout: 15000 });
     await shot(buyer, 'customer-order-refunded');
-    check('a full refund: the order reads refunded, with the amount', (await orderRow(state.a.orderId)).status === 'refunded' && (await buyer.getByTestId('order-refunded').textContent()).includes(money(cents / 100)));
+    const refundText = squash(await buyer.getByTestId('order-refunded').textContent());
+    check('a full refund: the order reads refunded, with the amount, and no promise of how many days a bank takes', (await orderRow(state.a.orderId)).status === 'refunded' && refundText === catalogue.orderState('refunded', { amount: cents / 100 }) && refundText.includes(money(cents / 100)) && !/business days|\d+ to \d+/.test(refundText), refundText);
     const c = await orderRow(state.c.orderId);
     const ccents = Math.round(c.amountPaid * 100);
     await webhook('charge.refunded', { id: 'ch_e2e_c', object: 'charge', payment_intent: c.stripePaymentId, amount: ccents, amount_captured: ccents, amount_refunded: 2500, refunded: false, currency: 'usd' });
@@ -442,7 +462,7 @@ async function main() {
     await buyer.getByTestId('order-part-refunded').waitFor({ timeout: 15000 });
     await shot(buyer, 'customer-order-partly-refunded');
     const part = await orderRow(state.c.orderId);
-    check('a partial refund: the order stays paid and shows $25.00 refunded', part.status === 'paid' && part.refundedAmount === 25 && /We refunded \$25\.00 of this order/.test(await buyer.textContent('body')));
+    check('a partial refund: the order stays paid and shows $25.00 refunded', part.status === 'paid' && part.refundedAmount === 25 && /We refunded \$25\.00 of this order/.test(await buyer.textContent('body')) && squash(await buyer.getByTestId('order-part-refunded').textContent()) === catalogue.orderState('partially-refunded', { amount: 25 }));
     // …and then the cardholder disputes what is left.
     await webhook('charge.dispute.created', { id: 'dp_e2e_c', object: 'dispute', charge: 'ch_e2e_c', payment_intent: c.stripePaymentId, amount: ccents - 2500, currency: 'usd', reason: 'product_not_received', status: 'needs_response' });
     const disputed = await orderRow(state.c.orderId);

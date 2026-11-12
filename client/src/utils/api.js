@@ -7,6 +7,7 @@
  * something, and the quote tool's verified-human token (X-Human-Token).
  */
 import { ensureHuman, getHumanToken } from './security';
+import { describeRefusal, contextFor } from './messages';
 
 const BASE = '/api';
 
@@ -30,28 +31,55 @@ function baseHeaders(method = 'GET') {
 let onEnrolmentRequired = null;
 export function setEnrolmentRequiredHandler(fn) { onEnrolmentRequired = fn; }
 
-async function failure(res, fallback) {
+/**
+ * A refusal, as an Error the pages can show as it is: `message` is the buyer's
+ * wording for this code in this place (utils/messageCatalogue.js), and the
+ * rest is there for the page that wants to do more than show it:
+ *   code, status, data (the server's JSON), action ('rfq' | 'retry' | 'reset' |
+ *   'sign-in' | 'reload' | 'reopen-quote' | null), serverMessage (what the
+ *   server itself said, for the console and the admin screens).
+ */
+function refusal({ status, data, path, method, context }) {
+  const where = context || contextFor(path, method);
+  const said = describeRefusal({ status, code: data.code, serverMessage: data.error, data, context: where });
+  return Object.assign(new Error(said.message), { status, code: data.code, data, action: said.action, context: where, serverMessage: data.error || '' });
+}
+
+async function failure(res, { path = '', method = 'GET', context } = {}) {
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && data.code === 'session-ended' && onSessionEnded) onSessionEnded();
+  // The session is over (signed out elsewhere, password changed, expired), or the cookie is gone while
+  // this page still thought it was signed in: tell the app, which sends the buyer to sign in and back.
+  if (res.status === 401 && onSessionEnded && (data.code === 'session-ended' || (data.code === 'auth-required' && csrfToken))) onSessionEnded();
   if (res.status === 403 && data.code === 'two-factor-enrolment-required' && onEnrolmentRequired) onEnrolmentRequired();
-  return Object.assign(new Error(data.error || fallback || `Request failed: ${res.status}`), { status: res.status, code: data.code, data });
+  return refusal({ status: res.status, data, path, method, context });
+}
+
+/** fetch, with "the server did not answer" turned into the same kind of Error as a refusal. */
+async function send(path, init, context) {
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, init);
+  } catch {
+    throw refusal({ status: 0, data: {}, path, method: init.method || 'GET', context });
+  }
+  if (!res.ok) throw await failure(res, { path, method: init.method || 'GET', context });
+  return res;
 }
 
 async function request(path, options = {}) {
   const method = options.method || 'GET';
-  const res = await fetch(`${BASE}${path}`, {
+  const { context, ...init } = options;
+  const res = await send(path, {
     credentials: 'same-origin',
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...baseHeaders(method), ...options.headers },
-  });
-  if (!res.ok) throw await failure(res);
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...baseHeaders(method), ...init.headers },
+  }, context);
   return res.json();
 }
 
 /** A multipart POST (files). `headers` are added to the usual ones. */
-async function postForm(path, form, fallback, headers = {}) {
-  const res = await fetch(`${BASE}${path}`, { method: 'POST', body: form, credentials: 'same-origin', headers: { ...baseHeaders('POST'), ...headers } });
-  if (!res.ok) throw await failure(res, fallback);
+async function postForm(path, form, headers = {}, context) {
+  const res = await send(path, { method: 'POST', body: form, credentials: 'same-origin', headers: { ...baseHeaders('POST'), ...headers } }, context);
   return res.json();
 }
 
@@ -79,7 +107,7 @@ export const api = {
       const form = new FormData();
       if (process) form.append('process', process); // before the files
       for (const f of files) form.append('files', f);
-      return postForm('/upload', form, 'Upload failed');
+      return postForm('/upload', form);
     });
   },
 
@@ -105,7 +133,7 @@ export const api = {
     return gated(() => {
       const form = new FormData();
       form.append('drawing', file);
-      return postForm(`/quote/${quoteId}/drawing`, form, 'Could not attach the drawing');
+      return postForm(`/quote/${quoteId}/drawing`, form);
     });
   },
   async removeQuoteDrawing(quoteId) { return request(`/quote/${quoteId}/drawing`, { method: 'DELETE' }); },
@@ -187,7 +215,7 @@ export const api = {
 
   // Auth. `guard` = the form-token and bot-check headers from useFormGuard.
   async login(email, password, extra = {}, guard = {}) {
-    return request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password, ...extra }), headers: guard });
+    return request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password, ...extra }), headers: guard, context: extra.recoveryCode ? 'recovery-code' : 'login' });
   },
   async register(fields, guard = {}) {
     return request('/auth/register', { method: 'POST', body: JSON.stringify(fields), headers: guard });
@@ -225,8 +253,7 @@ export const api = {
   /** Re-quote an order's parts at today's prices; returns { quoteId } for the builder. */
   async reorder(id) { return request(`/orders/${id}/reorder`, { method: 'POST', body: '{}' }); },
   async downloadOrderDrawing(id, fileName) {
-    const res = await fetch(`${BASE}/orders/${id}/drawing`, { credentials: 'same-origin' });
-    if (!res.ok) throw new Error('Could not download the drawing');
+    const res = await send(`/orders/${id}/drawing`, { credentials: 'same-origin' });
     const url = URL.createObjectURL(await res.blob());
     const a = document.createElement('a');
     a.href = url;
@@ -237,11 +264,7 @@ export const api = {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
   async downloadPart(partId, fileName) {
-    const res = await fetch(`${BASE}/parts/${partId}/download`, { credentials: 'same-origin' });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `Download failed: ${res.status}`);
-    }
+    const res = await send(`/parts/${partId}/download`, { credentials: 'same-origin' });
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -260,11 +283,7 @@ export const api = {
   async openPdf(path) {
     const tab = window.open('', '_blank');
     try {
-      const res = await fetch(`${BASE}/pdf/${path}`, { credentials: 'same-origin' });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || `Could not make the PDF (${res.status})`);
-      }
+      const res = await send(`/pdf/${path}`, { credentials: 'same-origin' });
       const url = URL.createObjectURL(await res.blob());
       if (tab) tab.location = url; else window.location.assign(url);
       setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -293,15 +312,14 @@ export const api = {
     const form = new FormData();
     for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) form.append(k, v);
     if (drawingFile) form.append('drawing', drawingFile);
-    return postForm('/rfq', form, 'Could not submit request', guard);
+    return postForm('/rfq', form, guard);
   },
   async getRfq(id) { return request(`/rfq/${id}`); },
   async getAdminRfqs() { return request('/rfq/admin/list'); },
   async updateRfq(id, data) { return request(`/rfq/admin/${id}`, { method: 'PUT', body: JSON.stringify(data) }); },
   rfqDrawingUrl(id) { return `${BASE}/rfq/admin/${id}/drawing`; },
   async fetchRfqDrawing(id) {
-    const res = await fetch(`${BASE}/rfq/admin/${id}/drawing`, { credentials: 'same-origin' });
-    if (!res.ok) throw await failure(res, 'Could not download drawing');
+    const res = await send(`/rfq/admin/${id}/drawing`, { credentials: 'same-origin' }, 'admin');
     return res.blob();
   },
 

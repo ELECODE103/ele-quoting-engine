@@ -30,6 +30,8 @@ export default function SiteHeader() {
 
   return (
     <header style={{ borderBottom: '1px solid var(--border-subtle)', background: '#fff', position: 'sticky', top: 0, zIndex: 10 }}>
+      {/* First stop for the keyboard: past the phone number and the menu, straight to the page. */}
+      <a href="#content" className="skip-link">Skip to the content</a>
       <div className="util-bar">
         <div className="pub-wrap">
           <span className="util-where">Plastics machine shop · {brand.city}, Illinois</span>

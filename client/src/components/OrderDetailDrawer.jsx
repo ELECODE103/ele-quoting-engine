@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { formatCurrency, formatShipDate } from '../utils/format';
 import { OrderPaymentPanel } from './admin/OrderPayment';
+import { orderLineSpec } from '../utils/orderLine';
 
 /**
  * Fulfillment drawer — single unified view for an order.
@@ -260,18 +261,20 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
                   padding: '10px 0', borderBottom: '1px solid #eee', fontSize: 12,
                 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontFamily: 'monospace', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontWeight: 600, fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
                       {it.fileName || 'part'}
                     </div>
-                    <div style={{ color: '#888', fontSize: 11 }}>
-                      {it.process} · {it.materialName || it.materialSlug}
-                      {it.finishName ? ` · ${it.finishName}` : ''} · qty {it.quantity}
+                    {/* The full description the order was priced on, as on the job traveler: nothing the
+                        shop needs (grade, stock thickness) is left inside the stored config, and a value
+                        the line does not carry reads NOT RECORDED rather than being left out. */}
+                    <div data-testid="order-line-spec" style={{ color: '#475569', fontSize: 11, lineHeight: 1.5, whiteSpace: 'normal' }}>
+                      {orderLineSpec(it).parts.map((part, n) => (
+                        <span key={n}>
+                          {n > 0 ? ' · ' : ''}
+                          {part.missing ? <b style={{ color: '#B91C1C' }}>{part.text}</b> : part.text}
+                        </span>
+                      ))}
                     </div>
-                    {it.geometry && (
-                      <div style={{ color: '#999', fontSize: 10, fontFamily: 'monospace' }}>
-                        {it.geometry.boundingBox ? `${Math.round(it.geometry.boundingBox.x || 0)}×${Math.round(it.geometry.boundingBox.y || 0)}×${Math.round(it.geometry.boundingBox.z || 0)} mm` : ''}
-                      </div>
-                    )}
                   </div>
                   <div style={{ textAlign: 'right', marginLeft: 12 }}>
                     <div style={{ fontWeight: 600 }}>{formatCurrency(it.lineTotal || 0)}</div>

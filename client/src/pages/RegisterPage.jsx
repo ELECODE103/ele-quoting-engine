@@ -3,12 +3,19 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../utils/authContext';
 import { api } from '../utils/api';
 import Wordmark from '../components/Wordmark';
+import { FormError } from '../components/form/Notice';
+import PasswordField, { passwordProblem, PASSWORD_HINT } from '../components/form/PasswordField';
 import brand from '../brand';
 import { destinationAfterAuth, nextFrom, authPath } from '../utils/returnTo';
 import useFormGuard from '../utils/useFormGuard';
 
-export const PASSWORD_HINT = 'At least 10 characters, with an upper-case letter, a lower-case letter and a number. Not a common password.';
+export { PASSWORD_HINT };
 
+/**
+ * Create an account. The password rules are on the page before anything is
+ * sent, the one email we send is explained where the address is typed, and a
+ * refusal keeps what was typed, takes the focus, and says what to do next.
+ */
 export default function RegisterPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -22,14 +29,21 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [company, setCompany] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null); // { message, code, field }
+  const [errorAt, setErrorAt] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => { document.title = `Create an account · ${brand.name}`; }, []);
 
+  const fail = (message, extra = {}) => { setError({ message, ...extra }); setErrorAt((n) => n + 1); };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    if (loading) return;
+    setError(null);
+    // The rules are checked here first, so a short password never costs a round trip.
+    const problem = passwordProblem(password, { email });
+    if (problem) return fail(problem, { field: 'password' });
     setLoading(true);
 
     try {
@@ -37,107 +51,97 @@ export default function RegisterPage() {
       login(result);
       navigate(returnTo, { replace: true });
     } catch (err) {
-      setError(err.message || `We couldn't create the account. Try again, or call ${brand.phone}.`);
+      fail(err.message, { code: err.code, field: err.code === 'weak-password' ? 'password' : err.code === 'account-exists' ? 'email' : '' });
     } finally {
       setLoading(false);
     }
   };
 
+  const signInPath = authPath('/login', nextFrom(location));
   return (
     <div className="auth-shell">
-      <div className="auth-card" style={{ maxWidth: 400 }}>
+      <main className="auth-card" style={{ maxWidth: 400 }}>
         <div className="auth-head">
-          <div style={{ marginBottom: 24 }}><Wordmark size={18} /></div>
-          <h1 className="display" style={{ fontSize: 28, marginBottom: 8 }}>Create an account</h1>
+          <div className="auth-mark"><Wordmark size={18} /></div>
+          <h1 className="display">Create an account</h1>
           <p>
             {toCheckout
-              ? 'Create an account to finish checkout. Your quote is saved and you go straight back to it.'
+              ? 'One short form, then straight back to checkout. Your quote is saved.'
               : 'Needed to check out and track orders. Pricing a part doesn\'t need one.'}
           </p>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} aria-busy={loading || undefined}>
           {guard.honeypot}
-          <div style={{ marginBottom: 16 }}>
+          <div className="field">
             <label className="field-label" htmlFor="reg-name">Name</label>
-            <input
-              id="reg-name"
-              type="text"
-              className="input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoComplete="name"
-              required
-            />
+            <input id="reg-name" type="text" className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
           </div>
 
-          <div style={{ marginBottom: 16 }}>
+          <div className="field">
             <label className="field-label" htmlFor="reg-email">Email</label>
             <input
               id="reg-email"
               type="email"
+              inputMode="email"
               className="input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
-              aria-describedby="reg-email-help"
+              aria-invalid={error?.field === 'email' || undefined}
+              aria-describedby={`reg-email-help${error?.field === 'email' ? ' reg-error' : ''}`}
             />
-            <div id="reg-email-help" style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>
-              We send one email to confirm this address. You confirm it before you pay; quoting works straight away.
-            </div>
+            <span id="reg-email-help" className="field-hint">
+              We send one email with a link to confirm this address, because your order confirmation and shipping notice go to it.
+              You open the link before you pay; pricing works straight away.
+            </span>
           </div>
 
-          <div style={{ marginBottom: 16 }}>
-            <label className="field-label" htmlFor="reg-company">Company (optional)</label>
-            <input
-              id="reg-company"
-              type="text"
-              className="input"
-              value={company}
-              onChange={(e) => setCompany(e.target.value)}
-              autoComplete="organization"
-            />
+          <div className="field">
+            <label className="field-label" htmlFor="reg-company">Company <span className="optional">(optional)</span></label>
+            <input id="reg-company" type="text" className="input" value={company} onChange={(e) => setCompany(e.target.value)} autoComplete="organization" />
           </div>
 
-          <div style={{ marginBottom: 16 }}>
-            <label className="field-label" htmlFor="reg-password">Password</label>
-            <input
+          <PasswordField
               id="reg-password"
-              type="password"
-              className="input"
+              label="Password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
               autoComplete="new-password"
-              minLength={10}
-              maxLength={72}
-              required
-              aria-describedby="reg-password-help"
+              rules
+              invalid={error?.field === 'password'}
+              describedBy={error?.field === 'password' ? 'reg-error' : ''}
             />
-            <div id="reg-password-help" style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>{PASSWORD_HINT}</div>
-          </div>
 
           <div style={{ marginBottom: 16 }}>{guard.widget}</div>
 
-          {error && <div role="alert" className="auth-error">{error}</div>}
+          <FormError id="reg-error" error={error?.message} at={errorAt}>
+            {error?.code === 'account-exists' && (
+              <>
+                <Link to={signInPath} className="btn btn-outline">Sign in</Link>
+                <Link to="/forgot-password" className="btn btn-ghost">Choose a new password</Link>
+              </>
+            )}
+          </FormError>
 
-          <button
-            type="submit"
-            className="btn btn-primary btn-lg"
-            style={{ width: '100%', justifyContent: 'center', marginBottom: 16 }}
-            disabled={loading}
-          >
+          <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={loading}>
             {loading ? 'Creating account…' : 'Create account'}
           </button>
         </form>
 
-        <div className="auth-foot" style={{ marginTop: 0 }}>
+        <div className="auth-foot">
           Already have one?{' '}
-          <Link to={authPath('/login', nextFrom(location))}>Sign in</Link>
+          <Link to={signInPath}>Sign in</Link>
           <br />
-          <Link to="/quote" style={{ color: 'var(--text-muted)' }}>Back to the quote</Link>
+          <Link to="/quote" className="quiet">Back to the quote</Link>
+          <br />
+          Rather set it up by phone? <a href={brand.phoneHref}>{brand.phone}</a>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

@@ -1,24 +1,46 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { api } from '../utils/api';
 import { formatCurrency, formatShipDate, formatDate } from '../utils/format';
 import { ok, PAPERWORK_LABEL } from '../facts';
 import { useAuth } from '../utils/authContext';
 import VerifyEmailNotice from '../components/security/VerifyEmailNotice';
+import Notice, { FormError } from '../components/form/Notice';
+import brand from '../brand';
+import { notePendingCheckout, saveCheckoutDraft, loadCheckoutDraft } from '../utils/returnTo';
 
+// Where each "settled somewhere else" refusal leads (the catalogue's `action` for the code, utils/messageCatalogue.js).
+const NEXT_STEP = {
+  'reopen-quote': ({ quoteId }) => ({ link: `/quote?quote=${quoteId}`, label: 'Reopen the quote' }),
+  rfq: ({ quoteId }) => ({ link: `/rfq/${quoteId}`, label: 'Request a firm quote' }),
+  'open-order': ({ orderId }) => (orderId ? { link: `/orders/${orderId}`, label: 'Open that order' } : { link: '/dashboard', label: 'See your orders' }),
+};
+
+/**
+ * Checkout: ship-to details, then the hand-off to the card page.
+ *
+ * What the buyer types is kept for this tab (utils/returnTo: saveCheckoutDraft),
+ * so it is still there after a reload, after signing in again when a session
+ * ends mid-checkout, and on the way back from the card page. The checkout path
+ * is also noted for the browser (notePendingCheckout), so the page that opens
+ * from the confirmation email, in a new tab, can lead straight back here.
+ */
 export default function CheckoutPage() {
   const { quoteId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   const [quoteData, setQuoteData] = useState(null);
-  const [name, setName] = useState('');
-  const [street, setStreet] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [zip, setZip] = useState('');
-  const [country, setCountry] = useState('US');
-  const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const draft = useRef(loadCheckoutDraft(quoteId)).current;
+  const [name, setName] = useState(draft?.name || '');
+  const [street, setStreet] = useState(draft?.street || '');
+  const [city, setCity] = useState(draft?.city || '');
+  const [state, setState] = useState(draft?.state || '');
+  const [zip, setZip] = useState(draft?.zip || '');
+  const [country, setCountry] = useState(draft?.country || 'US');
+  const [error, setError] = useState(null); // { message, action }
+  const [errorAt, setErrorAt] = useState(0);
   const [loading, setLoading] = useState(false);
   // Set when the server says the price is no longer the one this page was showing: the new quote is
   // shown, with the old total beside it, and the buyer presses pay again to accept it.
@@ -31,15 +53,20 @@ export default function CheckoutPage() {
   const { user, verificationEnforced, refresh } = useAuth();
   const mustConfirm = Boolean(user && !user.emailVerified && verificationEnforced);
 
+  useEffect(() => { document.title = `Checkout · ${brand.name}`; }, []);
+  useEffect(() => { notePendingCheckout(`/checkout/${quoteId}`); }, [quoteId]);
+  useEffect(() => { saveCheckoutDraft(quoteId, { name, street, city, state, zip, country }); }, [quoteId, name, street, city, state, zip, country]);
+
   useEffect(() => {
     api.getQuoteById(quoteId)
       .then(q => setQuoteData(q))
-      .catch(err => setError('Could not load quote: ' + err.message));
+      .catch(err => setLoadError(err.message));
   }, [quoteId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    if (loading) return;
+    setError(null);
     setNext(null);
     setLoading(true);
 
@@ -54,54 +81,58 @@ export default function CheckoutPage() {
       }, Number(quoteData?.orderTotal));
 
       if (result.sessionUrl) {
-        // Redirect to Stripe Checkout
+        // Redirect to Stripe Checkout. The button stays busy until the card page has replaced this one.
         window.location.href = result.sessionUrl;
-      } else {
-        setError('Could not create payment session');
+        return;
       }
+      setError({ message: `We couldn't start the card payment, and nothing was charged. Try again in a minute, or call ${brand.phone} and we'll take the order by phone.` });
+      setErrorAt((n) => n + 1);
     } catch (err) {
       const data = err.data || {};
-      if (err.code === 'email-unverified') { await refresh(); setError(''); }
+      // Not confirmed after all: the notice at the top of the page says what to do.
+      if (err.code === 'email-unverified') await refresh();
       else if (err.code === 'quote-changed' && data.quote && !data.reopen) {
-        // Nothing was charged. Show today's price; the same button accepts it.
+        // The price is no longer the one this page was showing. Nothing was charged. Show today's
+        // price beside the old one; the same button accepts it.
         setPriceChange({ was: Number.isFinite(data.previousTotal) ? data.previousTotal : quoteData?.orderTotal, now: data.quote.orderTotal });
         setQuoteData(data.quote);
-      } else if (err.code === 'quote-changed' || err.code === 'quote-needs-update') {
-        setNext({ text: 'Something on this quote has changed since it was priced, so we have not charged you.', link: `/quote?quote=${quoteId}`, label: 'Reopen the quote to see today\'s price' });
-      } else if (err.code === 'rfq-required' || err.code === 'price-check-failed') {
-        setNext({ text: 'This order needs a firm quote from us before it can be paid for. Nothing was charged.', link: `/rfq/${quoteId}`, label: 'Send it to us for a firm quote' });
-      } else if (err.code === 'quote-already-ordered') {
-        setNext({ text: 'This quote has already been ordered.', link: data.orderId ? `/orders/${data.orderId}` : '/dashboard', label: data.orderId ? 'Open that order' : 'See your orders' });
-      } else setError(err.message || 'Failed to start checkout');
-    } finally {
-      setLoading(false);
+      } else if (NEXT_STEP[err.action]) {
+        // Refusals that are settled somewhere else (back in the quote, by a firm quote, on the order page):
+        // the words are the catalogue's (err.message), and the way there is a link beside them.
+        setNext({ text: err.message, ...NEXT_STEP[err.action]({ quoteId, orderId: data.orderId }) });
+      }
+      // Signed out: the app is already on its way to the sign-in page, and comes back here with the details kept.
+      else if (err.status !== 401) { setError({ message: err.message, action: err.action }); setErrorAt((n) => n + 1); }
     }
+    setLoading(false);
   };
 
+  const quotePath = `/quote?quote=${quoteId}`;
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '32px' }}>
+    <div className="app-page">
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
-        <button
-          className="btn btn-ghost"
-          onClick={() => navigate(`/quote?quote=${quoteId}`)}
-          style={{ marginBottom: 24 }}
-        >
-          ← Back to Quote
+        <button type="button" className="btn btn-ghost" onClick={() => navigate(quotePath)} style={{ marginBottom: 24 }}>
+          ← Back to the quote
         </button>
 
         {wasCancelled && (
-          <div style={{
-            background: '#FFF3CD', border: '1px solid #FFECB5', borderRadius: 'var(--radius-md)',
-            padding: 12, marginBottom: 24, color: '#664D03', fontSize: 13,
-          }}>
-            Payment was cancelled. You can try again below.
-          </div>
+          <Notice kind="warn" style={{ marginBottom: 24 }}>
+            <b>You came back from the card page before paying, so nothing was charged.</b>{' '}
+            Your parts{draft?.street ? ' and ship-to details' : ''} are as you left them. Pay when you are ready. Something not right on the card page? Call {brand.phone}.
+          </Notice>
+        )}
+
+        {loadError && (
+          <Notice kind="error" style={{ marginBottom: 24 }}>
+            {loadError}{' '}
+            <Link to="/quote">Open the quote tool</Link>
+          </Notice>
         )}
 
         {quoteData?.expired && (
           <div role="alert" className="gate-box" style={{ marginBottom: 24 }}>
             This price was held until {formatDate(quoteData.expiresAt)} and has expired.{' '}
-            <a href={`/quote?quote=${quoteId}`} style={{ color: 'inherit', fontWeight: 600 }}>Reopen the quote</a> to get today's price. Your parts are still there.
+            <a href={quotePath} style={{ color: 'inherit', fontWeight: 600 }}>Reopen the quote</a> to get today's price. Your parts are still there.
           </div>
         )}
 
@@ -110,7 +141,7 @@ export default function CheckoutPage() {
             <b>The price of this quote has changed.</b>{' '}
             {Number.isFinite(priceChange.was) ? <>It was {formatCurrency(priceChange.was)}; it is now <b>{formatCurrency(priceChange.now)}</b>.</> : <>It is now <b>{formatCurrency(priceChange.now)}</b>.</>}{' '}
             We have not charged you. Check the new total in the summary, then press the pay button again to go ahead at this price,
-            or <a href={`/quote?quote=${quoteId}`} style={{ color: 'inherit', fontWeight: 600 }}>go back to the quote</a>.
+            or <a href={quotePath} style={{ color: 'inherit', fontWeight: 600 }}>go back to the quote</a>.
           </div>
         )}
 
@@ -126,119 +157,73 @@ export default function CheckoutPage() {
         <div className="checkout-grid">
           {/* Left: Shipping Form */}
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Checkout</h1>
-            <p style={{ color: 'var(--text-muted)', marginBottom: 32 }}>Provide shipping details, then pay securely via Stripe</p>
+            <h1 className="app-h1">Checkout</h1>
+            <p className="app-lede">Where the parts ship, then the card page. Payment is taken by Stripe; we never see the card number.</p>
 
-            <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: 16 }}>
-                <label className="field-label" htmlFor="co-name">Full Name</label>
-                <input
-                  id="co-name"
-                  type="text"
-                  className="input"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="John Smith"
-                  required
-                />
-              </div>
+            <form onSubmit={handleSubmit} aria-busy={loading || undefined}>
+              <fieldset className="plain-fieldset">
+                <legend className="sr-only">Ship to</legend>
+                <div className="field">
+                  <label className="field-label" htmlFor="co-name">Full name</label>
+                  <input id="co-name" type="text" className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="shipping name" required />
+                </div>
 
-              <div style={{ marginBottom: 16 }}>
-                <label className="field-label" htmlFor="co-street">Street Address</label>
-                <input
-                  id="co-street"
-                  type="text"
-                  className="input"
-                  value={street}
-                  onChange={(e) => setStreet(e.target.value)}
-                  placeholder="123 Main St"
-                  required
-                />
-              </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="co-street">Street address</label>
+                  <input id="co-street" type="text" className="input" value={street} onChange={(e) => setStreet(e.target.value)} autoComplete="shipping address-line1" required aria-describedby="co-street-help" />
+                  <span id="co-street-help" className="field-hint">Include the suite, dock or building number.</span>
+                </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 16 }}>
-                <div>
-                  <label className="field-label" htmlFor="co-city">City</label>
-                  <input
-                    id="co-city"
-                    type="text"
-                    className="input"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    placeholder="New York"
-                    required
-                  />
+                <div className="field-row field-row-2-1">
+                  <div className="field">
+                    <label className="field-label" htmlFor="co-city">City</label>
+                    <input id="co-city" type="text" className="input" value={city} onChange={(e) => setCity(e.target.value)} autoComplete="shipping address-level2" required />
+                  </div>
+                  <div className="field">
+                    <label className="field-label" htmlFor="co-state">State</label>
+                    <input id="co-state" type="text" className="input" value={state} onChange={(e) => setState(e.target.value)} autoComplete="shipping address-level1" autoCapitalize="characters" required />
+                  </div>
                 </div>
-                <div>
-                  <label className="field-label" htmlFor="co-state">State</label>
-                  <input
-                    id="co-state"
-                    type="text"
-                    className="input"
-                    value={state}
-                    onChange={(e) => setState(e.target.value)}
-                    placeholder="NY"
-                    required
-                  />
-                </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
-                <div>
-                  <label className="field-label" htmlFor="co-zip">ZIP Code</label>
-                  <input
-                    id="co-zip"
-                    type="text"
-                    className="input"
-                    value={zip}
-                    onChange={(e) => setZip(e.target.value)}
-                    placeholder="10001"
-                    required
-                  />
+                <div className="field-row field-row-1-1" style={{ marginBottom: 8 }}>
+                  <div className="field">
+                    <label className="field-label" htmlFor="co-zip">ZIP code</label>
+                    <input id="co-zip" type="text" className="input" value={zip} onChange={(e) => setZip(e.target.value)} autoComplete="shipping postal-code" inputMode={country === 'US' ? 'numeric' : 'text'} required />
+                  </div>
+                  <div className="field">
+                    <label className="field-label" htmlFor="co-country">Country</label>
+                    <select id="co-country" className="input" value={country} onChange={(e) => setCountry(e.target.value)} autoComplete="shipping country">
+                      <option value="US">United States</option>
+                      <option value="CA">Canada</option>
+                      <option value="MX">Mexico</option>
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="field-label" htmlFor="co-country">Country</label>
-                  <select
-                    id="co-country"
-                    className="input"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                  >
-                    <option value="US">United States</option>
-                    <option value="CA">Canada</option>
-                    <option value="MX">Mexico</option>
-                  </select>
-                </div>
-              </div>
+              </fieldset>
 
-              {error && (
-                <div style={{ background: 'var(--error-bg)', border: '1px solid var(--error)', borderRadius: 'var(--radius-md)', padding: 12, marginBottom: 24, color: 'var(--error-text)', fontSize: 12 }}>
-                  {error}
-                </div>
-              )}
+              <FormError error={error?.message} at={errorAt} />
 
               <button
                 type="submit"
-                className="btn btn-primary btn-lg"
-                style={{ width: '100%', justifyContent: 'center' }}
+                className="btn btn-primary btn-lg btn-block"
                 disabled={loading || !quoteData || quoteData.expired || mustConfirm}
-                aria-describedby={mustConfirm ? 'pay-needs-email' : undefined}
+                aria-describedby={mustConfirm ? 'pay-needs-email' : 'pay-next'}
               >
-                {loading ? 'Redirecting to payment...' : 'Pay & Place Order'}
+                {loading ? 'Opening the card page…' : 'Pay and place order'}
               </button>
-              {mustConfirm && (
-                <div id="pay-needs-email" style={{ textAlign: 'center', marginTop: 8, fontSize: 12, color: 'var(--warn-text)' }}>
-                  The pay button switches on once your email address is confirmed (see the top of this page). Your address details stay as typed.
-                </div>
+              {mustConfirm ? (
+                <p id="pay-needs-email" className="pay-note warn">
+                  This button switches on by itself once your email address is confirmed (see the top of this page). What you have typed stays.
+                </p>
+              ) : (
+                <p id="pay-next" className="pay-note">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ verticalAlign: '-1px', marginRight: 4 }}>
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0110 0v4" />
+                  </svg>
+                  Next: Stripe's card page. You come back here when it is done; the back button brings you back unpaid, with nothing lost.
+                </p>
               )}
-
-              <div style={{ textAlign: 'center', marginTop: 12, fontSize: 11, color: 'var(--text-muted)' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ verticalAlign: 'middle', marginRight: 4 }}>
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0110 0v4" />
-                </svg>
-                Secure payment powered by Stripe
-              </div>
             </form>
           </div>
 
@@ -249,10 +234,8 @@ export default function CheckoutPage() {
               border: '1px solid var(--border-primary)',
               borderRadius: 'var(--radius-lg)',
               padding: 24,
-              position: 'sticky',
-              top: 100,
-            }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>Order Summary</h3>
+            }} className="checkout-summary">
+              <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>Order summary</h2>
 
               <div style={{ marginBottom: 16 }}>
                 {(quoteData?.lineItems || []).map((li) => (
@@ -320,20 +303,8 @@ export default function CheckoutPage() {
                 </div>
               )}
 
-              <div style={{
-                background: 'var(--accent-bg)',
-                border: '1px solid var(--accent)',
-                borderRadius: 'var(--radius-md)',
-                padding: 12,
-                fontSize: 11,
-                color: 'var(--accent)',
-                lineHeight: 1.6,
-              }}>
-                ⓘ You'll be redirected to Stripe to complete payment securely. Your card info never touches our servers.
-              </div>
-
-              <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                🔒 You retain full IP ownership of your designs. Files are stored securely and never shared. {ok('paperwork-packet') ? 'NDA available on request.' : ''}
+              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                Your designs stay yours. The files are used to make your parts and are not shared. {ok('paperwork-packet') ? 'NDA available on request.' : ''}
               </div>
             </div>
           </div>

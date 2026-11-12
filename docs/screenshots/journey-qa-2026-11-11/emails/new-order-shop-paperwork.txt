@@ -1,0 +1,32 @@
+Subject: New order 7C9E6679 — $1,013.75
+Preheader: Expedited · ships by Tue, Nov 24, 2026 · FAI + CoC ordered
+
+NEW PAID ORDER
+==============
+
+Dana Buyer <dana@example.com>
+
+Drawing attached to the order: wear-strip-rev-C.pdf. Review it before cutting.
+
+FAI + CoC ORDERED: measure the first piece of each part number against the drawing and write the first-article report, then fill in and sign the certificate of conformance with material and lot. Both ship with the parts.
+
+Order: 7C9E6679
+FAI + CoC: ORDERED ($105.00)
+Payment: Card, paid
+Lead time: Expedited
+Ships by: Tue, Nov 24, 2026
+Ship to: Dana Buyer, 100 Main St, Elgin, IL 60120
+Customer notes: The 0.500 bore is the one that matters.
+
+  - wear-strip-rev-C.step x 25 (UHMW-PE · CNC machining)  $612.50
+  - guide-block.step x 10 (Delrin / Acetal (POM) · CNC machining · Deburred)  $284.00
+  - First-article inspection report and certificate of conformance  $105.00
+  - Shipping  $12.25
+Total: $1,013.75
+
+Open admin:
+https://straightedgemfg.com/admin
+
+--
+Straightedge · 224-213-6727 · quotes@straightedgemfg.com
+Straightedge, Wauconda, IL · https://straightedgemfg.com

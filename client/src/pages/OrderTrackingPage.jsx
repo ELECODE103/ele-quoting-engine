@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import { formatCurrency, formatShipDate, formatDate, orderStatusLabel } from '../utils/format';
-import { storeQuoteId } from '../utils/returnTo';
+import { storeQuoteId, notePendingCheckout, clearCheckoutDraft } from '../utils/returnTo';
 import brand, { PROCESS_LABELS } from '../brand';
 import { PAPERWORK_LABEL } from '../facts';
+import { describeOrderState } from '../utils/messages';
 
 const TIMELINE = ['pending_payment', 'paid', 'received', 'in_production', 'quality_check', 'packing', 'shipped', 'delivered'];
 // A PO order skips card payment: it waits for the shop to confirm the PO instead.
@@ -39,6 +40,8 @@ export default function OrderTrackingPage() {
         let o = await load();
         if (justPaid) {
           storeQuoteId(null); // that quote is an order now; the builder starts fresh
+          notePendingCheckout(null);
+          clearCheckoutDraft();
           // Stripe's confirmation can trail the redirect by a few seconds.
           for (let attempt = 0; attempt < 5 && !cancelled && o.status === 'pending_payment'; attempt++) {
             await api.confirmOrderPayment(orderId).catch(() => null);
@@ -47,7 +50,7 @@ export default function OrderTrackingPage() {
           }
         }
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Failed to load order');
+        if (!cancelled) setError(err.message);
       } finally {
         if (!cancelled) { setLoading(false); setConfirming(false); }
       }
@@ -62,7 +65,7 @@ export default function OrderTrackingPage() {
       const r = await api.reorder(orderId);
       navigate(`/quote?quote=${r.quoteId}`);
     } catch (err) {
-      setReorderError(err.message || 'Could not rebuild the quote.');
+      setReorderError(err.message);
       setReordering(false);
     }
   }
@@ -77,9 +80,9 @@ export default function OrderTrackingPage() {
   const closed = order && ['expired', 'cancelled', 'refunded'].includes(order.status);
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '32px' }}>
+    <div className="app-page">
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
-        <button className="btn btn-ghost" onClick={() => navigate('/dashboard')} style={{ marginBottom: 24 }}>
+        <button type="button" className="btn btn-ghost" onClick={() => navigate('/dashboard')} style={{ marginBottom: 24 }}>
           ← Your orders
         </button>
 
@@ -99,7 +102,7 @@ export default function OrderTrackingPage() {
         {!loading && order && (
           <>
             {justPaid && paid && (
-              <div role="status" style={{ background: 'var(--success-bg, #ECFDF5)', border: '1px solid var(--success, #10B981)', borderRadius: 'var(--radius-md)', padding: 16, marginBottom: 24, color: 'var(--success-text)', fontSize: 14 }}>
+              <div role="status" className="auth-ok" style={{ padding: 16, marginBottom: 24, fontSize: 14 }}>
                 <b>Payment received. Thank you.</b>{' '}
                 {order.shipBy ? `Your parts ship by ${formatShipDate(order.shipBy, { year: true })}.` : ''}{' '}
                 {order.customerEmail ? `A confirmation is on its way to ${order.customerEmail}.` : ''}
@@ -111,39 +114,38 @@ export default function OrderTrackingPage() {
                 refresh in a minute, or call {brand.phone} if it doesn't.
               </div>
             )}
+            {/* Where the order stands after money has moved, or not moved. One source for the words:
+                utils/messageCatalogue.js (ORDER_STATES), shared with the firm-quote pages. */}
             {underReview && (
               <div role="status" className="gate-box" data-testid="payment-under-review" style={{ marginBottom: 24 }}>
-                <b>We're checking your payment.</b> We received a payment for this order and need to look at it before we confirm the order.
-                We'll email {order.customerEmail || 'you'} today. Questions: {brand.phone}.
+                {describeOrderState('payment-under-review', { email: order.customerEmail })}
               </div>
             )}
             {order.status === 'expired' && (
               <div role="status" className="gate-box" data-testid="order-expired" style={{ marginBottom: 24 }}>
-                <b>This order was not paid for, so it has closed.</b> Nothing was charged.{' '}
-                {order.quoteId && !order.rfqId
-                  ? <>Your quote is still there: <a href={`/checkout/${order.quoteId}`} style={{ color: 'var(--accent)', fontWeight: 600 }}>go back to checkout</a> to order it.</>
-                  : <>Open the link in your quote email to order, or call {brand.phone}.</>}
+                {describeOrderState('expired', { firmQuote: Boolean(order.rfqId) || !order.quoteId })}{' '}
+                {order.quoteId && !order.rfqId && <a href={`/checkout/${order.quoteId}`} style={{ color: 'var(--accent)', fontWeight: 600 }}>Go back to checkout</a>}
               </div>
             )}
             {order.status === 'cancelled' && (
-              <div role="status" className="gate-box" style={{ marginBottom: 24 }}>
-                <b>This order was cancelled</b> and won't be made. Call {brand.phone} if that isn't what you expected.
+              <div role="status" className="gate-box" data-testid="order-cancelled" style={{ marginBottom: 24 }}>
+                {describeOrderState('cancelled')}
               </div>
             )}
             {order.status === 'refunded' && (
               <div role="status" className="gate-box" data-testid="order-refunded" style={{ marginBottom: 24 }}>
-                <b>We refunded this order.</b> {formatCurrency(refunded || order.total)} went back to your card. Banks usually show a refund within 5 to 10 business days.
+                {describeOrderState('refunded', { amount: refunded || order.total })}
               </div>
             )}
             {order.status !== 'refunded' && refunded > 0 && (
               <div role="status" className="gate-box" data-testid="order-part-refunded" style={{ marginBottom: 24 }}>
-                <b>We refunded {formatCurrency(refunded)} of this order</b> to your card. The rest of the order stands.
+                {describeOrderState('partially-refunded', { amount: refunded })}
               </div>
             )}
 
             <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div>
-                <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Order {String(order.id).slice(0, 8).toUpperCase()}</h1>
+                <h1 className="app-h1">Order {String(order.id).slice(0, 8).toUpperCase()}</h1>
                 <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
                   Placed {new Date(order.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
                 </p>
@@ -291,7 +293,7 @@ export default function OrderTrackingPage() {
             {/* Shipping Info */}
             {(order.shippingName || order.shippingAddress) && (
               <div style={card}>
-                <h2 style={h2}>Shipping Address</h2>
+                <h2 style={h2}>Shipping address</h2>
                 <div style={{ color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.8 }}>
                   {order.shippingName && <div>{order.shippingName}</div>}
                   {order.shippingAddress && <div>{order.shippingAddress}</div>}

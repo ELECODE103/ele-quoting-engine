@@ -5,7 +5,8 @@
  *
  *   NODE_PATH=<dir holding playwright> \
  *   env -u HTTPS_PROXY -u HTTP_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost \
- *   node scripts/e2e/hardening-accounts.mjs --scratch <dir> [--shots docs/screenshots/hardening-2026-11-11]
+ *   node scripts/e2e/hardening-accounts.mjs --scratch <dir> [--shots <dir>]
+ *   (screenshots default to <scratch>/shots; --shots docs/screenshots/hardening-2026-11-11 refreshes the committed set)
  *
  * What it drives, in a real Chromium at 1360 px:
  *   A  register → email confirmation required at checkout → confirm → pay
@@ -48,7 +49,9 @@ const totp = require(path.join(ROOT, 'server', 'security', 'totp.js'));
 const arg = (name, fallback) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : fallback; };
 const SCRATCH = path.resolve(arg('scratch', ''));
 if (!arg('scratch', '')) { console.error('--scratch <dir> is required (outbox, server logs)'); process.exit(2); }
-const SHOTS = path.resolve(ROOT, arg('shots', 'docs/screenshots/hardening-2026-11-11'));
+// Screenshots go to the scratch folder unless --shots names a folder. (They used to default to the committed
+// docs/screenshots/hardening-2026-11-11 and a plain run overwrote those files; pass --shots <that folder> to refresh them on purpose.)
+const SHOTS = arg('shots', '') ? path.resolve(ROOT, arg('shots', '')) : path.join(SCRATCH, 'shots');
 const PORT = 3091;
 const BASE = `http://localhost:${PORT}`;
 const OUTBOX = path.join(SCRATCH, 'outbox');
@@ -262,7 +265,7 @@ async function phaseWithKeys() {
     // Checkout is held for the unconfirmed address.
     const notice = buyer.getByRole('region', { name: 'Confirm your email address' });
     await notice.waitFor();
-    const pay = buyer.getByRole('button', { name: /Pay & Place Order/ });
+    const pay = buyer.getByRole('button', { name: /Pay and place order/ }); // button wording changed in the journey pass (sentence case, no ampersand)
     check('checkout explains that the email must be confirmed, and the pay button is off', (await notice.textContent()).includes(buyerEmail) && await pay.isDisabled());
     await buyer.getByLabel('Full Name').fill('Dana Buyer');
     await buyer.getByLabel('Street Address').fill('100 Main St');
@@ -279,9 +282,12 @@ async function phaseWithKeys() {
     await buyer.getByText(/Sent again to/).waitFor();
     const second = await waitMail(buyerEmail, /confirm your email/, { after: 1 });
     check('"Send the link again" sends a second email', Boolean(second));
-    await buyer.getByRole('button', { name: 'Send the link again' }).click();
-    await buyer.getByText(/We just sent one/).waitFor();
-    check('a second resend inside a minute is refused politely', true);
+    // Journey pass: after a send the button counts down the minute the server makes everyone wait, so the
+    // second press cannot be made by accident. The server's refusal is still there for anything that asks anyway.
+    const waitButton = buyer.getByRole('button', { name: /Send again in \d+ s/ });
+    await waitButton.waitFor();
+    const refused = await apiFrom(buyer, 'POST', '/api/auth/verify-email/resend');
+    check('a second resend inside a minute: the button waits out the minute, and the server refuses politely if asked anyway', await waitButton.isDisabled() && refused.status === 429 && /We just sent one/.test(refused.text), `${refused.status} ${refused.text}`);
 
     // The link opened where nobody is signed in: a button, no automatic confirmation.
     const strangerCtx = await newContext();
@@ -1107,7 +1113,7 @@ async function phaseReviewFixes() {
     await page.getByLabel('City').fill('Elgin');
     await page.getByLabel('State').fill('IL');
     await page.getByLabel('ZIP Code').fill('60120');
-    const pay = page.getByRole('button', { name: /Pay & Place Order/ });
+    const pay = page.getByRole('button', { name: /Pay and place order/ }); // button wording changed in the journey pass (merge 2026-11-12: this section came from review-fixes)
     await pay.click();
     const notice = page.getByTestId('price-changed');
     await notice.waitFor({ timeout: 15000 });

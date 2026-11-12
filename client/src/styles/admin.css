@@ -10,7 +10,7 @@
 .pc-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 .pc-head h2 { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0; letter-spacing: -0.01em; }
 .pc-head p { margin: 2px 0 0; color: var(--text-muted); font-size: 13px; }
-.pc-actions { display: flex; align-items: center; gap: 8px; }
+.pc-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* Segmented toggle */
 .seg { display: inline-flex; border: 1px solid var(--border-primary); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-primary); }
@@ -46,7 +46,7 @@
 .rule.dirty { border-left-color: var(--warn); background: #FFFDF7; }
 .rule.invalid { border-left-color: var(--error); background: var(--error-bg); }
 .rule-label { font-size: 13.5px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.rule-key { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-ghost); font-weight: 400; }
+.rule-key { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); font-weight: 400; }
 .rule-help { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; margin-top: 3px; }
 .rule-ctl { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
 .rule-input { display: flex; align-items: center; width: 100%; border: 1px solid var(--border-primary); border-radius: var(--radius-md); background: var(--bg-input); overflow: hidden; }
@@ -58,8 +58,8 @@
 .rule-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-dim); }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-primary); background: var(--bg-primary); font-size: 11px; color: var(--text-muted); cursor: pointer; font-family: var(--font-body); }
 .chip:hover { border-color: var(--accent); color: var(--accent); }
-.chip.is-default { cursor: default; color: var(--text-ghost); border-style: dashed; }
-.chip.is-default:hover { border-color: var(--border-primary); color: var(--text-ghost); }
+.chip.is-default { cursor: default; color: var(--text-muted); border-style: dashed; }
+.chip.is-default:hover { border-color: var(--border-primary); color: var(--text-muted); }
 .rule-error { font-size: 11.5px; color: var(--error-text); }
 
 /* Table rules (map / rows) */
@@ -92,7 +92,7 @@
 .pv-table tr.pv-part td span { font-weight: 400; color: var(--text-dim); font-size: 11px; margin-left: 6px; }
 .pv-line { color: var(--text-secondary); white-space: nowrap; }
 .pv-line .proc { display: inline-block; min-width: 34px; font-size: 10px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; color: var(--accent); margin-right: 6px; }
-.pv-delta { display: block; font-size: 10px; margin-top: 1px; color: var(--text-ghost); }
+.pv-delta { display: block; font-size: 10px; margin-top: 1px; color: var(--text-muted); }
 .pv-delta.up { color: var(--warn-text); }
 .pv-delta.down { color: var(--success-text); }
 .pv-foot { font-size: 11px; color: var(--text-dim); margin-top: 8px; line-height: 1.45; }

@@ -1,0 +1,177 @@
+[
+ {
+  "name": "rfq-received-buyer",
+  "subject": "Straightedge: we have your quote request",
+  "preheader": "A firm quote comes back within 24 hours from the engineer who will run the job.",
+  "words": 104,
+  "action": ""
+ },
+ {
+  "name": "rfq-received-shop",
+  "subject": "RFQ: 0B8A2F4E — 1 part(s)",
+  "preheader": "New RFQ 0B8A2F4E",
+  "words": 119,
+  "action": "Open the RFQ queue"
+ },
+ {
+  "name": "rfq-received-shop-unverified",
+  "subject": "RFQ: 0B8A2F4E — 1 part(s) [unverified sender]",
+  "preheader": "Unverified sender: check the address before you reply.",
+  "words": 172,
+  "action": "Open the RFQ queue"
+ },
+ {
+  "name": "part-request-shop-unverified",
+  "subject": "RFQ: 5D21C7AA — ? part(s) [unverified sender]",
+  "preheader": "Unverified sender: check the address before you reply.",
+  "words": 170,
+  "action": "Open the RFQ queue"
+ },
+ {
+  "name": "account-verify-email",
+  "subject": "Straightedge: confirm your email address",
+  "preheader": "One press confirms it. After that your account can check out.",
+  "words": 146,
+  "action": "Confirm my email"
+ },
+ {
+  "name": "account-password-reset",
+  "subject": "Straightedge: reset your password",
+  "preheader": "The link works once, for one hour. Not you? Ignore this.",
+  "words": 155,
+  "action": "Choose a new password"
+ },
+ {
+  "name": "account-password-changed",
+  "subject": "Straightedge: your password was changed",
+  "preheader": "If that was you, there is nothing to do.",
+  "words": 118,
+  "action": ""
+ },
+ {
+  "name": "account-locked",
+  "subject": "Straightedge: sign-in paused on your account",
+  "preheader": "Too many wrong passwords, so sign-in is paused for 15 minutes. Nobody got in.",
+  "words": 151,
+  "action": "Choose a new password"
+ },
+ {
+  "name": "account-two-factor-on",
+  "subject": "Straightedge: two-step sign-in is on",
+  "preheader": "If that was you, there is nothing to do.",
+  "words": 115,
+  "action": ""
+ },
+ {
+  "name": "account-recovery-code-used",
+  "subject": "Straightedge: a recovery code was used to sign in",
+  "preheader": "If that was you, there is nothing to do.",
+  "words": 121,
+  "action": ""
+ },
+ {
+  "name": "part-request-buyer",
+  "subject": "Straightedge: send us the part (reference 5D21C7AA)",
+  "preheader": "Write 5D21C7AA on the box. The ship-to address is inside.",
+  "words": 143,
+  "action": ""
+ },
+ {
+  "name": "part-request-shop",
+  "subject": "RFQ: 5D21C7AA — part being shipped in",
+  "preheader": "New RFQ 5D21C7AA",
+  "words": 144,
+  "action": "Open the RFQ queue"
+ },
+ {
+  "name": "rfq-quoted",
+  "subject": "Straightedge: your firm quote — $6,850.00",
+  "preheader": "$6,850.00, good until December 9, 2026.",
+  "words": 133,
+  "action": "Review and accept"
+ },
+ {
+  "name": "rfq-quoted-no-paperwork",
+  "subject": "Straightedge: your firm quote — $6,850.00",
+  "preheader": "$6,850.00, good until December 9, 2026.",
+  "words": 146,
+  "action": "Review and accept"
+ },
+ {
+  "name": "part-request-quoted",
+  "subject": "Straightedge: your firm quote — $412.00",
+  "preheader": "$412.00, good until December 9, 2026.",
+  "words": 148,
+  "action": "Review and accept"
+ },
+ {
+  "name": "part-request-buyer-keep",
+  "subject": "Straightedge: send us the part (reference 5D21C7AA)",
+  "preheader": "Write 5D21C7AA on the box. The ship-to address is inside.",
+  "words": 144,
+  "action": ""
+ },
+ {
+  "name": "rfq-accepted-shop-po",
+  "subject": "Quote 0B8A2F4E accepted on a purchase order — $6,850.00",
+  "preheader": "$6,850.00 — on a purchase order: confirm it before starting",
+  "words": 123,
+  "action": "Open admin"
+ },
+ {
+  "name": "rfq-accepted-shop-card",
+  "subject": "Quote 0B8A2F4E accepted, card checkout started — $6,850.00",
+  "preheader": "$6,850.00 — paying by card",
+  "words": 107,
+  "action": "Open admin"
+ },
+ {
+  "name": "order-confirmation",
+  "subject": "Straightedge: order 7C9E6679 confirmed",
+  "preheader": "Ships by Tue, Nov 24, 2026.",
+  "words": 122,
+  "action": "View your order"
+ },
+ {
+  "name": "order-confirmation-po",
+  "subject": "Straightedge: order 7C9E6679 confirmed",
+  "preheader": "Ships by Tue, Nov 24, 2026.",
+  "words": 105,
+  "action": "View your order"
+ },
+ {
+  "name": "new-order-shop",
+  "subject": "New order 7C9E6679 — $908.75",
+  "preheader": "Expedited · ships by Tue, Nov 24, 2026",
+  "words": 98,
+  "action": "Open admin"
+ },
+ {
+  "name": "order-confirmation-paperwork",
+  "subject": "Straightedge: order 7C9E6679 confirmed",
+  "preheader": "Ships by Tue, Nov 24, 2026.",
+  "words": 165,
+  "action": "View your order"
+ },
+ {
+  "name": "new-order-shop-paperwork",
+  "subject": "New order 7C9E6679 — $1,013.75",
+  "preheader": "Expedited · ships by Tue, Nov 24, 2026 · FAI + CoC ordered",
+  "words": 145,
+  "action": "Open admin"
+ },
+ {
+  "name": "order-shipped",
+  "subject": "Straightedge: order 7C9E6679 has shipped",
+  "preheader": "UPS 1Z999AA10123456784",
+  "words": 85,
+  "action": "Track the shipment"
+ },
+ {
+  "name": "order-shipped-no-tracking",
+  "subject": "Straightedge: order 7C9E6679 has shipped",
+  "preheader": "Your parts are on the way.",
+  "words": 87,
+  "action": "View your order"
+ }
+]

@@ -5,6 +5,9 @@
 const PDFDocument = require("pdfkit");
 const brand = { ...require("../../shared/brand.json"), ...(({ _note, ...a }) => a)(require("../config/shipFrom.json")) };
 const shopFacts = require("../shopFacts");
+// The full description of an order line and the one-line layout of typed text are the customer
+// documents' own (services/documents.js), so the traveler and the confirmation cannot disagree.
+const { specOf, oneLine } = require("./documents");
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -70,13 +73,14 @@ function addInfoBlock(doc, label, value, y, labelWidth = 120) {
     .fillColor("#333333")
     .text(label, margin, y);
 
+  // The value wraps inside the page (a long one used to run off the right edge).
   doc
     .fontSize(10)
     .font("Helvetica")
     .fillColor("#000000")
-    .text(value, margin + labelWidth, y);
+    .text(value, margin + labelWidth, y, { width: doc.page.width - 2 * margin - labelWidth });
 
-  return y + 18;
+  return Math.max(y + 18, doc.y + 6);
 }
 
 /**
@@ -199,10 +203,23 @@ function addFooter(doc, orderId, pageNum) {
 // ============================================================================
 
 /**
- * Generate a Job Traveler PDF document
+ * Generate a Job Traveler PDF document: the sheet that goes to the machine with the job.
+ *
+ * What it has to carry, because the shop works from it and nothing else:
+ *   - at the top, in boxes nobody can miss: inspection paperwork was bought (first-article
+ *     report + certificate of conformance), and the customer's original part goes back in the
+ *     box. When neither applies the sheet says so, so a missing box is never read as "not known";
+ *   - for every line, the full description the order was priced on (documents.specOf): process,
+ *     material, grade, stock thickness, size and drawing units, finish, tolerance, layer height,
+ *     quantity. A value the order line does not carry prints as "NOT RECORDED — confirm with
+ *     customer" and is counted in a box at the top; it is never left blank. A DXF has no
+ *     thickness of its own, so a routed line with no thickness on it must stop the job;
+ *   - what the customer typed (PO number, notes), each as one line of text inside its own field.
+ *
  * @param {Object} order - Order object with id, shippingName, etc.
- * @param {Array} items - Array of order items with part/material/finish info
- * @returns {Buffer} PDF buffer
+ * @param {Array} items - Array of order items with part/material/finish info (and, when the part
+ *                        still exists, its measured `geometry` and `dfm`)
+ * @returns {Promise<Buffer>} PDF buffer
  */
 function generateJobTraveler(order, items) {
   const doc = new PDFDocument({
@@ -215,124 +232,139 @@ function generateJobTraveler(order, items) {
 
   const pageWidth = doc.page.width;
   const margin = 50;
+  const inner = pageWidth - 2 * margin;
+  const orderRef = String(order.id || "").substring(0, 8);
   let y = margin;
   let pageNum = 1;
+  /** Start a new page when fewer than `need` points are left above the footer. */
+  const room = (need) => {
+    if (y + need <= doc.page.height - 60) return;
+    addFooter(doc, orderRef, pageNum);
+    doc.addPage();
+    pageNum++;
+    y = margin;
+  };
+  const line = (v, max) => oneLine(v, max);
+  const usd = (n) => `$${(Number(n) || 0).toFixed(2)}`;
+  const specs = items.map((item) => specOf(item));
+  const missing = specs.reduce((n, sp) => n + sp.missing.length, 0);
+  const paperworkFee = Number(order.paperworkFee) || 0;
 
-  // ========== PAGE 1: Header & Customer Info ==========
+  // ========== PAGE 1: Header ==========
+  y = addHeader(doc, "JOB TRAVELER", `Order: ${orderRef}`);
 
-  // Title
-  y = addHeader(doc, "JOB TRAVELER", `Order: ${order.id.substring(0, 8)}`);
+  const dateStr = new Date().toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" });
+  const payment = order.paymentMethod === "po" || order.status === "pending_po"
+    ? `Purchase order ${line(order.poNumber, 60) || "(number not recorded)"} - NOT CHARGED. Confirm the PO with the customer before starting.`
+    : order.status === "pending_payment" ? "Card payment NOT yet received. Do not start." : "Paid by card";
+  doc.fontSize(10).font("Helvetica").fillColor("#666666").text(`Printed: ${dateStr}     Payment: ${payment}`, margin, y, { width: inner });
+  y = doc.y + 10;
 
-  // Date and order info in two columns
-  const now = new Date();
-  const dateStr = now.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
+  // ---------- The two things that change what goes in the box ----------
+  /** A heavy box: a line of capitals and one sentence under it. */
+  const flagBox = (title, body) => {
+    const w = inner - 24;
+    doc.fontSize(13).font("Helvetica-Bold");
+    const titleHeight = doc.heightOfString(title, { width: w });
+    doc.fontSize(9).font("Helvetica");
+    const bodyHeight = doc.heightOfString(body, { width: w });
+    const h = 10 + titleHeight + 4 + bodyHeight + 10;
+    room(h + 8);
+    doc.lineWidth(2.5).rect(margin, y, inner, h).fillAndStroke("#ffffff", "#000000");
+    doc.lineWidth(1);
+    doc.fontSize(13).font("Helvetica-Bold").fillColor("#000000").text(title, margin + 12, y + 10, { width: w });
+    doc.fontSize(9).font("Helvetica").fillColor("#000000").text(body, margin + 12, y + 10 + titleHeight + 4, { width: w });
+    y += h + 8;
+  };
+  if (order.paperwork) {
+    flagBox(
+      "INSPECTION PAPERWORK ORDERED: FIRST-ARTICLE REPORT + CERTIFICATE OF CONFORMANCE",
+      `The customer bought both${paperworkFee > 0 ? ` (${usd(paperworkFee)})` : " (in the quoted price)"}. Measure the first piece of each part number against the drawing and write the first-article report; fill in and sign the certificate of conformance with material and lot. Both ship in the box with the parts.`,
+    );
+  }
+  if (order.returnPart) {
+    flagBox(
+      "RETURN THE CUSTOMER'S ORIGINAL PART WITH THIS ORDER",
+      "The customer sent in a part to be measured and asked for it back. It goes in the box with the finished parts; the price already covers the return shipping. Do not scrap it, and do not ship without it.",
+    );
+  }
+  if (missing > 0) {
+    flagBox(
+      `CHECK BEFORE CUTTING: ${missing} VALUE${missing === 1 ? "" : "S"} NOT RECORDED ON THIS ORDER`,
+      "Each one is marked NOT RECORDED in the line it belongs to below. Confirm it with the customer and write it on this sheet before any material is cut.",
+    );
+  }
+  if (!order.paperwork || !order.returnPart) {
+    room(16);
+    doc.fontSize(9).font("Helvetica").fillColor("#333333").text(
+      [!order.paperwork ? "Inspection paperwork (first-article report, certificate of conformance): not ordered." : "", !order.returnPart ? "Customer's original part: none to return." : ""].filter(Boolean).join("   "),
+      margin, y, { width: inner },
+    );
+    y = doc.y + 10;
+  }
 
-  doc
-    .fontSize(10)
-    .font("Helvetica")
-    .fillColor("#666666")
-    .text(`Date: ${dateStr}`, margin, y);
-
-  y += 20;
-
-  // Customer Info Section
+  // ---------- Customer ----------
+  room(100);
   y = addSectionHeader(doc, "CUSTOMER INFORMATION", y);
-
-  y = addInfoBlock(doc, "Ship To:", order.shippingName || "Not specified", y);
-  y = addInfoBlock(
-    doc,
-    "Company:",
-    order.company || "Not specified",
-    y
-  );
-
-  const address = [
-    order.shippingAddress,
-    order.shippingCity,
-    order.shippingState,
-    order.shippingZip,
-  ]
-    .filter(Boolean)
-    .join(", ");
+  y = addInfoBlock(doc, "Ship To:", line(order.shippingName, 80) || "Not specified", y);
+  y = addInfoBlock(doc, "Company:", line(order.company, 80) || "Not specified", y);
+  const address = [order.shippingAddress, order.shippingCity, order.shippingState, order.shippingZip].map((v) => line(v, 80)).filter(Boolean).join(", ");
   y = addInfoBlock(doc, "Address:", address || "Not specified", y);
-
   y += 10;
 
-  // Items Table
+  // ---------- What to make ----------
+  room(90);
   y = addSectionHeader(doc, "MANUFACTURED ITEMS", y);
+  items.forEach((item, i) => {
+    const description = specs[i].parts.join("  \u00b7  ");
+    doc.fontSize(9.5).font("Helvetica");
+    const descHeight = doc.heightOfString(description, { width: inner - 20, lineGap: 2 });
+    doc.fontSize(11).font("Helvetica-Bold");
+    const name = line(item.fileName, 140) || "(no file name)";
+    const nameHeight = doc.heightOfString(`${i + 1}.  ${name}`, { width: inner - 110 });
+    const h = 8 + nameHeight + 4 + descHeight + 16 + 8;
+    room(h);
+    doc.rect(margin, y, inner, h).fillAndStroke(i % 2 === 0 ? "#ffffff" : "#f9f9f9", "#bbbbbb");
+    doc.fontSize(11).font("Helvetica-Bold").fillColor("#000000").text(`${i + 1}.  ${name}`, margin + 10, y + 8, { width: inner - 110 });
+    doc.fontSize(14).font("Helvetica-Bold").text(`QTY ${item.quantity || "?"}`, margin + inner - 100, y + 7, { width: 90, align: "right", lineBreak: false });
+    doc.fontSize(9.5).font("Helvetica").fillColor("#000000").text(description, margin + 10, y + 8 + nameHeight + 4, { width: inner - 20, lineGap: 2 });
+    doc.fontSize(8).font("Helvetica").fillColor("#555555").text(`Unit ${usd(item.unitPrice)}     Line ${usd(item.lineTotal)}`, margin + 10, y + h - 16, { width: inner - 20, lineBreak: false });
+    y += h + 4;
+  });
+  y += 6;
 
-  const itemColumns = [
-    { label: "Part File", key: "fileName", width: 25, align: "left" },
-    { label: "Process", key: "process", width: 15, align: "left" },
-    { label: "Material", key: "materialName", width: 15, align: "left" },
-    { label: "Finish", key: "finishName", width: 15, align: "left" },
-    { label: "Qty", key: "quantity", width: 8, align: "center" },
-    { label: "Unit Price", key: "unitPriceStr", width: 12, align: "right" },
-    { label: "Total", key: "lineTotalStr", width: 10, align: "right" },
-  ];
-
-  const itemRows = items.map((item) => ({
-    ...item,
-    fileName: item.fileName.substring(0, 30),
-    process: capitalizeProcess(item.process),
-    unitPriceStr: `$${(item.unitPrice || 0).toFixed(2)}`,
-    lineTotalStr: `$${(item.lineTotal || 0).toFixed(2)}`,
-  }));
-
-  y = addTable(doc, itemColumns, itemRows, y, { rowHeight: 22 });
-
-  // DFM Notes Section
-  // What the buyer asked for comes first: their notes, their drawing, the promised date.
+  // ---------- What the buyer asked for: the promised date, their PO, their notes, their drawing ----------
   const fromCustomer = [
-    order.shipBy ? `Promised ship-by: ${require("./shipBy").formatShipBy(order.shipBy)}${order.leadTimeName ? ` (${order.leadTimeName})` : ""}` : "",
-    // One line whatever is stored: a PO number saved before it was checked at the door can hold a line break,
-    // which would print the buyer's own words as a line of this document (review F-10).
-    order.poNumber ? `Customer PO: ${require("../middleware/singleLine").printable(order.poNumber)}` : "",
-    order.customerNotes ? `Customer notes: ${order.customerNotes}` : "",
-    order.drawingFileName ? `Drawing on the order: ${order.drawingFileName} — review before cutting` : "",
-  ].filter(Boolean).join("\n");
-  if (fromCustomer || items.some((item) => item.dfm)) {
-    y += 5;
+    order.shipBy ? `Promised ship-by: ${require("./shipBy").formatShipBy(order.shipBy)}${order.leadTimeName ? ` (${line(order.leadTimeName, 40)})` : ""}` : "",
+    // One line whatever is stored: a PO number saved before it was checked at the door can hold a line break or
+    // hidden characters, which would print the buyer's own words as a line of this document (review F-10).
+    order.poNumber ? `Customer PO (as typed): ${line(order.poNumber, 60)}` : "",
+    order.customerNotes ? `Customer notes (as typed, on one line): "${line(order.customerNotes, 2000)}"` : "",
+    order.drawingFileName ? `Drawing on the order: ${line(order.drawingFileName, 140)} - review before cutting` : "",
+  ].filter(Boolean);
+  const dfmNotes = items
+    .filter((item) => item.dfm)
+    .map((item) => {
+      // item.dfm is the stored analysis ({ summary, checks }); print what needs attention, not the object.
+      if (typeof item.dfm === "string") return `${line(item.fileName, 80)}: ${line(item.dfm, 600)}`;
+      const flagged = (item.dfm.checks || []).filter((c) => c.status === "warn" || c.status === "fail");
+      return flagged.length ? `${line(item.fileName, 80)}: ${flagged.map((c) => `${String(c.status).toUpperCase()} ${c.name}${c.detail ? " - " + c.detail : ""}`).join("; ")}` : "";
+    })
+    .filter(Boolean)
+    .map((t) => line(t, 1200));
+  if (fromCustomer.length || dfmNotes.length) {
+    room(60);
     y = addSectionHeader(doc, "DFM NOTES & SPECIAL INSTRUCTIONS", y);
-
-    const dfmNotes = [fromCustomer].concat(items
-      .filter((item) => item.dfm)
-      .map((item) => {
-        // item.dfm is the stored analysis ({ summary, checks }); print what needs attention, not the object.
-        if (typeof item.dfm === "string") return `${item.fileName}: ${item.dfm}`;
-        const flagged = (item.dfm.checks || []).filter((c) => c.status === "warn" || c.status === "fail");
-        return flagged.length ? `${item.fileName}: ${flagged.map((c) => `${String(c.status).toUpperCase()} ${c.name}${c.detail ? " — " + c.detail : ""}`).join("; ")}` : "";
-      })
-      .filter(Boolean))
-      .filter(Boolean)
-      .join("\n\n");
-
-    if (dfmNotes) {
+    for (const note of [...fromCustomer, ...dfmNotes]) {
       doc.fontSize(9).font("Helvetica").fillColor("#000000");
-      y = doc.y;
-      doc.text(dfmNotes, margin + 10, y, {
-        width: pageWidth - 2 * margin - 20,
-        align: "left",
-      });
-      y = doc.y + 10;
+      room(doc.heightOfString(note, { width: inner - 20 }) + 8);
+      doc.fontSize(9).font("Helvetica").fillColor("#000000").text(note, margin + 10, y, { width: inner - 20, align: "left" });
+      y = doc.y + 6;
     }
+    y += 4;
   }
 
-  // Check for page overflow
-  if (y > doc.page.height - 100) {
-    doc.addPage();
-    y = margin;
-    pageNum++;
-  }
-
-  // QC Checklist Section
-  y += 5;
-  y = addSectionHeader(doc, "QUALITY CONTROL CHECKLIST", y);
-
+  // ---------- QC checklist ----------
   // Group items by process type
   const processGroups = {};
   items.forEach((item) => {
@@ -367,63 +399,61 @@ function generateJobTraveler(order, items) {
       "No warping or deformation detected",
     ],
   };
-
-  // Display QC checklist
-  doc
-    .fontSize(9)
-    .font("Helvetica-Bold")
-    .fillColor("#333333");
-
-  let qcY = doc.y;
-
-  const uniqueProcesses = Object.keys(processGroups);
-  uniqueProcesses.forEach((process) => {
-    const processLabel = capitalizeProcess(process);
-    doc.text(`${processLabel}:`, margin + 10, qcY);
-    qcY += 15;
-
-    const checks = qcItems[process] || qcItems["general"] || [];
-    checks.forEach((check) => {
-      doc
-        .fontSize(8)
-        .font("Helvetica")
-        .fillColor("#000000");
-      qcY = addCheckboxList(doc, [check], qcY);
-    });
-
-    qcY += 5;
-  });
+  qcItems["3d-printing"] = qcItems["3d_printing"];
+  // What was bought on top of the parts is checked off like everything else.
+  const orderChecks = [
+    ...(order.paperwork ? ["First-article report written: first piece of each part number measured against the drawing", "Certificate of conformance filled in and signed, with material and lot", "Both documents in the box"] : []),
+    ...(order.returnPart ? ["Customer's original part in the box"] : []),
+  ];
+  const uniqueProcesses = Object.keys(processGroups).filter((process) => (qcItems[process] || []).length > 0);
+  if (uniqueProcesses.length || orderChecks.length) {
+    room(70);
+    y += 5;
+    y = addSectionHeader(doc, "QUALITY CONTROL CHECKLIST", y);
+    const group = (title, checks) => {
+      room(20 + checks.length * 20);
+      doc.fontSize(9).font("Helvetica-Bold").fillColor("#333333").text(`${title}:`, margin + 10, y);
+      y += 15;
+      checks.forEach((check) => { room(22); y = addCheckboxList(doc, [check], y) - 5; });
+      y += 8;
+    };
+    if (orderChecks.length) group("This order", orderChecks);
+    uniqueProcesses.forEach((process) => group(capitalizeProcess(process), qcItems[process]));
+  }
 
   // Footer
-  addFooter(doc, order.id.substring(0, 8), pageNum);
+  addFooter(doc, orderRef, pageNum);
 
-  // ========== PAGE 2: Order Summary & Notes ==========
+  // ========== LAST PAGE: Order Summary & Notes ==========
   doc.addPage();
   pageNum++;
   y = margin;
 
-  y = addHeader(doc, "ORDER SUMMARY", `Order: ${order.id.substring(0, 8)}`);
+  y = addHeader(doc, "ORDER SUMMARY", `Order: ${orderRef}`);
 
   // Order totals section
   y = addSectionHeader(doc, "ORDER DETAILS", y);
 
   const subtotal = items.reduce((sum, item) => sum + (item.lineTotal || 0), 0);
-  const tax = 0;
-  // The order's own total is the amount charged (it can include a lead-time fee); the sum is only a fallback for old records.
+  const tax = Number(order.tax) || 0;
+  // The order's own total is the amount charged (it can include a lead-time fee and the paperwork fee); the sum is only a fallback for old records.
   const fee = Number(order.leadTimeSurcharge) || 0;
-  const total = Number(order.total) > 0 ? Number(order.total) : subtotal + fee + tax + (order.shippingCost || 0);
+  const total = Number(order.total) > 0 ? Number(order.total) : subtotal + fee + paperworkFee + tax + (order.shippingCost || 0);
 
-  y = addInfoBlock(doc, "Subtotal:", `$${subtotal.toFixed(2)}`, y);
-  if (fee > 0) y = addInfoBlock(doc, `${order.leadTimeName || "Lead-time"} fee:`, `$${fee.toFixed(2)}`, y);
+  y = addInfoBlock(doc, "Parts:", usd(subtotal), y, 170);
+  if (fee > 0) y = addInfoBlock(doc, `${line(order.leadTimeName, 30) || "Lead-time"} fee:`, usd(fee), y, 170);
+  y = addInfoBlock(doc, "Inspection paperwork:", order.paperwork ? (paperworkFee > 0 ? `${usd(paperworkFee)}  (first-article report + certificate of conformance ORDERED)` : "ORDERED, in the quoted price") : "Not ordered", y, 170);
+  y = addInfoBlock(doc, "Original part to return:", order.returnPart ? "YES - return shipping is in the price" : "No", y, 170);
   y = addInfoBlock(
     doc,
     "Shipping:",
-    `$${(order.shippingCost || 0).toFixed(2)}`,
-    y
+    usd(order.shippingCost),
+    y,
+    170,
   );
-  y = addInfoBlock(doc, "Tax:", `$${tax.toFixed(2)}`, y);
+  y = addInfoBlock(doc, "Tax:", usd(tax), y, 170);
   y += 5;
-  y = addInfoBlock(doc, "TOTAL:", `$${total.toFixed(2)}`, y);
+  y = addInfoBlock(doc, "TOTAL:", usd(total), y, 170);
 
   y += 15;
 
@@ -435,16 +465,15 @@ function generateJobTraveler(order, items) {
     .fillColor("#000000");
   y = addInfoBlock(doc, "Order Date:", new Date(order.createdAt || Date.now()).toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric", month: "short", day: "numeric" }), y);
   y = addInfoBlock(doc, "Ship by:", order.shipBy ? require("./shipBy").formatShipBy(order.shipBy) : "Not set", y);
-  y = addInfoBlock(doc, "Status:", order.status || "pending", y);
+  y = addInfoBlock(doc, "Status:", line(order.status, 40) || "pending", y);
 
   y += 15;
 
-  // Notes section
+  // Notes section (the shop's own note on the order)
   if (order.notes) {
     y = addSectionHeader(doc, "ORDER NOTES", y);
     doc.fontSize(9).font("Helvetica").fillColor("#000000");
-    y = doc.y;
-    doc.text(order.notes, margin + 10, y, {
+    doc.text(line(order.notes, 2000), margin + 10, y, {
       width: pageWidth - 2 * margin - 20,
       align: "left",
     });
@@ -464,7 +493,7 @@ function generateJobTraveler(order, items) {
     .text("Production Lead Signature", margin, y + 5);
 
   // Footer
-  addFooter(doc, order.id.substring(0, 8), pageNum);
+  addFooter(doc, orderRef, pageNum);
 
   return new Promise((resolve, reject) => {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
@@ -555,9 +584,9 @@ function generatePackingList(order, items) {
 
   const packingRows = items.map((item) => ({
     checkbox: "☐",
-    fileName: item.fileName.substring(0, 35),
+    fileName: oneLine(item.fileName, 35),
     quantity: item.quantity || 1,
-    description: `${capitalizeProcess(item.process)} - ${item.materialName}`,
+    description: `${capitalizeProcess(item.process)} - ${oneLine(item.materialName, 40)}`,
   }));
 
   y = addTable(doc, packingColumns, packingRows, y, { rowHeight: 20 });
@@ -585,7 +614,7 @@ function generatePackingList(order, items) {
       .fontSize(9)
       .font("Helvetica")
       .fillColor("#000000")
-      .text(order.notes, margin + 10, y, {
+      .text(oneLine(order.notes, 2000), margin + 10, y, {
         width: pageWidth - 2 * margin - 20,
       });
   } else {

@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 import { useAuth } from '../utils/authContext';
 import Wordmark from '../components/Wordmark';
+import Notice, { FormError } from '../components/form/Notice';
+import PasswordField, { passwordProblem } from '../components/form/PasswordField';
 import brand from '../brand';
-import { PASSWORD_HINT } from './RegisterPage';
 import { tokenFromHash } from '../utils/linkToken';
+import { authPath, pendingCheckout } from '../utils/returnTo';
 
 /**
  * Choose a new password from an emailed link (/reset-password#token=…).
@@ -20,8 +22,10 @@ export default function ResetPasswordPage() {
   const [status, setStatus] = useState('checking'); // checking | ready | invalid | done
   const [password, setPassword] = useState('');
   const [again, setAgain] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null); // { message, field }
+  const [errorAt, setErrorAt] = useState(0);
   const [busy, setBusy] = useState(false);
+  const done = useRef(null);
 
   useEffect(() => { document.title = `Choose a new password · ${brand.name}`; }, []);
 
@@ -32,11 +36,17 @@ export default function ResetPasswordPage() {
     api.checkPasswordReset(token).then((r) => setStatus(r.valid ? 'ready' : 'invalid')).catch(() => setStatus('invalid'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+  useEffect(() => { if (status === 'done' && done.current) done.current.focus(); }, [status]);
+
+  const fail = (message, field = '') => { setError({ message, field }); setErrorAt((n) => n + 1); };
 
   async function submit(e) {
     e.preventDefault();
-    setError('');
-    if (password !== again) return setError('The two passwords are not the same. Type the new password again.');
+    if (busy) return;
+    setError(null);
+    const problem = passwordProblem(password);
+    if (problem) return fail(problem, 'password');
+    if (password !== again) return fail('The two boxes don\'t hold the same password. Press "Show password" to compare them, then correct one.', 'again');
     setBusy(true);
     try {
       await api.confirmPasswordReset(token, password);
@@ -44,66 +54,82 @@ export default function ResetPasswordPage() {
       setStatus('done');
     } catch (err) {
       if (err.code === 'link-invalid') setStatus('invalid');
-      else setError(err.message || `It didn't save. Try again, or call ${brand.phone}.`);
+      else fail(err.message, err.code === 'weak-password' ? 'password' : '');
     }
     setBusy(false);
   }
 
+  const checkout = pendingCheckout();
   return (
     <div className="auth-shell">
-      <div className="auth-card">
+      <main className="auth-card">
         <div className="auth-head">
-          <div style={{ marginBottom: 24 }}><Wordmark size={18} /></div>
-          <h1 className="display" style={{ fontSize: 28, marginBottom: 8 }}>Choose a new password</h1>
+          <div className="auth-mark"><Wordmark size={18} /></div>
+          <h1 className="display">Choose a new password</h1>
         </div>
 
-        {status === 'checking' && <p role="status" style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Checking the link…</p>}
+        {status === 'checking' && <p role="status" className="auth-wait">Checking the link…</p>}
 
         {status === 'invalid' && (
           <div>
-            <div className="auth-error" role="alert">
-              This reset link has been used, has been replaced by a newer one, or is more than an hour old.
-            </div>
-            <Link to="/forgot-password" className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center' }}>Send a new link</Link>
+            <Notice kind="error">
+              This reset link has been used, has been replaced by a newer one, or is more than an hour old. Links work once, so nobody who finds an old email can use it.
+            </Notice>
+            <Link to="/forgot-password" className="btn btn-primary btn-lg btn-block">Send a new link</Link>
           </div>
         )}
 
         {status === 'ready' && (
-          <form onSubmit={submit}>
-            <div style={{ marginBottom: 16 }}>
-              <label className="field-label" htmlFor="reset-password">New password</label>
-              <input id="reset-password" type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={10} maxLength={72} required aria-describedby="reset-help" autoFocus />
-              <div id="reset-help" style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>{PASSWORD_HINT}</div>
-            </div>
-            <div style={{ marginBottom: 20 }}>
-              <label className="field-label" htmlFor="reset-again">New password, again</label>
-              <input id="reset-again" type="password" className="input" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" required />
-            </div>
-            {error && <div role="alert" className="auth-error">{error}</div>}
-            <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center' }} disabled={busy}>
+          <form onSubmit={submit} aria-busy={busy || undefined}>
+            <PasswordField
+              id="reset-password"
+              label="New password"
+              value={password}
+              onChange={setPassword}
+              autoComplete="new-password"
+              rules
+              autoFocus
+              invalid={error?.field === 'password'}
+              describedBy={error?.field === 'password' ? 'reset-error' : ''}
+            />
+            <PasswordField
+              id="reset-again"
+              label="New password, again"
+              value={again}
+              onChange={setAgain}
+              autoComplete="new-password"
+              invalid={error?.field === 'again'}
+              describedBy={error?.field === 'again' ? 'reset-error' : ''}
+              style={{ marginBottom: 20 }}
+            />
+            <FormError id="reset-error" error={error?.message} at={errorAt} />
+            <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
               {busy ? 'Saving…' : 'Save the new password'}
             </button>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6, marginTop: 12 }}>
-              Saving signs the account out on every device. You sign in again with the new password.
+            <p className="auth-note" style={{ marginTop: 12 }}>
+              Saving signs the account out on every device, so anyone who had the old password is out too. You then sign in with the new one.
             </p>
           </form>
         )}
 
         {status === 'done' && (
           <div>
-            <div className="auth-ok" role="status">
+            <Notice kind="ok" ref={done} tabIndex={-1}>
               Your password is changed, and every device that was signed in has been signed out. We sent an email to say so.
-            </div>
-            <button type="button" className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center' }} onClick={() => navigate('/login')}>
+            </Notice>
+            <button type="button" className="btn btn-primary btn-lg btn-block" onClick={() => navigate(authPath('/login', checkout || ''))}>
               Sign in with the new password
             </button>
+            {checkout && <p className="auth-note" style={{ marginTop: 12 }}>Your quote is saved: after signing in you go straight back to checkout.</p>}
           </div>
         )}
 
         <div className="auth-foot">
           <Link to="/login">Back to sign in</Link>
+          <br />
+          Stuck? <a href={brand.phoneHref}>{brand.phone}</a>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

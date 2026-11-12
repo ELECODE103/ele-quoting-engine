@@ -613,7 +613,9 @@ test("account emails are branded, carry no typed text, and put the link in the b
     templates.verifyEmail({ verifyUrl: link }),
     templates.passwordResetRequested({ resetUrl: "https://shop.test/reset-password#token=PLACEHOLDER" }),
     templates.passwordChanged({ when: "2026-11-11T15:00:00Z" }),
-    templates.accountLocked({ minutes: 15, resetUrl: "https://shop.test/forgot-password" }),
+    // (merge 2026-11-12) The "sign-in paused" template is removed: nothing has sent it since the sign-in throttle
+    // was redesigned (no per-address lock). The notice that replaced it is held to the same rules here.
+    templates.signInAttempts({ resetUrl: "https://shop.test/forgot-password" }),
     templates.twoFactorChanged({ change: "enabled" }),
     templates.twoFactorChanged({ change: "disabled" }),
     templates.twoFactorChanged({ change: "recovery-codes" }),
@@ -625,11 +627,14 @@ test("account emails are branded, carry no typed text, and put the link in the b
     assert.ok(m.text.includes("Hello,"));
     assert.ok(!/\bI\b|\bmy team\b/.test(m.text.replace(/Confirm my email/g, "")), "we voice");
   }
+  assert.strictEqual(templates.accountLocked, undefined, "the sign-in paused email no longer exists");
   assert.ok(list[0].text.includes(link) && list[0].html.includes("verify-email#token=PLACEHOLDER"));
   assert.ok(/works once and for 24 hours/.test(list[0].text));
   assert.ok(/works once and for one hour/.test(list[1].text));
   assert.ok(/signed out/.test(list[2].text));
-  assert.ok(/paused for 15 minutes/.test(list[3].text) && /Nobody got in/.test(list[3].text));
+  // (Was: the paused email says "paused for 15 minutes" and "Nobody got in". That email is gone; the notice sent now
+  //  says nobody got in, does not claim a pause that no longer exists, and carries the way to a new password.)
+  assert.ok(/Nobody got in/.test(list[3].text) && !/paused/i.test(list[3].text) && list[3].text.includes("https://shop.test/forgot-password"));
 });
 
 // ─── Migration ─────────────────────────────────────────────────

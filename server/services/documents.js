@@ -85,6 +85,114 @@ function describe(item) {
   const thick = item.thicknessMm || meta.thicknessMm;
   return [processLabel(item), [material, grade && !String(material).includes(grade) ? grade : ""].filter(Boolean).join(" "), thick ? `${thick} mm` : "", finish].filter(Boolean).join(" · ");
 }
+/**
+ * A typed value (a PO number, a note, a file name) as one line of text: line breaks, tabs and
+ * runs of spaces become single spaces, control characters go, and it is cut to `max`. A document
+ * prints what a customer typed as words inside its own field; a typed line break cannot start a
+ * new line that reads like one of the document's own ("Order total: $1.00", "PAID").
+ */
+function oneLine(v, max = 600) {
+  // `printable` (middleware/singleLine.js, order-lifecycle work) also takes out hidden formatting characters
+  // (zero-width, direction marks): one rule for "a stored value on one printed line", used by every document.
+  const s = clean(printable(String(v ?? "").replace(/[\u0085\u2028\u2029]/g, " "))).replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  return s.length > max ? `${s.slice(0, max - 1)}...` : s;
+}
+
+// ─── what the shop has to make: the full description of an order line ───────
+const mmIn = (mm) => `${trim(mm, 2)} mm (${(Number(mm) / 25.4).toFixed(3)} in)`;
+function trim(n, places) { return String(Number(Number(n).toFixed(places))); }
+const sizeText = (dims) => `${dims.map((d) => trim(d, 1)).join(" x ")} mm (${dims.map((d) => (Number(d) / 25.4).toFixed(2)).join(" x ")} in)`;
+/** What is printed in place of a value the order does not carry. Never a blank. */
+const notRecorded = (what, todo = "confirm with customer") => `${what}: NOT RECORDED \u2014 ${todo}`;
+
+/**
+ * Everything the shop needs to know about one order line, as short labelled phrases in a fixed
+ * order: process · material · grade · stock thickness · size and units · finish · tolerance ·
+ * layer height · quantity. Read from what is stored on the order line (`config` is the quote's
+ * line `meta`, with the buyer's own choices under `config.input`) and, when given, the part's
+ * measured geometry. A value the line does not carry and the job cannot be made without is
+ * printed as "NOT RECORDED — confirm with customer", never left out: a DXF has no thickness of
+ * its own, so a routed line with no thickness on it must say so in capitals.
+ *
+ * @param {Object} item order line ({ process, materialName, finishName, quantity, config, geometry? })
+ * @returns {{parts: string[], missing: string[]}} `missing` lists what was printed as NOT RECORDED
+ */
+function specOf(item = {}) {
+  const meta = item.config || item.meta || {};
+  const input = meta.input || {};
+  // What was priced and charged for this line, kept with the order since 2026-11-11 (`config.priced`:
+  // services/quoteIntegrity.js partSnapshot + the validated configuration). It is read FIRST for every
+  // value it carries; an order made before it existed has none and falls through to the older fields,
+  // and from there to NOT RECORDED.
+  const priced = meta.priced && typeof meta.priced === "object" ? meta.priced : {};
+  const g = item.geometry || {};
+  const gs = meta.geometrySummary || {};
+  const p = priced.process || item.process || meta.process || input.process || "";
+  const parts = [];
+  const missing = [];
+  const miss = (what, todo) => { missing.push(what); parts.push(notRecorded(what, todo)); };
+  const num = (...vals) => { for (const v of vals) { const n = Number(v); if (Number.isFinite(n) && n > 0) return n; } return 0; };
+
+  const sub = priced.subProcess || meta.subProcess || input.subProcess || item.subProcess;
+  const proc = processLabel({ ...item, process: p, config: { ...meta, subProcess: sub } }) || "";
+  if (proc) parts.push(p === "3d-printing" && (sub === "fdm" || sub === "sla" || sub === "sls") ? `${proc} (${sub.toUpperCase()})` : proc);
+  else miss("process");
+
+  const material = priced.materialName || item.materialName || meta.materialName || titleFromSlug(priced.materialSlug || item.materialSlug || meta.materialSlug || input.materialSlug);
+  if (material) parts.push(material); else miss("material");
+
+  const machined = p === "cnc" || p === "routing" || p === "sheetmetal";
+  const grade = shopFacts.gradeLabel(priced.grade || item.grade || meta.grade || input.grade);
+  if (grade) parts.push(`grade ${grade}`);
+  else if (machined) miss("grade");
+
+  const is2D = priced.is2D === true || g.is2D === true;
+  const flat = p === "routing" || p === "sheetmetal" || is2D;
+  const thick = num(priced.thicknessMm, item.thicknessMm, meta.thicknessMm, input.thicknessMm, gs.blankMm && gs.blankMm.t);
+  if (thick) parts.push(`${flat ? "stock thickness" : "thickness"} ${mmIn(thick)}`);
+  else if (flat) miss("thickness");
+
+  // Overall size: the size that was priced, else the part as measured from the file, else what pricing worked from.
+  const pd = priced.dimsMm || {};
+  const asPriced = (is2D ? [num(pd.x), num(pd.y)] : [num(pd.x), num(pd.y), num(pd.z)]).filter((n) => n > 0);
+  const bb = g.boundingBox || {};
+  const measured = [num(bb.width, bb.x, g.flatWidth), num(bb.height, bb.y, g.flatHeight), num(bb.depth, bb.z)].filter((n) => n > 0);
+  const worked = gs.blankMm ? [num(gs.blankMm.w), num(gs.blankMm.h)] : gs.stockMm ? [num(gs.stockMm.w), num(gs.stockMm.h), num(gs.stockMm.d)] : [];
+  if (asPriced.length >= 2) parts.push(`size ${sizeText(asPriced)}`);
+  else if (measured.length >= 2) parts.push(`size ${sizeText(g.is2D ? measured.slice(0, 2) : measured)}`);
+  else if (worked.filter((n) => n > 0).length >= 2) parts.push(`${gs.blankMm ? "blank" : "stock"} ${sizeText(worked.filter((n) => n > 0))}`);
+  else miss("size", "measure from the file");
+  const isDxf = is2D || /\.dxf$/i.test(item.fileName || "");
+  const unit = priced.sourceUnit || (g.profile2d && g.profile2d.units && g.profile2d.units.unit) || g.sourceUnit || "";
+  if (isDxf) {
+    if (unit) parts.push(`drawing units ${unit === "in" ? "inches" : unit === "mm" ? "millimetres" : unit}${g.profile2d && g.profile2d.units && g.profile2d.units.source === "customer" ? " (chosen by the customer)" : ""}`);
+    else miss("drawing units");
+  }
+  // The part on file is no longer the part that was priced (it is locked once ordered, so this should never
+  // be seen): say so where the size is, in capitals, and count it with the values to check before cutting.
+  if (item.matchesPriced === false) { missing.push("part file"); parts.push("PART FILE CHANGED SINCE IT WAS PRICED \u2014 do not cut from it; confirm with customer"); }
+
+  const finishSlug = priced.finishSlug || item.finishSlug || meta.finishSlug || input.finishSlug || "";
+  const finish = priced.finishName || item.finishName || meta.finishName || (finishSlug ? titleFromSlug(finishSlug.replace(/^(cnc|rt|fdm|sla|sm)-/, "")) : "");
+  if (finish) parts.push(`finish ${finish}`); else miss("finish");
+
+  const tolerance = meta.tolerance || input.tolerance || item.tolerance;
+  parts.push(tolerance ? `tolerance ${oneLine(tolerance, 120)}` : "tolerance: no option ordered (standard for the material unless the drawing or notes say otherwise)");
+
+  if (p === "3d-printing") {
+    const layer = num(priced.layerHeight, meta.layerHeightMm, input.layerHeight, meta.layerHeight);
+    if (layer) parts.push(`layer height ${trim(layer, 3)} mm`); else miss("layer height");
+    const infill = num(priced.infill, input.infill, meta.infill);
+    if (infill && sub !== "sla") parts.push(`infill ${Math.round(infill <= 1 ? infill * 100 : infill)}%`);
+  }
+
+  const qty = num(item.quantity, priced.quantity);
+  if (qty) parts.push(`qty ${qty}`); else miss("quantity");
+  return { parts: parts.map((t) => clean(t)), missing };
+}
+/** The same, as one line: "CNC routing · HDPE · grade Black · stock thickness 19.1 mm (0.752 in) · …". */
+const fullDescription = (item) => specOf(item).parts.join(" \u00b7 ");
+
 const companyLine = () => [businessName(), [brand.address, `${brand.city}, ${brand.state}`, brand.zip].filter(Boolean).join(" "), brand.phone, brand.email, brand.domain].filter(Boolean).join("  ·  ");
 
 // ─── document frame ─────────────────────────────────────────────────────────
@@ -367,7 +475,7 @@ async function buildOrderConfirmationPdf({ order, items = [], customer, options 
   let y = header(doc);
   y = facts(doc, y, [
     ["Order date", fmtDate(order.createdAt)],
-    ["Your PO", printable(order.poNumber)],
+    ["Your PO", oneLine(order.poNumber, 60)],
     ["Quote", order.quoteId ? docNumber("Q", order.quoteId) : ""],
     ["Lead time", order.leadTimeName],
     ["Ships by", options.shipBy || order.shipBy ? shipByText(options.shipBy || order.shipBy) : ""],
@@ -398,7 +506,7 @@ async function buildOrderConfirmationPdf({ order, items = [], customer, options 
   if (order.returnPart) y = paragraph(doc, y, "Your original part", "Returned to you in the box with the finished parts. Return shipping is included in the quoted price.");
   // The buyer's own notes. `order.notes` is the shop's internal note and never prints on a customer document.
   // (On an order taken from a firm quote that field holds the note the quote carried.)
-  y = paragraph(doc, y, order.rfqId ? "Quote notes" : "Your notes", order.customerNotes);
+  y = paragraph(doc, y, order.rfqId ? "Quote notes" : "Your notes (as typed)", oneLine(order.customerNotes, 2000));
   y = paragraph(doc, y, null, options.closing || `Please check the parts, quantities and ship-to address above and tell us about anything that is wrong before we cut material: ${brand.email} or ${brand.phone}. Please give order number ${number} in any message about this order.`);
   return finish(doc);
 }
@@ -410,7 +518,7 @@ async function buildPackingSlipPdf({ order, items = [], customer, options = {} }
   let y = header(doc);
   y = facts(doc, y, [
     ["Order", docNumber("SO", order.id)],
-    ["Your PO", printable(order.poNumber)],
+    ["Your PO", oneLine(order.poNumber, 60)],
     ["Ship date", fmtDate(options.shipDate || order.shippedAt || new Date())],
     ["Ship via", [titleFromSlug(order.shippingMethod), order.trackingNumber].filter(Boolean).join(" · ")],
   ]);
@@ -454,7 +562,7 @@ async function buildCocPdf({ order, items = [], customer, options = {} } = {}) {
   y = facts(doc, y, [
     ["Date", fmtDate(options.date || new Date())],
     ["Order", docNumber("SO", order.id)],
-    ["Customer PO", printable(order.poNumber || options.poNumber)],
+    ["Customer PO", oneLine(order.poNumber || options.poNumber, 60)],
     ["Ship date", options.shipDate || order.shippedAt ? fmtDate(options.shipDate || order.shippedAt) : ""],
   ]);
   y = parties(doc, y, [{ title: "Customer", lines: customerLines(customer).length ? customerLines(customer) : shipTo(order) }, { title: "Manufacturer", lines: shipFrom().concat(brand.email) }]);
@@ -566,5 +674,9 @@ module.exports = {
   buildFaiPdf,
   docNumber,
   QUOTE_VALID_DAYS,
+  // What the shop's own documents (the job traveler) print about a line, and how typed text is laid out.
+  specOf,
+  fullDescription,
+  oneLine,
   _internal: { clean, describe, money },
 };

@@ -526,10 +526,17 @@ test("a 400-hole perforated panel analyses in well under a second", () => {
   const ents = [w.rect(0, 0, 420, 420)];
   for (let i = 0; i < 20; i++) for (let j = 0; j < 20; j++) ents.push(w.circle(20 + i * 20, 20 + j * 20, 4));
   const t0 = Date.now();
+  const cpu0 = process.cpuUsage();
   const p = parseDXF(w.dxf({ insunits: 4, entities: ents })).profile2d;
   const ms = Date.now() - t0;
+  const cpu = process.cpuUsage(cpu0);
+  const cpuMs = Math.round((cpu.user + cpu.system) / 1000);
   assert.strictEqual(p.holes.length, 400); near(p.minWeb, 12, 1e-6, "circle-to-circle web is exact"); near(p.area, 420 * 420 - 400 * PI * 16, TOL);
-  assert.ok(ms < 1500, `${ms} ms`);
+  // The work is synchronous and all CPU, so the bound is on the processor time this process spent on it, which a
+  // busy machine does not inflate (this was `ms < 1500` on the wall clock: it read 1.4–1.9 s with 470 ms of CPU
+  // when the machine was shared). The same 1500 ms, on the measure the test is about, plus a wall-clock ceiling.
+  assert.ok(cpuMs < 1500, `${cpuMs} ms of CPU (${ms} ms on the clock)`);
+  assert.ok(ms < 15000, `${ms} ms on the clock`);
 });
 
 test("more than 5,000 contours is refused for the instant quote (RFQ instead)", () => {

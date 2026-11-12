@@ -15,7 +15,7 @@ export default function CustomerDashboard() {
         const data = await api.getOrders();
         setOrders(Array.isArray(data) ? data : (data.orders || []));
       } catch (err) {
-        setError(err.message || 'Failed to load orders');
+        setError(err.message);
       } finally {
         setLoading(false);
       }
@@ -44,9 +44,9 @@ export default function CustomerDashboard() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '32px 16px' }}>
+    <div className="app-page">
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Your orders</h1>
+        <h1 className="app-h1">Your orders</h1>
         <p style={{ color: 'var(--text-muted)', marginBottom: 32 }}>Open an order to see where it stands, or to reorder it.</p>
 
         {loading && (
@@ -56,7 +56,7 @@ export default function CustomerDashboard() {
         )}
 
         {error && (
-          <div style={{ background: 'var(--error-bg)', border: '1px solid var(--error)', borderRadius: 'var(--radius-md)', padding: 16, marginBottom: 24, color: 'var(--error-text)' }}>
+          <div role="alert" className="auth-error" style={{ padding: 16, marginBottom: 24 }}>
             {error}
           </div>
         )}
@@ -69,12 +69,12 @@ export default function CustomerDashboard() {
             padding: 48,
             textAlign: 'center',
           }}>
-            <p style={{ color: 'var(--text-muted)', marginBottom: 24 }}>No orders yet</p>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 24 }}>No orders yet. A quote you are working on is saved in the quote tool until you order it.</p>
             <button
               className="btn btn-primary btn-lg"
               onClick={() => navigate('/quote')}
             >
-              Get a Quote
+              Get an instant quote
             </button>
           </div>
         ) : (
@@ -110,7 +110,8 @@ export default function CustomerDashboard() {
                     <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                       <button
                         className="btn btn-ghost"
-                        style={{ fontSize: 11, padding: '4px 8px' }}
+                        style={{ fontSize: 12, padding: '6px 12px' }}
+                        aria-label={`Open order ${String(order.id).slice(0, 8).toUpperCase()}`}
                         onClick={() => navigate(`/orders/${order.id}`)}
                       >
                         Open

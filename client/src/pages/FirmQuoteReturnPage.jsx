@@ -4,6 +4,7 @@ import PublicLayout from '../components/PublicLayout';
 import { api } from '../utils/api';
 import { formatCurrency, formatShipDate, orderStatusLabel } from '../utils/format';
 import brand from '../brand';
+import { describeOrderState } from '../utils/messages';
 
 // Set by the firm-quote page just before it sends the buyer to the card page, in this tab only.
 export const QUOTE_LINK_KEY = 'se_firm_quote_link';
@@ -70,7 +71,7 @@ export default function FirmQuoteReturnPage() {
           ) : r && r.paymentUnderReview ? (
             <>
               <h1 className="display" style={{ marginBottom: 16 }}>We're checking your payment.</h1>
-              <p className="lede" role="status">We received a payment for order {r.reference} and need to look at it before we confirm the order. We'll email you today. Questions: {brand.phone}.</p>
+              <p className="lede" role="status">Order {r.reference}. {describeOrderState('payment-under-review')}</p>
             </>
           ) : r ? (
             <>

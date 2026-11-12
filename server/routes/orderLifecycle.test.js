@@ -696,11 +696,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     assert.strictEqual(o.poNumber, "PO-778 / Rev.B #12");
     const pdf = await fetch(`${h.base}/api/pdf/traveler/${o.id}`, { headers: { Authorization: `Bearer ${owner}`, "X-Forwarded-For": "198.51.100.78" } });
     const lines = pdfText(Buffer.from(await pdf.arrayBuffer())).split("\n");
-    assert.ok(lines.includes("Customer PO: PO-778 / Rev.B #12"));
+    // (merge 2026-11-12) The traveler's layout is the journey pass's: a typed value prints inside a labelled field,
+    // "Customer PO (as typed): …". Same assertion, that label.
+    assert.ok(lines.map((l) => l.trim()).includes("Customer PO (as typed): PO-778 / Rev.B #12"), lines.filter((l) => /PO/.test(l)).join(" | "));
     // A row written before the check existed: the traveler still prints it on one line.
     ordersDB.update(o.id, { poNumber: "PO-778\nPAID IN FULL - SHIP TODAY" });
     const old = pdfText(Buffer.from(await (await fetch(`${h.base}/api/pdf/traveler/${o.id}`, { headers: { Authorization: `Bearer ${owner}`, "X-Forwarded-For": "198.51.100.79" } })).arrayBuffer())).split("\n");
-    assert.ok(old.includes("Customer PO: PO-778 PAID IN FULL - SHIP TODAY") && !old.includes("PAID IN FULL - SHIP TODAY"), "no line of the buyer's own on the traveler");
+    const oldLines = old.map((l) => l.trim());
+    assert.ok(oldLines.includes("Customer PO (as typed): PO-778 PAID IN FULL - SHIP TODAY") && !oldLines.includes("PAID IN FULL - SHIP TODAY") && !oldLines.some((l) => /^PAID IN FULL/.test(l)), "no line of the buyer's own on the traveler");
   });
 
   test("F-10: the other single-line fields are held to the same rule on every route that takes them", async () => {

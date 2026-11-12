@@ -1,0 +1,29 @@
+Subject: New order 7C9E6679 — $908.75
+Preheader: Expedited · ships by Tue, Nov 24, 2026
+
+NEW PAID ORDER
+==============
+
+Dana Buyer <dana@example.com>
+
+Drawing attached to the order: wear-strip-rev-C.pdf. Review it before cutting.
+
+Order: 7C9E6679
+FAI + CoC: Not ordered
+Payment: Card, paid
+Lead time: Expedited
+Ships by: Tue, Nov 24, 2026
+Ship to: Dana Buyer, 100 Main St, Elgin, IL 60120
+Customer notes: The 0.500 bore is the one that matters.
+
+  - wear-strip-rev-C.step x 25 (UHMW-PE · CNC machining)  $612.50
+  - guide-block.step x 10 (Delrin / Acetal (POM) · CNC machining · Deburred)  $284.00
+  - Shipping  $12.25
+Total: $908.75
+
+Open admin:
+https://straightedgemfg.com/admin
+
+--
+Straightedge · 224-213-6727 · quotes@straightedgemfg.com
+Straightedge, Wauconda, IL · https://straightedgemfg.com

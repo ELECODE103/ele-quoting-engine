@@ -97,7 +97,8 @@ function requireShipToLines(req, res, next) {
 router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGuard.limiter, requireShipToLines, async (req, res) => {
   try {
     if (!stripeClient.get()) {
-      return res.status(503).json({ error: "Payment processing is not configured" });
+      // The code the session layer uses for the same state (services/orderLifecycle.js), so the page words it once.
+      return res.status(503).json({ error: "Payment processing is not configured", code: "payments-unavailable" });
     }
 
     const { quoteId } = req.body;
@@ -474,7 +475,7 @@ router.get("/", authenticate, (req, res) => {
 router.get("/:id", authenticate, (req, res) => {
   try {
     const order = ordersDB.getById(req.params.id);
-    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!order) return res.status(404).json({ error: "Order not found", code: "order-not-found" });
 
     // Customers can only see their own orders
     if (req.user.role !== "admin" && order.userId !== req.user.userId) {
@@ -590,7 +591,7 @@ router.post("/:id/resolve-attention", authenticate, requireAdmin, (req, res) => 
 /** Load an order its owner or an admin may act on, or answer 404/403. */
 function ownedOrder(req, res) {
   const order = ordersDB.getById(req.params.id);
-  if (!order) { res.status(404).json({ error: "Order not found" }); return null; }
+  if (!order) { res.status(404).json({ error: "Order not found", code: "order-not-found" }); return null; }
   if (req.user.role !== "admin" && order.userId !== req.user.userId) { res.status(403).json({ error: "Access denied" }); return null; }
   return order;
 }
@@ -609,7 +610,7 @@ router.post("/:id/confirm-payment", authenticate, async (req, res) => {
     res.json({ status: settled.status, shipBy: settled.shipBy || null, paymentUnderReview: settled.status === "pending_payment" && Boolean(settled.attention) });
   } catch (err) {
     console.error("Confirm payment error:", err.message);
-    res.status(502).json({ error: "Could not confirm the payment yet" });
+    res.status(502).json({ error: "Could not confirm the payment yet", code: "confirm-failed" });
   }
 });
 

@@ -6,6 +6,21 @@
  * shared/brand.json. No remote images: the wordmark is bold text. Colours are
  * ink, bone, and brass for a single hairline.
  *
+ * Every message, in both parts:
+ *   - a subject that says what the email is, with nothing a visitor typed in it;
+ *   - a preheader (the grey line an inbox shows after the subject) that adds to
+ *     the subject instead of repeating it;
+ *   - one action at most, as a button in the HTML part and as a link on its own
+ *     line in the text part (long links survive a text client's line wrapping
+ *     only when nothing else is on the line);
+ *   - for the account messages (confirm, reset, changed, paused, two-step): why
+ *     it was sent, that it can be ignored when it was not expected, and that
+ *     we never ask for a password by email. Nothing in them asks for a reply
+ *     with personal details: that is what a phishing email does.
+ *   - a dark-mode style block. A mail client in dark mode otherwise inverts
+ *     what it can and leaves the rest, which turns Ink text on a white card
+ *     into Ink on near-black. Clients that drop <style> get the light layout.
+ *
  * Preview: `node scripts/preview-emails.js [outDir]`.
  */
 const brand = require("../../shared/brand.json");
@@ -18,6 +33,28 @@ const BONE = "#F4F1EA";
 const MUTED = "#5B6477";   // ink, lightened for secondary text
 const RULE = "#E4DFD3";    // bone, darkened for table rules
 const FONT = "-apple-system,'Segoe UI',Helvetica,Arial,sans-serif";
+
+// The one <style> element of every message: phone widths and dark mode. It is a constant, the
+// same bytes in every email, with nothing from a message in it (crossBranch.test.js holds it to
+// that). Everything else is styled inline, because many mail clients drop <style>.
+const LAYOUT_STYLE = `<style>
+  :root { color-scheme: light dark; }
+  @media (max-width: 480px) {
+    .pd { padding-left: 20px !important; padding-right: 20px !important; }
+    .bt-a { display: block !important; text-align: center !important; }
+    .bt-t { width: 100% !important; }
+  }
+  @media (prefers-color-scheme: dark) {
+    .pg { background: #0B1220 !important; }
+    .cd { background: #16213A !important; }
+    .tx { color: #F4F1EA !important; }
+    .mt { color: #B8C0CE !important; }
+    .rl { border-color: #2D3A55 !important; }
+    .bt { background: #F4F1EA !important; }
+    .bt-a { color: #101C33 !important; }
+    .ft, .ft a, .ft strong { color: #B8C0CE !important; }
+  }
+</style>`;
 
 const PROCESS_LABELS = { cnc: "CNC machining", routing: "CNC routing", "3d-printing": "3D printing", sheetmetal: "Sheet metal" };
 
@@ -81,70 +118,75 @@ function trackingUrl(carrier, number) {
  */
 function layout(m) {
   const wordmark = brand.name.toUpperCase();
-  const p = (t) => `<p style="margin:0 0 14px;font:15px/1.6 ${FONT};color:${INK};">${esc(t)}</p>`;
+  const p = (t) => `<p class="tx" style="margin:0 0 14px;font:15px/1.6 ${FONT};color:${INK};">${esc(t)}</p>`;
+  // The inbox preview shows the preheader and then whatever text follows it. This run of
+  // zero-width and non-breaking spaces is that "whatever", so the greeting does not trail after it.
+  const previewPad = "&#847;&zwnj;&nbsp;".repeat(60);
 
   const facts = (m.facts || []).filter(([, v]) => v !== undefined && v !== null && v !== "");
   const factsHtml = facts.length ? `
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 18px;border-top:1px solid ${RULE};">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="rl" style="margin:6px 0 18px;border-top:1px solid ${RULE};">
           ${facts.map(([k, v]) => `<tr>
-            <td style="padding:9px 12px 9px 0;border-bottom:1px solid ${RULE};font:13px/1.4 ${FONT};color:${MUTED};white-space:nowrap;vertical-align:top;">${esc(k)}</td>
-            <td style="padding:9px 0;border-bottom:1px solid ${RULE};font:600 14px/1.4 ${FONT};color:${INK};text-align:right;">${esc(v)}</td>
+            <td class="mt rl" style="padding:9px 12px 9px 0;border-bottom:1px solid ${RULE};font:13px/1.4 ${FONT};color:${MUTED};vertical-align:top;">${esc(k)}</td>
+            <td class="tx rl" style="padding:9px 0;border-bottom:1px solid ${RULE};font:600 14px/1.4 ${FONT};color:${INK};text-align:right;word-break:break-word;">${esc(v)}</td>
           </tr>`).join("")}
         </table>` : "";
 
   const items = m.items || [];
   const itemsHtml = items.length ? `
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 18px;border-top:1px solid ${RULE};">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="rl" style="margin:6px 0 18px;border-top:1px solid ${RULE};">
           ${items.map((it) => `<tr>
-            <td style="padding:10px 12px 10px 0;border-bottom:1px solid ${RULE};vertical-align:top;">
-              <div style="font:600 14px/1.4 ${FONT};color:${INK};word-break:break-word;">${esc(it.name)}</div>
-              <div style="font:13px/1.4 ${FONT};color:${MUTED};">${esc([it.qty ? `${it.qty} pc${it.qty === 1 ? "" : "s"}` : "", it.detail].filter(Boolean).join(" · "))}</div>
+            <td class="rl" style="padding:10px 12px 10px 0;border-bottom:1px solid ${RULE};vertical-align:top;">
+              <div class="tx" style="font:600 14px/1.4 ${FONT};color:${INK};word-break:break-word;">${esc(it.name)}</div>
+              <div class="mt" style="font:13px/1.4 ${FONT};color:${MUTED};">${esc([it.qty ? `${it.qty} pc${it.qty === 1 ? "" : "s"}` : "", it.detail].filter(Boolean).join(" · "))}</div>
             </td>
-            <td style="padding:10px 0;border-bottom:1px solid ${RULE};font:14px/1.4 ${FONT};color:${INK};text-align:right;white-space:nowrap;vertical-align:top;">${it.amount != null ? esc(money(it.amount)) : ""}</td>
+            <td class="tx rl" style="padding:10px 0;border-bottom:1px solid ${RULE};font:14px/1.4 ${FONT};color:${INK};text-align:right;white-space:nowrap;vertical-align:top;">${it.amount != null ? esc(money(it.amount)) : ""}</td>
           </tr>`).join("")}
           ${m.total ? `<tr>
-            <td style="padding:12px 12px 0 0;font:600 14px/1.4 ${FONT};color:${INK};">${esc(m.total.label)}</td>
-            <td style="padding:12px 0 0;font:700 18px/1.4 ${FONT};color:${INK};text-align:right;white-space:nowrap;">${esc(m.total.value)}</td>
+            <td class="tx" style="padding:12px 12px 0 0;font:600 14px/1.4 ${FONT};color:${INK};">${esc(m.total.label)}</td>
+            <td class="tx" style="padding:12px 0 0;font:700 18px/1.4 ${FONT};color:${INK};text-align:right;white-space:nowrap;">${esc(m.total.value)}</td>
           </tr>` : ""}
         </table>` : "";
 
   const ctaHtml = m.cta ? `
-        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 20px;"><tr>
-          <td style="background:${INK};border-radius:4px;">
-            <a href="${esc(safeHref(m.cta.url))}" style="display:inline-block;padding:13px 26px;font:600 15px/1 ${FONT};color:${BONE};text-decoration:none;">${esc(m.cta.label)}</a>
+        <table role="presentation" cellpadding="0" cellspacing="0" class="bt-t" style="margin:8px 0 20px;"><tr>
+          <td class="bt" style="background:${INK};border-radius:4px;">
+            <a class="bt-a" href="${esc(safeHref(m.cta.url))}" style="display:inline-block;padding:14px 28px;font:600 16px/1.2 ${FONT};color:${BONE};text-decoration:none;">${esc(m.cta.label)}</a>
           </td>
         </tr></table>
-        <p style="margin:0 0 14px;font:12px/1.5 ${FONT};color:${MUTED};word-break:break-all;">If the button doesn't work, paste this into your browser:<br>${esc(m.cta.url)}</p>` : "";
+        <p class="mt" style="margin:0 0 14px;font:12px/1.5 ${FONT};color:${MUTED};">If the button doesn't work, copy this link into your browser's address bar:<br><span style="word-break:break-all;">${esc(m.cta.url)}</span></p>` : "";
 
   const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
 <title>${esc(m.subject)}</title>
+${LAYOUT_STYLE}
 </head>
-<body style="margin:0;padding:0;background:${BONE};">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:${BONE};">${esc(m.preheader || "")}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BONE};">
+<body class="pg" style="margin:0;padding:0;background:${BONE};">
+<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px;color:${BONE};mso-hide:all;">${esc(m.preheader || "")}${previewPad}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="pg" style="background:${BONE};">
   <tr><td align="center" style="padding:28px 12px;">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;">
-      <tr><td style="background:${INK};padding:22px 32px;">
+      <tr><td class="pd" style="background:${INK};padding:22px 32px;">
         <span style="font:700 18px/1 ${FONT};letter-spacing:3px;color:${BONE};">${esc(wordmark)}</span>
       </td></tr>
       <tr><td style="height:2px;line-height:2px;font-size:0;background:${BRASS};">&nbsp;</td></tr>
-      <tr><td style="background:#FFFFFF;padding:30px 32px 18px;">
-        <h1 style="margin:0 0 16px;font:700 22px/1.3 ${FONT};color:${INK};">${esc(m.heading)}</h1>
+      <tr><td class="cd pd" style="background:#FFFFFF;padding:30px 32px 18px;">
+        <h1 class="tx" style="margin:0 0 16px;font:700 22px/1.3 ${FONT};color:${INK};">${esc(m.heading)}</h1>
         ${(m.paragraphs || []).map(p).join("\n        ")}
         ${factsHtml}${itemsHtml}${ctaHtml}
         ${(m.after || []).map(p).join("\n        ")}
       </td></tr>
-      <tr><td style="padding:20px 32px 8px;font:12px/1.7 ${FONT};color:${MUTED};">
+      <tr><td class="ft pd" style="padding:20px 32px 8px;font:12px/1.7 ${FONT};color:${MUTED};">
         <strong style="color:${INK};">${esc(brand.name)}</strong> · ${esc(brand.descriptor)}<br>
         ${esc(shopFacts.businessName(brand))}, ${esc(brand.city)}, ${esc(brand.state)}<br>
         <a href="${esc(brand.phoneHref)}" style="color:${INK};">${esc(brand.phone)}</a> ·
         <a href="mailto:${esc(brand.email)}" style="color:${INK};">${esc(brand.email)}</a> ·
-        <a href="${esc(brand.url)}" style="color:${INK};">${esc(brand.domain)}</a>
+        <a href="${esc(brand.url)}" style="color:${INK};">${esc(brand.domain)}</a>${m.why ? `<br><br>${esc(m.why)}` : ""}
       </td></tr>
     </table>
   </td></tr>
@@ -152,8 +194,12 @@ function layout(m) {
 </body>
 </html>`;
 
+  // The text part is the whole message for anyone whose mail client shows it (and for most spam
+  // filters): the same words in the same order, the action as a link on a line of its own.
+  const heading = String(m.heading || "").toUpperCase();
   const text = [
-    m.heading,
+    heading,
+    "=".repeat(Math.min(heading.length, 60)),
     "",
     ...(m.paragraphs || []).flatMap((t) => [t, ""]),
     ...facts.map(([k, v]) => `${k}: ${v}`),
@@ -161,12 +207,15 @@ function layout(m) {
     ...items.map((it) => `  - ${it.name}${it.qty ? ` x ${it.qty}` : ""}${it.detail ? ` (${it.detail})` : ""}${it.amount != null ? `  ${money(it.amount)}` : ""}`),
     m.total ? `${m.total.label}: ${m.total.value}` : null,
     items.length ? "" : null,
-    m.cta ? `${m.cta.label}: ${m.cta.url}` : null,
+    m.cta ? `${m.cta.label}:` : null,
+    m.cta ? m.cta.url : null,
     m.cta ? "" : null,
     ...(m.after || []).flatMap((t) => [t, ""]),
     "--",
     `${brand.name} · ${brand.phone} · ${brand.email}`,
     `${shopFacts.businessName(brand)}, ${brand.city}, ${brand.state} · ${brand.url}`,
+    m.why ? "" : null,
+    m.why || null,
   ].filter((l) => l !== null).join("\n");
 
   return { subject: m.subject, text, html };
@@ -413,7 +462,8 @@ function rfqAcceptedShop({ rfq, order, adminUrl }) {
     subject: po
       ? `Quote ${shortId(rfq.id)} accepted on a purchase order — ${money(order.total)}`
       : `Quote ${shortId(rfq.id)} accepted, card checkout started — ${money(order.total)}`,
-    preheader: `${money(order.total)} — ${po ? "PO " + order.poNumber : "paying by card"}`,
+    // Like the subject, the preview line carries nothing the customer typed (the PO number is in the body).
+    preheader: `${money(order.total)} — ${po ? "on a purchase order: confirm it before starting" : "paying by card"}`,
     heading: po ? "Quote accepted on a purchase order" : "Quote accepted",
     paragraphs: [
       `${rfq.contactName} <${rfq.email}>${rfq.company ? " — " + rfq.company : ""}${rfq.phone ? " — " + rfq.phone : ""}`,
@@ -476,7 +526,8 @@ function newOrderShop({ order, items, adminUrl, warning }) {
   const po = order.paymentMethod === "po";
   return layout({
     subject: `New order ${shortId(order.id)} — ${money(order.total)}${po ? " (purchase order)" : ""}`,
-    preheader: `${order.customerName || order.shippingName || "Customer"} · ships by ${formatShipBy(order.shipBy)}`,
+    // Like the subject, the preview line carries nothing the customer typed (the name is in the body).
+    preheader: `${order.leadTimeName ? `${order.leadTimeName} · ` : ""}ships by ${formatShipBy(order.shipBy)}${order.paperwork ? ` · ${PAPERWORK_SHORT} ordered` : ""}${order.returnPart ? " · return the original part" : ""}`,
     heading: po ? "New order on a purchase order" : "New paid order",
     paragraphs: [
       `${order.customerName || order.shippingName || "Customer"}${order.customerEmail ? ` <${order.customerEmail}>` : ""}`,
@@ -531,21 +582,28 @@ function orderShipped({ order, items, orderUrl }) {
 // These go to an address somebody typed into a form, so they carry no typed
 // text at all: no name, no company, nothing but our own words and one link.
 
+// What every account message says at the bottom: nobody at the shop will ask for a password.
+const NEVER_ASK = `We never ask for your password, by email or any other way. If a message asks for it, it is not from us.`;
+/** The small print under an account message: why it was sent. */
+const sentBecause = (what) => `This email was sent because ${what} at ${brand.domain}. It was sent to the address on the account and to nobody else.`;
+
 /** Confirm the address on a new account. */
 function verifyEmail({ verifyUrl }) {
   return layout({
     subject: `${brand.name}: confirm your email address`,
-    preheader: "One click and your account is ready to check out.",
+    preheader: "One press confirms it. After that your account can check out.",
     heading: "Confirm your email address",
     paragraphs: [
       "Hello,",
-      `Someone, we hope you, created a ${brand.name} account with this address. Confirm it and the account can check out and get order emails.`,
+      `A ${brand.name} account was just created with this address. Confirm that the address is yours and the account can check out. Your order confirmation and shipping notice will come here, which is why we check first.`,
     ],
     cta: { label: "Confirm my email", url: verifyUrl },
     after: [
-      "The link works once and for 24 hours. You can ask for a new one from the checkout page.",
-      `Not you? Do nothing and the account stays unconfirmed. Questions: ${brand.phone}.`,
+      "The link works once and for 24 hours. If it has run out, the checkout page sends a new one.",
+      `Didn't create an account? Ignore this email: nothing happens, and the account stays unconfirmed and cannot order. Questions: ${brand.phone}.`,
+      NEVER_ASK,
     ],
+    why: sentBecause("someone created an account with this address"),
   });
 }
 
@@ -553,17 +611,19 @@ function verifyEmail({ verifyUrl }) {
 function passwordResetRequested({ resetUrl }) {
   return layout({
     subject: `${brand.name}: reset your password`,
-    preheader: "The link works once and for one hour.",
+    preheader: "The link works once, for one hour. Not you? Ignore this.",
     heading: "Reset your password",
     paragraphs: [
       "Hello,",
-      `We were asked to reset the password on the ${brand.name} account for this address.`,
+      `Someone asked for a link to choose a new password for the ${brand.name} account at this address. If that was you, use the button below.`,
     ],
     cta: { label: "Choose a new password", url: resetUrl },
     after: [
-      "The link works once and for one hour. Choosing a new password signs the account out everywhere else.",
-      `Didn't ask for this? Do nothing: your password stays as it is. If it keeps happening, call ${brand.phone}.`,
+      "The link works once and for one hour. Choosing a new password signs the account out on every device, and lifts a sign-in pause if there is one.",
+      `Didn't ask for this? Ignore this email: your password stays as it is and nobody can use the link without your mailbox. If these keep arriving, call ${brand.phone}.`,
+      NEVER_ASK,
     ],
+    why: sentBecause("a password reset was asked for on the sign-in page"),
   });
 }
 
@@ -571,33 +631,17 @@ function passwordResetRequested({ resetUrl }) {
 function passwordChanged({ when }) {
   return layout({
     subject: `${brand.name}: your password was changed`,
-    preheader: "If this was you, nothing to do.",
+    preheader: "If that was you, there is nothing to do.",
     heading: "Your password was changed",
     paragraphs: [
       "Hello,",
       `The password on your ${brand.name} account was changed${when ? ` on ${longDate(when)}` : ""}. Every device that was signed in has been signed out.`,
     ],
     after: [
-      `If this was you, there is nothing to do. If it wasn't, call ${brand.phone} now and we'll lock the account.`,
+      `If that was you, there is nothing to do. If it wasn't, call ${brand.phone} now and we'll lock the account. There is no link in this email on purpose.`,
+      NEVER_ASK,
     ],
-  });
-}
-
-/** Too many wrong passwords: sign-in is paused for a while. */
-function accountLocked({ minutes, resetUrl }) {
-  return layout({
-    subject: `${brand.name}: sign-in paused on your account`,
-    preheader: `Too many wrong passwords. Sign-in is paused for ${minutes} minutes.`,
-    heading: "Sign-in is paused on your account",
-    paragraphs: [
-      "Hello,",
-      `Someone entered the wrong password for your ${brand.name} account several times in a row, so sign-in is paused for ${minutes} minutes. Nobody got in.`,
-      "If that was you, wait it out or choose a new password now. Choosing a new password lifts the pause at once.",
-    ],
-    cta: resetUrl ? { label: "Choose a new password", url: resetUrl } : undefined,
-    after: [
-      `If it wasn't you, your password held. Make sure it is one you use nowhere else. Questions: ${brand.phone}.`,
-    ],
+    why: sentBecause("the password on your account was changed"),
   });
 }
 
@@ -617,32 +661,35 @@ function signInAttempts({ resetUrl }) {
     ],
     cta: resetUrl ? { label: "Choose a new password", url: resetUrl } : undefined,
     after: [
-      `If it wasn't you, your password held. Make sure it is one you use nowhere else. Questions: ${brand.phone}.`,
+      `If it wasn't you, your password held and there is nothing you have to do. Make sure it is one you use nowhere else. Questions: ${brand.phone}.`,
+      NEVER_ASK,
     ],
+    why: sentBecause("several wrong passwords were tried on your account"),
   });
 }
 
 /** Two-step sign-in was switched on or off, or new recovery codes were made. */
 function twoFactorChanged({ change }) {
   const what = {
-    enabled: ["Two-step sign-in is on", "Two-step sign-in was switched on for your account. From now on, signing in takes your password and a code from your authenticator app."],
-    disabled: ["Two-step sign-in is off", "Two-step sign-in was switched off for your account. Signing in now takes only your password."],
-    "recovery-codes": ["New recovery codes were made", "New recovery codes were made for your account. The old ones no longer work."],
-    "recovery-used": ["A recovery code was used to sign in", "A recovery code was used to sign in to your account in place of an authenticator code. That code is now spent."],
-  }[change] || ["Your sign-in settings changed", "The sign-in settings on your account were changed."];
+    enabled: ["Two-step sign-in is on", "Two-step sign-in was switched on for your account. From now on, signing in takes your password and a code from your authenticator app.", "two-step sign-in was switched on for your account"],
+    disabled: ["Two-step sign-in is off", "Two-step sign-in was switched off for your account. Signing in now takes only your password.", "two-step sign-in was switched off for your account"],
+    "recovery-codes": ["New recovery codes were made", "New recovery codes were made for your account. The old ones no longer work.", "new recovery codes were made for your account"],
+    "recovery-used": ["A recovery code was used to sign in", "A recovery code was used to sign in to your account in place of an authenticator code. That code is now spent.", "a recovery code was used to sign in to your account"],
+  }[change] || ["Your sign-in settings changed", "The sign-in settings on your account were changed.", "the sign-in settings on your account were changed"];
   return layout({
     subject: `${brand.name}: ${what[0].charAt(0).toLowerCase()}${what[0].slice(1)}`,
-    preheader: what[0],
+    preheader: "If that was you, there is nothing to do.",
     heading: what[0],
     paragraphs: ["Hello,", what[1]],
-    after: [`If this was you, there is nothing to do. If it wasn't, call ${brand.phone} now.`],
+    after: [`If that was you, there is nothing to do. If it wasn't, call ${brand.phone} now. There is no link in this email on purpose.`, NEVER_ASK],
+    why: sentBecause(what[2]),
   });
 }
 
 // Every message carries the name of its template (`template`), which is all
 // the mailer writes to the log about it.
 const MESSAGES = {
-  verifyEmail, passwordResetRequested, passwordChanged, accountLocked, signInAttempts, twoFactorChanged,
+  verifyEmail, passwordResetRequested, passwordChanged, signInAttempts, twoFactorChanged,
   rfqReceivedBuyer, partRequestBuyer, rfqReceivedShop, rfqQuoted, rfqAcceptedShop,
   orderConfirmation, newOrderShop, orderShipped,
 };
@@ -656,7 +703,7 @@ for (const [name, build] of Object.entries(MESSAGES)) {
 
 module.exports = {
   ...named,
-  esc, safeHref, greeting,
+  esc, safeHref, greeting, LAYOUT_STYLE,
   layout, trackingUrl, shortId, money, DRAWING_NOTE,
   PAPERWORK_LABEL, PAPERWORK_SHORT, PAPERWORK_INCLUDED, PAPERWORK_NOT_INCLUDED, RETURN_INCLUDED, RETURN_NOT_INCLUDED, RETURN_REMINDER, PAPERWORK_REMINDER,
   chargeRows, quoteCovers, isPartRequest, discountOf, amountPaidOf,

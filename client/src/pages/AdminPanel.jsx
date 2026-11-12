@@ -22,13 +22,13 @@ function EnrolmentGate({ onDone }) {
   const { user, logout } = useAuth();
   const enrolled = Boolean(user?.twoFactorEnabled);
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 32px 48px' }} data-testid="enrolment-gate">
+    <div className="admin-page" style={{ maxWidth: 760 }} data-testid="enrolment-gate">
       {!enrolled && (
-        <div className="admin-banner" role="alert" data-testid="twofactor-banner">
+        <div className="verify-box admin-gate-banner" role="region" aria-label="Two-step sign-in is required" data-testid="twofactor-banner">
           <span>
             <b>Set up two-step sign-in to open the admin pages.</b>{' '}
-            The admin account can change prices, see every customer's files and download the database, so it takes a password
-            and a code from your phone. Nothing else in the admin area opens until this is done. It takes two minutes.
+            The admin account can change prices, see every customer's files and download the database, so signing in to it takes a password
+            and a code from your phone. Nothing else in the admin area opens until this is done. It takes about two minutes, once.
           </span>
           <button type="button" className="btn btn-ghost" onClick={logout}>Sign out</button>
         </div>
@@ -132,7 +132,7 @@ function AdminConsole() {
   ];
 
   return (
-    <div style={{ maxWidth: 1320, margin: '0 auto', padding: '28px 32px 48px' }}>
+    <div className="admin-page" style={{ maxWidth: 1320 }}>
       {/* Stats bar */}
       <div className="grid-4" style={{ marginBottom: 32 }}>
         {[
@@ -153,10 +153,12 @@ function AdminConsole() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24 }}>
+      <div className="admin-tabs" role="group" aria-label="Admin sections">
         {tabs.map((t) => (
           <button
             key={t.key}
+            type="button"
+            aria-pressed={tab === t.key}
             className={`btn ${tab === t.key ? 'btn-ghost active' : 'btn-ghost'}`}
             onClick={() => setTab(t.key)}
           >
@@ -168,7 +170,7 @@ function AdminConsole() {
       {/* ─── ORDERS TAB ─── */}
       {tab === 'orders' && <PaymentStatus orders={orders} />}
       {tab === 'orders' && (
-        <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card table-scroll" tabIndex={0} role="region" aria-label="Orders table" style={{ overflow: 'hidden' }}>
           {orders.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-dim)' }}>
               No orders yet. Orders appear here when customers complete Stripe checkout.
@@ -197,11 +199,11 @@ function AdminConsole() {
                   const next = nextMap[o.status];
                   const statusColor = {
                     pending_payment: 'var(--text-muted)',
-                    paid: '#4F8CFF',
-                    received: '#4F8CFF',
-                    in_production: '#F5A623',
-                    quality_check: '#F5A623',
-                    packing: '#F5A623',
+                    paid: '#1D4ED8',
+                    received: '#1D4ED8',
+                    in_production: '#9A4A07',
+                    quality_check: '#9A4A07',
+                    packing: '#9A4A07',
                     shipped: '#7ED321',
                     delivered: '#7ED321',
                     cancelled: '#E94E4E',
@@ -237,7 +239,7 @@ function AdminConsole() {
                             key={idx}
                             onClick={() => api.downloadPart(it.partId, it.fileName).catch(e => alert('Download failed: ' + e.message))}
                             title={it.fileName}
-                            style={{ fontSize: '11px', padding: '4px 8px', marginRight: '4px', marginBottom: '2px', cursor: 'pointer', border: '1px solid #4F8CFF', background: '#fff', color: '#4F8CFF', borderRadius: '3px' }}
+                            style={{ fontSize: '11px', padding: '4px 8px', marginRight: '4px', marginBottom: '2px', cursor: 'pointer', border: '1px solid #1D4ED8', background: '#fff', color: '#1D4ED8', borderRadius: '3px', minHeight: 28 }}
                           >
                             {(it.fileName || 'file').length > 18 ? (it.fileName || 'file').slice(0, 15) + '...' : (it.fileName || 'file')}
                           </button>
@@ -278,13 +280,13 @@ function AdminConsole() {
 
       {/* ─── PARTS TAB ─── */}
       {tab === 'parts' && (
-          <div>
+          <div className="table-scroll" tabIndex={0} role="region" aria-label="Uploaded parts table">
             <h2 style={{ marginBottom: '16px' }}>All Uploaded Parts ({parts.length})</h2>
             <p style={{ color: '#666', marginBottom: '16px', fontSize: '13px' }}>
               Every CAD file uploaded by customers, including parts that never became orders. Newest first.
             </p>
             {parts.length === 0 ? (
-              <p style={{ color: '#999' }}>No uploads yet.</p>
+              <p style={{ color: 'var(--text-muted)' }}>No uploads yet.</p>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
@@ -311,12 +313,12 @@ function AdminConsole() {
                           {p.storedName ? (
                             <button
                               onClick={() => api.downloadPart(p.id, p.fileName).catch(e => alert('Download failed: ' + e.message))}
-                              style={{ fontSize: '12px', padding: '6px 12px', cursor: 'pointer', border: '1px solid #4F8CFF', background: '#4F8CFF', color: '#fff', borderRadius: '3px' }}
+                              style={{ fontSize: '12px', padding: '6px 12px', cursor: 'pointer', border: '1px solid #1D4ED8', background: '#1D4ED8', color: '#fff', borderRadius: '3px' }}
                             >
                               Download
                             </button>
                           ) : (
-                            <span style={{ color: '#999' }}>missing</span>
+                            <span style={{ color: 'var(--text-muted)' }}>missing</span>
                           )}
                         </td>
                       </tr>
@@ -333,7 +335,7 @@ function AdminConsole() {
 
       {/* ─── FINISHES TAB ─── */}
       {tab === 'finishes' && (
-        <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card table-scroll" tabIndex={0} role="region" aria-label="Finishes table" style={{ overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}>
@@ -379,7 +381,7 @@ function AdminConsole() {
 
       {/* ─── LEAD TIMES TAB ─── */}
       {tab === 'lead-times' && (
-        <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card table-scroll" tabIndex={0} role="region" aria-label="Lead times table" style={{ overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}>
@@ -462,7 +464,7 @@ function AdminConsole() {
 
       {/* ─── QUOTES TAB ─── */}
       {tab === 'quotes' && (
-        <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card table-scroll" tabIndex={0} role="region" aria-label="Quotes table" style={{ overflow: 'hidden' }}>
           {quotes.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-dim)' }}>
               No quotes yet. Upload parts and configure a quote to see them here.

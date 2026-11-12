@@ -1,0 +1,31 @@
+Subject: RFQ: 0B8A2F4E — 1 part(s)
+Preheader: New RFQ 0B8A2F4E
+
+NEW RFQ FROM PAT PURCHASING
+===========================
+
+Pat Purchasing <pat@example.com> — OEM Co — 815-555-0142
+
+Customer asked for a first-article inspection report and a certificate of conformance — include them in the price.
+
+Why it's an RFQ: 500 pieces is over our 100-piece instant-order limit
+
+Notes: Replaces a part we buy from a supplier who keeps missing dates.
+
+Quantities: 500 / 1,000
+Tolerance: Ø0.500 +0.000/−0.002
+Finish notes: Deburr all edges, bag 10 per
+Need by: 2026-12-15
+Drawing: roller-12-441.pdf
+FAI + CoC: YES — price it in
+Budgetary total shown: $3,980.00
+Reference: 0B8A2F4E
+
+  - roller-12-441.step x 500 (cnc-delrin · CNC machining · budgetary $7.96/ea)  $3,980.00
+
+Open the RFQ queue:
+https://straightedgemfg.com/admin
+
+--
+Straightedge · 224-213-6727 · quotes@straightedgemfg.com
+Straightedge, Wauconda, IL · https://straightedgemfg.com

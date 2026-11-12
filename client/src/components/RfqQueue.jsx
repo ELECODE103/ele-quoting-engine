@@ -72,7 +72,7 @@ export default function RfqQueue() {
   }
 
   return (
-    <div className="card" style={{ overflow: 'hidden' }}>
+    <div className="card table-scroll" tabIndex={0} role="region" aria-label="Quote requests table" style={{ overflow: 'hidden' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}>
@@ -113,7 +113,7 @@ export default function RfqQueue() {
                 <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>{r.quantities || (r.parts || []).map((p) => p.quantity).join(' / ') || '—'}</td>
                 <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>{r.budgetTotal ? formatCurrency(r.budgetTotal) : '—'}</td>
                 <td style={{ padding: '10px 14px' }}>
-                  <select className="input" style={{ padding: '4px 28px 4px 8px', fontSize: 11, width: 'auto' }} value={r.status} disabled={busy}
+                  <select className="input" aria-label={`Status of request ${String(r.id).slice(0, 8).toUpperCase()}`} style={{ padding: '4px 28px 4px 8px', fontSize: 11, width: 'auto' }} value={r.status} disabled={busy}
                     onChange={(e) => (e.target.value === 'quoted' ? setOpen(r.id) : update(r.id, { status: e.target.value }))}>
                     {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                     {AUTO_STATUSES.includes(r.status) && <option value={r.status} disabled>{r.status}</option>}
