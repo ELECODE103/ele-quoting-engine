@@ -33,6 +33,7 @@ const FirmQuotePage = lazy(() => import('./pages/FirmQuotePage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
+const AdminSetupPage = lazy(() => import('./pages/AdminSetupPage'));
 
 function Spinner() {
   return (
@@ -97,6 +98,7 @@ export default function App() {
       <Route path="/firm-quote/:token" element={<Suspense fallback={<Spinner />}><FirmQuotePage /></Suspense>} />
       <Route path="/quote" element={<AppShell><QuoteBuilder /></AppShell>} />
       <Route path="/admin" element={<AppShell><Protected adminOnly><AdminPanel /></Protected></AppShell>} />
+      <Route path="/admin/setup" element={<Suspense fallback={<Spinner />}><AdminSetupPage /></Suspense>} />
       <Route path="/dashboard" element={<AppShell><Protected><CustomerDashboard /></Protected></AppShell>} />
       <Route path="/checkout/:quoteId" element={<AppShell><Protected><CheckoutPage /></Protected></AppShell>} />
       <Route path="/orders/:orderId" element={<AppShell><Protected><OrderTrackingPage /></Protected></AppShell>} />

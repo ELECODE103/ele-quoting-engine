@@ -178,6 +178,10 @@ export const api = {
   },
 
   async getAdminQuotes() { return request('/admin/quotes'); },
+  /** Who changed what and when (materials, finishes, lead times, pricing rules, order status). */
+  async getAdminAudit() { return request('/admin/audit'); },
+  /** End the price hold on every open quote (after a price change): buyers reopen the quote to get today's price. */
+  async voidOpenQuotes(note) { return request('/admin/quotes/void-open', { method: 'POST', body: JSON.stringify({ note }) }); },
   async getAdminStats() { return request('/admin/stats'); },
   async getAdminParts() { return request('/admin/parts'); },
 
@@ -187,6 +191,10 @@ export const api = {
   },
   async register(fields, guard = {}) {
     return request('/auth/register', { method: 'POST', body: JSON.stringify(fields), headers: guard });
+  },
+  /** One-time setup of the admin account: the owner's setup code and a new password. */
+  async adminSetup(code, password) {
+    return request('/auth/admin-setup', { method: 'POST', body: JSON.stringify({ code, password }) });
   },
   async getSession() { return request('/auth/session'); },
   async logout() { return request('/auth/logout', { method: 'POST', body: '{}' }); },
@@ -297,10 +305,14 @@ export const api = {
   async confirmFirmQuotePayment(token) { return request(`/rfq/quote/${token}/confirm-payment`, { method: 'POST', body: '{}' }); },
 
   // Stripe Checkout
-  async createCheckoutSession(quoteId, shippingFields) {
+  /**
+   * `confirmedTotal` is the total the page is showing: if it is not what the server would charge,
+   * the server answers `quote-changed` with the quote at today's price instead of charging.
+   */
+  async createCheckoutSession(quoteId, shippingFields, confirmedTotal) {
     return request('/orders/checkout-session', {
       method: 'POST',
-      body: JSON.stringify({ quoteId, ...shippingFields }),
+      body: JSON.stringify({ quoteId, ...shippingFields, ...(Number.isFinite(confirmedTotal) ? { confirmedTotal } : {}) }),
     });
   },
 };
