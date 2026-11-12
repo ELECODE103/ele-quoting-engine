@@ -23,7 +23,11 @@ const ERR = /EXISTING FILES CANNOT BE OPENED[^\n]*/;
   const ip = "192.0.2.170";
   let s = await c.startServer({ env: { NORD_FILE_ENC_KEY: K1 } });
   const out = {};
-  const restart = async (env) => { const tmp = s.tmp; await s.stop({ keep: true }); s = await c.startServer({ env, tmpDir: tmp }); return s; };
+  // Adapted 2026-11-12 (second integration pass): the edit keys of the parts this script uploaded are
+  // carried over each restart, as a visitor's browser carries them over a redeploy. Each restart makes
+  // a new test helper, which had forgotten them; since parts have owners (security/partAccess.js) the
+  // script was then refused its own parts ("part-not-found") whatever the encryption key was.
+  const restart = async (env) => { const tmp = s.tmp; const keys = s.editKeys || {}; await s.stop({ keep: true }); s = await c.startServer({ env, tmpDir: tmp }); s.editKeys = { ...keys, ...(s.editKeys || {}) }; return s; };
   const plainFiles = () => ["uploads", "part-payloads", "quote-drawings", "rfq-drawings"].flatMap((d) => c.ls(s, d).filter((n) => !n.endsWith(".enc")).map((n) => `${d}/${n}`));
   const price = async (line) => { let q; for (let i = 0; i < 6; i++) { q = await s.post("/api/quote", { parts: [line], leadTimeSlug: "standard" }, { ip }); if (q.status !== 429) break; await c.sleep(1500); } return q.status === 200 ? { status: 200, each: q.body.lineItems[0].perUnit.final } : { status: q.status, code: q.body && q.body.code }; };
   try {

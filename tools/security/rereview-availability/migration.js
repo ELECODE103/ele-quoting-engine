@@ -81,8 +81,16 @@ async function dump(file) {
     const log1 = s.log();
     const ip = "203.0.113.150";
     const old = await s.get(`/api/quote/${CHOSEN}`, { ip });
-    const reprice = await s.post("/api/quote", { parts: [line, line, { ...line, quantity: 10 }] }, { ip });
-    const densePrice = await s.post("/api/quote", { parts: [{ ...line, partId: id(dense) }] }, { ip });
+    // Adapted 2026-11-12 (second integration pass): a part uploaded without an account is now usable
+    // only with its edit key (security/partAccess.js). Parts stored by the old version have no owner;
+    // a returning visitor's browser gets their keys by opening the quote they are on, so the script
+    // does the same before pricing them again. Without this both re-pricings were refused
+    // ("part-not-found") and the comparison with the old totals was empty.
+    const keysOf = async (quoteId) => { const r = await s.get(`/api/quote/${quoteId}/session`, { ip }); return Object.fromEntries(Object.entries((r.body && r.body.partsById) || {}).filter(([, p]) => p && p.editKey).map(([pid, p]) => [pid, p.editKey])); };
+    const keys = { ...(await keysOf(CHOSEN)), ...(await keysOf(q2.body.quoteId)) };
+    const withKey = (l) => ({ ...l, editKey: keys[l.partId] });
+    const reprice = await s.post("/api/quote", { parts: [line, line, { ...line, quantity: 10 }].map(withKey) }, { ip });
+    const densePrice = await s.post("/api/quote", { parts: [withKey({ ...line, partId: id(dense) })] }, { ip });
     const session = await s.get(`/api/quote/${q2.body.quoteId}/session`, { ip });
     const dp = session.body && session.body.partsById && session.body.partsById[id(dense)];
     const mesh = dp && dp.mesh ? await s.get(dp.mesh.url, { ip, headers: { "X-Part-Key": dp.editKey } }) : { status: 0, body: {} };
