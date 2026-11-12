@@ -221,7 +221,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   test("check on, no token or a rejected token: the request is refused, nothing is stored, nobody is emailed, the attachment is deleted", async () => {
     fresh();
     const rows = rfqsDB.getAll().length;
-    const files = () => new Set(fs.readdirSync(drawingDir));
+    // A fresh clone has no data/rfq-drawings until the first attachment is stored: an absent folder holds no files.
+    // (The comparison below is unchanged: whatever the refused requests wrote must be gone again.)
+    const files = () => new Set(fs.existsSync(drawingDir) ? fs.readdirSync(drawingDir) : []);
     const before = files();
     const pdf = { drawing: { name: "print.pdf", data: Buffer.from("%PDF-1.4 test") } };
     const none = await rfq({ requestType: "part" }, { headers: unchecked(), files: pdf });
