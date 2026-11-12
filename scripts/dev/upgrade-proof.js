@@ -110,6 +110,14 @@ const CATALOGUE = ["materials", "finishes", "processes"];
 const without = (dump, names) => Object.fromEntries(Object.entries(dump).filter(([t]) => !names.includes(t)));
 
 (async () => {
+  // A timer that keeps the event loop busy for the whole run (the script ends with process.exit).
+  // Without it this script hung in 7 of 20 runs on Node 20.20.0 (2026-11-12): it reads databases with
+  // sql.js (WebAssembly) in its own process, and while such a load is awaited with nothing else pending,
+  // Node waits for its background threads in a way that cannot serve the garbage collection one of them
+  // asks for (native backtrace: main thread in node::NodePlatform::DrainTasks, two V8 threads in
+  // CollectionBarrier::AwaitCollectionBackground). The script then sat there with its server started
+  // and idle. With something pending, Node stays in its ordinary loop and the wait never happens.
+  setInterval(() => {}, 1000);
   console.log(`Upgrade proof: ${path.relative(ROOT, DB)} (made with ${made.madeWith}) on this branch's server, production mode`);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "se-upgrade-"));
   const dbFile = path.join(tmp, "data", "quoting.db");
