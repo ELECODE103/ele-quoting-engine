@@ -1,0 +1,24 @@
+Subject: Straightedge: sign-in paused on your account
+Preheader: Too many wrong passwords, so sign-in is paused for 15 minutes. Nobody got in.
+
+SIGN-IN IS PAUSED ON YOUR ACCOUNT
+=================================
+
+Hello,
+
+The wrong password was entered for your Straightedge account several times in a row, so sign-in is paused for 15 minutes. Nobody got in, and your orders and quotes are untouched.
+
+If that was you, wait it out, or choose a new password now: that lifts the pause at once.
+
+Choose a new password:
+https://straightedgemfg.com/forgot-password
+
+If it wasn't you, your password held and there is nothing you have to do. Make sure it is one you use nowhere else. Questions: 224-213-6727.
+
+We never ask for your password, by email or any other way. If a message asks for it, it is not from us.
+
+--
+Straightedge · 224-213-6727 · quotes@straightedgemfg.com
+Straightedge, Wauconda, IL · https://straightedgemfg.com
+
+This email was sent because several wrong passwords were entered for your account at straightedgemfg.com. It was sent to the address on the account and to nobody else.

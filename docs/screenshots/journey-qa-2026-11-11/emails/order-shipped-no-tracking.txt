@@ -1,0 +1,25 @@
+Subject: Straightedge: order 7C9E6679 has shipped
+Preheader: Your parts are on the way.
+
+YOUR ORDER HAS SHIPPED
+======================
+
+Hi Dana,
+
+Your parts are on the way. We'll send tracking if the carrier gives us a number.
+
+Order: 7C9E6679
+Shipped: November 23, 2026
+Ship to: Dana Buyer, 100 Main St, Elgin, IL 60120
+
+  - wear-strip-rev-C.step x 25 (UHMW-PE · CNC machining)
+  - guide-block.step x 10 (Delrin / Acetal (POM) · CNC machining · Deburred)
+
+View your order:
+https://straightedgemfg.com/orders/7c9e6679-7425-40de-944b-e07fc1f90ae7
+
+Anything wrong when it arrives? Reply to this email or call 224-213-6727.
+
+--
+Straightedge · 224-213-6727 · quotes@straightedgemfg.com
+Straightedge, Wauconda, IL · https://straightedgemfg.com

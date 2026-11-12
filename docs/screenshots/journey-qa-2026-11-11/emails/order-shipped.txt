@@ -1,0 +1,27 @@
+Subject: Straightedge: order 7C9E6679 has shipped
+Preheader: UPS 1Z999AA10123456784
+
+YOUR ORDER HAS SHIPPED
+======================
+
+Hi Dana,
+
+Your parts are on the way. Tracking is below.
+
+Order: 7C9E6679
+Carrier: UPS
+Tracking number: 1Z999AA10123456784
+Shipped: November 23, 2026
+Ship to: Dana Buyer, 100 Main St, Elgin, IL 60120
+
+  - wear-strip-rev-C.step x 25 (UHMW-PE · CNC machining)
+  - guide-block.step x 10 (Delrin / Acetal (POM) · CNC machining · Deburred)
+
+Track the shipment:
+https://www.ups.com/track?tracknum=1Z999AA10123456784
+
+Anything wrong when it arrives? Reply to this email or call 224-213-6727.
+
+--
+Straightedge · 224-213-6727 · quotes@straightedgemfg.com
+Straightedge, Wauconda, IL · https://straightedgemfg.com

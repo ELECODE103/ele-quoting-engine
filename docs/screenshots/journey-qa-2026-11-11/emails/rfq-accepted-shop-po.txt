@@ -1,0 +1,28 @@
+Subject: Quote 0B8A2F4E accepted on a purchase order — $6,850.00
+Preheader: $6,850.00 — on a purchase order: confirm it before starting
+
+QUOTE ACCEPTED ON A PURCHASE ORDER
+==================================
+
+Pat Purchasing <pat@example.com> — OEM Co — 815-555-0142
+
+The customer accepted and gave a PO number. Nothing has been charged and no terms have been set up: confirm the PO with them before starting work.
+
+FAI + CoC ORDERED: the quoted price includes a first-article inspection report and a certificate of conformance. Do both before this ships.
+
+Quoted total: $6,850.00
+FAI + CoC: ORDERED (in the quoted price)
+PO number: PO-77812
+Ship to: Dana Buyer, 100 Main St, Elgin, IL 60120
+Ships by: Tue, Nov 24, 2026
+Order: 7C9E6679
+RFQ: 0B8A2F4E
+
+  - roller-12-441.step x 1000 (Delrin / Acetal (POM) · CNC machining)
+
+Open admin:
+https://straightedgemfg.com/admin
+
+--
+Straightedge · 224-213-6727 · quotes@straightedgemfg.com
+Straightedge, Wauconda, IL · https://straightedgemfg.com

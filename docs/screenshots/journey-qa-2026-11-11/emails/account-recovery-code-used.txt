@@ -1,0 +1,19 @@
+Subject: Straightedge: a recovery code was used to sign in
+Preheader: If that was you, there is nothing to do.
+
+A RECOVERY CODE WAS USED TO SIGN IN
+===================================
+
+Hello,
+
+A recovery code was used to sign in to your account in place of an authenticator code. That code is now spent.
+
+If that was you, there is nothing to do. If it wasn't, call 224-213-6727 now. There is no link in this email on purpose.
+
+We never ask for your password, by email or any other way. If a message asks for it, it is not from us.
+
+--
+Straightedge · 224-213-6727 · quotes@straightedgemfg.com
+Straightedge, Wauconda, IL · https://straightedgemfg.com
+
+This email was sent because a recovery code was used to sign in to your account at straightedgemfg.com. It was sent to the address on the account and to nobody else.

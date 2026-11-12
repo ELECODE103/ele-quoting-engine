@@ -1,0 +1,19 @@
+Subject: Straightedge: two-step sign-in is on
+Preheader: If that was you, there is nothing to do.
+
+TWO-STEP SIGN-IN IS ON
+======================
+
+Hello,
+
+Two-step sign-in was switched on for your account. From now on, signing in takes your password and a code from your authenticator app.
+
+If that was you, there is nothing to do. If it wasn't, call 224-213-6727 now. There is no link in this email on purpose.
+
+We never ask for your password, by email or any other way. If a message asks for it, it is not from us.
+
+--
+Straightedge · 224-213-6727 · quotes@straightedgemfg.com
+Straightedge, Wauconda, IL · https://straightedgemfg.com
+
+This email was sent because two-step sign-in was switched on for your account at straightedgemfg.com. It was sent to the address on the account and to nobody else.

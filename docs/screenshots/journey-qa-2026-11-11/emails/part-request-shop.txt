@@ -1,0 +1,30 @@
+Subject: RFQ: 5D21C7AA — part being shipped in
+Preheader: New RFQ 5D21C7AA
+
+NEW RFQ FROM SAM MAINTENANCE
+============================
+
+Sam Maintenance <sam@example.com> — Plant Co — 262-555-0117
+
+No drawing. The customer was told to write 5D21C7AA on the box and ship the part to the shop at their cost. Measure it, then quote it from the RFQ queue.
+
+Customer wants the original back — include return shipping in the price.
+
+Notes: NO DRAWING. The customer is sending the part.
+What it is and does: guides cartons into the sealer; rides on a stainless rail. Worn on the leading edge.
+Machine it is from: case sealer, line 3
+Material, if known: white, waxy
+How soon: next shutdown
+
+Quantities: 2 now, 6 a year
+Drawing: none
+FAI + CoC: Not requested
+Original part back: YES — price in the return shipping
+Reference: 5D21C7AA
+
+Open the RFQ queue:
+https://straightedgemfg.com/admin
+
+--
+Straightedge · 224-213-6727 · quotes@straightedgemfg.com
+Straightedge, Wauconda, IL · https://straightedgemfg.com
