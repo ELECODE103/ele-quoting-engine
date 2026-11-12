@@ -18,8 +18,10 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
   const h = await start({ mailer: "configured" });
   const { quotesDB, ordersDB, orderItemsDB, partsDB, materialsDB, finishesDB } = h.models;
   const registry = require("../processes/registry");
-  const quoteIntegrity = require("../services/quoteIntegrity");
-  const checkoutGuard = require("../services/checkoutGuard");
+  // (Loaded this way so the suite also runs — and fails, test by test — on a tree from before the fixes, where these modules do not exist.)
+  const optional = (name) => { try { return require(name); } catch (err) { if (err.code === "MODULE_NOT_FOUND") return null; throw err; } };
+  const quoteIntegrity = optional("../services/quoteIntegrity");
+  const checkoutGuard = optional("../services/checkoutGuard") || { resetForTests() {} };
 
   let owner, buyer, block, panel;
   const upload = async (name, data, fields = {}, token) => {

@@ -35,7 +35,7 @@
  *                    device has its own count.
  *
  * Guess rates this allows against ONE account (docs/security/review-fixes-2026-11-11.md):
- *   one source address    12 in the first hour, then at most 5 an hour
+ *   one source address    11 in the first hour, then 4 an hour (5 if it goes quiet for an hour and starts again)
  *   1,000 addresses       ACCOUNT_CEILING (100) an hour, however many addresses
  *
  * Every counter is keyed on the address as typed, whether or not an account
