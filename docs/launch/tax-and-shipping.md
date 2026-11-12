@@ -267,7 +267,7 @@ All server-side; the browser chooses, the server computes.
 | A database shaped like the previous version's upgrades in place; old quote, order and request still read, document and check out | `server/models/taxShippingMigration.test.js` | 8 checks |
 | The same with a database produced by the base branch's own code, in production mode, in a browser: old order page, Reorder, old draft quote checkout | `scripts/e2e/tax-shipping-upgrade-make-db.js` then `scripts/e2e/tax-shipping-upgrade.mjs` | 12 checks |
 | One browser pass (Chromium, 1360 px, production mode, the server's real Content-Security-Policy) through checkout for every shipping method and tax mode, the firm-quote page, the admin settings and order view | `scripts/e2e/tax-shipping.mjs` | 56 checks, 28 screenshots |
-| Every suite in the repository, old and new | `npm test` | 45 of 45 suites |
+| Every suite in the repository, old and new | `npm test` | 45 suites. All pass on a quiet machine. One older timing test (`server/security/uploads.test.js`: a health check must answer within 250 ms while a large STEP file is read) fails when the machine is busy with other work, on this branch and on the branch it started from alike, and passes when run alone |
 
 Screenshots: `docs/screenshots/tax-shipping-2026-11-11/`. The pickup address is masked in the one screenshot that contains it. The carrier account number in the screenshots is made up.
 
