@@ -13,7 +13,7 @@ areas; what I tripped over there is marked "outside my area".
 
 The work done on file handling and on the parser sandbox holds up. I could not get a file written
 outside its folder, served back in a way a browser would run, or left behind after a refusal; none
-of 59 hostile CAD files crashed the server, leaked a worker or escaped the time and memory limits.
+of 54 hostile CAD files (59 with the controls) crashed the server, leaked a worker or escaped the time and memory limits.
 
 The site can still be taken down, and its prices beaten, from other directions that the hardening
 did not cover:
@@ -75,6 +75,28 @@ Sections 3 and 4 list everything by severity with the fix for each.
 | I1 | Info | File names with non-ASCII characters are stored garbled (`Gehäuse.stl` → `GehÃ¤use.stl`) | multer default charset | Accept / fix later |
 | I2 | Info | An address reported with a port (`203.0.113.9:51234`) becomes its own limiter key per port | `server/security/clientKey.js:40` | Accept (Railway does not send ports) |
 | I3 | Info | STEP "30 second" timeout still races a synchronous call and never fires; harmless now that the pool stops the worker at 60 s | `server/parsers/fileParser.js:388-408` | Accept |
+
+### Reproduction, by finding
+
+All commands run from the repository root with proxy variables unset (section 13). Each starts its
+own local server.
+
+| # | Command |
+|---|---|
+| C1 | `node tools/security/review-uploads/availability.js session` (100 lines; needs 3 GB free) and `… session 25 1` |
+| C2 | `node tools/security/review-uploads/availability.js mainthread` |
+| H1, L3 | `node tools/security/review-uploads/price-nan.js`; `node tools/security/review-uploads/parser-abuse.js 'NaN|Infinity|scaled'` |
+| H2, L4 | `node tools/security/review-uploads/availability.js pool`; `… queue`; `… memory` |
+| H3, L6 | `node tools/security/review-uploads/availability.js db 1600`; `node tools/security/review-uploads/claims.js` |
+| H4 | `node tools/security/review-uploads/availability.js storage` |
+| H5, L2 | `node tools/security/review-uploads/retention-encryption.js retention` |
+| M1, M2, M3 | `node tools/security/review-uploads/abuse-limits.js on`; `… off` |
+| M4 | `node tools/security/review-uploads/availability.js memory`; `node tools/security/review-uploads/parser-abuse.js '500,000 random'` |
+| M5 | `node tools/security/review-uploads/retention-encryption.js encryption` |
+| L1 | `node tools/security/review-uploads/availability.js budget`; `… refused` |
+| L5, I2 | `node tools/security/review-uploads/availability.js keys` |
+| I1 | upload a cube named `Gehäuse.stl` and read `fileName` in the answer (seen: `GehÃ¤use.stl`; `支架.stl` came back as `æ¯æ¶.stl`) |
+| I3 | by reading: `server/parsers/fileParser.js:403-407` races a promise against a synchronous call |
 
 ### Launch blockers
 
