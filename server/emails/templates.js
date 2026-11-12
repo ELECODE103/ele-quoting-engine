@@ -227,6 +227,25 @@ function chargeRows(order) {
   return rows;
 }
 
+/**
+ * What was actually collected for an order paid by card. A promotion code lowers what Stripe
+ * collects but not the order total, so when a discount is on the order the two are stated
+ * side by side and never passed off as one (review F-17).
+ */
+function discountOf(order) {
+  const d = Number(order.discountAmount);
+  return Number.isFinite(d) && d > 0.004 ? d : 0;
+}
+function amountPaidOf(order) {
+  const paid = Number(order.amountPaid);
+  return discountOf(order) > 0 && Number.isFinite(paid) ? paid : Number(order.total) || 0;
+}
+/** The discount as a line under the charges, when there is one. */
+function discountRows(order) {
+  const d = discountOf(order);
+  return d > 0 ? [{ name: "Order total before the promotion code", amount: Number(order.total) || 0 }, { name: "Promotion code", detail: `${money(d)} off`, amount: null }] : [];
+}
+
 const DRAWING_NOTE = "We review drawings before cutting; we'll contact you before work starts if anything changes the price.";
 
 // ─── RFQ ───────────────────────────────────────────────────────
@@ -437,8 +456,8 @@ function orderConfirmation({ order, items, orderUrl }) {
       ...(order.paperwork ? ["You ordered the inspection paperwork: the first piece of each part number is measured against your drawing, and the report ships with the parts, with a signed certificate of conformance listing material and lot."] : []),
       ...(order.returnPart ? ["Your original part comes back in the box with the finished parts."] : []),
     ],
-    items: [...itemRows(items), ...chargeRows(order)],
-    total: { label: po ? "Order total" : "Total paid", value: money(order.total) },
+    items: [...itemRows(items), ...chargeRows(order), ...discountRows(order)],
+    total: { label: po ? "Order total" : "Total paid", value: money(po ? order.total : amountPaidOf(order)) },
     facts: [
       ["Order", shortId(order.id)],
       ["Ships by", formatShipBy(order.shipBy)],
@@ -471,7 +490,8 @@ function newOrderShop({ order, items, adminUrl, warning }) {
     facts: [
       ["Order", shortId(order.id)],
       [PAPERWORK_SHORT, order.paperwork ? (Number(order.paperworkFee) > 0 ? `ORDERED (${money(order.paperworkFee)})` : "ORDERED (in the quoted price)") : "Not ordered"],
-      ["Payment", po ? `PO ${order.poNumber} (not charged)` : "Card, paid"],
+      ["Payment", po ? `PO ${order.poNumber} (not charged)` : discountOf(order) > 0 ? `Card, ${money(amountPaidOf(order))} collected` : "Card, paid"],
+      ["Promotion code", discountOf(order) > 0 ? `${money(discountOf(order))} off the order total of ${money(order.total)}` : ""],
       ["Lead time", order.leadTimeName],
       ["Ships by", formatShipBy(order.shipBy)],
       ["Ship to", shipTo(order)],
@@ -618,5 +638,5 @@ module.exports = {
   esc, safeHref, greeting,
   layout, trackingUrl, shortId, money, DRAWING_NOTE,
   PAPERWORK_LABEL, PAPERWORK_SHORT, PAPERWORK_INCLUDED, PAPERWORK_NOT_INCLUDED, RETURN_INCLUDED, RETURN_NOT_INCLUDED, RETURN_REMINDER, PAPERWORK_REMINDER,
-  chargeRows, quoteCovers, isPartRequest,
+  chargeRows, quoteCovers, isPartRequest, discountOf, amountPaidOf,
 };

@@ -35,6 +35,8 @@ const { PAPERWORK_LABEL, quoteCovers } = require("../emails/templates");
 // Helvetica is WinAnsi-encoded: keep what it can print, replace what it cannot.
 const SWAPS = { "≤": "<=", "≥": ">=", "≈": "~", "⌀": "dia. ", "→": "->", "✓": "x", "‑": "-", " ": " ", " ": " " };
 const WINANSI_EXTRA = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
+// One line, whatever is stored: rows written before single-line fields were checked at the door can hold a line break.
+const { printable } = require("../middleware/singleLine");
 function clean(v) {
   if (v === null || v === undefined) return "";
   let out = "";
@@ -365,7 +367,7 @@ async function buildOrderConfirmationPdf({ order, items = [], customer, options 
   let y = header(doc);
   y = facts(doc, y, [
     ["Order date", fmtDate(order.createdAt)],
-    ["Your PO", order.poNumber],
+    ["Your PO", printable(order.poNumber)],
     ["Quote", order.quoteId ? docNumber("Q", order.quoteId) : ""],
     ["Lead time", order.leadTimeName],
     ["Ships by", options.shipBy || order.shipBy ? shipByText(options.shipBy || order.shipBy) : ""],
@@ -386,6 +388,9 @@ async function buildOrderConfirmationPdf({ order, items = [], customer, options 
     Number(order.shippingCost) > 0 ? ["Shipping", money(order.shippingCost)] : null,
     Number(order.tax) > 0 ? ["Sales tax", money(order.tax)] : null,
     ["Order total", money(order.total), true],
+    // A promotion code lowers what was collected, not the order total: both are stated.
+    ...(Number(order.discountAmount) > 0.004 ? [["Promotion code", `-${money(order.discountAmount)}`], ["Amount paid", money(Number(order.amountPaid) || 0), true]] : []),
+    Number(order.refundedAmount) > 0.004 ? ["Refunded", money(order.refundedAmount)] : null,
   ]);
   y = paragraph(doc, y, "Inspection paperwork", order.paperwork
     ? `${PAPERWORK_LABEL}: ordered${Number(order.paperworkFee) > 0 ? "" : ", included in the quoted price"}. The first piece of each part number is measured against your drawing and the report ships with the parts, with a signed certificate of conformance listing material and lot.`
@@ -405,7 +410,7 @@ async function buildPackingSlipPdf({ order, items = [], customer, options = {} }
   let y = header(doc);
   y = facts(doc, y, [
     ["Order", docNumber("SO", order.id)],
-    ["Your PO", order.poNumber],
+    ["Your PO", printable(order.poNumber)],
     ["Ship date", fmtDate(options.shipDate || order.shippedAt || new Date())],
     ["Ship via", [titleFromSlug(order.shippingMethod), order.trackingNumber].filter(Boolean).join(" · ")],
   ]);
@@ -449,7 +454,7 @@ async function buildCocPdf({ order, items = [], customer, options = {} } = {}) {
   y = facts(doc, y, [
     ["Date", fmtDate(options.date || new Date())],
     ["Order", docNumber("SO", order.id)],
-    ["Customer PO", order.poNumber || options.poNumber],
+    ["Customer PO", printable(order.poNumber || options.poNumber)],
     ["Ship date", options.shipDate || order.shippedAt ? fmtDate(options.shipDate || order.shippedAt) : ""],
   ]);
   y = parties(doc, y, [{ title: "Customer", lines: customerLines(customer).length ? customerLines(customer) : shipTo(order) }, { title: "Manufacturer", lines: shipFrom().concat(brand.email) }]);
