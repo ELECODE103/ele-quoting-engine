@@ -41,6 +41,8 @@ const PASSWORD = `Tt9-${crypto.randomBytes(9).toString("base64url")}`;
 async function start(opts = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "se-test-"));
   process.env.QUOTING_DB_PATH = path.join(tmp, "quoting.db");
+  // start({ seedDb: file }): begin on a copy of an existing database (a migration test), not an empty one.
+  if (opts.seedDb) fs.copyFileSync(opts.seedDb, process.env.QUOTING_DB_PATH);
   // Uploads, drawings and part payload files of a suite go to its own throwaway folder (removed by
   // h.stop()), not to the repository's data folder. A suite that set its own folder keeps it.
   if (!process.env.QUOTING_DATA_DIR) process.env.QUOTING_DATA_DIR = path.join(tmp, "data");
