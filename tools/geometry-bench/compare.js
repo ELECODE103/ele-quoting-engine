@@ -22,7 +22,7 @@ const { runMany, fmtMs } = require("./pool");
 
 /** Baseline sections of a case as parsed JSON, or null when only hashes were kept. */
 function baselineFull(id) {
-  for (const f of [path.join(lib.BASELINE_DIR, "snapshots", id + ".json.gz"), path.join(lib.CACHE_DIR, "full", id + ".json.gz")]) {
+  for (const f of [path.join(lib.BASELINE_DIR, "snapshots", id + ".json.gz"), path.join(lib.FULL_CACHE_DIR, id + ".json.gz")]) {
     if (fs.existsSync(f)) return JSON.parse(zlib.gunzipSync(fs.readFileSync(f)).toString("utf8"));
   }
   return null;

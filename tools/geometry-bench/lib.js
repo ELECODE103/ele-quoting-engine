@@ -24,8 +24,11 @@ const { Worker } = require("worker_threads");
 // (the baseline commit in a second worktree) so its results can be recorded with these same inputs.
 const ROOT = process.env.GEOMETRY_BENCH_ROOT ? path.resolve(process.env.GEOMETRY_BENCH_ROOT) : path.join(__dirname, "..", "..");
 const HERE = __dirname;
-const BASELINE_DIR = path.join(HERE, "baseline");
+// GEOMETRY_BENCH_BASELINE names another folder of recorded results (see baseline-step1/README.md).
+const BASELINE_DIR = process.env.GEOMETRY_BENCH_BASELINE ? path.resolve(process.env.GEOMETRY_BENCH_BASELINE) : path.join(HERE, "baseline");
 const CACHE_DIR = path.join(HERE, ".cache");
+// full results of large cases, kept on this machine only (one folder per baseline folder)
+const FULL_CACHE_DIR = path.join(CACHE_DIR, path.basename(BASELINE_DIR) === "baseline" ? "full" : "full-" + path.basename(BASELINE_DIR));
 const WORKER = path.join(ROOT, "server", "parsers", "parseWorker.js");
 
 const sha256 = (data) => crypto.createHash("sha256").update(data).digest("hex");
@@ -295,6 +298,6 @@ function select(cases, args) {
 }
 
 module.exports = {
-  ROOT, HERE, BASELINE_DIR, CACHE_DIR, STANDARD, QUANTITIES,
+  ROOT, HERE, BASELINE_DIR, CACHE_DIR, FULL_CACHE_DIR, STANDARD, QUANTITIES,
   sha256, canonical, inputFile, generatorKey, sections, digest, summarise, resourceFailure, pricingFingerprint, runInWorker, runInProcess, differences, short, parseArgs, select,
 };

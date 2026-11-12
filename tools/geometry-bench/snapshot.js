@@ -38,7 +38,7 @@ const MAX_COMMITTED_SNAPSHOT = 400 * 1024; // gzip bytes; a bigger result is kep
   let list = lib.select(cases, args);
   const indexFile = path.join(lib.BASELINE_DIR, "index.json");
   fs.mkdirSync(path.join(lib.BASELINE_DIR, "snapshots"), { recursive: true });
-  fs.mkdirSync(path.join(lib.CACHE_DIR, "full"), { recursive: true });
+  fs.mkdirSync(lib.FULL_CACHE_DIR, { recursive: true });
   // The index is re-read before every write so two recordings running at once (say, the large
   // cases in one shell and a single new case in another) do not overwrite each other's entries.
   const load = () => (fs.existsSync(indexFile) ? JSON.parse(fs.readFileSync(indexFile, "utf8")) : { cases: {} });
@@ -74,7 +74,7 @@ const MAX_COMMITTED_SNAPSHOT = 400 * 1024; // gzip bytes; a bigger result is kep
       }
       const gz = zlib.gzipSync(full, { level: 9 });
       const committed = c.size !== "large" && gz.length <= MAX_COMMITTED_SNAPSHOT;
-      const snap = path.join(lib.BASELINE_DIR, "snapshots", c.id + ".json.gz"), cache = path.join(lib.CACHE_DIR, "full", c.id + ".json.gz");
+      const snap = path.join(lib.BASELINE_DIR, "snapshots", c.id + ".json.gz"), cache = path.join(lib.FULL_CACHE_DIR, c.id + ".json.gz");
       if (committed) { fs.writeFileSync(snap, gz); fs.rmSync(cache, { force: true }); } else { fs.rmSync(snap, { force: true }); fs.writeFileSync(cache, gz); }
       save(c.id, { size: c.size, family: c.family, ext: c.ext, n: c.n, input: r.input, hash: r.hash, snapshot: committed, summary: r.summary, timing: r.timing, stages: r.stages });
       console.log(`[${done}/${list.length}] ${c.id.padEnd(38)} ${fmtMs(r.timing.wallMs).padStart(9)} wall ${fmtMs(r.timing.cpuMs).padStart(9)} cpu  heap ${String(r.timing.peakHeapMb).padStart(6)} MB  rss ${String(r.timing.peakRssMb).padStart(6)} MB  ${r.summary.status}${r.summary.code ? " " + r.summary.code : ""}`);
