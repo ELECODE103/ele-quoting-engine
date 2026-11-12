@@ -37,7 +37,7 @@ const MESSAGES = {
   "geometry-not-measurable": `We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (${brand.email}).`,
   "geometry-out-of-range": `This model's size doesn't come out as a real part: it is far larger than anything we make, or sits very far from the origin. Check the export units and upload again, or send it to us and we'll quote it by hand (${brand.email}).`,
   "geometry-too-small": `This model comes out smaller than anything we can hold or measure. Check the export units (millimetres or inches) and upload again, or send it to us and we'll quote it by hand (${brand.email}).`,
-  "too-thin-to-print": `This part is thinner than our printers can make it: its thinnest section comes out under half a millimetre. Thicken it, or send it to us and we'll look at how it could be made (${brand.email}).`,
+  "too-thin-to-print": `This part is too thin or too small for our printers to make it reliably. Thicken it, or send it to us and we'll look at how it could be made (${brand.email}).`,
 };
 
 /** An error both the upload path (worker → route) and the pricing path (route) know how to show. */
