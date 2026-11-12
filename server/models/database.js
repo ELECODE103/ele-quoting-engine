@@ -360,12 +360,49 @@ function saveToDisk() {
   if (!dbInstance) return;
   if (batchDepth > 0) { dirty = true; return; }
   const buffer = Buffer.from(dbInstance.export());
-  // Write beside the file and rename, so a crash mid-write cannot leave a
-  // half-written database behind.
-  const tmp = `${DB_PATH}.tmp`;
-  fs.writeFileSync(tmp, buffer);
-  fs.renameSync(tmp, DB_PATH);
+  writeDurably(DB_PATH, buffer);
   dirty = false;
+}
+
+/**
+ * Replace `file` with `buffer` so that neither a crash of this process nor a loss of power can
+ * leave a short, empty or half-written database:
+ *
+ *   1. write the bytes to a temporary file beside it        (a crash here leaves the old file whole)
+ *   2. fsync the temporary file                             (its bytes are on the disk, not in a cache)
+ *   3. rename it over the database                          (atomic: readers see the old file or the new)
+ *   4. fsync the folder                                     (the rename itself is on the disk)
+ *
+ * Steps 2 and 4 were missing until 2026-11-12: the rename was atomic but nothing was flushed, so a
+ * host crash at the wrong moment could leave the NEW name pointing at bytes that were never written.
+ * Measured cost of the two flushes per save on the build machine (ext4, under load): about 16 ms at
+ * 5 MB and 94 ms at 50 MB on top of the write itself (docs/security/relaunch-integration-2026-11-12.md).
+ *
+ * A file system that cannot flush a folder (Windows, some network mounts) is not an error: the
+ * file's own flush still happened. A flush of the FILE that fails is an error and is thrown — the
+ * old database is left in place rather than replaced by one that may not be on the disk.
+ */
+const FOLDER_FSYNC_UNSUPPORTED = new Set(["EISDIR", "EPERM", "EACCES", "EINVAL", "ENOTSUP", "ENOSYS", "EBADF"]);
+function writeDurably(file, buffer) {
+  const tmp = `${file}.tmp`;
+  const fd = fs.openSync(tmp, "w");
+  try {
+    let written = 0;
+    while (written < buffer.length) written += fs.writeSync(fd, buffer, written, buffer.length - written, written);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, file);
+  let dir = null;
+  try {
+    dir = fs.openSync(path.dirname(file), "r");
+    fs.fsyncSync(dir);
+  } catch (err) {
+    if (!FOLDER_FSYNC_UNSUPPORTED.has(err && err.code)) throw err;
+  } finally {
+    if (dir !== null) { try { fs.closeSync(dir); } catch (_) { /* nothing to do */ } }
+  }
 }
 
 /** Run `fn` with saves held back; write once at the end (even if `fn` throws). */
@@ -395,4 +432,4 @@ function getDatabase() {
   return dbInstance;
 }
 
-module.exports = { getDatabase, saveToDisk, batch, compact, fileSize, ready, DB_PATH, payloadMigration: () => payloadMigration };
+module.exports = { getDatabase, saveToDisk, writeDurably, batch, compact, fileSize, ready, DB_PATH, payloadMigration: () => payloadMigration };
