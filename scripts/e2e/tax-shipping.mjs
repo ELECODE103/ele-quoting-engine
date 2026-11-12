@@ -145,7 +145,7 @@ async function fillAddress(page, { pickup = false } = {}) {
 }
 /** Pay (the stubbed Stripe page is the return URL, already paid) and land on the paid order page. Returns the order id. */
 async function pay(page) {
-  await page.getByRole('button', { name: /Pay & Place Order/ }).click();
+  await page.getByRole('button', { name: /Pay and place order/ }).click();
   await page.waitForURL(/\/orders\/[0-9a-f-]{36}\?paid=true/, { timeout: 20000 });
   await page.getByRole('heading', { name: /^Order [0-9A-F]{8}$/ }).waitFor({ timeout: 20000 });
   await page.getByText('Payment received', { exact: false }).first().waitFor({ timeout: 20000 }).catch(() => {});
@@ -348,7 +348,7 @@ try {
     await buyer.getByLabel('Exemption reason').selectOption('resale');
     await fillAddress(buyer);
     // Without a certificate the server refuses.
-    await buyer.getByRole('button', { name: /Pay & Place Order/ }).click();
+    await buyer.getByRole('button', { name: /Pay and place order/ }).click();
     await buyer.getByText('Attach your exemption certificate', { exact: false }).waitFor({ timeout: 10000 });
     check('ticking the box without a certificate is refused', true);
     await buyer.getByLabel('Exemption certificate').setInputFiles(CERT);
