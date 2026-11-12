@@ -89,7 +89,7 @@ function optionsFor(quote, rules = currentRules(), destination = null) {
   }
   if (s.pickup) {
     const t = totalFor("pickup", q, ship);
-    options.push({ method: "pickup", title: "Pick up at our shop", detail: "No shipping charge. The pickup address and hours come with your order confirmation, after payment.", shippingText: "Pickup", available: true, unavailableReason: "", shippingCost: 0, total: t.total });
+    options.push({ method: "pickup", title: "Pick up at our shop", detail: "No shipping charge. The pickup address comes with your order confirmation, after payment.", shippingText: "Pickup", available: true, unavailableReason: "", shippingCost: 0, total: t.total });
   }
   return { options, ship, parts: q, carriers: shipping.CARRIERS };
 }
@@ -120,7 +120,8 @@ function gateWithShipping(gate, shipBlock, rules) {
   if (!shipBlock || !shipBlock.manual) return gate;
   const s = shipping.settings(rules);
   if (s.carrierAccount || s.pickup) return gate;
-  const reasons = [...(gate.reasons || []), { partId: null, code: "shipping-freight", message: shipBlock.reason }];
+  // Gate reasons are phrases the pages finish with their own full stop.
+  const reasons = [...(gate.reasons || []), { partId: null, code: "shipping-freight", message: String(shipBlock.reason || "").replace(/\.\s*$/, "") }];
   return { ...gate, requiresRfq: true, reasons };
 }
 
@@ -208,7 +209,7 @@ function firmView(rules = currentRules()) {
   const s = shipping.settings(rules);
   const options = [{ method: "ship", title: "Ship to my address", detail: "Shipping to your address is in the quoted price.", shippingText: "In the quoted price", available: true }];
   if (s.carrierAccount) options.push({ method: "carrier-account", title: "Ship on my carrier account", detail: "Give us your UPS or FedEx account number and we ship collect. The quoted price does not change.", shippingText: "On your account", available: true });
-  if (s.pickup) options.push({ method: "pickup", title: "Pick up at our shop", detail: "The pickup address and hours come with your order confirmation. The quoted price does not change.", shippingText: "Pickup", available: true });
+  if (s.pickup) options.push({ method: "pickup", title: "Pick up at our shop", detail: "We confirm the pickup address and a time with you. The quoted price does not change.", shippingText: "Pickup", available: true });
   return { options, showOptions: options.length > 1, carriers: shipping.CARRIERS, tax: tax.publicInfo(rules) };
 }
 

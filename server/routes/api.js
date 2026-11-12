@@ -873,6 +873,8 @@ router.delete("/quote/:id/drawing", optionalAuth, async (req, res) => {
 router.post(
   "/quote/:id/tax-certificate",
   optionalAuth,
+  // A file written to disk from an open route: the same verified-human gate as the quote's drawing (security/index.js).
+  require("../security/botGuard").requireHuman({ action: "quote" }),
   (req, res, next) => {
     const quote = readableQuote(req, res);
     if (!quote) return;
