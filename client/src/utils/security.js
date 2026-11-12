@@ -18,12 +18,20 @@ const TURNSTILE_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?ren
 const HUMAN_KEY = 'straightedge.human';
 const SCRIPT_TIMEOUT_MS = 12000;
 
+// The words for the states of the check that the server never sees (the script did not load, the
+// visitor closed it). What the server refuses is worded in utils/messageCatalogue.js.
 export const CHECK_BLOCKED_MESSAGE =
-  `The spam check didn't load. A content blocker or a firewall may be stopping challenges.cloudflare.com. Allow it and reload the page, or call ${brand.phone} or email ${brand.email} and we'll take it from there.`;
+  `The spam check didn't load, and we need it before we take anything in: it keeps junk out of the shop's inbox. A content blocker or an office firewall is the usual cause. Allow challenges.cloudflare.com and reload the page, or call ${brand.phone} or email ${brand.email} and we'll take it from there.`;
 
 /** Said next to the send button when a form cannot go because the check did not load. */
 export const CHECK_BLOCKED_SUBMIT =
-  `Nothing was sent: the spam check above didn't load, and this form needs it. Call ${brand.phone} or email ${brand.email} instead.`;
+  `Nothing was sent: the spam check above didn't load, and this form needs it. What you typed is still here. Call ${brand.phone} or email ${brand.email} instead.`;
+
+/** The check is on the page but has not finished. */
+export const CHECK_NOT_DONE = 'The spam check just above the button hasn\'t finished. Give it a moment (or tick its box if it shows one), then press the button again.';
+
+/** The quote tool's check was closed before it finished. */
+export const CHECK_CLOSED = 'The upload was stopped because the spam check was closed before it finished. Nothing was read. Add the file again when you are ready.';
 
 // ─── Config ───────────────────────────────────────────────────
 let configPromise = null;

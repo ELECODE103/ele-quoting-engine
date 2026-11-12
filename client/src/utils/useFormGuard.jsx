@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import HumanCheck from '../components/security/HumanCheck';
 import Honeypot from '../components/security/Honeypot';
-import { CHECK_BLOCKED_SUBMIT } from './security';
+import { CHECK_BLOCKED_SUBMIT, CHECK_NOT_DONE } from './security';
 
 const RETRY_CODES = ['form-expired', 'form-reused', 'form-token-missing', 'too-fast'];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -60,7 +60,7 @@ export default function useFormGuard(form, { enabled = true, action = form } = {
           // Usually the widget finishes on its own within a second or two of the page opening.
           for (let i = 0; i < 40 && !tokenRef.current && !['off', 'blocked', 'error'].includes(stateRef.current); i++) await wait(250);
           if (stateRef.current === 'blocked') throw new Error(CHECK_BLOCKED_SUBMIT);
-          if (stateRef.current !== 'off' && !tokenRef.current) throw new Error('Finish the spam check just above the button, then send it again.');
+          if (stateRef.current !== 'off' && !tokenRef.current) throw new Error(CHECK_NOT_DONE);
         }
       }
       let ft = formToken.current;
