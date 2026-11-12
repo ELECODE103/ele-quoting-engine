@@ -72,8 +72,10 @@ COPY tools/vet-quotes/parts ./tools/vet-quotes/parts
 COPY --from=build /app/client/dist ./client/dist
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # Fail the build, not the deploy, if a piece the server loads at run time is missing:
-# the two WebAssembly modules (database, STEP/IGES reader), the parse worker, the prerendered pages.
+# the tool and the user the entrypoint hands over with, the two WebAssembly modules (database,
+# STEP/IGES reader), the parse worker, the prerendered pages.
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh \
+ && command -v setpriv >/dev/null && id node >/dev/null \
  && test -f node_modules/sql.js/dist/sql-wasm.wasm \
  && test -f node_modules/occt-import-js/dist/occt-import-js.wasm \
  && test -f server/parsers/parseWorker.js \
