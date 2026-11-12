@@ -36,6 +36,14 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
   const REACH_CAP = `Call ${PHONE} or email ${EMAIL}`;
   const within = quoteTurnaround ? ` within ${quoteTurnaround}` : '';
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const dollars = (n) => `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // The name a buyer knows a field by, for refusals that say which field (`data.field`).
+  const FIELD_NAMES = {
+    name: 'Your name', contactName: 'Your name', customerName: 'Your name', company: 'The company name', phone: 'The phone number', email: 'The email address',
+    shippingName: 'The ship-to name', shippingCompany: 'The ship-to company', shippingAddress: 'The street address', shippingCity: 'The city', shippingState: 'The state', shippingZip: 'The ZIP code', shippingCountry: 'The country',
+    poNumber: 'The purchase order number', notes: 'The notes', customerNotes: 'The notes', quantities: 'The quantities', tolerance: 'The tolerance', finishNotes: 'The finish notes', dueDate: 'The date', quoteNote: 'The note on the quote', reason: 'The reason', note: 'The note',
+  };
+  const fieldName = (data) => FIELD_NAMES[data && data.field] || 'One of the fields';
 
   // ─── By code ────────────────────────────────────────────────
   // '*' is the wording wherever the code turns up; a context key overrides it.
@@ -125,6 +133,45 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'already-accepted': { '*': { text: `This quote has already been accepted, so there is nothing more to do here. Questions about the order: ${PHONE}.` } },
     'not-open': { '*': { text: `This quote is no longer open. ${REACH_CAP} and we'll sort it out.` } },
 
+    // Paying for an order, and the firm-quote link (codes from the order-lifecycle fixes, 2026-11-11)
+    'payment-session-busy': { '*': { text: `The card page that was opened for this order earlier is still closing, so we couldn't open a new one yet. Nothing was charged. Give it a minute and press the button again, or call ${PHONE}.`, action: 'retry' } },
+    'order-not-payable': { '*': { text: `This order can no longer be paid for from this page: it has been paid, cancelled or closed since the page was opened. Reload the page to see where it stands, or call ${PHONE}.`, action: 'reload' } },
+    'payments-unavailable': { '*': { text: `Card payment isn't available right now. That is a fault on our side, and nothing was charged. Try again in a few minutes, or call ${PHONE} and we'll take the order by phone.`, action: 'retry' } },
+    'card-unavailable': { '*': { text: `We couldn't open the card page. That is a fault on our side, and nothing was charged. Try again in a few minutes, or call ${PHONE} and we'll take the order by phone.`, action: 'retry' } },
+    'method-required': { '*': { text: 'Choose how you want to pay, by card or on a purchase order, then accept.' } },
+    'address-required': { '*': { text: 'Add the full ship-to address: name, street, city, state and ZIP.' } },
+    'quote-changed': {
+      '*': {
+        // The page shows the quote again with its current price; the buyer confirms that one.
+        text: ({ data }) => {
+          const now = [data && data.quotedTotal, data && data.total, data && data.orderTotal].map(Number).find((n) => Number.isFinite(n) && n > 0);
+          return `This quote has changed since this page was opened, so nothing was accepted and nothing was charged.${now ? ` The price is now ${dollars(now)}.` : ''} Check the price and the details below, and accept again if they are right. Questions: ${PHONE}.`;
+        },
+        action: 'reload',
+      },
+    },
+    'quote-not-payable': { '*': { text: `This quote has no price on it yet, so it can't be accepted. ${REACH_CAP} and we'll put it right.` } },
+    'quote-accepted': { '*': { text: 'This quote has been accepted, so its price and terms can no longer be changed. Send a new quote instead.' } },
+    'po-number-required': { '*': { text: 'Enter your purchase order number, so we can match the order to it.' } },
+    'po-number-invalid': { '*': { text: 'That purchase order number can\'t be used as typed. Use one line of letters, numbers and ordinary punctuation, 60 characters at most.' } },
+    'return-link-invalid': { '*': { text: `This page opens from the card page when a payment finishes, and the link that brought you here is incomplete or has run out. Your payment is not affected. Open the link in your quote email to see where the order stands, or call ${PHONE}.` } },
+    'confirm-failed': { '*': { text: `We couldn't confirm the payment with the card processor just now. That says nothing about the payment itself. Refresh in a minute; if it still isn't confirmed, call ${PHONE}.`, action: 'retry' } },
+    'order-not-found': { '*': { text: `We couldn't find that order on this account. If the link came from an email, sign in with the address the email went to, or call ${PHONE}.` } },
+    'transition-not-allowed': { '*': { text: 'An order can\'t make that change from where it is now.', keep: true } },
+    'reason-required': { '*': { text: 'Type a short reason (three characters or more): it goes in the order\'s history.', keep: true } },
+    'status-unknown': { '*': { text: 'That is not one of the states an order can be in.', keep: true } },
+
+    // A field refused by name (`data.field`): one line only, too long, not usable, or missing.
+    'field-single-line': { '*': { text: ({ data }) => `${fieldName(data)} has to be one line. Take out the line break (pasting from a document often brings one along) and send it again.` } },
+    'field-too-long': { '*': { text: ({ data }) => `${fieldName(data)} is longer than we can take${data && Number(data.max) > 0 ? ` (${Number(data.max)} characters at most)` : ''}. Shorten it and send it again.` } },
+    'field-invalid': { '*': { text: ({ data }) => `${fieldName(data)} can't be used as typed. Check it and send it again.` } },
+    'field-required': { '*': { text: ({ data }) => `${fieldName(data)} is needed. Fill it in and send it again.` } },
+
+    // Expected from the other fix branches (names may differ; an unknown code falls back by status, below).
+    'quote-too-large': { '*': { text: `This quote is larger than the instant quote handles. Send us the files and a person prices it${within}.`, keep: true, action: 'rfq' } },
+    'part-reupload-required': { '*': { text: 'We no longer hold what we measured from this file, so it can\'t be priced as it stands. Upload the file again and it is priced as before.', keep: true } },
+    'config-invalid': { '*': { text: 'That combination of options can\'t be priced as chosen. Change the material, finish or quantity, or ask for a firm quote and a person prices it.', keep: true, action: 'rfq' } },
+
     // Too many requests. One code covers a dozen different limits, so the wording goes by where it happened.
     'rate-limited': {
       '*': { text: `That is more requests than we take from one connection in a short time. Wait a few minutes and try again, or ${REACH}.` },
@@ -156,7 +203,9 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     },
     409: { '*': 'That has changed since this page was opened. Reload the page to see where it stands.' },
     410: { '*': 'That is no longer available. Upload the file again to start a new quote.' },
+    408: { '*': 'That took too long and we stopped waiting. Nothing was lost: try it again.' },
     413: { '*': `That is larger than we can take here. Send a smaller file, or email it to ${EMAIL}.` },
+    422: { '*': `We couldn't use that as it was sent. Check it and try again, or ${REACH}.` },
     415: { '*': `That didn't go through as sent. Reload the page and try again, or ${REACH}.` },
     429: { '*': BY_CODE['rate-limited']['*'].text },
     500: {
@@ -165,6 +214,7 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
       upload: `We couldn't read that upload, and the fault is on our side. Try again, or email the file to ${EMAIL}.`,
     },
     502: { '*': `We couldn't confirm that with the card processor yet. Nothing has gone wrong with your order: refresh in a minute, or call ${PHONE}.` },
+    504: { '*': `That took too long and we stopped waiting. Try again in a minute, or ${REACH}.` },
     503: {
       '*': `That part of the site isn't answering right now. Try again in a minute, or ${REACH}.`,
       checkout: `Card payment isn't available right now. That is a fault on our side. Call ${PHONE} and we'll take the order by phone.`,
@@ -194,7 +244,7 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     if (/^\/human\/verify/.test(p)) return 'upload';
     if (/^\/upload/.test(p) || /^\/parts\/[^/]+\/units/.test(p)) return 'upload';
     if (/^\/quote\/[^/]+\/drawing/.test(p)) return 'drawing';
-    if (/^\/rfq\/quote\//.test(p)) return 'firm-quote';
+    if (/^\/rfq\/(quote|return)\//.test(p)) return 'firm-quote';
     if (/^\/rfq/.test(p) && method !== 'GET') return 'rfq';
     if (/^\/orders\/checkout-session/.test(p)) return 'checkout';
     if (/^\/orders/.test(p)) return 'order';
@@ -242,9 +292,27 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     return { message: bucket[context] || bucket[FALLBACK_CONTEXT[context]] || bucket['*'], action: status === 401 ? 'sign-in' : null, source: 'status' };
   }
 
+  // ─── Order states the buyer's order page shows ──────────────
+  // Not refusals: the standing of an order after money has moved, or not moved. Worded here so
+  // the order page, the firm-quote page and anything else that shows an order say the same thing.
+  // `info`: { amount (dollars refunded), email (where we write to the buyer) }.
+  const ORDER_STATES = {
+    'payment-under-review': ({ email } = {}) => `We received a payment for this order and are checking it by hand before we confirm the order. You don't need to do anything. We'll write to ${email || 'you'} when it is settled. Questions: ${PHONE}.`,
+    expired: () => `This order was never paid for, so it has closed. Nothing was charged. Your quote is still there: go back to it to order, or call ${PHONE}.`,
+    refunded: ({ amount } = {}) => `We refunded this order${Number(amount) > 0 ? `: ${dollars(amount)} went back to the card it was paid with` : ' to the card it was paid with'}. A bank can take several days to show a refund. Questions: ${PHONE}.`,
+    'partially-refunded': ({ amount } = {}) => `We refunded ${Number(amount) > 0 ? dollars(amount) : 'part'} of this order to the card it was paid with. The rest of the order stands. A bank can take several days to show a refund.`,
+    disputed: () => `The bank behind the card has raised a question about this payment (a dispute). We answer the bank directly, and the order waits until it is settled. If you did not ask your bank about this charge, call ${PHONE}.`,
+    cancelled: () => `This order was cancelled and will not be made. If that is not what you expected, call ${PHONE}.`,
+  };
+  /** The sentence for an order state, or '' for one that needs no explaining (paid, in production, shipped…). */
+  function orderState(key, info) {
+    const say = ORDER_STATES[key];
+    return say ? say(info) : '';
+  }
+
   /** Every code and what the buyer reads for it, for the owner's review table. */
   function table() {
-    const sample = { data: { retryAfterSeconds: 14 * 60 }, serverMessage: '', minutes: 14, number: () => '' };
+    const sample = { data: { retryAfterSeconds: 14 * 60, field: 'shippingName' }, serverMessage: '', minutes: 14, number: () => '' };
     const rows = [];
     for (const [code, set] of Object.entries(BY_CODE)) {
       for (const [context, entry] of Object.entries(set)) {
@@ -256,6 +324,8 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     }
     return rows;
   }
+  /** The order states and their sentences, for the same table. */
+  const orderStateTable = () => Object.keys(ORDER_STATES).map((key) => ({ state: key, text: orderState(key, { amount: 120, email: 'the address on the order' }) }));
 
-  return { describe, contextFor, isDeveloperText, table, codes: Object.keys(BY_CODE) };
+  return { describe, contextFor, isDeveloperText, table, orderState, orderStateTable, codes: Object.keys(BY_CODE) };
 }

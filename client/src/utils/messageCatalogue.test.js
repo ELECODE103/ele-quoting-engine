@@ -83,6 +83,42 @@ test('a server sentence that names a count, a size or a date is kept; a develope
   assert.strictEqual(cat.describe({ status: 400, serverMessage: human, context: 'firm-quote' }).message, human, 'a sentence already written for the buyer passes through');
 });
 
+test('a refused field is named in the buyer\'s words; an unknown field still reads as a sentence', () => {
+  assert.ok(cat.describe({ status: 400, code: 'field-single-line', data: { field: 'poNumber' } }).message.startsWith('The purchase order number has to be one line.'));
+  assert.ok(cat.describe({ status: 400, code: 'field-too-long', data: { field: 'notes', max: 2000 } }).message.includes('(2000 characters at most)'));
+  assert.ok(cat.describe({ status: 400, code: 'field-required', data: { field: 'shippingZip' } }).message.startsWith('The ZIP code is needed.'));
+  assert.ok(cat.describe({ status: 400, code: 'field-invalid', data: { field: 'somethingNew' } }).message.startsWith('One of the fields can\'t be used as typed.'));
+  assert.ok(cat.describe({ status: 400, code: 'field-invalid' }).message.startsWith('One of the fields'));
+});
+
+test('a changed quote says nothing was accepted or charged, and gives the new price when the server sends it', () => {
+  const m = cat.describe({ status: 409, code: 'quote-changed', data: { quotedTotal: 4250 }, context: 'firm-quote' });
+  assert.ok(m.message.includes('nothing was accepted and nothing was charged') && m.message.includes('The price is now $4,250.00.'), m.message);
+  assert.strictEqual(m.action, 'reload');
+  assert.ok(!cat.describe({ status: 409, code: 'quote-changed', context: 'firm-quote' }).message.includes('The price is now'));
+});
+
+test('a code this file has never heard of still reads well: the server\'s sentence if it is a buyer\'s sentence, else the plain one for the status', () => {
+  const said = 'Upload this part again: we no longer hold its measurements.';
+  assert.strictEqual(cat.describe({ status: 409, code: 'something-new', serverMessage: said, context: 'quote' }).message, said);
+  for (const [status, context] of [[400, 'quote'], [409, 'checkout'], [413, 'upload'], [422, 'quote'], [429, 'upload'], [500, 'checkout'], [502, 'order'], [503, 'upload'], [504, 'quote']]) {
+    for (const serverMessage of ['', 'Invalid configuration payload', 'Request failed: 503']) {
+      const m = cat.describe({ status, code: 'something-new', serverMessage, context }).message;
+      assert.ok(m.length > 40 && /[.?]$/.test(m) && !NEVER.test(m), `${status} ${context}: "${m}"`);
+    }
+  }
+});
+
+test('order states are worded once: under review, refunded, partly refunded, disputed, expired, cancelled', () => {
+  const rows = cat.orderStateTable();
+  assert.deepStrictEqual(rows.map((r) => r.state), ['payment-under-review', 'expired', 'refunded', 'partially-refunded', 'disputed', 'cancelled']);
+  for (const r of rows) assert.ok(!NEVER.test(r.text) && /[.]$/.test(r.text), `${r.state}: ${r.text}`);
+  assert.ok(cat.orderState('refunded', { amount: 414.22 }).includes('$414.22 went back to the card'));
+  assert.ok(cat.orderState('partially-refunded', { amount: 60 }).startsWith('We refunded $60.00 of this order'));
+  assert.ok(cat.orderState('payment-under-review', { email: 'dana@buyer.test' }).includes('write to dana@buyer.test'));
+  assert.strictEqual(cat.orderState('paid'), '', 'a state that needs no explaining has no sentence');
+});
+
 test('no answer from the server (offline) reads as that, and keeps the buyer\'s work', () => {
   const m = cat.describe({ status: 0, context: 'rfq' }).message;
   assert.ok(/couldn't reach/.test(m) && /still here/.test(m), m);

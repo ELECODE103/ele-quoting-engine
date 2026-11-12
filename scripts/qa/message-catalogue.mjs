@@ -34,3 +34,7 @@ for (const r of cat.table()) {
   const text = r.keepsServerSentence ? `*(the server's own sentence when it names a number, size or date; otherwise:)* ${r.text}` : r.text;
   console.log(`| \`${cell(r.code)}\` | ${WHERE[r.where] || r.where} | ${cell(text)} | ${OFFERS[r.offers] || ''} |`);
 }
+
+console.log('\n| Order state | What the buyer reads on the order page |');
+console.log('|---|---|');
+for (const r of cat.orderStateTable()) console.log(`| ${r.state.replace(/-/g, ' ')} | ${cell(r.text)} |`);

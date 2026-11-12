@@ -11,4 +11,6 @@ const catalogue = createCatalogue(brand, { quoteTurnaround: fact('quote-turnarou
 
 export const describeRefusal = catalogue.describe;
 export const contextFor = catalogue.contextFor;
+/** The sentence for an order state (payment under review, refunded, partially refunded, disputed, expired, cancelled). */
+export const describeOrderState = catalogue.orderState;
 export default catalogue;
