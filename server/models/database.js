@@ -330,6 +330,10 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
     require("./accountMigration").apply(dbInstance);
     // Review fixes (2026-11-11): who uploaded a part; the used admin setup code. See ./integrityMigration.js.
     require("./integrityMigration").apply(dbInstance);
+    // Order lifecycle (2026-11-11): payment sessions and events, refunds, disputes, expiry. Additive; see ./orderLifecycleMigration.js.
+    require("./orderLifecycleMigration").apply(dbInstance);
+    // The admin change log: one table for both of the above (2026-11-12 merge). See ./auditMigration.js.
+    require("./auditMigration").apply(dbInstance);
 
     // Part payloads (2026-11-11): preview meshes and large geometry detail move out of the rows into
     // files under data/part-payloads. One batch in memory, VACUUM, then the single save below.

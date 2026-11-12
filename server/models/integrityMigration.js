@@ -4,7 +4,9 @@
  *   parts.user_id            the account that uploaded the part (null: uploaded without one)
  *   users.setup_code_mac     keyed hash of the ADMIN_SETUP_CODE that provisioned the admin
  *                            account, so the same code can never be used a second time
- *   admin_audit (table)      the admin change log
+ *
+ * (The admin change log table this file used to create is now models/auditMigration.js — one
+ * definition shared with the order-lifecycle work.)
  *
  * Nothing is backfilled: a part uploaded before this has no owner and is
  * reached with its edit key, exactly as an anonymous upload is.
@@ -24,22 +26,7 @@ function vetted(table, name, type) {
   }
 }
 
-// The admin change log (who changed what and when). Rows are only ever inserted (services/adminAudit.js).
-const ADMIN_AUDIT_TABLE = `
-  CREATE TABLE IF NOT EXISTS admin_audit (
-    id TEXT PRIMARY KEY,
-    user_id TEXT,
-    user_email TEXT,
-    area TEXT,
-    action TEXT,
-    target TEXT,
-    changes_json TEXT,
-    created_at TEXT,
-    updated_at TEXT
-  )`;
-
 function apply(db, columns = COLUMNS) {
-  db.run(ADMIN_AUDIT_TABLE);
   const added = [];
   for (const [table, name, type] of columns) {
     vetted(table, name, type);

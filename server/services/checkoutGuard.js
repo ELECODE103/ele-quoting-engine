@@ -55,39 +55,22 @@ function checkAgainst(item, part) {
 }
 
 /**
- * The Checkout session to send the buyer to for an unpaid order made from an
- * instant quote: the one the order already has, when Stripe says it is still
- * open, unpaid and for today's expected charge and the same return pages;
- * otherwise a new one (orderEvents.createCheckoutSession). A buyer who comes
- * back from Stripe and presses pay again — or a script that keeps asking —
- * gets the same session instead of a new one every time (F8).
+ * The Checkout session to send the buyer to for an unpaid order made from an instant quote (F8).
  *
- * If Stripe says the existing session has been paid, no second session is made:
- * `{ paid: true }` comes back and the caller sends the buyer to the order page,
- * where the payment is confirmed the usual way.
+ * Sessions are made in exactly one place: orderLifecycle.openSession (through
+ * orderEvents.createCheckoutSession → orderLifecycle.checkoutSession). That function already hands
+ * out the order's open session while it is still good — open at Stripe, made for today's
+ * expectedCharge(order), same return pages, same promotion-code setting, not about to expire —
+ * closes it at Stripe before making another, and settles the order instead when Stripe says the
+ * old session was paid. This used to do a lighter version of the same on its own; it now calls
+ * through, so there is one rule and never two payable pages.
  *
- * @returns {Promise<{session: object|null, reused: boolean, paid: boolean}>}
+ * @returns {Promise<{session: object, reused: boolean, paid: boolean}>} `paid`: Stripe had the
+ *   earlier session as paid; the order was settled and `session.url` is the success page.
  */
 async function sessionFor(order, opts) {
-  const stripeClient = require("./stripeClient");
-  const orderEvents = require("./orderEvents");
-  const { expectedCharge } = require("./expectedCharge");
-  const stripe = stripeClient.get();
-  if (stripe && order.stripeSessionId) {
-    let existing = null;
-    try { existing = await stripe.checkout.sessions.retrieve(order.stripeSessionId); } catch { existing = null; }
-    if (existing && existing.payment_status === "paid") return { session: existing, reused: true, paid: true };
-    if (existing && typeof existing.url === "string" && existing.url) {
-      const open = (existing.status === undefined || existing.status === null || existing.status === "open")
-        && (!existing.expires_at || existing.expires_at * 1000 > Date.now() + 5 * 60 * 1000);
-      const amount = existing.amount_subtotal ?? existing.amount_total;
-      const sameAmount = Number.isInteger(amount) && amount === expectedCharge(order).cents;
-      const samePages = (existing.success_url === undefined || existing.success_url === opts.successUrl)
-        && (existing.cancel_url === undefined || existing.cancel_url === opts.cancelUrl);
-      if (open && sameAmount && samePages) return { session: existing, reused: true, paid: false };
-    }
-  }
-  return { session: await orderEvents.createCheckoutSession(order, opts), reused: false, paid: false };
+  const session = await require("./orderEvents").createCheckoutSession(order, opts);
+  return { session, reused: Boolean(session && session.reused), paid: Boolean(session && session.alreadyPaid) };
 }
 
 module.exports = { limiter, resetForTests, pricedSnapshot, checkAgainst, sessionFor, WINDOW_MS };

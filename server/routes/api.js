@@ -15,7 +15,7 @@ const calibration = require("../services/calibration");
 const { activeProcesses } = require("../processes/registry");
 const quoteIntegrity = require("../services/quoteIntegrity"); // the whitelist, the price floor and the fingerprint every price passes through
 const partAccess = require("../security/partAccess");        // who may use an uploaded part
-const adminAudit = require("../services/adminAudit");        // append-only log of admin changes
+const audit = require("../services/audit");                  // the one append-only admin change log
 const { authenticate, optionalAuth, requireAdmin } = require("./auth");
 const { sanitizeString, isValidSlug, isValidUUID, nonNegativeNumber, positiveInt } = require("../middleware/validate");
 const shipBy = require("../services/shipBy");
@@ -1150,7 +1150,7 @@ router.put("/admin/materials/:id", authenticate, requireAdmin, (req, res) => {
   if (problem) return res.status(400).json({ error: problem, code: "price-required" });
   const updated = materialsDB.update(req.params.id, v.values);
   if (!updated) return res.status(404).json({ error: "Material not found" });
-  adminAudit.record(req.user, { area: "material", action: "update", target: updated.slug, changes: adminAudit.diff(before, updated, MATERIAL_AUDIT_FIELDS) });
+  audit.record({ actor: req.user, area: "material", action: "update", target: updated.slug, changes: audit.diff(before, updated, MATERIAL_AUDIT_FIELDS) });
   res.json(updated);
 });
 
@@ -1161,7 +1161,7 @@ router.post("/admin/materials", authenticate, requireAdmin, (req, res) => {
   const problem = materialPriceProblem(v.values);
   if (problem) return res.status(400).json({ error: problem, code: "price-required" });
   const material = materialsDB.insert({ active: false, ...v.values });
-  adminAudit.record(req.user, { area: "material", action: "create", target: material.slug, changes: adminAudit.diff({}, material, MATERIAL_AUDIT_FIELDS) });
+  audit.record({ actor: req.user, area: "material", action: "create", target: material.slug, changes: audit.diff({}, material, MATERIAL_AUDIT_FIELDS) });
   res.status(201).json(material);
 });
 
@@ -1178,7 +1178,7 @@ router.post("/admin/materials/:id/duplicate", authenticate, requireAdmin, (req, 
   let slug = `${src.slug}-copy`;
   for (let n = 2; taken.has(slug); n++) slug = `${src.slug}-copy-${n}`;
   const copy = materialsDB.insert({ ...rest, slug, name: `${src.name} (copy)`, active: false });
-  adminAudit.record(req.user, { area: "material", action: "duplicate", target: copy.slug, changes: { from: [null, src.slug] } });
+  audit.record({ actor: req.user, area: "material", action: "duplicate", target: copy.slug, changes: { from: [null, src.slug] } });
   res.status(201).json(copy);
 });
 
@@ -1186,7 +1186,7 @@ router.delete("/admin/materials/:id", authenticate, requireAdmin, (req, res) => 
   const gone = materialsDB.getById(req.params.id);
   const deleted = materialsDB.delete(req.params.id);
   if (!deleted) return res.status(404).json({ error: "Material not found" });
-  adminAudit.record(req.user, { area: "material", action: "delete", target: gone ? gone.slug : req.params.id, changes: gone ? { pricePerKg: [gone.pricePerKg ?? null, null], pricePerCm3: [gone.pricePerCm3 ?? null, null] } : {} });
+  audit.record({ actor: req.user, area: "material", action: "delete", target: gone ? gone.slug : req.params.id, changes: gone ? { pricePerKg: [gone.pricePerKg ?? null, null], pricePerCm3: [gone.pricePerCm3 ?? null, null] } : {} });
   res.json({ success: true });
 });
 
@@ -1203,7 +1203,7 @@ router.put("/admin/finishes/:id", authenticate, requireAdmin, (req, res) => {
   const before = finishesDB.getById(req.params.id);
   const updated = finishesDB.update(req.params.id, v.values);
   if (!updated) return res.status(404).json({ error: "Finish not found" });
-  adminAudit.record(req.user, { area: "finish", action: "update", target: updated.slug, changes: adminAudit.diff(before, updated, FINISH_FIELDS) });
+  audit.record({ actor: req.user, area: "finish", action: "update", target: updated.slug, changes: audit.diff(before, updated, FINISH_FIELDS) });
   res.json(updated);
 });
 
@@ -1212,7 +1212,7 @@ router.post("/admin/finishes", authenticate, requireAdmin, (req, res) => {
   if (!v.ok) return res.status(400).json({ error: v.error });
   if (!v.values.name || !v.values.slug) return res.status(400).json({ error: "name and slug are required" });
   const finish = finishesDB.insert(v.values);
-  adminAudit.record(req.user, { area: "finish", action: "create", target: finish.slug, changes: adminAudit.diff({}, finish, FINISH_FIELDS) });
+  audit.record({ actor: req.user, area: "finish", action: "create", target: finish.slug, changes: audit.diff({}, finish, FINISH_FIELDS) });
   res.status(201).json(finish);
 });
 
@@ -1227,7 +1227,7 @@ router.post("/admin/finishes", authenticate, requireAdmin, (req, res) => {
 /** A rate-card change in the admin change log: which rules moved (the values and the note are in the pricing history). */
 function logRateCard(user, action, result) {
   if (!result || !result.audit) return;
-  adminAudit.record(user, { area: "rate-card", action, target: "pricing rules", changes: { rules: [null, Object.keys(result.audit.diff || {}).slice(0, 40).join(", ")] } });
+  audit.record({ actor: user, area: "rate-card", action, target: "pricing rules", changes: { rules: [null, Object.keys(result.audit.diff || {}).slice(0, 40).join(", ")] } });
 }
 
 router.get("/admin/pricing/schema", authenticate, requireAdmin, (req, res) => {
@@ -1360,7 +1360,7 @@ router.put("/admin/lead-times/:id", authenticate, requireAdmin, (req, res) => {
   const updated = leadTimesDB.update(req.params.id, v.values);
   if (!updated) return res.status(404).json({ error: "Lead time not found" });
   loadPricingRules(); // the engine and the lead-time records agree from this request on
-  adminAudit.record(req.user, { area: "lead-time", action: "update", target: updated.slug, changes: adminAudit.diff(before, updated, LEAD_TIME_FIELDS.filter((f) => f !== "description")) });
+  audit.record({ actor: req.user, area: "lead-time", action: "update", target: updated.slug, changes: audit.diff(before, updated, LEAD_TIME_FIELDS.filter((f) => f !== "description")) });
   res.json(leadTimesDB.getById(req.params.id));
 });
 
@@ -1395,14 +1395,14 @@ router.post("/admin/quotes/void-open", authenticate, requireAdmin, (req, res) =>
       voided++;
     }
   });
-  adminAudit.record(req.user, { area: "quotes", action: "void-open", target: "open quotes", changes: { voided: [null, voided], ...(note ? { note: [null, note] } : {}) } });
+  audit.record({ actor: req.user, area: "quotes", action: "void-open", target: "open quotes", changes: { voided: [null, voided] }, note });
   res.json({ voided });
 });
 
 /** GET /api/admin/audit — the admin change log, newest first: who changed what and when. */
 router.get("/admin/audit", authenticate, requireAdmin, (req, res) => {
   res.set("Cache-Control", "no-store");
-  res.json(adminAudit.list({ limit: req.query.limit }).map(({ id, createdAt, userEmail, area, action, target, changes }) => ({ id, createdAt, userEmail, area, action, target, changes })));
+  res.json(audit.list({ limit: req.query.limit }).map(({ id, createdAt, userEmail, area, action, target, changes, note }) => ({ id, createdAt, userEmail, area, action, target, changes: changes || {}, note: note || null })));
 });
 
 router.get("/admin/stats", authenticate, requireAdmin, (req, res) => {
@@ -1415,7 +1415,9 @@ router.get("/admin/stats", authenticate, requireAdmin, (req, res) => {
     // Fulfilled order statuses — money we actually got (or will get on shipment)
     const PAID_STATUSES = ["paid", "received", "in_production", "quality_check", "packing", "shipped", "delivered"];
     const paidOrders = orders.filter((o) => PAID_STATUSES.includes(o.status));
-    const paidRevenue = paidOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+    // What was collected, not what was listed: after a promotion code (amountPaid) and less anything refunded.
+    const collected = (o) => (o.amountPaid !== null && o.amountPaid !== undefined ? Number(o.amountPaid) || 0 : o.total || 0) - (Number(o.refundedAmount) || 0);
+    const paidRevenue = paidOrders.reduce((sum, o) => sum + Math.max(0, collected(o)), 0);
 
     // Open pipeline: draft quotes waiting to be purchased
     const openQuotes = quotes.filter((q) => q.status === "draft").length;

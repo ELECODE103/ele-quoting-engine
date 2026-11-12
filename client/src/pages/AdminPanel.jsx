@@ -8,6 +8,7 @@ import MaterialsEditor from '../components/admin/MaterialsEditor';
 import CalibrationTab from '../components/admin/CalibrationTab';
 import SecurityTab from '../components/admin/SecurityTab';
 import ChangeLogTab from '../components/admin/ChangeLogTab';
+import { OrderFlags, PaymentStatus } from '../components/admin/OrderPayment';
 import { useAuth } from '../utils/authContext';
 import '../styles/admin.css';
 
@@ -165,6 +166,7 @@ function AdminConsole() {
       </div>
 
       {/* ─── ORDERS TAB ─── */}
+      {tab === 'orders' && <PaymentStatus orders={orders} />}
       {tab === 'orders' && (
         <div className="card" style={{ overflow: 'hidden' }}>
           {orders.length === 0 ? (
@@ -249,8 +251,9 @@ function AdminConsole() {
                       </td>
                       <td style={{ padding: '10px 14px' }}>
                         <span style={{ color: statusColor, fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>
-                          {o.status.replace(/_/g, ' ')}
+                          {o.status === 'expired' ? 'not paid, closed' : o.status.replace(/_/g, ' ')}
                         </span>
+                        <OrderFlags order={o} />
                       </td>
                       <td style={{ padding: '10px 14px' }}>
                         {next && (

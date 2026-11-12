@@ -106,7 +106,10 @@ const SHIP = { shippingName: "Pat", shippingAddress: "1 Main St", shippingCity: 
     const q = await quote();
     const co = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP, shippingName: "Customer Name Here" }, buyer);
     assert.strictEqual(co.status, 200, co.text);
-    assert.strictEqual((await h.put(`/api/orders/${co.body.orderId}/status`, { status: "paid", notes: "customer said: call me on 555-0100" }, owner)).status, 200);
+    // (merge 2026-11-12) Marking an unpaid order paid by hand now needs a typed reason (order state machine,
+    // services/orderState.js): without one it is refused and nothing is logged.
+    assert.deepStrictEqual([(await h.put(`/api/orders/${co.body.orderId}/status`, { status: "paid", notes: "customer said: call me on 555-0100" }, owner)).body.code], ["reason-required"]);
+    assert.strictEqual((await h.put(`/api/orders/${co.body.orderId}/status`, { status: "paid", reason: "cheque 1042 banked", paidVia: "cheque", notes: "customer said: call me on 555-0100" }, owner)).status, 200);
     assert.strictEqual((await h.put(`/api/orders/${co.body.orderId}/status`, { status: "shipped", trackingNumber: "1Z999", carrier: "UPS" }, owner)).status, 200);
     await h.post("/api/admin/quotes/void-open", { note: "after the margin change" }, owner);
 
@@ -118,8 +121,16 @@ const SHIP = { shippingName: "Pat", shippingAddress: "1 Main St", shippingCity: 
     assert.ok(find("rate-card", "save").some((e) => /marginPercent/.test(e.changes.rules[1])));
     assert.ok(find("rate-card", "save").some((e) => /rushMultipliers/.test(e.changes.rules[1])), "the multiplier edit is a rate-card change too");
     assert.deepStrictEqual([find("material", "create").length, find("material", "delete").length], [1, 1]);
-    assert.deepStrictEqual(find("order", "status").map((e) => e.changes.status), [["pending_payment", "paid"], ["paid", "shipped"]], "an order marked paid by hand is on record");
-    assert.deepStrictEqual(find("order", "status")[1].changes.tracking, [null, "set"]);
+    // (merge 2026-11-12) One change log: order moves carry the state machine's action names
+    // ("order.mark-paid" when the owner vouches for a payment, "order.status" for the shop's steps).
+    const orderMoves = entries.filter((e) => e.area === "order");
+    assert.deepStrictEqual(orderMoves.map((e) => [e.action, e.changes.status]), [["order.mark-paid", ["pending_payment", "paid"]], ["order.status", ["paid", "shipped"]]], "an order marked paid by hand is on record");
+    assert.deepStrictEqual(orderMoves[0].changes.paidVia, [null, "cheque"]);
+    assert.strictEqual(orderMoves[0].note, "cheque 1042 banked", "the owner's own reason is kept with it");
+    assert.deepStrictEqual(orderMoves[1].changes.tracking, [null, "set"]);
+    assert.deepStrictEqual(orderMoves[1].changes.carrier, [null, "UPS"]);
+    assert.ok(orderMoves.every((e) => e.entityId === co.body.orderId && e.target === co.body.orderId.slice(0, 8).toUpperCase()));
+    assert.strictEqual(find("quotes", "void-open")[0].note, "after the margin change");
     assert.strictEqual(find("quotes", "void-open").length, 1);
     for (const e of entries) {
       assert.strictEqual(e.userEmail, process.env.ADMIN_EMAIL, "who");
@@ -131,7 +142,7 @@ const SHIP = { shippingName: "Pat", shippingAddress: "1 Main St", shippingCity: 
     const shown = await h.get("/api/admin/audit", owner);
     assert.strictEqual(shown.status, 200);
     assert.ok(shown.body.length >= entries.length && shown.body[0].createdAt >= shown.body[shown.body.length - 1].createdAt, "newest first");
-    assert.deepStrictEqual(Object.keys(shown.body[0]).sort(), ["action", "area", "changes", "createdAt", "id", "target", "userEmail"]);
+    assert.deepStrictEqual(Object.keys(shown.body[0]).sort(), ["action", "area", "changes", "createdAt", "id", "note", "target", "userEmail"]); // `note`: the admin's typed reason (merge 2026-11-12)
     assert.strictEqual((await h.get("/api/admin/audit", buyer)).status, 403);
     assert.strictEqual((await h.raw("GET", "/api/admin/audit", {})).status, 401);
     const count = log().length;
@@ -139,7 +150,10 @@ const SHIP = { shippingName: "Pat", shippingAddress: "1 Main St", shippingCity: 
       assert.strictEqual((await h.raw(method, url, { json: {}, token: owner })).status, 404, `${method} ${url}`);
     }
     assert.strictEqual(log().length, count);
-    assert.deepStrictEqual(Object.keys(require("../services/adminAudit")).sort(), ["diff", "list", "record"], "the module can only add and read");
+    // (merge 2026-11-12) services/adminAudit.js and the lifecycle branch's services/audit.js are one module now.
+    assert.deepStrictEqual(Object.keys(require("../services/audit")).sort(), ["diff", "list", "record"], "the module can only add and read");
+    assert.ok(!require("fs").existsSync(require("path").join(__dirname, "..", "services", "adminAudit.js")), "there is one change-log module, not two");
+    assert.strictEqual(require("../models/lifecycleStore").adminAuditDB, adminAuditDB, "and one store");
     assert.strictEqual(ordersDB.getById(co.body.orderId).status, "shipped");
     await h.post("/api/admin/pricing/reset", { note: "test: defaults" }, owner);
   });

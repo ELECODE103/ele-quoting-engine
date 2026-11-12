@@ -419,14 +419,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       assert.strictEqual(r.status, 400, JSON.stringify(email));
     }
     assert.strictEqual(h.sent.length, 0);
-    const r = await rfq({
+    const typed = {
       contactName: "Dana\r\nBcc: victim@x.test",
       email: "dana@oem.test",
       company: "<script>alert(1)</script>Co\r\nSubject: hijacked",
       phone: "\"><img src=x onerror=alert(1)>",
       notes: "<a href=\"https://evil.example\">click</a>\r\nline two",
       quantities: "5 <b>bold</b>",
-    }, { headers: passed() });
+    };
+    // A line break in the name or the company is refused at the door (it used to be turned into a space):
+    // nothing is stored and nobody is emailed.
+    const rows = rfqsDB.getAll().length;
+    for (const [field, body] of [["contactName", typed], ["company", { ...typed, contactName: "Dana Bcc: victim@x.test" }]]) {
+      const refused = await rfq(body, { headers: passed() });
+      assert.deepStrictEqual([refused.status, refused.body.code, refused.body.field], [400, "field-single-line", field], refused.text);
+    }
+    assert.deepStrictEqual([rfqsDB.getAll().length, h.sent.length], [rows, 0]);
+    fresh();
+    // The same hostile text on one line each is taken, as text.
+    const r = await rfq({ ...typed, contactName: "Dana Bcc: victim@x.test", company: "<script>alert(1)</script>Co Subject: hijacked" }, { headers: passed() });
     assert.strictEqual(r.status, 201, r.text);
     const row = rfqsDB.getById(r.body.rfqId);
     assert.ok(!/[\r\n]/.test(row.contactName), "a name is one line");

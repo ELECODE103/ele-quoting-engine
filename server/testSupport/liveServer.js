@@ -23,8 +23,10 @@
  * Turnstile has no keys here (the bot check is "off", as in production before
  * the owner sets them) unless a test passes its own.
  *
- * Secrets: JWT_SECRET and the Stripe key are random throwaway strings made
- * here at run time; nothing real is ever used and nothing is written down.
+ * Secrets: JWT_SECRET, the Stripe key and the webhook signing secret are random
+ * throwaway strings made here at run time; nothing real is ever used and nothing
+ * is written down. Pass `env: { STRIPE_WEBHOOK_SECRET: "" }` to start without one
+ * (production then refuses to start, which is what such a test is checking).
  */
 const { spawn } = require("child_process");
 const crypto = require("crypto");
@@ -108,6 +110,8 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
     QUOTING_DATA_DIR: dataDir,
     JWT_SECRET: crypto.randomBytes(32).toString("hex"),
     STRIPE_SECRET_KEY: `sk_test_${crypto.randomBytes(16).toString("hex")}`,
+    // Production does not start without a webhook signing secret. A throwaway one, made here; `s.webhookSecret` signs with it.
+    STRIPE_WEBHOOK_SECRET: `whsec_${crypto.randomBytes(24).toString("hex")}`,
     ADMIN_EMAIL: adminEmail,
     FRONTEND_URL: `http://127.0.0.1:${port}`,
     // Every message the server would send is also written here, so a test can open an emailed link.
@@ -118,7 +122,7 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
     ADMIN_SETUP_CODE: `setup-${crypto.randomBytes(18).toString("base64url")}`,
     ...env,
   };
-  for (const k of ["EMAIL_API_KEY", "EMAIL_FROM", "STRIPE_WEBHOOK_SECRET", "HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY", "ADMIN_RECOVERY", "STRIPE_WEBHOOK_ALLOW_UNSIGNED"]) if (!(k in env)) delete childEnv[k];
+  for (const k of ["EMAIL_API_KEY", "EMAIL_FROM", "STRIPE_PROMOTION_CODES", "CHECKOUT_SESSION_MINUTES", "HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY", "ADMIN_RECOVERY", "STRIPE_WEBHOOK_ALLOW_UNSIGNED"]) if (!(k in env)) delete childEnv[k];
   if (!("NORD_FILE_ENC_KEY" in env)) delete childEnv.NORD_FILE_ENC_KEY;
   if (!("NORD_FILE_ENC_KEY_PREVIOUS" in env)) delete childEnv.NORD_FILE_ENC_KEY_PREVIOUS;
 
@@ -144,6 +148,7 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
   const s = {
     port, tmp, dataDir, adminEmail, child,
     setupCode: childEnv.ADMIN_SETUP_CODE,
+    webhookSecret: childEnv.STRIPE_WEBHOOK_SECRET,
     base: `http://127.0.0.1:${port}`,
     exited: () => exited,
     log: () => output,

@@ -4,6 +4,12 @@ import PublicLayout from '../components/PublicLayout';
 import { api } from '../utils/api';
 import { formatCurrency, formatDate, formatShipDate, orderStatusLabel } from '../utils/format';
 import brand, { PROCESS_LABELS } from '../brand';
+import { QUOTE_LINK_KEY } from './FirmQuoteReturnPage';
+
+/** Remember this quote's link in this tab, so the page the card processor returns to can come back here. */
+function rememberLink(token) {
+  try { window.sessionStorage.setItem(QUOTE_LINK_KEY, token); } catch { /* storage switched off: the return page shows the order's status itself */ }
+}
 
 /**
  * The firm quote behind the link we email when an RFQ is quoted. No account:
@@ -48,11 +54,14 @@ export default function FirmQuotePage() {
     if (method === 'po' && !form.poNumber.trim()) return setError('Enter your purchase order number.');
     setBusy(true);
     try {
-      const r = await api.acceptFirmQuote(token, { method, ...form });
-      if (r.sessionUrl) { window.location.href = r.sessionUrl; return; }
+      // The total on screen goes with the acceptance: if the quote's price is no longer that, nothing is ordered.
+      const r = await api.acceptFirmQuote(token, { method, ...form, seenTotal: quote.linkAmount ?? quote.quotedTotal });
+      if (r.sessionUrl) { rememberLink(token); window.location.href = r.sessionUrl; return; }
       await load();
       window.scrollTo(0, 0);
     } catch (err) {
+      // The quote changed while this page was open: show what it says now.
+      if (err.code === 'quote-changed') { setLoadError(err); return; }
       setError(err.message || `That didn't go through. Call ${brand.phone} and we'll take it by phone.`);
     }
     setBusy(false);
@@ -63,8 +72,10 @@ export default function FirmQuotePage() {
     setError('');
     try {
       const r = await api.acceptFirmQuote(token, { method: 'card' });
-      if (r.sessionUrl) { window.location.href = r.sessionUrl; return; }
+      if (r.sessionUrl) { rememberLink(token); window.location.href = r.sessionUrl; return; }
     } catch (err) {
+      // Paid or closed in the meantime: show the page as it is now.
+      if (err.code === 'already-accepted') { await load(); setBusy(false); return; }
       setError(err.message);
     }
     setBusy(false);
@@ -72,12 +83,13 @@ export default function FirmQuotePage() {
 
   if (loadError) {
     const expired = loadError.code === 'quote-expired';
+    const changed = loadError.code === 'quote-changed';
     return (
-      <PublicLayout title={expired ? 'Quote expired' : 'Quote link'}>
+      <PublicLayout title={expired ? 'Quote expired' : changed ? 'Quote updated' : 'Quote link'}>
         <section className="section">
           <div className="pub-wrap" style={{ maxWidth: 680 }}>
             <div className="eyebrow" style={{ marginBottom: 14 }}>Firm quote</div>
-            <h1 className="display" style={{ marginBottom: 16 }}>{expired ? 'This quote has expired.' : "This link can't be opened."}</h1>
+            <h1 className="display" style={{ marginBottom: 16 }}>{expired ? 'This quote has expired.' : changed ? 'This quote has been updated.' : "This link can't be opened."}</h1>
             <p className="lede" role="alert" style={{ marginBottom: 24 }}>{loadError.message}</p>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <a className="btn btn-primary" href={`mailto:${brand.email}?subject=${encodeURIComponent('Refresh my quote')}`}>Email {brand.email}</a>
@@ -99,8 +111,11 @@ export default function FirmQuotePage() {
 
   const order = quote.order;
   const accepted = quote.status === 'accepted';
-  const awaitingCard = accepted && order?.status === 'pending_payment';
+  const underReview = Boolean(order?.paymentUnderReview);
+  const awaitingCard = accepted && order?.status === 'pending_payment' && !underReview;
   const days = quote.quotedLeadDays;
+  // The amount this link was sent for. The server refuses the link if the quote no longer matches it.
+  const price = quote.linkAmount ?? quote.quotedTotal;
 
   return (
     <PublicLayout title="Your firm quote">
@@ -111,7 +126,13 @@ export default function FirmQuotePage() {
             <div>
               <div className="eyebrow" style={{ marginBottom: 14 }}>Firm quote · {quote.reference}</div>
               <h1 className="display" style={{ fontSize: 36, marginBottom: 14 }}>
-                {accepted ? (awaitingCard ? 'Accepted. Payment is the last step.' : 'Order in. Thank you.') : `${formatCurrency(quote.quotedTotal)}, firm.`}
+                {accepted
+                  ? (awaitingCard ? 'Accepted. Payment is the last step.'
+                    : underReview ? "We're checking your payment."
+                    : order?.status === 'refunded' ? 'This order was refunded.'
+                    : order?.status === 'cancelled' ? 'This order was cancelled.'
+                    : 'Order in. Thank you.')
+                  : `${formatCurrency(price)}, firm.`}
               </h1>
               <p className="lede" style={{ marginBottom: 24 }}>
                 {accepted
@@ -137,7 +158,7 @@ export default function FirmQuotePage() {
                 ))}
                 <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '8px 16px', marginTop: 14, fontSize: 13 }}>
                   <dt style={{ color: 'var(--text-dim)' }}>Price</dt>
-                  <dd style={{ textAlign: 'right', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>{formatCurrency(quote.quotedTotal)}</dd>
+                  <dd style={{ textAlign: 'right', fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>{formatCurrency(price)}</dd>
                   <dt style={{ color: 'var(--text-dim)' }}>Lead time</dt>
                   <dd style={{ textAlign: 'right' }}>{days} business day{days === 1 ? '' : 's'}</dd>
                   <dt style={{ color: 'var(--text-dim)' }}>{order ? 'Ships by' : 'Ships by, if accepted today'}</dt>
@@ -170,9 +191,36 @@ export default function FirmQuotePage() {
                         Payment received. A confirmation is on its way to {quote.email}.
                       </p>
                     )}
-                    <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 10 }}>
-                      {order.shippedAt ? `Shipped ${formatDate(order.shippedAt)}.` : `Ships by ${formatShipDate(order.shipBy, { year: true })}.`}
-                    </p>
+                    {underReview && (
+                      <p role="status" style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        We received a payment for this order and need to look at it before we confirm the order. We'll email {quote.email} today. Questions: {brand.phone}.
+                      </p>
+                    )}
+                    {order.discountAmount > 0 && order.amountPaid !== null && (
+                      <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        Promotion code: {formatCurrency(order.discountAmount)} off. You paid {formatCurrency(order.amountPaid)}.
+                      </p>
+                    )}
+                    {order.status === 'refunded' && (
+                      <p role="status" style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        We refunded {formatCurrency(order.refundedAmount || order.total)} to your card. Banks usually show a refund within 5 to 10 business days.
+                      </p>
+                    )}
+                    {order.status !== 'refunded' && order.refundedAmount > 0 && (
+                      <p role="status" style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        We refunded {formatCurrency(order.refundedAmount)} of this order to your card. The rest of the order stands.
+                      </p>
+                    )}
+                    {order.status === 'cancelled' && (
+                      <p role="status" style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        This order was cancelled and won't be made. Call {brand.phone} if that isn't what you expected.
+                      </p>
+                    )}
+                    {!['refunded', 'cancelled'].includes(order.status) && !underReview && (
+                      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 10 }}>
+                        {order.shippedAt ? `Shipped ${formatDate(order.shippedAt)}.` : `Ships by ${formatShipDate(order.shipBy, { year: true })}.`}
+                      </p>
+                    )}
                     {order.trackingNumber && (
                       <p style={{ fontSize: 13, marginTop: 10 }}>
                         {order.carrier} tracking:{' '}
@@ -191,7 +239,7 @@ export default function FirmQuotePage() {
                       {cancelled ? 'The card payment was cancelled. Nothing was charged.' : justPaid ? "We're still waiting for the card processor to confirm. Refresh in a minute." : "You accepted this quote but the card payment wasn't finished."}
                     </p>
                     <button className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center' }} disabled={busy} onClick={payNow}>
-                      {busy ? 'Opening secure payment…' : `Pay ${formatCurrency(quote.quotedTotal)} by card`}
+                      {busy ? 'Opening secure payment…' : `Pay ${formatCurrency(price)} by card`}
                     </button>
                     <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 12 }}>Would rather send a PO? Call {brand.phone}.</p>
                     {error && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{error}</div>}
@@ -235,7 +283,7 @@ export default function FirmQuotePage() {
                 {cancelled && <div className="gate-box" role="status" style={{ marginTop: 14 }}>The card payment was cancelled. Nothing was charged.</div>}
                 {error && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{error}</div>}
                 <button className="btn btn-primary btn-lg" type="submit" disabled={busy} style={{ width: '100%', justifyContent: 'center', marginTop: 18 }}>
-                  {busy ? 'Working…' : method === 'card' ? `Accept and pay ${formatCurrency(quote.quotedTotal)}` : 'Accept on this PO'}
+                  {busy ? 'Working…' : method === 'card' ? `Accept and pay ${formatCurrency(price)}` : 'Accept on this PO'}
                 </button>
                 <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 10, textAlign: 'center' }}>
                   The ship date counts from the day you accept. Weekends and federal holidays don't count.

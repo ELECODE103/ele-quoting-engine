@@ -26,7 +26,7 @@ const processesDB = new DBClass("processes");
 const rfqsDB = new DBClass("rfqs");
 const pricingAuditDB = new DBClass("pricing_audit");
 const revokedSessionsDB = new DBClass("revoked_sessions");
-const adminAuditDB = new DBClass("admin_audit"); // append-only admin change log (services/adminAudit.js)
+const adminAuditDB = new DBClass("admin_audit"); // append-only admin change log (services/audit.js; table: models/auditMigration.js)
 
 module.exports = {
   // Export instances

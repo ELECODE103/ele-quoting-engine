@@ -289,7 +289,9 @@ function generateJobTraveler(order, items) {
   // What the buyer asked for comes first: their notes, their drawing, the promised date.
   const fromCustomer = [
     order.shipBy ? `Promised ship-by: ${require("./shipBy").formatShipBy(order.shipBy)}${order.leadTimeName ? ` (${order.leadTimeName})` : ""}` : "",
-    order.poNumber ? `Customer PO: ${order.poNumber}` : "",
+    // One line whatever is stored: a PO number saved before it was checked at the door can hold a line break,
+    // which would print the buyer's own words as a line of this document (review F-10).
+    order.poNumber ? `Customer PO: ${require("../middleware/singleLine").printable(order.poNumber)}` : "",
     order.customerNotes ? `Customer notes: ${order.customerNotes}` : "",
     order.drawingFileName ? `Drawing on the order: ${order.drawingFileName} — review before cutting` : "",
   ].filter(Boolean).join("\n");

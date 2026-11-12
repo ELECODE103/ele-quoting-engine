@@ -24,7 +24,9 @@ async function start({ env = {}, webhookSecret } = {}) {
     env: {
       NODE_OPTIONS: `--require ${path.join(__dirname, "stripe-stub-preload.js")}`,
       SE_REVIEW_STRIPE_DIR: stripeDir,
-      ...(whsec ? { STRIPE_WEBHOOK_SECRET: whsec } : {}),
+      // No secret is passed as an empty one: production now refuses to start without it (F-18),
+      // and the helper that starts the server would otherwise supply a throwaway secret of its own.
+      STRIPE_WEBHOOK_SECRET: whsec || "",
       ...env,
     },
   });
@@ -51,7 +53,7 @@ async function start({ env = {}, webhookSecret } = {}) {
     sessions() { return fs.readdirSync(stripeDir).map((f) => JSON.parse(fs.readFileSync(path.join(stripeDir, f), "utf8"))).sort((a, b) => Number(a.id.split("_").pop()) - Number(b.id.split("_").pop())); },
     lastSession() { return h.sessions().pop(); },
     /** Mark a stub session paid, as Stripe would report it (optionally with different amounts). */
-    pay(id, over = {}) { const f = path.join(stripeDir, `${id}.json`); const v = { ...JSON.parse(fs.readFileSync(f, "utf8")), payment_status: "paid", ...over }; fs.writeFileSync(f, JSON.stringify(v)); return v; },
+    pay(id, over = {}) { const f = path.join(stripeDir, `${id}.json`); const v = { ...JSON.parse(fs.readFileSync(f, "utf8")), payment_status: "paid", status: "complete", payment_intent: `pi_review_${id.split("_").pop()}`, ...over }; fs.writeFileSync(f, JSON.stringify(v)); return v; },
     /** POST a webhook. sign: true (server's secret), false (no header), or a secret string. */
     webhook(event, { sign = true, timestamp, header, contentType = "application/json", rawBody } = {}) {
       const payload = rawBody !== undefined ? rawBody : JSON.stringify(event);

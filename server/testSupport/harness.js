@@ -6,7 +6,8 @@
  *   const h = await require("../testSupport/harness").start();
  *   const r = await h.post("/api/quote", { parts: [...] }, token);
  *   h.sent      → emails captured: [{ to, subject, text, html, replyTo }]
- *   h.stripe    → { created: [...sessions.create args], sessions: { id: session }, failNext }
+ *   h.stripe    → { created: [...sessions.create args], sessions: { id: session }, expired: [ids], failNext, failExpire, delayMs }
+ *   h.pay(id) / h.completed(id) / h.webhook(type, object) / h.sweep()   payments, Stripe events and the expiry sweep
  *   await h.stop();
  *
  * Bot check: Cloudflare Turnstile is switched on with throwaway keys made at
@@ -40,6 +41,8 @@ const PASSWORD = `Tt9-${crypto.randomBytes(9).toString("base64url")}`;
 async function start(opts = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "se-test-"));
   process.env.QUOTING_DB_PATH = path.join(tmp, "quoting.db");
+  // start({ seedDb: file }): begin on a copy of an existing database (a migration test), not an empty one.
+  if (opts.seedDb) fs.copyFileSync(opts.seedDb, process.env.QUOTING_DB_PATH);
   // Uploads, drawings and part payload files of a suite go to its own throwaway folder (removed by
   // h.stop()), not to the repository's data folder. A suite that set its own folder keeps it.
   if (!process.env.QUOTING_DATA_DIR) process.env.QUOTING_DATA_DIR = path.join(tmp, "data");
@@ -54,6 +57,8 @@ async function start(opts = {}) {
   // (security/adminAccount.js). A throwaway one, made here at run time; `{ setupCode: false }` leaves it unset.
   if (opts.setupCode === false) delete process.env.ADMIN_SETUP_CODE;
   else process.env.ADMIN_SETUP_CODE = `setup-${crypto.randomBytes(18).toString("base64url")}`;
+  delete process.env.STRIPE_PROMOTION_CODES;
+  delete process.env.CHECKOUT_SESSION_MINUTES;
   process.env.NODE_ENV = "test";
   // The explicit test switch (security/testHooks.js): the suites post Stripe webhooks without a signature.
   process.env.SE_TEST_HOOKS = "1";
@@ -87,23 +92,47 @@ async function start(opts = {}) {
   const sent = [];
   mailer.send = async (m) => { sent.push(m); return false; };
 
-  // Stripe stub: records what would be sent to Stripe, hands back a fake session.
-  const stripe = { created: [], sessions: {}, failNext: false };
+  // Stripe stub: records what would be sent to Stripe, hands back a fake session. It behaves
+  // like the API where the order lifecycle depends on it: a session is "open" until it is paid
+  // ("complete") or expired, expiring a session that is not open is an error, and a paid
+  // session carries a payment intent.
+  //   stripe.created   every sessions.create argument      stripe.expired   ids passed to sessions.expire
+  //   stripe.failNext  the next create throws              stripe.failExpire  the next expire throws (network)
+  //   stripe.delayMs   every create waits this long first (stands in for the network; for race tests)
+  //   stripe.charges   { id: charge } for charges.retrieve
+  const stripe = { created: [], sessions: {}, expired: [], charges: {}, failNext: false, failExpire: false, delayMs: 0, seq: 0 };
+  const stripeError = (message, code, statusCode) => Object.assign(new Error(message), { code, statusCode });
   require("../services/stripeClient").setForTests({
     checkout: {
       sessions: {
         create: async (args) => {
+          if (stripe.delayMs) await new Promise((resolve) => setTimeout(resolve, stripe.delayMs));
           if (stripe.failNext) { stripe.failNext = false; throw new Error("stripe unavailable"); }
-          const id = `cs_test_${stripe.created.length + 1}`;
+          const id = `cs_test_${++stripe.seq}`;
           stripe.created.push(args);
           // What Stripe would charge: every line (the order, plus the inspection paperwork when it was ordered).
           const amount = args.line_items.reduce((sum, li) => sum + li.price_data.unit_amount * (li.quantity || 1), 0);
-          stripe.sessions[id] = { id, url: `https://checkout.stripe.test/${id}`, payment_status: "unpaid", amount_total: amount, amount_subtotal: amount, metadata: args.metadata };
+          stripe.sessions[id] = {
+            id, object: "checkout.session", url: `https://checkout.stripe.test/${id}`, status: "open", payment_status: "unpaid", currency: "usd",
+            amount_total: amount, amount_subtotal: amount, total_details: { amount_discount: 0 }, metadata: args.metadata,
+            payment_intent: null, expires_at: args.expires_at || null, success_url: args.success_url, cancel_url: args.cancel_url,
+          };
           return stripe.sessions[id];
         },
         retrieve: async (id) => stripe.sessions[id],
+        expire: async (id) => {
+          if (stripe.failExpire) { stripe.failExpire = false; throw new Error("stripe unavailable"); }
+          const session = stripe.sessions[id];
+          if (!session) throw stripeError(`No such checkout.session: ${id}`, "resource_missing", 404);
+          if (session.status !== "open") throw stripeError("Only Checkout Sessions with a status in [\"open\"] can be expired.", "checkout_session_not_open", 400);
+          session.status = "expired";
+          stripe.expired.push(id);
+          return session;
+        },
+        list: async ({ payment_intent: pi } = {}) => ({ data: Object.values(stripe.sessions).filter((x) => x.payment_intent && x.payment_intent === pi) }),
       },
     },
+    charges: { retrieve: async (id) => stripe.charges[id] },
   });
 
   const express = require("express");
@@ -275,8 +304,25 @@ async function start(opts = {}) {
       const mat = h.models.materialsDB.getAll().find((m) => m.process === "cnc" && m.active);
       return { partId, materialSlug: mat.slug, grade: mat.grades?.[0]?.name || "", finishSlug: "", quantity, process: "cnc", subProcess: "milling" };
     },
-    /** Simulate Stripe reporting a session paid. */
-    pay(sessionId, over = {}) { Object.assign(stripe.sessions[sessionId], { payment_status: "paid" }, over); },
+    /** Simulate Stripe reporting a session paid (it is then "complete" and has a payment intent). */
+    pay(sessionId, over = {}) {
+      const session = stripe.sessions[sessionId];
+      return Object.assign(session, { payment_status: "paid", status: "complete", payment_intent: session.payment_intent || `pi_test_${sessionId.split("_").pop()}` }, over);
+    },
+    /** The most recently created stub session. */
+    lastSession() { return stripe.sessions[`cs_test_${stripe.seq}`]; },
+    /**
+     * Post a Stripe event to the webhook (unsigned: the suites run with the test switch and no secret).
+     * `type` and the object as Stripe would send it; every event gets its own id unless one is given.
+     */
+    webhook(type, object, { id } = {}) {
+      return raw("POST", "/api/stripe/webhook", { json: { id: id || `evt_test_${crypto.randomBytes(8).toString("hex")}`, type, data: { object } } });
+    },
+    /** A paid session reported by webhook, as Stripe sends checkout.session.completed. */
+    completed(sessionId, over = {}) { return h.webhook("checkout.session.completed", { ...h.pay(sessionId), ...over }); },
+    /** Run the unpaid-order sweep as if the clock read `at` (default: a day from now). */
+    sweep(at = Date.now() + 25 * 60 * 60 * 1000) { return require("../services/orderLifecycle").sweepExpired({ now: at }); },
+    lifecycle: require("../models/lifecycleStore"),
     stop: () => new Promise((resolve) => server.close(() => { fs.rmSync(tmp, { recursive: true, force: true }); resolve(); })),
   };
   // The quote tool's one-time check: trade a passed Turnstile token for a verified-human token (good for an hour).

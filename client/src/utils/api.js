@@ -277,6 +277,12 @@ export const api = {
   async updateOrderStatus(id, data) {
     return request(`/orders/${id}/status`, { method: 'PUT', body: JSON.stringify(data) });
   },
+  /** Clear the "needs attention" flag on an order, with a note saying what was done. */
+  async resolveOrderAttention(id, note) {
+    return request(`/orders/${id}/resolve-attention`, { method: 'POST', body: JSON.stringify({ note }) });
+  },
+  /** What is switched on for payments, and how many orders are waiting for the owner. */
+  async getPaymentSettings() { return request('/orders/admin/payment-settings'); },
   async createOrder(quoteId, shippingFields) {
     return request('/orders', { method: 'POST', body: JSON.stringify({ quoteId, ...shippingFields }) });
   },
@@ -303,6 +309,8 @@ export const api = {
   async getFirmQuote(token) { return request(`/rfq/quote/${token}`); },
   async acceptFirmQuote(token, data) { return request(`/rfq/quote/${token}/accept`, { method: 'POST', body: JSON.stringify(data) }); },
   async confirmFirmQuotePayment(token) { return request(`/rfq/quote/${token}/confirm-payment`, { method: 'POST', body: '{}' }); },
+  /** Back from the card page: ask where the order stands, with the return token from the address bar. */
+  async confirmFirmQuoteReturn(order, token) { return request('/rfq/return/confirm', { method: 'POST', body: JSON.stringify({ order, token }) }); },
 
   // Stripe Checkout
   /**

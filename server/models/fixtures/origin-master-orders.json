@@ -1,0 +1,34 @@
+{
+  "madeWith": "origin/master",
+  "jwtSecret": "test-secret (the test harness's fixed value; not a real secret)",
+  "buyer": {
+    "email": "legacy-buyer@fixture.test",
+    "password": "Passw0rd1"
+  },
+  "paidOrder": "686b7ced-2df0-427b-960e-3357f806426b",
+  "pendingOrder": "96ef7d8e-8cdc-46a8-a8c4-b43bf1c18372",
+  "pendingQuote": "8e0e4aba-e2fb-45c6-a662-9c5ab359b42a",
+  "quotedRfq": "6d04916f-d5ae-41f6-8d80-38beb5913952",
+  "quotedLink": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyZnFJZCI6IjZkMDQ5MTZmLWQ1YWUtNDFmNi04ZDgwLTM4YmViNTkxMzk1MiIsInYiOiIyMDI2LTExLTEyVDAxOjA3OjI0LjE1MFoiLCJleHAiOjE3OTcwMzc2NDQsImlhdCI6MTc5NDQ0NTY0NCwiYXVkIjoicmZxLXF1b3RlIn0.S3Ty20A4WQK1ExRAw0z1wLe63rHLNBFEjEjHMHdmLHQ",
+  "poRfq": "01509d32-2057-409c-a7da-9b624868e6d1",
+  "poLink": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyZnFJZCI6IjAxNTA5ZDMyLTIwNTctNDA5Yy1hN2RhLTliNjI0ODY4ZTZkMSIsInYiOiIyMDI2LTExLTEyVDAxOjA3OjI0LjIxM1oiLCJleHAiOjE3OTcwMzc2NDQsImlhdCI6MTc5NDQ0NTY0NCwiYXVkIjoicmZxLXF1b3RlIn0.yOvamnI9SJWlwnC2QO2AmO3ec-VICFJbxzpyOCPbX0E",
+  "cardRfq": "d64fe40d-a989-43d4-b905-7b6efff0d5e6",
+  "cardLink": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyZnFJZCI6ImQ2NGZlNDBkLWE5ODktNDNkNC1iOTA1LTdiNmVmZmYwZDVlNiIsInYiOiIyMDI2LTExLTEyVDAxOjA3OjI0LjMxMloiLCJleHAiOjE3OTcwMzc2NDQsImlhdCI6MTc5NDQ0NTY0NCwiYXVkIjoicmZxLXF1b3RlIn0.CGEJQ89gUVT0_wbpjDofx9KPSOz5qMTWl_fmf1Sfa8M",
+  "sessions": {
+    "cs_test_1": {
+      "amount_total": 25924,
+      "orderId": "686b7ced-2df0-427b-960e-3357f806426b",
+      "payment_status": "paid"
+    },
+    "cs_test_2": {
+      "amount_total": 29665,
+      "orderId": "96ef7d8e-8cdc-46a8-a8c4-b43bf1c18372",
+      "payment_status": "unpaid"
+    },
+    "cs_test_3": {
+      "amount_total": 99000,
+      "orderId": "920b698c-2d0d-473e-b72a-6f761b953631",
+      "payment_status": "unpaid"
+    }
+  }
+}

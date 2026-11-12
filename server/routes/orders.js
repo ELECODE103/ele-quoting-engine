@@ -16,6 +16,9 @@ const shopFacts = require("../shopFacts");
 const mailer = require("../services/mailer");
 const checkoutGuard = require("../services/checkoutGuard"); // per-account checkout limit; what-was-priced snapshot
 const partAccess = require("../security/partAccess");
+const lifecycle = require("../services/orderLifecycle"); // what happens after a Stripe session exists
+const orderState = require("../services/orderState");
+const { singleLine, singleLines, SHIPPING_RULES } = require("../middleware/singleLine");
 
 const QUOTE_VALID_DAYS = 30; // same hold as routes/api.js
 
@@ -46,21 +49,52 @@ function shippingFields(body = {}) {
   };
 }
 
-/** An order as its customer (or an admin) may see it. Internal notes and server paths stay out of customer responses. */
+/**
+ * An order as its customer (or an admin) may see it. Internal notes and server paths stay out of
+ * customer responses, and so does why an order is flagged: the customer sees what was paid, any
+ * discount, anything refunded, and whether a payment is being checked by hand; the reason, the
+ * dispute state and the owner's own note on a manual payment are the shop's.
+ */
 function orderView(order, { admin = false } = {}) {
-  const { drawingPath, notes, ...safe } = order;
+  const { drawingPath, notes, attention, attentionNote, attentionAt, manualPaidReason, manualPaidBy, disputeStatus, disputeAt, ...safe } = order;
+  const payment = lifecycle.paymentView(order);
   return {
     ...safe,
-    ...(admin ? { notes } : {}),
+    ...(admin ? { notes, attention, attentionNote, attentionAt, manualPaidReason, manualPaidBy, disputeStatus, disputeAt, payment } : {}),
+    paymentUnderReview: order.status === "pending_payment" && payment.needsAttention,
     hasDrawing: Boolean(drawingPath),
     trackingUrl: trackingUrl(order.carrier, order.trackingNumber),
   };
 }
 
+/**
+ * The ship-to block is one printable line per field (it is printed on the traveler, the packing
+ * slip and the confirmation). A value with a line break or hidden characters is refused here,
+ * before the route runs, rather than stored and rewritten later. Fields that are absent pass:
+ * which of them are required is the route's own business.
+ */
+function requireShipToLines(req, res, next) {
+  const ship = singleLines(req.body || {}, SHIPPING_RULES);
+  if (!ship.ok) return res.status(400).json({ error: ship.error, code: ship.code, field: ship.field });
+  next();
+}
+
 // ═══════════════════════════════════════════════════════════════
 // POST /api/orders/checkout-session — Create Stripe Checkout Session
+//
+// Two requests at the same moment for one quote (a double click) make ONE order: the lookup for
+// an unpaid order and the insert of a new one happen in one synchronous step, before anything
+// waits on Stripe, so the second request finds the first one's order — and is then handed the
+// same Checkout session, because opening a session is shared per order (services/orderLifecycle.js).
 // ═══════════════════════════════════════════════════════════════
-router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGuard.limiter, async (req, res) => {
+//
+// Every call — a first checkout and the resume of an unpaid order alike — goes through BOTH:
+//   1. the pricing choke point: verifyQuoteForOrder → repriceStoredQuote → priceQuote (whitelist,
+//      engine, floor, gate, fingerprint) — routes/api.js, "PRICE INTEGRITY" below; and
+//   2. the one place a Stripe session is made: orderEvents.createCheckoutSession →
+//      orderLifecycle.checkoutSession → openSession, at expectedCharge(order).
+// Order of the guards: who is asking, their per-account checkout limit, then the shape of what they sent.
+router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGuard.limiter, requireShipToLines, async (req, res) => {
   try {
     if (!stripeClient.get()) {
       return res.status(503).json({ error: "Payment processing is not configured" });
@@ -86,7 +120,10 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
     // One quote, one order (payments review 2026-11-11, F-04): an order that is paid, or waiting to
     // be paid, has used this quote up. The buyer's own unpaid order is resumed further down; anything
     // else is refused. (To buy the same parts again there is Reorder, which prices them at today's rules.)
-    const taken = ordersDB.query((o) => o.quoteId === quoteId && o.status !== "cancelled");
+    // Which orders still hold their quote is the state machine's call (services/orderState.js holdsQuote):
+    // every order except one that lapsed unpaid ("expired" — its quote was given back when it lapsed).
+    // A cancelled order keeps its quote: the owner can still mark a cancelled order paid.
+    const taken = ordersDB.query((o) => o.quoteId === quoteId && orderState.holdsQuote(o));
     const resumable = taken.find((o) => o.userId === req.user.userId && o.status === "pending_payment" && !o.rfqId && Math.abs((o.total || 0) - Number(quote.orderTotal)) < 0.005);
     if (taken.length > 0 && !resumable) {
       const mine = taken.find((o) => o.userId === req.user.userId);
@@ -256,21 +293,31 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
     // Parts uploaded before the buyer had an account belong to the buyer from here on.
     if (req.user.role !== "admin") for (const part of checked.priced.parts) partAccess.claim(part, req.user, partsDB);
 
+    // The quote is now an order: bind it to the buyer and stop the builder re-pricing it in place.
+    // Done here, in the same step as the order, and not after the call to Stripe: a re-price that
+    // arrives while that call is in flight then makes a new quote instead of changing this one.
+    quotesDB.update(quoteId, { status: "ordered", userId: quote.userId || req.user.userId });
+
     let session;
     try {
       session = await orderEvents.createCheckoutSession(order, { itemCount: lineItems.length, description: describe(lineItems), ...stripeUrls(order.id) });
     } catch (err) {
-      // No session, no order: don't leave an unpayable order behind for every failed try.
-      for (const it of orderItemsDB.query((i) => i.orderId === order.id)) orderItemsDB.delete(it.id);
-      ordersDB.delete(order.id);
+      // No session, no order: don't leave an unpayable order behind for every failed try, and
+      // give the quote back. Only while the order is still unpaid and no session exists for it.
+      const now = ordersDB.getById(order.id);
+      if (now && now.status === "pending_payment" && lifecycle.sessionsFor(order.id).length === 0) {
+        for (const it of orderItemsDB.query((i) => i.orderId === order.id)) orderItemsDB.delete(it.id);
+        ordersDB.delete(order.id);
+        const q = quotesDB.getById(quoteId);
+        if (q && q.status === "ordered" && ordersDB.query((o) => o.quoteId === quoteId).length === 0) quotesDB.update(quoteId, { status: quote.status || "draft", userId: quote.userId || null });
+      }
       throw err;
     }
 
-    // The quote is now an order: bind it to the buyer and stop the builder re-pricing it in place.
-    quotesDB.update(quoteId, { status: "ordered", userId: quote.userId || req.user.userId });
-
     res.json({ sessionUrl: session.url, orderId: order.id });
   } catch (err) {
+    // Refusals with a reason the page can act on (the order was paid or cancelled meanwhile; Stripe is slow).
+    if (err && err.expose === true && err.code && err.status) return res.status(err.status).json({ error: err.message, code: err.code });
     console.error("Checkout session error:", err.message);
     res.status(500).json({ error: "Failed to create checkout session" });
   }
@@ -280,7 +327,7 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
 // POST /api/orders — Create an order from a quote without payment (admin only:
 // phone orders). Buyers go through /checkout-session.
 // ═══════════════════════════════════════════════════════════════
-router.post("/", authenticate, requireAdmin, (req, res) => {
+router.post("/", authenticate, requireAdmin, requireShipToLines, (req, res) => {
   try {
     const {
       quoteId,
@@ -439,7 +486,13 @@ router.get("/:id", authenticate, (req, res) => {
       const part = it.partId ? partsDB.getById(it.partId) : null;
       return { ...it, storedName: part?.storedName || null };
     });
-    res.json({ ...orderView(order, { admin: req.user.role === "admin" }), items: enrichedItems });
+    const admin = req.user.role === "admin";
+    res.json({
+      ...orderView(order, { admin }),
+      items: enrichedItems,
+      // The money history of the order (payments, refunds, disputes, manual changes), for the shop.
+      ...(admin ? { paymentEvents: lifecycle.eventsFor(order.id).filter((e) => e.kind !== "event").map((e) => ({ kind: e.kind, at: e.createdAt, amount: Number.isInteger(e.amountCents) ? e.amountCents / 100 : null, detail: e.detail || "" })) } : {}),
+    });
   } catch (err) {
     console.error("Order detail error:", err);
     res.status(500).json({ error: "Failed to retrieve order" });
@@ -447,57 +500,90 @@ router.get("/:id", authenticate, (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// PUT /api/orders/:id/status — Update order status (admin only)
+// PUT /api/orders/:id/status — the owner's manual moves (admin only)
+//
+// Only the moves in the state machine (services/orderState.js MANUAL). An order cannot be put
+// back to "awaiting payment", made "expired" by hand, or jumped from unpaid into production.
+// Marking an order paid when no payment is on record needs a typed reason and how it was paid
+// (`reason`, `paidVia`); so does marking one refunded. Every move is written to the audit trail.
+// Sending the order's current status changes nothing but the tracking fields and the note.
 // ═══════════════════════════════════════════════════════════════
-const VALID_STATUSES = [
-  "pending_payment",
-  "pending_po",
-  "paid",
-  "received",  "in_production",
-  "quality_check",
-  "packing",
-  "shipped",
-  "delivered",
-  "cancelled",
-];
+const VALID_STATUSES = orderState.STATES;
 
 router.put("/:id/status", authenticate, requireAdmin, async (req, res) => {
   try {
-    const { status, trackingNumber, carrier, shippedAt, notes } = req.body;
+    const { status, trackingNumber, carrier, shippedAt, notes, reason, paidVia } = req.body;
 
-    if (!status || !VALID_STATUSES.includes(status)) {
+    if (!status || typeof status !== "string" || !VALID_STATUSES.includes(status)) {
       return res.status(400).json({
         error: `Invalid status. Valid statuses: ${VALID_STATUSES.join(", ")}`,
+        code: "status-unknown",
       });
     }
 
-    const updates = { status };
-    if (trackingNumber !== undefined) updates.trackingNumber = sanitizeString(trackingNumber, 100);
-    if (carrier !== undefined) updates.carrier = sanitizeString(carrier, 50);
-    if (shippedAt !== undefined) updates.shippedAt = sanitizeString(shippedAt, 40);
+    // Carrier, tracking number and ship date are printed and emailed: one printable line each.
+    const lines = singleLines({ trackingNumber, carrier, shippedAt }, {
+      trackingNumber: { label: "The tracking number", max: 100 },
+      carrier: { label: "The carrier", max: 50 },
+      shippedAt: { label: "The ship date", max: 40 },
+    });
+    if (!lines.ok) return res.status(400).json({ error: lines.error, code: lines.code, field: lines.field });
+    const why = singleLine(reason, { field: "reason", label: "The reason", max: 300 });
+    if (!why.ok) return res.status(400).json({ error: why.error, code: why.code, field: why.field });
+
+    const updates = {};
+    if (trackingNumber !== undefined) updates.trackingNumber = lines.values.trackingNumber;
+    if (carrier !== undefined) updates.carrier = lines.values.carrier;
+    if (shippedAt !== undefined) updates.shippedAt = lines.values.shippedAt;
     if (notes !== undefined) updates.notes = sanitizeString(notes, 2000);
 
     const existing = ordersDB.getById(req.params.id);
-    if (!existing) return res.status(404).json({ error: "Order not found" });
+    if (!existing) return res.status(404).json({ error: "Order not found", code: "order-not-found" });
 
     // Auto-stamp shippedAt when transitioning to shipped if not provided
     if (status === "shipped" && !updates.shippedAt && !existing.shippedAt) {
       updates.shippedAt = new Date().toISOString();
     }
 
-    const updated = ordersDB.update(req.params.id, updates);
-    // Who moved the order by hand, from what to what (the admin change log; no customer text, no notes).
-    require("../services/adminAudit").record(req.user, {
-      area: "order", action: "status", target: String(existing.id).slice(0, 8),
-      changes: { status: [existing.status || null, updated.status], ...(updates.trackingNumber !== undefined ? { tracking: [existing.trackingNumber ? "set" : null, updated.trackingNumber ? "set" : null] } : {}), ...(updates.carrier !== undefined && updates.carrier !== existing.carrier ? { carrier: [existing.carrier || null, updated.carrier || null] } : {}) },
+    // The move itself, and its line in the admin change log (services/audit.js), are made in
+    // orderLifecycle.manualMove: who, from what to what, the typed reason, and whether tracking or
+    // the carrier changed (no customer text, no notes).
+    const moved = lifecycle.manualMove(req.params.id, status, {
+      actor: { userId: req.user.userId, email: req.user.email },
+      reason: why.value,
+      paidVia: typeof paidVia === "string" ? paidVia : undefined,
+      extra: updates,
     });
+    if (!moved.ok) return res.status(moved.status).json({ error: moved.error, code: moved.code });
+    const updated = moved.order;
+
+    // Paid another way, or called off: the card page for this order stops taking money.
+    if (moved.closeSessions) await lifecycle.closeOpenSessions(updated.id, { base: orderEvents.baseUrl(req) });
 
     // Shipped (or tracking added afterwards) → tell the customer.
-    const emailed = await orderEvents.notifyStatusChange(existing, updated, { base: orderEvents.baseUrl(req) });
+    const emailed = await orderEvents.notifyStatusChange(moved.before, updated, { base: orderEvents.baseUrl(req) });
 
-    res.json({ ...orderView(updated, { admin: true }), customerEmailed: emailed });
+    res.json({ ...orderView(ordersDB.getById(updated.id) || updated, { admin: true }), customerEmailed: emailed });
   } catch (err) {
-    console.error("Status update error:", err);    res.status(500).json({ error: "Failed to update order status" });
+    console.error("Status update error:", err);
+    res.status(500).json({ error: "Failed to update order status" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// POST /api/orders/:id/resolve-attention — the owner has dealt with a flagged payment (admin only)
+// Needs a note saying what was done; written to the audit trail.
+// ═══════════════════════════════════════════════════════════════
+router.post("/:id/resolve-attention", authenticate, requireAdmin, (req, res) => {
+  try {
+    const note = singleLine((req.body || {}).note, { field: "note", label: "The note", max: 300 });
+    if (!note.ok) return res.status(400).json({ error: note.error, code: note.code, field: note.field });
+    const r = lifecycle.resolveAttention(req.params.id, { actor: { userId: req.user.userId, email: req.user.email }, note: note.value });
+    if (!r.ok) return res.status(r.status).json({ error: r.error, code: r.code });
+    res.json(orderView(r.order, { admin: true }));
+  } catch (err) {
+    console.error("Resolve attention error:", err);
+    res.status(500).json({ error: "Failed to update the order" });
   }
 });
 
@@ -518,8 +604,9 @@ router.post("/:id/confirm-payment", authenticate, async (req, res) => {
   try {
     const order = ownedOrder(req, res);
     if (!order) return;
-    const { order: settled } = await orderEvents.confirmPayment(order, { base: orderEvents.baseUrl(req) });
-    res.json({ status: settled.status, shipBy: settled.shipBy || null });
+    // The same checks as the webhook (amount, currency, session, payment status), on the order as it is now.
+    const { order: settled } = await orderEvents.confirmPayment(order.id, { base: orderEvents.baseUrl(req) });
+    res.json({ status: settled.status, shipBy: settled.shipBy || null, paymentUnderReview: settled.status === "pending_payment" && Boolean(settled.attention) });
   } catch (err) {
     console.error("Confirm payment error:", err.message);
     res.status(502).json({ error: "Could not confirm the payment yet" });
@@ -637,15 +724,30 @@ router.get("/:id/traveler", authenticate, requireAdmin, (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// Admin: GET /api/orders/admin/payment-settings — what is switched on for payments
+// (promotion codes, how long a payment page stays open, whether shop emails go out),
+// and how many orders are waiting for the owner. Read-only: the switches are host variables.
+// ═══════════════════════════════════════════════════════════════
+router.get("/admin/payment-settings", authenticate, requireAdmin, (req, res) => {
+  const orders = ordersDB.getAll();
+  res.json({
+    ...lifecycle.paymentSettings(),
+    needsAttention: orders.filter((o) => o.attention).length,
+    manualPaidMethods: orderState.MANUAL_PAID_METHODS,
+    manualMoves: orderState.MANUAL,
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
 // Admin: GET /api/orders/admin/queue — Production queue
 // ═══════════════════════════════════════════════════════════════
 router.get("/admin/queue", authenticate, requireAdmin, (req, res) => {
   try {
     const { status, process: processFilter } = req.query;
 
-    let orders = ordersDB.getAll().filter((o) =>
-      ["pending_po", "paid", "received", "in_production", "quality_check", "packing"].includes(o.status)
-    );
+    // Work to build: refunded, expired and cancelled orders are not in it; a flagged or disputed
+    // order stays (nothing is cancelled automatically) and carries its flag.
+    let orders = ordersDB.getAll().filter((o) => orderState.isWork(o));
 
     if (status) {
       orders = orders.filter((o) => o.status === status);

@@ -193,7 +193,7 @@ async function attemptSetup({ code, password, client }) {
     console.warn(`AUDIT admin-setup: the admin account for ADMIN_EMAIL was created by the one-time setup (id ${String(user.id).slice(0, 8)}).`);
   }
   try {
-    require("../services/adminAudit").record({ userId: user.id, email }, { area: "admin-account", action: existing ? (again.recovery && existing.role === "admin" ? "recovery" : "takeover") : "create", target: email, changes: { role: [existing ? existing.role || "customer" : null, "admin"] } });
+    require("../services/audit").record({ actor: { userId: user.id, email }, area: "admin-account", action: existing ? (again.recovery && existing.role === "admin" ? "recovery" : "takeover") : "create", target: email, changes: { role: [existing ? existing.role || "customer" : null, "admin"] } });
   } catch { /* the console line above is the record of last resort */ }
   console.warn("Admin setup is now CLOSED. Remove ADMIN_SETUP_CODE" + (again.recovery ? " and ADMIN_RECOVERY" : "") + " from the host's variables.");
   return { ok: true, user, tookOver: Boolean(existing) };

@@ -81,6 +81,8 @@ const ORDER_STATUS_LABELS = {
   shipped: 'Shipped',
   delivered: 'Delivered',
   cancelled: 'Cancelled',
+  expired: 'Not paid, closed',
+  refunded: 'Refunded',
 };
 export function orderStatusLabel(status) {
   return ORDER_STATUS_LABELS[status] || String(status || '').replace(/_/g, ' ');

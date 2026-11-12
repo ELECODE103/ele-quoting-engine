@@ -69,7 +69,12 @@ export default function OrderTrackingPage() {
 
   const timeline = order?.paymentMethod === 'po' ? PO_TIMELINE : TIMELINE;
   const statusIndex = order ? timeline.indexOf(order.status === 'paid_amount_mismatch' ? 'paid' : order.status) : -1;
-  const paid = order && !['pending_payment', 'pending_po', 'cancelled'].includes(order.status);
+  const paid = order && !['pending_payment', 'pending_po', 'cancelled', 'expired'].includes(order.status);
+  // A payment arrived that we are looking at by hand before the order is confirmed.
+  const underReview = Boolean(order?.paymentUnderReview);
+  const refunded = Number(order?.refundedAmount) || 0;
+  const discount = Number(order?.discountAmount) || 0;
+  const closed = order && ['expired', 'cancelled', 'refunded'].includes(order.status);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '32px' }}>
@@ -100,10 +105,39 @@ export default function OrderTrackingPage() {
                 {order.customerEmail ? `A confirmation is on its way to ${order.customerEmail}.` : ''}
               </div>
             )}
-            {justPaid && order.status === 'pending_payment' && (
+            {justPaid && order.status === 'pending_payment' && !underReview && (
               <div role="status" className="gate-box" style={{ marginBottom: 24 }}>
                 We're still waiting for the payment confirmation from the card processor. This page will show it as soon as it arrives;
                 refresh in a minute, or call {brand.phone} if it doesn't.
+              </div>
+            )}
+            {underReview && (
+              <div role="status" className="gate-box" data-testid="payment-under-review" style={{ marginBottom: 24 }}>
+                <b>We're checking your payment.</b> We received a payment for this order and need to look at it before we confirm the order.
+                We'll email {order.customerEmail || 'you'} today. Questions: {brand.phone}.
+              </div>
+            )}
+            {order.status === 'expired' && (
+              <div role="status" className="gate-box" data-testid="order-expired" style={{ marginBottom: 24 }}>
+                <b>This order was not paid for, so it has closed.</b> Nothing was charged.{' '}
+                {order.quoteId && !order.rfqId
+                  ? <>Your quote is still there: <a href={`/checkout/${order.quoteId}`} style={{ color: 'var(--accent)', fontWeight: 600 }}>go back to checkout</a> to order it.</>
+                  : <>Open the link in your quote email to order, or call {brand.phone}.</>}
+              </div>
+            )}
+            {order.status === 'cancelled' && (
+              <div role="status" className="gate-box" style={{ marginBottom: 24 }}>
+                <b>This order was cancelled</b> and won't be made. Call {brand.phone} if that isn't what you expected.
+              </div>
+            )}
+            {order.status === 'refunded' && (
+              <div role="status" className="gate-box" data-testid="order-refunded" style={{ marginBottom: 24 }}>
+                <b>We refunded this order.</b> {formatCurrency(refunded || order.total)} went back to your card. Banks usually show a refund within 5 to 10 business days.
+              </div>
+            )}
+            {order.status !== 'refunded' && refunded > 0 && (
+              <div role="status" className="gate-box" data-testid="order-part-refunded" style={{ marginBottom: 24 }}>
+                <b>We refunded {formatCurrency(refunded)} of this order</b> to your card. The rest of the order stands.
               </div>
             )}
 
@@ -127,12 +161,18 @@ export default function OrderTrackingPage() {
             <div style={card}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 24 }}>
                 <Fact label="Status" value={orderStatusLabel(order.status)} />
-                <Fact label={order.status === 'shipped' || order.status === 'delivered' ? 'Shipped' : 'Ships by'}
-                  value={order.status === 'shipped' || order.status === 'delivered'
-                    ? formatDate(order.shippedAt)
-                    : (order.shipBy ? formatShipDate(order.shipBy, { year: true }) : '—')}
-                  note={order.status === 'pending_payment' ? 'if paid today' : order.leadTimeName} />
+                {!closed && (
+                  <Fact label={order.status === 'shipped' || order.status === 'delivered' ? 'Shipped' : 'Ships by'}
+                    value={order.status === 'shipped' || order.status === 'delivered'
+                      ? formatDate(order.shippedAt)
+                      : (order.shipBy ? formatShipDate(order.shipBy, { year: true }) : '—')}
+                    note={order.status === 'pending_payment' ? 'if paid today' : order.leadTimeName} />
+                )}
                 <Fact label="Total" value={formatCurrency(order.total)} accent />
+                {discount > 0 && order.amountPaid !== null && order.amountPaid !== undefined && (
+                  <Fact label="You paid" value={formatCurrency(order.amountPaid)} note={`after ${formatCurrency(discount)} off with a promotion code`} />
+                )}
+                {refunded > 0 && <Fact label="Refunded" value={formatCurrency(refunded)} />}
                 {order.poNumber && <Fact label="PO number" value={order.poNumber} />}
               </div>
             </div>

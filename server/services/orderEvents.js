@@ -14,6 +14,11 @@ const shipBy = require("./shipBy");
 const rfqToken = require("./rfqToken");
 const stripeClient = require("./stripeClient");
 const { accountLinkBase } = require("../security/links");
+const { expectedCharge } = require("./expectedCharge");
+
+// Sessions, settling, refunds, disputes and expiry live in services/orderLifecycle.js, which
+// uses this module for the emails; it is loaded on first use so neither waits on the other.
+const lifecycle = () => require("./orderLifecycle");
 
 const ORDER_LINK_DAYS = 180; // how long an emailed order link for an account-less (RFQ) buyer keeps working
 
@@ -57,7 +62,8 @@ function orderUrl(order, base) {
  * order.total in cents, which is what settleFromSession checks the payment against.
  */
 function stripeLineItems(order, { itemCount, description }) {
-  const totalCents = Math.round((order.total || 0) * 100);
+  const charge = expectedCharge(order); // the one "expected charge" (services/expectedCharge.js)
+  const totalCents = typeof charge === "number" ? Math.round(charge * 100) : charge.cents;
   const feeCents = order.paperwork ? Math.min(totalCents, Math.max(0, Math.round((Number(order.paperworkFee) || 0) * 100))) : 0;
   const line = (name, text, cents) => ({
     price_data: { currency: "usd", product_data: { name, description: text }, unit_amount: cents }, // Stripe uses cents
@@ -69,75 +75,73 @@ function stripeLineItems(order, { itemCount, description }) {
 }
 
 /**
- * Create a Stripe Checkout session for an order's total and remember its id.
- * Throws if Stripe isn't configured or the API call fails.
+ * The Stripe Checkout session to send the buyer to for an unpaid order. An order has at most
+ * one open session: the one it already has is handed out again while it is still good, and
+ * otherwise closed at Stripe before a new one is made (services/orderLifecycle.js). Two calls
+ * at the same moment share one session. Throws if Stripe isn't configured, the call fails, or
+ * the order is not waiting for a card payment.
+ *
+ * `returnKey` names the pair of return pages when their URLs carry something that changes
+ * from call to call (a firm quote's return token), so the session can still be recognised.
  */
-async function createCheckoutSession(order, { itemCount, description, successUrl, cancelUrl, metadata = {} }) {
-  const stripe = stripeClient.get();
-  if (!stripe) throw Object.assign(new Error("Payment processing is not configured"), { status: 503 });
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
-    mode: "payment",
-    customer_email: customerEmail(order) || undefined,
-    line_items: stripeLineItems(order, { itemCount, description }),
-    metadata: { orderId: order.id, ...metadata },
-    success_url: successUrl,
-    cancel_url: cancelUrl,
-    allow_promotion_codes: true,
-  });
-  ordersDB.update(order.id, { stripeSessionId: session.id });
-  return session;
+function createCheckoutSession(order, { itemCount, description, successUrl, cancelUrl, metadata = {}, returnKey, base }) {
+  return lifecycle().checkoutSession(order, { itemCount, description, successUrl, cancelUrl, metadata, returnKey, base });
 }
 
 // ─── Paid ──────────────────────────────────────────────────────
 
 /**
- * Mark a pending order paid, fix its ship-by date from the payment day, and
- * send the confirmation + shop notification. Idempotent: an order that isn't
- * pending is returned untouched and nothing is re-sent.
+ * Move an order from "awaiting payment" to "paid" and fix its ship-by date from the payment
+ * day. Synchronous, on the order as it is in the database now: read and written in one step,
+ * so two callers cannot both make the move. Returns the paid order, or null when the order is
+ * no longer waiting (someone else settled it, or it was cancelled).
  */
-async function markPaid(order, { base, warning } = {}) {
-  if (order.status !== "pending_payment") return { order, changed: false };
-  const updates = { status: warning ? "paid_amount_mismatch" : "paid", paidAt: new Date().toISOString() };
-  if (order.leadDays !== null && order.leadDays !== undefined) updates.shipBy = shipBy.shipByDate(Number(order.leadDays));
-  const paid = ordersDB.update(order.id, updates);
+function transitionToPaid(order, updates = {}) {
+  const fresh = ordersDB.getById(order.id);
+  if (!fresh || fresh.status !== "pending_payment") return null;
+  const next = { ...updates, status: "paid", paidAt: new Date().toISOString() };
+  if (fresh.leadDays !== null && fresh.leadDays !== undefined) next.shipBy = shipBy.shipByDate(Number(fresh.leadDays));
+  return ordersDB.update(fresh.id, next);
+}
+
+/** The confirmation to the customer and the new-order notice to the shop, for an order just paid. */
+async function sendPaidEmails(paid, { base } = {}) {
   const items = itemsFor(paid);
   const url = base || baseUrl();
   const to = customerEmail(paid);
   await Promise.all([
-    // A mismatched amount goes to the shop for review first; the customer hears from a person.
-    !warning && to
-      ? mailer.send({ to, replyTo: mailer.shopNotifyAddress(), ...templates.orderConfirmation({ order: paid, items, orderUrl: orderUrl(paid, url) }) })
-      : null,
-    mailer.send({ to: mailer.shopNotifyAddress(), replyTo: to || undefined, ...templates.newOrderShop({ order: paid, items, adminUrl: `${url}/admin`, warning }) }),
+    to ? mailer.send({ to, replyTo: mailer.shopNotifyAddress(), ...templates.orderConfirmation({ order: paid, items, orderUrl: orderUrl(paid, url) }) }) : null,
+    mailer.send({ to: mailer.shopNotifyAddress(), replyTo: to || undefined, ...templates.newOrderShop({ order: paid, items, adminUrl: `${url}/admin` }) }),
   ]);
+}
+
+/**
+ * Mark a pending order paid and send the confirmation + shop notification. Idempotent: an
+ * order that isn't pending is returned untouched and nothing is re-sent. Payments from Stripe
+ * do not come through here directly: they are checked first (settleFromSession).
+ */
+async function markPaid(order, { base, updates } = {}) {
+  const paid = transitionToPaid(order, updates);
+  if (!paid) return { order: ordersDB.getById(order.id) || order, changed: false };
+  await sendPaidEmails(paid, { base });
   return { order: paid, changed: true };
 }
 
 /**
- * Settle an order from a Stripe Checkout session (webhook or return-page
- * confirmation). The pre-discount amount must match the order total; a promo
- * code lowers amount_total but not amount_subtotal.
+ * Settle an order from a Stripe Checkout session (webhook or return-page confirmation).
+ * The session must be one we opened for this order, report payment_status "paid", and carry an
+ * integer amount_total that equals the expected charge (services/expectedCharge.js) less the
+ * discount Stripe reports, in the order's currency. Anything else is not marked paid: the
+ * order is flagged and the shop emailed. A payment for an order that is already paid,
+ * cancelled or expired is recorded and flagged, never dropped. See services/orderLifecycle.js.
  */
-async function settleFromSession(order, session, { base } = {}) {
-  if (session.payment_status && session.payment_status !== "paid") return { order, changed: false };
-  const expected = Math.round((order.total || 0) * 100);
-  const charged = session.amount_subtotal ?? session.amount_total;
-  if (charged && expected > 0 && Math.abs(charged - expected) > 1) {
-    console.error(`Payment amount mismatch for order ${order.id}: session ${charged} cents, expected ${expected} cents`);
-    const r = await markPaid(order, { base, warning: `Needs review: Stripe charged ${templates.money(charged / 100)} before discounts but the order total is ${templates.money(order.total)}.` });
-    return { ...r, warning: "amount_mismatch" };
-  }
-  return markPaid(order, { base });
+function settleFromSession(order, session, { base, eventId, source } = {}) {
+  return lifecycle().settleFromSession(order, session, { base, eventId, source });
 }
 
 /** Ask Stripe whether a pending order's checkout session was paid, and settle it if so. */
-async function confirmPayment(order, { base } = {}) {
-  if (order.status !== "pending_payment" || !order.stripeSessionId) return { order, changed: false };
-  const stripe = stripeClient.get();
-  if (!stripe) return { order, changed: false };
-  const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId);
-  return settleFromSession(order, session, { base });
+function confirmPayment(order, { base } = {}) {
+  return lifecycle().confirmPayment(order, { base });
 }
 
 // ─── Shipped ───────────────────────────────────────────────────
@@ -158,4 +162,4 @@ async function notifyStatusChange(before, after, { base } = {}) {
   return true;
 }
 
-module.exports = { baseUrl, itemsFor, customerEmail, orderUrl, stripeLineItems, createCheckoutSession, markPaid, settleFromSession, confirmPayment, notifyStatusChange };
+module.exports = { baseUrl, itemsFor, customerEmail, orderUrl, stripeLineItems, createCheckoutSession, transitionToPaid, sendPaidEmails, markPaid, settleFromSession, confirmPayment, notifyStatusChange };

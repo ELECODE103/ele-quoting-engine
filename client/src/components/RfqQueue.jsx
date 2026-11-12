@@ -242,6 +242,11 @@ export default function RfqQueue() {
                               Quote as a PDF
                             </button>
                           )}
+                          {r.needsResend && (
+                            <div role="alert" data-testid="needs-resend" className="gate-box" style={{ marginTop: 10, fontSize: 12 }}>
+                              <b>Changed since it was sent.</b> The link the customer has no longer works. Send the quote again so they get a link for these terms.
+                            </div>
+                          )}
                           {r.acceptUrl && (
                             <label style={{ display: 'block', marginTop: 10 }}>
                               <span className="field-label">Customer's accept link</span>

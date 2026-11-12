@@ -198,10 +198,12 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
     assert.strictEqual(h.stripe.created.length, before + 1);
     const args = h.stripe.created[before];
     assert.strictEqual(args.line_items[0].price_data.unit_amount, 199950);
-    assert.strictEqual(args.success_url, `https://shop.test/firm-quote/${cardToken}?paid=true`);
-    assert.strictEqual(args.cancel_url, `https://shop.test/firm-quote/${cardToken}?cancelled=true`);
     assert.strictEqual(args.customer_email, "casey@oem.test");
     const rfq = rfqsDB.getById(cardRfq);
+    // Stripe is given the order id and a short-lived return token, never the quote link (it is a credential).
+    assert.ok(args.success_url.startsWith(`https://shop.test/firm-quote/return?o=${rfq.orderId}&r=`) && args.success_url.endsWith("&paid=true"), args.success_url);
+    assert.strictEqual(args.cancel_url, `https://shop.test/firm-quote/return?o=${rfq.orderId}&cancelled=true`);
+    assert.ok(!JSON.stringify(args).includes(cardToken), "the accept link is not in anything sent to Stripe");
     assert.strictEqual(rfq.status, "accepted");
     assert.strictEqual(rfq.acceptedVia, "card");
     const order = ordersDB.getById(rfq.orderId);

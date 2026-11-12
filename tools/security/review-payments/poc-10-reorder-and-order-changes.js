@@ -53,11 +53,16 @@ const { start, report, money, SHIP } = require("./lib");
     const mailsBefore = h.s.mail(null, /./).length;
     const late = await h.webhook(h.completed(s2));
     const o2 = (await h.get(`/api/orders/${co2.body.orderId}`, admin)).body;
-    r.note(`shop cancels an unpaid order; the buyer then pays the Stripe page still open in their browser: webhook ${late.status} ${late.text}; order "${o2.status}"; emails sent about it: ${h.s.mail(null, /./).length - mailsBefore}`);
-    r.finding(late.status === 200 && o2.status === "cancelled", "F-08: money collected for a cancelled order is acknowledged to Stripe and dropped: the order stays cancelled and nobody is told (the checkout session is never expired when an order is cancelled)");
+    // (Checks updated with the order-lifecycle fixes, 2026-11-11: the script now looks at whether the session was closed
+    //  at Stripe when the order was cancelled, and whether a payment that arrives anyway is recorded and reported.)
+    const told = h.s.mail(null, /./).length - mailsBefore;
+    const sessionAtStripe = h.session(s2.id).status;
+    r.note(`shop cancels an unpaid order: its Stripe session is now "${sessionAtStripe}". A payment for it arrives anyway: webhook ${late.status} ${late.text}; order "${o2.status}", flagged "${o2.attention}"; emails sent about it: ${told}`);
+    r.finding(sessionAtStripe !== "expired", "F-08: the checkout session is not expired when an order is cancelled, so the cancelled order can still be paid");
+    r.finding(!(late.status === 200 && o2.attention === "late-payment" && told === 1), "F-08: money collected for a cancelled order is acknowledged to Stripe and dropped: the order stays cancelled and nobody is told");
 
     // ── orders that never get paid ──
     const pending = (await h.get("/api/orders", admin)).body.filter((o) => o.status === "pending_payment");
-    r.note(`unpaid orders left behind by this script: ${pending.length}; nothing removes or expires them, and each keeps its part's units locked and its quote marked "ordered"`);
+    r.note(`unpaid orders left behind by this script: ${pending.length}; each has a Stripe session that expires (${pending.map((o) => String(o.sessionExpiresAt).slice(11, 16)).join(", ")} UTC), after which the sweep closes the order as "expired" and its quote can be used again (server/routes/orderLifecycle.test.js)`);
   } finally { r.done(); await h.stop(); }
 })().catch((e) => { console.error(e); process.exit(1); });

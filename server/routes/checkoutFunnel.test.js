@@ -235,12 +235,13 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.ok(Math.abs(r.body.subtotal + r.body.leadTimeSurcharge + r.body.paperworkFee + r.body.shippingCost - r.body.total) < 0.01, "what the order page shows adds up");
   });
 
-  test("a second order paid by webhook, with a promo code, is still a clean paid order", async () => {
+  test("a second order paid by webhook is a clean paid order; promotion codes are off, so nothing is discounted", async () => {
     const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 2)], leadTimeSlug: "standard" }, buyer);
     const c = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, buyer);
     const sid = h.stripe.created.length;
     const session = h.stripe.sessions[`cs_test_${sid}`];
-    h.pay(session.id, { amount_total: Math.round(session.amount_subtotal * 0.9) }); // 10% promo
+    assert.strictEqual(h.stripe.created[sid - 1].allow_promotion_codes, false, "promotion codes are off unless the owner switches them on");
+    h.pay(session.id);
     h.sent.length = 0;
     const res = await fetch(`${h.base}/api/stripe/webhook`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "checkout.session.completed", data: { object: session } }) });
     assert.strictEqual(res.status, 200);
@@ -248,17 +249,18 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.strictEqual(h.sent.length, 2);
   });
 
-  test("a charged amount that doesn't match the order goes to the shop for review, not to the customer", async () => {
+  test("a charged amount that doesn't match the order is not marked paid: the order is flagged and only the shop is told", async () => {
     const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 3)], leadTimeSlug: "standard" }, buyer);
     const c = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, buyer);
     const session = h.stripe.sessions[`cs_test_${h.stripe.created.length}`];
     h.pay(session.id, { amount_subtotal: 100, amount_total: 100 });
     h.sent.length = 0;
     await fetch(`${h.base}/api/stripe/webhook`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "checkout.session.completed", data: { object: session } }) });
-    assert.strictEqual(ordersDB.getById(c.body.orderId).status, "paid_amount_mismatch");
+    const flagged = ordersDB.getById(c.body.orderId);
+    assert.deepStrictEqual([flagged.status, flagged.attention], ["pending_payment", "payment-mismatch"]);
     assert.strictEqual(h.sent.length, 1);
     assert.strictEqual(h.sent[0].to, "owner@shop.test");
-    assert.ok(/Needs review/.test(h.sent[0].text));
+    assert.ok(/needs attention/i.test(h.sent[0].subject) && /has NOT been marked paid/.test(h.sent[0].text));
   });
 
   test("shipped with tracking → one email with the tracking link; saving again doesn't resend", async () => {
@@ -295,9 +297,12 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
 
   test("moving through other statuses sends no email", async () => {
     const owner = await h.adminLogin();
-    const pending = ordersDB.getAll().find((o) => o.status === "paid_amount_mismatch");
+    // The order that was left unpaid above: the owner marks it paid by hand (with a reason), then moves it on.
+    const paid = ordersDB.getAll().find((o) => o.status === "pending_payment" && o.attention === "payment-mismatch");
     h.sent.length = 0;
-    await h.put(`/api/orders/${pending.id}/status`, { status: "in_production" }, owner);
+    assert.strictEqual((await h.put(`/api/orders/${paid.id}/status`, { status: "paid", reason: "balance collected by cheque 2207", paidVia: "cheque" }, owner)).status, 200);
+    const moved = await h.put(`/api/orders/${paid.id}/status`, { status: "in_production" }, owner);
+    assert.strictEqual(moved.status, 200, moved.text);
     assert.strictEqual(h.sent.length, 0);
   });
 
@@ -427,9 +432,10 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     const second = await h.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP, shippingAddress: "200 Dock Rd" }, buyer);
     assert.strictEqual(second.status, 200);
     assert.strictEqual(second.body.orderId, first.body.orderId);
-    // Review 2026-11-11 (F8): the order's Stripe session is still open for the same amount, so the buyer
-    // is sent back to it; a new one is not minted for every return. (This used to assert "a fresh Stripe session".)
-    assert.strictEqual(second.body.sessionUrl, first.body.sessionUrl, "the same Stripe session, while it is open and the amount is unchanged");
+    // Review 2026-11-11 (F8) and the order-lifecycle fixes (F-08): an order has one open Stripe session, not two.
+    // While it is open and for the same amount the buyer is sent back to it; a new one is not minted for every
+    // return. (This used to assert "a fresh Stripe session". Both branches changed it to the same assertion.)
+    assert.strictEqual(second.body.sessionUrl, first.body.sessionUrl, "the same payment page: an order has one open Stripe session, while it is open and the amount is unchanged");
     assert.strictEqual(ordersDB.query((o) => o.quoteId === q.body.quoteId).length, 1);
     assert.strictEqual(ordersDB.getById(first.body.orderId).shippingAddress, "200 Dock Rd", "the corrected address is kept");
   });

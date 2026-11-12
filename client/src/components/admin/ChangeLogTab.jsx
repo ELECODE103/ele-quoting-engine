@@ -8,12 +8,18 @@ const AREAS = {
 const ACTIONS = {
   update: 'changed', create: 'added', delete: 'removed', duplicate: 'copied', save: 'saved', restore: 'restored',
   reset: 'reset to defaults', status: 'status changed', 'void-open': 'price holds ended', takeover: 'set up', recovery: 'set up again',
+  // Order moves made by hand (the order state machine's own names; services/orderLifecycle.js)
+  'order.status': 'status changed', 'order.mark-paid': 'marked paid by hand', 'order.cancel': 'cancelled',
+  'order.tracking': 'shipping details changed', 'order.attention-resolved': 'flag cleared',
 };
+const FIELDS = { paidVia: 'paid by', attention: 'flag', tracking: 'tracking number', voided: 'quotes' };
 const show = (v) => (v === null || v === undefined || v === '' ? 'nothing' : String(v));
 
 /**
  * Who changed what and when: materials, finishes, lead times, pricing rules, quotes whose price
- * hold was ended, and order status changes made by hand. Entries are only ever added.
+ * hold was ended, and every order move made by hand (status, marked paid with its reason, cancelled,
+ * shipping details, a payment flag cleared). One log, one table (server/services/audit.js).
+ * Entries are only ever added.
  */
 export default function ChangeLogTab() {
   const [rows, setRows] = useState(null);
@@ -76,8 +82,9 @@ export default function ChangeLogTab() {
                   <td style={{ padding: '10px 14px' }}>{AREAS[r.area] || r.area}: {r.target} <span style={{ color: 'var(--text-muted)' }}>({ACTIONS[r.action] || r.action})</span></td>
                   <td style={{ padding: '10px 14px' }}>
                     {Object.entries(r.changes || {}).map(([field, pair]) => (
-                      <div key={field}>{field}: {Array.isArray(pair) ? `${show(pair[0])} → ${show(pair[1])}` : show(pair)}</div>
+                      <div key={field}>{FIELDS[field] || field}: {Array.isArray(pair) ? `${show(pair[0])} → ${show(pair[1])}` : show(pair)}</div>
                     ))}
+                    {r.note && <div style={{ color: 'var(--text-muted)' }}>Reason: {r.note}</div>}
                   </td>
                 </tr>
               ))}

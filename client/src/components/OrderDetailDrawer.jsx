@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { formatCurrency, formatShipDate } from '../utils/format';
+import { OrderPaymentPanel } from './admin/OrderPayment';
 
 /**
  * Fulfillment drawer — single unified view for an order.
@@ -52,11 +53,29 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
     setLoading(false);
   }
 
+  // Which statuses this order may be moved to by hand (the server decides; this only greys out the rest).
+  const [moves, setMoves] = useState(null);
+  useEffect(() => { api.getPaymentSettings().then((s) => setMoves(s.manualMoves || null)).catch(() => setMoves(null)); }, []);
+  const canMoveTo = (status) => !moves || !order || (moves[order.status] || []).includes(status);
+
   async function updateStatus(newStatus) {
+    // Marking an order paid when no payment is on record, or refunded, is the owner vouching for it: say how.
+    let reason;
+    if ((newStatus === 'paid' && !order.paidAt) || newStatus === 'refunded') {
+      reason = window.prompt(newStatus === 'paid'
+        ? 'How was this order paid? (for example: cheque 1042, wire received 11 Nov, PO terms agreed)'
+        : 'Why is this order being marked refunded?');
+      if (!reason || reason.trim().length < 3) return;
+    }
+    if (newStatus === 'cancelled') {
+      if (!window.confirm('Cancel this order? Its payment page is closed. If money was already taken, refund it in Stripe.')) return;
+      reason = window.prompt('Why is it being cancelled? (optional)') || undefined;
+    }
     setSaving(true);
     try {
       await api.updateOrderStatus(orderId, {
         status: newStatus,
+        reason: reason ? reason.trim() : undefined,
         carrier: carrier || undefined,
         trackingNumber: trackingNumber || undefined,
         shippedAt: shippedAt ? new Date(shippedAt).toISOString() : undefined,
@@ -151,6 +170,9 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
               </div>
             </div>
 
+            {/* Payments that need the owner, refunds, disputes, discounts, manual payments */}
+            <OrderPaymentPanel order={order} onChanged={async () => { await load(); if (onUpdated) onUpdated(); }} />
+
             {/* What the customer paid for besides the parts: do it before this ships. */}
             {order.paperwork && (
               <div role="status" data-testid="paperwork-flag" style={{ marginBottom: 16, padding: '12px 14px', border: '2px solid #B45309', borderRadius: 6, background: '#FFFBEB', color: '#78350F', fontSize: 13, lineHeight: 1.5 }}>
@@ -182,12 +204,17 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
             <div style={{ marginBottom: 24 }}>
               <div style={{ fontSize: 10, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
                 Fulfillment Status
+                {currentIdx < 0 && (
+                  <span data-testid="closed-status" style={{ marginLeft: 8, color: '#B42318' }}>
+                    {{ expired: 'Not paid, closed', cancelled: 'Cancelled', refunded: 'Refunded', paid_amount_mismatch: 'Paid, under review' }[order.status] || order.status}
+                  </span>
+                )}
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {STATUS_PIPELINE.map((s, i) => {
                   const done = i < currentIdx;
                   const active = i === currentIdx;
-                  const clickable = i !== currentIdx && i > 0;
+                  const clickable = i !== currentIdx && i > 0 && canMoveTo(s.key);
                   return (
                     <button
                       key={s.key}
@@ -393,6 +420,16 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
               >
                 Customer view
               </a>
+              {order.status !== 'cancelled' && canMoveTo('cancelled') && (
+                <button className="btn btn-ghost" onClick={() => updateStatus('cancelled')} disabled={saving} style={{ fontSize: 12, color: '#B42318' }} data-testid="cancel-order">
+                  Cancel order
+                </button>
+              )}
+              {['pending_payment', 'expired', 'cancelled'].includes(order.status) && canMoveTo('paid') && (
+                <button className="btn btn-ghost" onClick={() => updateStatus('paid')} disabled={saving} style={{ fontSize: 12 }} data-testid="mark-paid">
+                  Mark paid by hand
+                </button>
+              )}
             </div>
           </>
         )}

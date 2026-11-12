@@ -263,9 +263,12 @@ const LABEL = "First-article inspection report and certificate of conformance";
     h.pay(session.id, { amount_subtotal: session.amount_subtotal - 6000, amount_total: session.amount_subtotal - 6000 });
     h.sent.length = 0;
     await h.post(`/api/orders/${c.body.orderId}/confirm-payment`, {}, buyer);
-    assert.strictEqual(ordersDB.getById(c.body.orderId).status, "paid_amount_mismatch");
+    // Not marked paid at all: the order stays unpaid, is flagged, and the shop is told.
+    const short = ordersDB.getById(c.body.orderId);
+    assert.deepStrictEqual([short.status, short.attention], ["pending_payment", "payment-mismatch"]);
     assert.strictEqual(h.sent.length, 1, "the shop is told; the customer gets no confirmation");
-    assert.ok(/Needs review/.test(h.sent[0].text));
+    assert.strictEqual(h.sent[0].to, "owner@shop.test");
+    assert.ok(/needs attention/i.test(h.sent[0].subject) && /has NOT been marked paid/.test(h.sent[0].text));
   });
 
   test("paid in full → order paid; both emails carry the paperwork line and a total that adds up", async () => {
