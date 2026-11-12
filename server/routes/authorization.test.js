@@ -69,6 +69,15 @@ const INVENTORY = {
   "GET /api/admin/backup/db": "admin",
   "GET /api/admin/backup/json": "admin",
   "GET /api/parts/:partId/download": "admin",
+  // routes/partPayloadRoutes.js: a part's preview and measured detail, to whoever may use the part
+  // (security/partAccess.js: the owning account, the holder of the edit key, an admin): partOwnership.test.js, partPayloads.test.js
+  "GET /api/parts/:partId/mesh": "open",
+  "GET /api/parts/:partId/geometry": "open",
+  // routes/adminStorage.js: where storage stands, and the owner's clean-up actions (each written to the change log): storagePressure.test.js
+  "GET /api/admin/storage": "admin",
+  "POST /api/admin/drafts/purge": "admin",
+  "DELETE /api/admin/requests/:id/attachment": "admin",
+  "DELETE /api/admin/requests/:id": "admin",
   // routes/auth.js
   "POST /api/auth/register": "open",
   "POST /api/auth/admin-setup": "open", // needs the owner's ADMIN_SETUP_CODE, closed once an admin exists: adminSetup.test.js
@@ -125,6 +134,14 @@ const INVENTORY = {
 function routesOf(prefix, router) {
   const out = [];
   for (const layer of router.stack) {
+    // A router mounted inside this one with no path of its own (routes/api.js mounts routes/partPayloadRoutes.js and
+    // routes/adminStorage.js that way): its routes are this router's routes. (Added at the second integration pass:
+    // those routes were not being listed, so nothing here asked who may call them.)
+    if (!layer.route && layer.name === "router" && layer.handle && Array.isArray(layer.handle.stack)) {
+      assert.ok(layer.regexp && layer.regexp.fast_slash, "a router mounted under a path of its own would need that path added here");
+      out.push(...routesOf(prefix, layer.handle));
+      continue;
+    }
     if (!layer.route) continue;
     for (const method of Object.keys(layer.route.methods)) out.push(`${method.toUpperCase()} ${prefix}${layer.route.path}`);
   }
@@ -203,6 +220,7 @@ function routesOf(prefix, router) {
       .replace("/admin/order-items/:id", `/admin/order-items/${item.id}`)
       .replace("/admin/pricing/restore/:id", `/admin/pricing/restore/${crypto.randomUUID()}`)
       .replace("/api/rfq/admin/:id", `/api/rfq/admin/${aliceRfq}`)
+      .replace("/api/admin/requests/:id", `/api/admin/requests/${aliceRfq}`)
       .replace("/api/orders/:id", `/api/orders/${aliceOrder}`)
       .replace(":orderId", aliceOrder).replace(":quoteId", aliceQuote).replace(":rfqId", aliceRfq).replace(":partId", partId)
       .replace("/api/pdf/fai", `/api/pdf/fai?orderId=${aliceOrder}`);

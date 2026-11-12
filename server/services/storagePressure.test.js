@@ -483,6 +483,26 @@ test("requests: the attachment of a closed request is deleted after the grace pe
   models.rfqsDB.update(won.id, { orderId: "some-order" });
   const refused = await h.del(`/api/admin/requests/${won.id}`, admin);
   assert.deepStrictEqual([refused.status, refused.body.code], [409, "request-has-order"]);
+  // Every one of those actions is in the admin change log, by the request's short reference and with nothing the customer typed.
+  const changeLog = (await h.get("/api/admin/audit", admin)).body;
+  const entries = changeLog.filter((e) => e.area === "request" || e.action === "purge-drafts");
+  const ref = (id) => String(id).slice(0, 8).toUpperCase();
+  assert.ok(entries.some((e) => e.area === "request" && e.action === "delete" && e.target === ref(junk.id)), JSON.stringify(entries).slice(0, 400));
+  assert.ok(entries.some((e) => e.area === "request" && e.action === "delete-attachment" && e.target === ref(open.id)));
+  assert.ok(entries.some((e) => e.area === "quotes" && e.action === "purge-drafts"), "and so is 'clear old drafts' (the case above)");
+  assert.ok(!entries.some((e) => e.target === ref(won.id)), "a refused delete writes nothing");
+  assert.ok(!/example\.test|won@|junk/i.test(JSON.stringify(entries.map((e) => [e.target, e.changes, e.note]))), "no name, address or note of a customer is in the log");
+  // The same protection as every admin route: a session cookie without that session's CSRF token changes nothing…
+  const signIn = await h.raw("POST", "/api/auth/login", { json: { email: "customer@example.test", password: h.password }, browser: true });
+  const cookie = (signIn.headers.get("set-cookie") || "").split(";")[0];
+  assert.ok(cookie, "a browser session");
+  for (const [method, url] of [["POST", "/api/admin/drafts/purge"], ["DELETE", `/api/admin/requests/${won.id}`], ["DELETE", `/api/admin/requests/${won.id}/attachment`]]) {
+    const noToken = await h.raw(method, url, { json: method === "POST" ? { olderThanHours: 0 } : undefined, headers: { Cookie: cookie }, browser: true });
+    assert.deepStrictEqual([noToken.status, noToken.body.code], [403, "csrf"], `${method} ${url} from a cookie session without its token`);
+  }
+  // …and an admin who has not turned on two-step sign-in gets nothing either (routes/authorization.test.js walks every admin route for that).
+  assert.strictEqual((await h.get("/api/admin/storage")).status, 401, "no session");
+  assert.strictEqual((await h.get("/api/admin/storage", buyer)).status, 403, "a customer");
   // the status figures the admin (and the deploy status page) can read
   const status = await h.get("/api/admin/storage", admin);
   assert.strictEqual(status.status, 200);

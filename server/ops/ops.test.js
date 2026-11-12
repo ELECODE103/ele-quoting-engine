@@ -551,18 +551,28 @@ test("status report: build, uptime, hosts, protections, sizes, counts — and ne
     assert.ok(/Storage —: not available/.test(d.text) && /All orders by status —: 0/.test(d.text), d.text);
   } finally { guards.storage.usage = usage; require("../models").ordersDB.getAll = getAll; console.warn = warn; }
 
-  // Optional getters offered by other modules: used when present, ignored when absent, and never trusted with text.
-  assert.deepStrictEqual(status.extras(), {}, "none of them exists on this branch");
+  // "Limits and budgets": read from the modules that enforce each ceiling (second integration pass: the real getters,
+  // where there was a list of guessed names). Each is used when it answers, left out when it throws, and never trusted with text.
+  const extras = status.extras();
+  assert.deepStrictEqual(Object.keys(extras), ["memory", "pricing", "draftQuotes", "confirmationEmail", "shopNotices", "unverifiedRequests", "cleanUp", "fileParsing", "answers"]);
+  assert.deepStrictEqual(extras.memory, { budgetMb: 1024, parseWorkerHeapMb: 384, parsingTogetherMb: 512, parsingAloneMb: 634, processCeilingMb: 942, databaseCeilingMb: 16 }, "the defaults of a 1 GB service");
+  assert.deepStrictEqual([extras.confirmationEmail.capPerHour, extras.shopNotices.capPerHour, extras.unverifiedRequests.capPerHour], [60, 40, 30]);
+  assert.deepStrictEqual([extras.cleanUp.databaseCleanUpAtPercent, extras.cleanUp.databaseVisitorsPausedAtPercent, extras.cleanUp.filesCleanUpAtPercent], [80, 85, 80]);
+  for (const key of ["inFlight", "admitted", "overHourlyAllowance", "priced", "tooSlow", "longestPieceMs"]) assert.strictEqual(typeof extras.pricing[key], "number", `pricing.${key}`);
+  for (const key of ["overBudget", "queueFullForClient", "rerunAlone", "shortOfRoom"]) assert.strictEqual(typeof extras.fileParsing[key], "number", `fileParsing.${key}`);
+  assert.ok(/Limits and budgets/.test(digest.build().text) && /budgetMb 1024/.test(digest.build().text) && /capPerHour 60/.test(digest.build().text));
   const mailer = require("../services/mailer");
-  mailer.capStatus = () => ({ sentToday: 41, capPerDay: 500, note: "ok", leak: "someone@customer.test wrote <b>this</b>", nested: { remaining: 459, deep: { deeper: { x: 1 } } }, list: [1, 2, 3] });
+  const realCounters = mailer.capCounters;
   try {
-    assert.deepStrictEqual(status.extras(), { mailCap: { sentToday: 41, capPerDay: 500, note: "ok", nested: { remaining: 459 } } });
-    assert.ok(/Limits and budgets/.test(digest.build().text) && /sentToday 41/.test(digest.build().text));
-    mailer.capStatus = () => { throw new Error("not ready"); };
-    assert.deepStrictEqual(status.extras(), {});
-    mailer.capStatus = () => "free text from a customer <script>";
-    assert.deepStrictEqual(status.extras(), {});
-  } finally { delete mailer.capStatus; }
+    // A source that answers with text a customer could have written: only numbers and short plain words get through.
+    mailer.capCounters = () => ({ unconfirmed: { capPerHour: 60, sentThisHour: 41, leak: "someone@customer.test wrote <b>this</b>", deep: { deeper: { x: 1 } }, list: [1, 2, 3] }, shop: { capPerHour: 40, sentThisHour: 2, heldThisHour: 0 } });
+    assert.deepStrictEqual(status.extras().confirmationEmail, { capPerHour: 60, sentThisHour: 41 });
+    assert.ok(!JSON.stringify(status.extras()).includes("customer.test"));
+    // One that throws is left out; the others still show.
+    mailer.capCounters = () => { throw new Error("not ready"); };
+    const without = status.extras();
+    assert.ok(!("confirmationEmail" in without) && !("shopNotices" in without) && "memory" in without && "pricing" in without);
+  } finally { mailer.capCounters = realCounters; }
 
   // An unusable commit value is not echoed.
   const odd = await withEnv({ RAILWAY_GIT_COMMIT_SHA: "<script>alert(1)</script>" }, async () => status.build());

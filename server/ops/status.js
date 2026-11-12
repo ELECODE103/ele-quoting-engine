@@ -211,20 +211,54 @@ const EMPTY_STORAGE = { warnPercent: 80, files: { usedBytes: 0, maxBytes: 0, per
 const EMPTY_BUSINESS = { orders: { total: 0, statuses: [], last24h: [], needingAttention: [], partlyRefunded: 0, disputesOpen: 0 }, requests: { open: 0, oldestHours: 0, list: [] }, quotes: { expirySoonDays: EXPIRY_SOON_DAYS, firmExpiring: [], draftExpiring: 0 }, unavailable: true };
 
 /**
- * CONFIRM WHEN availability-fixes MERGES: the getter names below are guesses made before that branch existed
- * here (so is the name MEMORY_BUDGET_MB in the runbook). None of them exists on this tree, so "Limits and
- * budgets" shows nothing yet; each needs one line here once the real names are known.
+ * "Limits and budgets": where the site stands against each ceiling the availability work set, read
+ * from the modules that enforce them. (Until the second integration pass this was a list of guessed
+ * getter names; these are the real ones.) Each source is asked on its own: one that throws, or
+ * returns something that is not plain numbers and short words, is left out and the rest still show.
  *
- * Figures other modules may offer through small getters (the availability work adds a site-wide
- * mail cap, storage and database usage, draft-quote counts, a memory budget). Each is looked for
- * by name and used if it is a function; a getter that is missing, throws, or returns something
- * that is not plain numbers and short words is simply left out.
+ *   memory         security/limits.js             the budget everything else is derived from
+ *   pricing        security/pricingGate.js stats() and services/pricingMemo.js stats()
+ *   draftQuotes    security/quoteGuards.js stats()
+ *   confirmationEmail, shopNotices   services/mailer.js capCounters()
+ *   unverifiedRequests               security/botGuard.js unverifiedRequestStats()
+ *   cleanUp        services/storagePressure.js status()   what the server last removed by itself
+ *   fileParsing    parsers/parsePool.js pool.stats()      the counters the availability work added
+ *   answers        security/answerCeiling.js counters
+ *
+ * The same figures, with the per-holder detail, are at GET /api/admin/storage.
  */
-const OPTIONAL_GETTERS = [
-  ["mailCap", "../services/mailer", ["capStatus", "mailCapStatus", "sendCapStatus"]],
-  ["memory", "../security/limits", ["memoryStatus", "memoryBudgetStatus"]],
-  ["storageUsage", "../security/uploadGuards", ["usageStatus", "storageStatus"]],
-  ["draftQuotes", "../services/rowRetention", ["draftQuoteCounts", "draftCounts"]],
+const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj && obj[k] !== undefined).map((k) => [k, obj[k]]));
+const BUDGET_SOURCES = [
+  ["memory", () => {
+    const { limits } = require("../security/limits");
+    return { budgetMb: limits.memoryBudgetMb, parseWorkerHeapMb: limits.parseMaxHeapMb, parsingTogetherMb: limits.parseRssLimitMb, parsingAloneMb: limits.parseRssSoloLimitMb, processCeilingMb: limits.parseRssCeilingMb, databaseCeilingMb: Math.round(limits.databaseMaxBytes / 1048576) };
+  }],
+  ["pricing", () => {
+    const gate = require("../security/pricingGate").stats();
+    const runner = require("../services/pricingMemo").stats();
+    return { inFlight: gate.inFlight, admitted: gate.admitted, toldToWait: gate.refusedClient, overHourlyAllowance: gate.refusedBudget, tooManyLines: gate.refusedLines, waitingLight: runner.lightWaiting, waitingHeavy: runner.heavyWaiting, priced: runner.finished, tooSlow: runner.refusedSlow, toldBusy: runner.refusedBusy, longestPieceMs: runner.longestPieceMs };
+  }],
+  ["draftQuotes", () => {
+    const q = require("../security/quoteGuards").stats();
+    return { created: q.created, refusedTooManyNew: q.refusedRate, refusedAllowanceFull: q.refusedBytes, refusedDatabaseFull: q.refusedDatabase, refusedRepricedTooOften: q.refusedReprice, madeRoomWithOwnIdleDrafts: q.replacedOwn };
+  }],
+  ["confirmationEmail", () => {
+    const m = require("../services/mailer").capCounters().unconfirmed;
+    return pick(m, ["capPerHour", "sentThisHour", "firstFewThisHour", "heldThisHour", "waitingToBeSent", "sentLaterSinceStart", "turnedAwaySinceStart"]);
+  }],
+  ["shopNotices", () => pick(require("../services/mailer").capCounters().shop, ["capPerHour", "sentThisHour", "heldThisHour"])],
+  ["unverifiedRequests", () => pick(require("../security/botGuard").unverifiedRequestStats(), ["capPerHour", "acceptedThisHour", "firstFewThisHour", "refusedSinceStart"])],
+  ["cleanUp", () => {
+    const st = require("../services/storagePressure").status();
+    const last = (r) => (r ? { at: String(r.at || "").slice(0, 16).replace("T", " "), removedDrafts: r.removedDrafts || 0, removedUploads: r.removedUploads || 0, removedParts: r.removedParts || 0 } : null);
+    return {
+      databaseCleanUpAtPercent: st.database.sweepAtPercent, databaseVisitorsPausedAtPercent: st.database.anonymousRefusedAtPercent,
+      filesCleanUpAtPercent: st.files.evictAtPercent, filesVisitorsPausedAtPercent: st.files.anonymousRefusedAtPercent,
+      lastDatabaseCleanUp: last(st.database.lastRelief), lastFilesCleanUp: last(st.files.lastRelief),
+    };
+  }],
+  ["fileParsing", () => pick(require("../parsers/parsePool").pool.stats(), ["overBudget", "queueFullForClient", "rerunAlone", "shortOfRoom"])],
+  ["answers", () => { const c = require("../security/answerCeiling").counters; return { refusedTooLarge: c.refused, largestBytes: c.largestBytes }; }],
 ];
 function plain(value, depth = 0) {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -240,14 +274,11 @@ function plain(value, depth = 0) {
 }
 function extras() {
   const out = {};
-  for (const [name, modulePath, getters] of OPTIONAL_GETTERS) {
+  for (const [name, read] of BUDGET_SOURCES) {
     try {
-      const mod = require(modulePath);
-      const getter = getters.map((g) => mod && mod[g]).find((f) => typeof f === "function");
-      if (!getter) continue;
-      const value = plain(getter.call(mod));
-      if (value !== undefined && value !== null) out[name] = value;
-    } catch { /* not there yet, or not usable: left out */ }
+      const value = plain(read());
+      if (value !== undefined && value !== null && (typeof value !== "object" || Object.keys(value).length > 0)) out[name] = value;
+    } catch { /* that module is not usable right now: left out, the rest still show */ }
   }
   return out;
 }
@@ -280,4 +311,4 @@ function collect(now = Date.now()) {
   };
 }
 
-module.exports = { collect, build, protections, criticalOff, storage: safeStorage, business: safeBusiness, parsing, hosts, extras, payments, section, plain, needsAttention, attentionOf, KNOWN_ORDER_STATUSES, EXPIRY_SOON_DAYS };
+module.exports = { collect, build, protections, criticalOff, storage: safeStorage, business: safeBusiness, parsing, hosts, extras, BUDGET_SOURCES, payments, section, plain, needsAttention, attentionOf, KNOWN_ORDER_STATUSES, EXPIRY_SOON_DAYS };
