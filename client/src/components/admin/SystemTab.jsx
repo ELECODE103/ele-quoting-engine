@@ -105,6 +105,7 @@ export default function SystemTab() {
       </Section>
 
       <Section title="Storage">
+        {s.storage.unavailable && <Row k="Sizes"><Tag ok={false}>not available</Tag></Row>}
         <Row k="Customer files">{size(s.storage.files)}</Row>
         <Row k="Database">{size(s.storage.database)}</Row>
         {s.storage.volume && <Row k="Railway volume">{s.storage.volume.percentUsed}% used · {formatFileSize(s.storage.volume.freeBytes)} free</Row>}
@@ -127,8 +128,16 @@ export default function SystemTab() {
         <Row k="File parsing: timed out / told “busy” / out of memory">{p.timedOut || 0} / {p.busy || 0} / {p.outOfMemory || 0}</Row>
       </Section>
 
+      {s.extras && Object.keys(s.extras).length > 0 && (
+        <Section title="Limits and budgets">
+          {Object.entries(s.extras).map(([k, v]) => (
+            <Row key={k} k={k}>{v && typeof v === 'object' ? Object.entries(v).map(([a, b]) => `${a}: ${typeof b === 'object' ? JSON.stringify(b) : b}`).join(' · ') : String(v)}</Row>
+          ))}
+        </Section>
+      )}
+
       <Section title="Alerts and digest">
-        <Row k="Daily digest">{s.digest.schedule === 'on' ? `${s.digest.hourCentral}:00 Central` : 'switched off'} · last sent {s.digest.lastSentAt ? formatDateTime(s.digest.lastSentAt) : 'never'}{!s.digest.mailerConfigured && ' · email is off, so it is not being sent'}</Row>
+        {s.digest && <Row k="Daily digest">{s.digest.schedule === 'on' ? `${s.digest.hourCentral}:00 Central` : 'switched off'} · last sent {s.digest.lastSentAt ? formatDateTime(s.digest.lastSentAt) : 'never'}{!s.digest.mailerConfigured && ' · email is off, so it is not being sent'}</Row>}
         {s.alerts.length === 0 && <Row k="Alerts raised since the restart">none</Row>}
         {s.alerts.map((a) => <Row key={a.key} k={a.title}>last {formatDateTime(a.lastAt)} · {a.lastEmailedAt ? `emailed ${formatDateTime(a.lastEmailedAt)}` : 'in the deploy log only'}</Row>)}
       </Section>

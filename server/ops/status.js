@@ -20,9 +20,12 @@ const KNOWN_ORDER_STATUSES = new Set([
   "pending_payment", "pending_po", "paid", "paid_amount_mismatch", "received", "in_production",
   "quality_check", "packing", "shipped", "delivered", "cancelled",
 ]);
-// Statuses that mean a person should look, by name or by the words in the name (so that
-// "needs_attention", "disputed", "partially_refunded", "expired" are picked up when they exist).
-const ATTENTION_WORDS = /attention|mismatch|dispute|refund|expired|failed|review|chargeback/i;
+// Statuses that mean a person should look, recognised by the words in the name so that states added
+// later are picked up without a change here: payment under review / needs attention
+// (payment-mismatch, duplicate-payment, late-payment), disputed, failed.
+// Refunded, partially refunded and expired are finished states: they are counted and listed like
+// every other status, but they do not ask for attention (an alert about them would never clear).
+const ATTENTION_WORDS = /attention|mismatch|duplicate|late[-_ ]?payment|under[-_ ]?review|needs[-_ ]?review|payment[-_ ]?review|disput|chargeback|failed/i;
 
 function needsAttention(status) {
   return ATTENTION_WORDS.test(String(status || ""));
@@ -71,7 +74,7 @@ function protections() {
 }
 
 function criticalOff() {
-  return protections().filter((p) => p.critical && !p.on);
+  try { return protections().filter((p) => p.critical && !p.on); } catch { return []; }
 }
 
 function storage() {
@@ -163,6 +166,63 @@ const SURVIVES_RESTART = [
   "Orders, requests, quotes, storage and database sizes: read from the database and the volume each time.",
 ];
 
+/**
+ * One section of the report. The sections read other modules' internals (the upload guard, the
+ * parse pool, the models), which other branches are changing: if one of them is renamed or not
+ * there, that section is reported as unavailable and the rest of the report still goes out.
+ */
+function section(name, fn, fallback) {
+  try { return fn(); } catch (err) {
+    if (!section.warned.has(name)) { section.warned.add(name); console.warn(`[ops] status section "${name}" is unavailable (${err.name || "Error"})`); }
+    return fallback;
+  }
+}
+section.warned = new Set();
+
+const EMPTY_STORAGE = { warnPercent: 80, files: { usedBytes: 0, maxBytes: 0, percent: 0 }, database: { usedBytes: 0, maxBytes: 0, percent: 0 }, volume: null, unavailable: true };
+const EMPTY_BUSINESS = { orders: { total: 0, statuses: [], last24h: [], needingAttention: [] }, requests: { open: 0, oldestHours: 0, list: [] }, quotes: { expirySoonDays: EXPIRY_SOON_DAYS, firmExpiring: [], draftExpiring: 0 }, unavailable: true };
+
+/**
+ * Figures other modules may offer through small getters (the availability work adds a site-wide
+ * mail cap, storage and database usage, draft-quote counts, a memory budget). Each is looked for
+ * by name and used if it is a function; a getter that is missing, throws, or returns something
+ * that is not plain numbers and short words is simply left out.
+ */
+const OPTIONAL_GETTERS = [
+  ["mailCap", "../services/mailer", ["capStatus", "mailCapStatus", "sendCapStatus"]],
+  ["memory", "../security/limits", ["memoryStatus", "memoryBudgetStatus"]],
+  ["storageUsage", "../security/uploadGuards", ["usageStatus", "storageStatus"]],
+  ["draftQuotes", "../services/rowRetention", ["draftQuoteCounts", "draftCounts"]],
+];
+function plain(value, depth = 0) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "boolean" || value === null) return value;
+  if (typeof value === "string") return /^[\w .:%/-]{0,60}$/.test(value) ? value : undefined; // short words only: never an address or free text
+  if (depth >= 2 || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const out = {};
+  for (const [k, v] of Object.entries(value).slice(0, 20)) {
+    const p = plain(v, depth + 1);
+    if (p !== undefined && /^[A-Za-z][\w]{0,40}$/.test(k)) out[k] = p;
+  }
+  return out;
+}
+function extras() {
+  const out = {};
+  for (const [name, modulePath, getters] of OPTIONAL_GETTERS) {
+    try {
+      const mod = require(modulePath);
+      const getter = getters.map((g) => mod && mod[g]).find((f) => typeof f === "function");
+      if (!getter) continue;
+      const value = plain(getter.call(mod));
+      if (value !== undefined && value !== null) out[name] = value;
+    } catch { /* not there yet, or not usable: left out */ }
+  }
+  return out;
+}
+
+function safeStorage() { return section("storage", storage, EMPTY_STORAGE); }
+function safeBusiness(now) { return section("business", () => business(now), EMPTY_BUSINESS); }
+
 function collect(now = Date.now()) {
   const digest = require("./digest");
   const alerts = require("./alerts");
@@ -172,18 +232,19 @@ function collect(now = Date.now()) {
     uptimeSeconds: Math.round(process.uptime()),
     startedAt: new Date(events.startedAt).toISOString(),
     previousRun: state.get("run.previous", null),
-    hosts: hosts(),
-    protections: protections().map(({ key, label, on, critical, fix }) => ({ key, label, on, critical, fix: on ? "" : fix })),
-    storage: storage(),
-    business: business(now),
+    hosts: section("hosts", hosts, { canonical: "", redirects: [], noindex: [], hstsAllHosts: false, frontendUrlHost: "", seen: [], problems: [] }),
+    protections: section("protections", () => protections().map(({ key, label, on, critical, fix }) => ({ key, label, on, critical, fix: on ? "" : fix })), []),
+    storage: safeStorage(),
+    business: safeBusiness(now),
     parsing: parsing(),
+    extras: extras(),
     events: events.snapshot(),
     alerts: alerts.snapshot(),
-    digest: digest.describe(now),
+    digest: section("digest", () => digest.describe(now), null),
     backups: { lastFullDownloadAt: state.get("backup.lastFullAt", null) },
     resetsOnRestart: RESETS_ON_RESTART,
     survivesRestart: SURVIVES_RESTART,
   };
 }
 
-module.exports = { collect, build, protections, criticalOff, storage, business, parsing, hosts, needsAttention, KNOWN_ORDER_STATUSES, EXPIRY_SOON_DAYS };
+module.exports = { collect, build, protections, criticalOff, storage: safeStorage, business: safeBusiness, parsing, hosts, extras, section, plain, needsAttention, KNOWN_ORDER_STATUSES, EXPIRY_SOON_DAYS };

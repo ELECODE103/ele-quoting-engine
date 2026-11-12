@@ -65,6 +65,7 @@ function build(now = Date.now()) {
   const prev = poolAtLastDigest || {};
   const poolDelta = (k) => Math.max(0, (pool[k] || 0) - (prev[k] || 0));
   const off = status.criticalOff();
+  const extras = status.extras();
 
   const sections = [];
 
@@ -96,7 +97,7 @@ function build(now = Date.now()) {
 
   sections.push({
     title: "Storage",
-    summary: st.files.percent >= st.warnPercent || st.database.percent >= st.warnPercent ? "NEAR A CEILING" : "ok",
+    summary: st.unavailable ? "not available" : st.files.percent >= st.warnPercent || st.database.percent >= st.warnPercent ? "NEAR A CEILING" : "ok",
     rows: [
       ["Customer files", `${mb(st.files.usedBytes)} of ${mb(st.files.maxBytes)} (${st.files.percent}%)`],
       ["Database", `${mb(st.database.usedBytes)} of ${mb(st.database.maxBytes)} (${st.database.percent}%)`],
@@ -118,6 +119,14 @@ function build(now = Date.now()) {
       ["Requests turned away by a rate limit", String(c.rateLimited || 0)],
     ],
   });
+
+  // Figures other modules offer when they are there (mail cap, memory budget, draft-quote counts…): shown as given.
+  const extraRows = [];
+  for (const [name, value] of Object.entries(extras)) {
+    if (value && typeof value === "object") extraRows.push([name, Object.entries(value).map(([k, v]) => `${k} ${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ").slice(0, 200)]);
+    else extraRows.push([name, String(value)]);
+  }
+  if (extraRows.length) sections.push({ title: "Limits and budgets", summary: String(extraRows.length), rows: extraRows });
 
   if (off.length) {
     sections.push({ title: "Protections switched off", summary: String(off.length), rows: off.map((p) => [p.label, p.fix]) });

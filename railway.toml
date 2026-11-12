@@ -12,6 +12,8 @@
 # builder Railway offers; the only values are RAILPACK and DOCKERFILE).
 # Start: nothing here on purpose — the image's own ENTRYPOINT and CMD start the
 # server. Do not set a start command in the dashboard either.
+# Restarts: 100, not Railway's default 10 — a process killed for memory uses one
+# each time, and at 10 the service stays down until someone redeploys by hand.
 
 [build]
 builder = "DOCKERFILE"
@@ -21,5 +23,5 @@ dockerfilePath = "Dockerfile"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 10
+restartPolicyMaxRetries = 100
 drainingSeconds = 15

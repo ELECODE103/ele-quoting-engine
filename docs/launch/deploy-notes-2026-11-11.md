@@ -141,6 +141,8 @@ dependency on both.
 | The Docker image itself was **not built** | The sandbox has a Docker client but no running daemon, and the proxy refuses `registry-1.docker.io` and `hub.docker.com` (policy), so the base image cannot be pulled | Each stage's commands were run by hand in clean folders under Node 20 (section 4). Railway's first build is the first real build: watch its log (runbook step 5) |
 | That the tag `node:20.20.2-bookworm-slim` exists, and its digest | Same: Docker Hub is not reachable from here | If the build log says the image is not found, change the `FROM` line to `node:20-bookworm-slim` and redeploy. To pin a digest later: `docker buildx imagetools inspect node:20.20.2-bookworm-slim` |
 | Node 20.20.2 exactly | The sandbox has 20.20.0 and 22.23.4 | Suites run on both of those |
+| The names of the getters and of `MEMORY_BUDGET_MB`, `ADMIN_SETUP_CODE` | They are on branches not merged here (availability-fixes, review-fixes) | Marked "confirm at merge" in the runbook; `OPTIONAL_GETTERS` in `server/ops/status.js` |
+| The order-lifecycle behaviour described in the runbook (six event types, refunded state and email, old unpaid orders closed at first start, `STRIPE_PROMOTION_CODES`, `CHECKOUT_SESSION_MINUTES`) | Taken from the coordinator's summary of `docs/security/order-lifecycle-fixes-2026-11-11.md`; that report is not on this branch and was not read here | Re-read steps 2a, 5 and 10 of the runbook against the report at merge |
 | Railway behaviour: start-up as root, `chown` of the mounted volume, SIGTERM delivery, draining time | Needs a real deployment | The entrypoint and the shutdown handler are tested locally as root with a root-owned folder; runbook step 5 lists the log lines that prove each on Railway |
 | That the volume is mounted at `/app/data` | Dashboard only | Runbook step 1 |
 | That Railway's edge passes the visitor's `Host` header through unchanged | Needs the live edge. The redirects decide by `Host` (not `X-Forwarded-Host`, which a client can set). The CORS check and the emailed-link host check from the hardening branch rely on the same thing | Admin → System lists the host names requests arrived for; runbook step 12.3 checks it and says what to do if the canonical host is not there |
@@ -188,6 +190,24 @@ dependency on both.
 8. **Node 20 is past end of life** (section 1). Decision D3.
 9. **The database download no longer contains the customer files or previews** (hardening
    report). The new full backup does; the tested restore drill is section 4.
+10. **Ten restarts is a short leash once memory is in play.** The uploads review measured about
+    1.3 GB for a hostile parse; under roughly 2 GB of service memory that can kill the process,
+    and each kill uses one of Railway's restarts (default: On Failure, 10 — then the service stays
+    down). `railway.toml` and the runbook now say 100, and a run that ends in a kill raises its
+    own alert at the next start ("The site was killed and restarted"), separate from a crash.
+    Railway's documentation does not say whether the restart count is reset by a period of
+    healthy running; the number is chosen so that it does not matter.
+11. **Other branches are changing what the status page reads.** Order states (needs attention /
+    payment under review, payment-mismatch, duplicate-payment, late-payment, refunded, partially
+    refunded, disputed, expired) are counted by whatever name they have: every status found in
+    the database is listed, and the ones that ask for a person are recognised by the words in
+    the name. Refunded, partially refunded and expired are finished states and deliberately do
+    not raise the "orders need a look" alert. Each section of the status report is isolated: if
+    a module it reads is renamed or absent, that section says "not available" and the rest —
+    and the digest, and the checks — carry on. Optional getters from the availability work
+    (mail cap, memory budget, storage usage, draft-quote counts) are looked for by a short list
+    of likely names and shown when found; **the names are guesses** (`OPTIONAL_GETTERS` in
+    `server/ops/status.js`) and need one line each at merge.
 
 ### What already existed for the domain move, and what was missing
 
@@ -211,7 +231,7 @@ dependency on both.
 | Dockerfile build, entrypoint, ignore file | `Dockerfile`, `.dockerignore`, `docker-entrypoint.sh`, `railway.toml` | `server/ops/entrypoint.test.js` (6); stages reproduced by hand, below |
 | Clean stop | `server/ops/shutdown.js` | `server/ops/shutdown.test.js` (7) |
 | Canonical host, redirects, no-index, HSTS scope | `server/ops/canonicalHost.js` | `server/ops/canonicalHost.test.js` (8) |
-| Counters, alerts, checks, digest, status | `server/ops/{events,observer,alerts,checks,digest,status,state,opsEmails,index}.js` | `server/ops/ops.test.js` (10) |
+| Counters, alerts, checks, digest, status | `server/ops/{events,observer,alerts,checks,digest,status,state,opsEmails,index}.js` | `server/ops/ops.test.js` (10), including: unknown and future order states listed; a missing module leaves one section "not available"; optional getters used when present and never trusted with text |
 | Owner notifications (audit; already existed) | — | `server/ops/ownerNotifications.test.js` (5) |
 | Admin routes, full backup, restore | `server/ops/{routes,backupArchive}.js`, `scripts/ops/{backup,restore}.js` | `server/ops/system.test.js` (5) |
 | Email check | `server/ops/emailCheck.js`, `scripts/ops/email-check.js` | `server/ops/emailCheck.test.js` (7) |
@@ -221,7 +241,18 @@ Edits to shared files: `server/index.js` (three one-line mounts, one `const serv
 `package.json` (three script lines), `.env.example` (appended block), `railway.toml` (rewritten;
 it is this branch's file), the two client files above.
 
-**Suites.** See the report for the final counts on Node 22 and Node 20.
+**Suites.** `npm test` on the final code: **48/48 suites on Node 22.23.4 and 48/48 on Node
+20.20.0** (41 before; 7 added under `server/ops`, 48 cases). `NODE_ENV=production npm run build`:
+22/22 routes. `node scripts/claims-check.js`: exit 0. No dependency was added.
+
+Two things to know when re-running:
+
+- On a fresh checkout the count is one short until `data/rfq-drawings` exists (finding 4).
+- `server/security/uploads.test.js` has a latency assertion ("slowest health check while a STEP
+  file parses" under 250 ms). On this shared machine, with other test runs and browsers going
+  (load average 10–14 on 2 cores), it failed at 309–392 ms on this branch **and at 378–597 ms on
+  the base commit run side by side**; on a quiet machine it passes on both. It measures the
+  machine as much as the code.
 
 **The image, reproduced by hand** (Node 20.20.0; the image was not built):
 
@@ -282,13 +313,15 @@ The runbook has these in order with what to expect; this is the list.
 | Settings → Deploy | Pre-deploy command | empty |
 | Settings → Deploy | Healthcheck path | `/api/health` |
 | Settings → Deploy | Healthcheck timeout | `300` |
-| Settings → Deploy | Restart policy | On Failure, max retries `10` |
+| Settings → Deploy | Restart policy | On Failure, max retries `100` (default is 10; see finding 10) |
+| Settings → Resources | Memory limit | 2 GB or more; `MEMORY_BUDGET_MB` to match (availability-fixes branch; name to confirm at merge) |
 | Settings → Deploy | Draining time (graceful shutdown) | `15` seconds |
 | Settings → Deploy | Replicas | 1 |
 | Settings → Config-as-code / Railway Config File | path | empty |
 | The volume | Mount path | `/app/data` |
 | Service → Backups | Schedules | Daily and Weekly |
 | Variables | must **not** exist | `RAILWAY_RUN_UID`, `SE_TEST_HOOKS`, `EMAIL_OUTBOX_DIR`, `CSP_REPORT_ONLY`, `ADMIN_RECOVERY`, `NIXPACKS_*` |
+| Variables | optional, from the payments work | `STRIPE_PROMOTION_CODES` (default off), `CHECKOUT_SESSION_MINUTES` (default 120) |
 | Variables | required for launch | `JWT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `ADMIN_EMAIL`, `FRONTEND_URL`, `EMAIL_API_KEY`, `EMAIL_FROM`, `RFQ_NOTIFY_TO`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, `NORD_FILE_ENC_KEY`, `TRUST_PROXY_HOPS` |
 | Variables | at domain cutover | `CANONICAL_HOST`, `REDIRECT_HOSTS`; later `HSTS_ALL_HOSTS` |
 | Settings → Networking | Custom domains | the bare domain and `www` of both names (four) |
@@ -296,7 +329,10 @@ The runbook has these in order with what to expect; this is the list.
 **Namecheap** — the web records Railway shows for `straightedgemfg.com` and `www`; the mail
 records Resend shows; one DMARC record. Later the same web records for `nordmfg.com`.
 
-**Stripe** — the webhook endpoint's address; its event types; a live test order and refund.
+**Stripe** — the webhook endpoint's address; its six event types (`checkout.session.completed`,
+`checkout.session.expired`, `charge.refunded`, `refund.updated`, `charge.dispute.created`,
+`charge.dispute.closed`, per the order-lifecycle report); a live test order and refund; no
+promotion codes until `STRIPE_PROMOTION_CODES` is switched on.
 
 **Resend** — add and verify the sending domain; one sending-only API key.
 

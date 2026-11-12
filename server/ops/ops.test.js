@@ -342,7 +342,10 @@ test("startup: each critical protection that is off is named; the alert is repea
     assert.strictEqual(a.key, "previous-run-crash");
     assert.ok(a.lines[0].includes("TypeError"));
     assert.deepStrictEqual(checks.evaluateStartup({ ended: "clean" }), []);
-    assert.deepStrictEqual(checks.evaluateStartup({ ended: "killed" }), [], "a kill at the end of the draining time is not a crash");
+    // Killed from outside (out of memory, or a deploy with no draining time): its own alert, with where to look.
+    const [k] = checks.evaluateStartup({ ended: "killed" });
+    assert.strictEqual(k.key, "previous-run-killed");
+    assert.ok(/out of memory/.test(k.lines[0]) && /MEMORY_BUDGET_MB/.test(k.lines[1]) && /draining time/.test(k.lines[1]));
   });
   alerts.reset();
 });
@@ -448,7 +451,7 @@ test("digest contents: new orders, every status including ones this code has nev
   assert.ok(/New orders, last 24 hours —: 3 · \$5,468\.75/.test(t), t.slice(0, 600));
   assert.ok(/\$908\.75 · paid · card/.test(t) && /\$4,250\.00 · pending_po · po/.test(t) && /\$310\.00 · needs_attention/.test(t));
   // Every status present in the database is in the list, known or not.
-  for (const line of ["paid: 1", "pending_po: 1", "shipped: 1", "paid_amount_mismatch — needs a look: 1", "needs_attention (new status) — needs a look: 1", "disputed (new status) — needs a look: 1", "partially_refunded (new status) — needs a look: 1", "some_future_state (new status): 1"]) {
+  for (const line of ["paid: 1", "pending_po: 1", "shipped: 1", "paid_amount_mismatch — needs a look: 1", "needs_attention (new status) — needs a look: 1", "disputed (new status) — needs a look: 1", "partially_refunded (new status): 1", "some_future_state (new status): 1"]) {
     assert.ok(t.includes(line), `status line "${line}" in:\n${t}`);
   }
   assert.ok(/All orders by status —: 8/.test(t));
@@ -461,7 +464,7 @@ test("digest contents: new orders, every status including ones this code has nev
   assert.ok(/Stripe webhooks ok \/ bad signature \/ other failure: 1 \/ 1 \/ 0/.test(t));
   assert.ok(/Server errors \(5xx\): 1/.test(t));
   assert.ok(/Sign-in: accounts paused \/ attempts refused while paused: 1 \/ 2/.test(t));
-  assert.ok(/3 new orders · 2 requests waiting · 4 orders needing a look · 4 failures to check\./.test(t), t.split("\n").slice(0, 4).join("\n"));
+  assert.ok(/3 new orders · 2 requests waiting · 3 orders needing a look · 4 failures to check\./.test(t), t.split("\n").slice(0, 4).join("\n"));
   assert.ok(t.includes("https://straightedgemfg.com/admin"));
   assert.ok(/start again when the site restarts/.test(t), "says what resets on a restart");
   // Nothing a customer typed, and no customer address, anywhere in the message.
@@ -469,6 +472,14 @@ test("digest contents: new orders, every status including ones this code has nev
   for (const v of Object.values(pii)) assert.ok(!all.includes(v), `the digest must not contain "${v}"`);
   assert.ok(!/qwerty/i.test(all));
   for (const v of Object.values(SECRETS)) assert.ok(!all.includes(v));
+
+  // Which states ask for a person, by name: the ones the payments work adds are recognised without a list here;
+  // finished states (refunded, expired) are counted and listed but do not raise the "needs a look" alert for ever.
+  for (const st of ["needs_attention", "needs-attention", "payment_under_review", "payment-mismatch", "paid_amount_mismatch", "duplicate-payment", "duplicate_payment", "late-payment", "late_payment", "disputed", "dispute_open", "payment_failed"]) assert.ok(status.needsAttention(st), st);
+  for (const st of ["paid", "pending_payment", "pending_po", "shipped", "delivered", "refunded", "partially_refunded", "partially-refunded", "expired", "cancelled", "not_paid", "some_future_state", "", undefined]) assert.ok(!status.needsAttention(st), String(st));
+  const alertNow = checks.evaluate(now).find((a) => a.key === "orders-attention");
+  assert.ok(alertNow && /3 orders need a look/.test(alertNow.title), alertNow && alertNow.title);
+  assert.deepStrictEqual(alertNow.facts.map((f) => f[0]), ["disputed", "needs_attention", "paid_amount_mismatch"]);
 
   // With protections off, the digest says which.
   const off = await withEnv({ TURNSTILE_SITE_KEY: undefined, NORD_FILE_ENC_KEY: undefined }, async () => digest.build(now));
@@ -495,6 +506,37 @@ test("status report: build, uptime, hosts, protections, sizes, counts — and ne
   for (const [k, v] of Object.entries(SECRETS)) assert.ok(!dump.includes(v), `${k} must not be in the report`);
   for (const marker of ["owner-marker", "notify-marker", "second-marker", "from-marker", "zelda-marker", "Qwerty"]) assert.ok(!dump.includes(marker), `"${marker}" must not be in the report`);
   assert.ok(!/@/.test(dump.replace(/"fix":"[^"]*"/g, "")), "no email address anywhere in the report");
+  // A section whose source is missing or renamed (other branches are changing those modules) is reported as
+  // unavailable; the rest of the report, the digest and the checks still work.
+  const guards = require("../security/uploadGuards");
+  const usage = guards.storage.usage;
+  const getAll = require("../models").ordersDB.getAll;
+  const warn = console.warn; console.warn = () => {};
+  try {
+    guards.storage.usage = undefined;
+    require("../models").ordersDB.getAll = () => { throw new Error("table renamed"); };
+    const partial = status.collect();
+    assert.strictEqual(partial.storage.unavailable, true);
+    assert.strictEqual(partial.business.unavailable, true);
+    assert.ok(partial.build.node && Array.isArray(partial.protections) && partial.protections.length > 5, "the other sections are intact");
+    assert.deepStrictEqual(checks.evaluate().filter((a) => /storage|database|orders/.test(a.key)), []);
+    const d = digest.build();
+    assert.ok(/Storage —: not available/.test(d.text) && /All orders by status —: 0/.test(d.text), d.text);
+  } finally { guards.storage.usage = usage; require("../models").ordersDB.getAll = getAll; console.warn = warn; }
+
+  // Optional getters offered by other modules: used when present, ignored when absent, and never trusted with text.
+  assert.deepStrictEqual(status.extras(), {}, "none of them exists on this branch");
+  const mailer = require("../services/mailer");
+  mailer.capStatus = () => ({ sentToday: 41, capPerDay: 500, note: "ok", leak: "someone@customer.test wrote <b>this</b>", nested: { remaining: 459, deep: { deeper: { x: 1 } } }, list: [1, 2, 3] });
+  try {
+    assert.deepStrictEqual(status.extras(), { mailCap: { sentToday: 41, capPerDay: 500, note: "ok", nested: { remaining: 459 } } });
+    assert.ok(/Limits and budgets/.test(digest.build().text) && /sentToday 41/.test(digest.build().text));
+    mailer.capStatus = () => { throw new Error("not ready"); };
+    assert.deepStrictEqual(status.extras(), {});
+    mailer.capStatus = () => "free text from a customer <script>";
+    assert.deepStrictEqual(status.extras(), {});
+  } finally { delete mailer.capStatus; }
+
   // An unusable commit value is not echoed.
   const odd = await withEnv({ RAILWAY_GIT_COMMIT_SHA: "<script>alert(1)</script>" }, async () => status.build());
   assert.strictEqual(odd.commit, "unknown");

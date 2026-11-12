@@ -22,10 +22,10 @@ where to click, what you should see, and what to do if you do not. **R** = requi
 
 - [ ] **R** `JWT_SECRET` (32+ characters)
 - [ ] **R** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`
-- [ ] **R** `STRIPE_WEBHOOK_SECRET` — **before the merge, or the site will not start**
+- [ ] **R** `STRIPE_WEBHOOK_SECRET` is present — **confirm before the merge: the site exits at startup without it**
 - [ ] **R** `ADMIN_EMAIL`
 - [ ] **R** `FRONTEND_URL` = `https://nordmfg.com` (changes in step 12)
-- [ ] **R** `EMAIL_API_KEY`
+- [ ] **R** `EMAIL_API_KEY` — email is a launch requirement: without it no order, payment-problem, refund or dispute email reaches the shop
 - [ ] **R** `EMAIL_FROM`
 - [ ] **R** `RFQ_NOTIFY_TO`
 - [ ] **R** `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`
@@ -33,8 +33,8 @@ where to click, what you should see, and what to do if you do not. **R** = requi
 - [ ] `TRUST_PROXY_HOPS` left unset
 - [ ] **R** None of these exist: `RAILWAY_RUN_UID`, `SE_TEST_HOOKS`, `EMAIL_OUTBOX_DIR`, `CSP_REPORT_ONLY`, `ADMIN_RECOVERY`, `NIXPACKS_*`
 - [ ] **R** Stripe webhook endpoint exists; its signing secret is the one entered above
-- [ ] **R** Stripe webhook event types enabled as listed in `docs/security/order-lifecycle-fixes-2026-11-11.md`
-- [ ] No promotion codes created in Stripe
+- [ ] **R** Stripe webhook event types enabled, all six: `checkout.session.completed`, `checkout.session.expired`, `charge.refunded`, `refund.updated`, `charge.dispute.created`, `charge.dispute.closed`
+- [ ] No promotion codes created in Stripe (`STRIPE_PROMOTION_CODES` stays off until you decide)
 
 ## 3. Railway build settings (Settings)
 
@@ -42,7 +42,8 @@ where to click, what you should see, and what to do if you do not. **R** = requi
 - [ ] **R** Builder **Dockerfile**; path `Dockerfile`; build command empty; watch paths empty
 - [ ] **R** Start command **empty**; pre-deploy command empty
 - [ ] **R** Healthcheck path `/api/health`; timeout `300`
-- [ ] **R** Restart policy On Failure, `10`
+- [ ] **R** Restart policy On Failure, `100`
+- [ ] **R** Service memory limit noted; 2 GB or more; `MEMORY_BUDGET_MB` set to match (confirm the name at merge)
 - [ ] **R** Draining time `15` seconds
 - [ ] Railway config file path empty; replicas 1
 
@@ -52,6 +53,7 @@ where to click, what you should see, and what to do if you do not. **R** = requi
 - [ ] **R** Pull request merged
 - [ ] **R** Build log: `Using detected Dockerfile!` and `22/22 routes rendered`
 - [ ] **R** Deploy log: no `FATAL`, no `WARNING` block, no `ALERT`, no "running as root"
+- [ ] Deploy log, first start only: old unpaid orders checked with Stripe and closed as "not paid" (expected)
 - [ ] **R** `https://nordmfg.com/api/health` shows `"status":"ok"`
 
 ## 6. Sign-in
@@ -75,7 +77,7 @@ where to click, what you should see, and what to do if you do not. **R** = requi
 - [ ] **R** Order page shows paid; buyer confirmation arrived; **one** "New order" email in the shop inbox
 - [ ] **R** Stripe → Webhooks → Event deliveries: `checkout.session.completed` **200**
 - [ ] **R** Admin → Orders → the part file downloads and opens
-- [ ] **R** Refunded in Stripe
+- [ ] **R** Refunded in Stripe; the order shows refunded; refund notice in the shop inbox
 
 ## 12. Domain cutover
 

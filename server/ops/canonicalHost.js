@@ -167,7 +167,7 @@ function redirectLocation(canonical, originalUrl) {
 // point here yet or the platform is not passing the visitor's Host header through.
 const hostsSeen = new Map();
 function noteHost(host) {
-  const name = cleanHost(host) || "(not a host name)";
+  const name = cleanHost(host) || (/^[\d.]+$|^\[/.test(host) ? "(an IP address)" : "(not a host name)");
   if (hostsSeen.has(name)) hostsSeen.set(name, hostsSeen.get(name) + 1);
   else if (hostsSeen.size < 20) hostsSeen.set(name, 1);
 }

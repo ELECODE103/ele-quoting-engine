@@ -153,7 +153,7 @@ together). Generate secrets with your password manager's generator or the comman
 | `JWT_SECRET` | 48 or more random characters | If the existing one is shorter than 32 characters, replace it now: changing it later signs everyone out and resets two-step sign-in |
 | `STRIPE_SECRET_KEY` | your live secret key from Stripe | Already there if the old site took payments |
 | `STRIPE_PUBLISHABLE_KEY` | your live publishable key | |
-| `STRIPE_WEBHOOK_SECRET` | the signing secret of the webhook endpoint, from Stripe (step 2a below) | **Must be set before step 5.** The site is being changed to refuse to start without it |
+| `STRIPE_WEBHOOK_SECRET` | the signing secret of the webhook endpoint, from Stripe (step 2a below) | **Confirm it is present before step 5.** You already have it set; from this release the site exits at startup without it |
 | `ADMIN_EMAIL` | the address of your own existing account on the site | Exactly as you registered it |
 | `FRONTEND_URL` | for now: `https://nordmfg.com` | The address the site answers on today. You change it to the new domain in step 12, not before — links in emails and Stripe's return page use it |
 | `EMAIL_API_KEY` | the Resend key from part A | **Required for launch** |
@@ -182,10 +182,18 @@ and anything starting `NIXPACKS_`.
 
 ### Optional (defaults are fine)
 
-`OPS_DIGEST_HOUR` (digest hour, Central time, default 7), `OPS_DIGEST=off`, `ADMIN_SESSION_HOURS`
-(default 4), and the limits listed in `.env.example`. A new, empty database also needs the
-one-time admin setup code described in step 6 — not your case, because your account is already on
-the volume.
+| Variable | Default | What it does |
+|---|---|---|
+| `STRIPE_PROMOTION_CODES` | off | `on` shows the promotion-code box at checkout. Leave it off until you have decided to run codes (step 2a, item 3) |
+| `CHECKOUT_SESSION_MINUTES` | 120 | How long a buyer has to finish paying on Stripe's page before that checkout lapses |
+| `MEMORY_BUDGET_MB` | see step 3 | How much memory the site may use before it turns heavy uploads away. Set it in step 3 to match the service's memory limit. *(Being added on the availability-fixes branch: confirm the name at merge)* |
+| `OPS_DIGEST_HOUR` | 7 | Hour of the daily digest, Central time |
+| `OPS_DIGEST` | on | `off` stops the scheduled digest (the admin button still works) |
+| `ADMIN_SESSION_HOURS` | 4 | How long an admin sign-in lasts |
+
+The other limits are listed in `.env.example`. A new, empty database also needs the one-time
+admin setup code described in step 6 — not your case, because your account is already on the
+volume.
 
 ### Step 2a — the Stripe webhook endpoint
 
@@ -196,16 +204,21 @@ the volume.
      `STRIPE_WEBHOOK_SECRET` in Railway. Leave the address alone for now; step 12 changes it.
    - *If there is none:* create one. Address: `https://nordmfg.com/api/stripe/webhook`. Payload:
      **Snapshot**. Then copy its signing secret as above.
-2. Event types. Today the site needs `checkout.session.completed`. The order-lifecycle change
-   being merged with this one needs more. **Enable the event types listed in
-   `docs/security/order-lifecycle-fixes-2026-11-11.md`** (expected: checkout.session.completed,
-   checkout.session.expired, checkout.session.async_payment_succeeded,
-   checkout.session.async_payment_failed, charge.refunded, refund.updated, charge.dispute.created,
-   charge.dispute.closed). *Placeholder: the exact list is being reconciled at merge; use the list
-   in that report if it differs from this one.*
-3. **Do not create promotion codes in Stripe yet.** Promotion codes at checkout are being
-   switched off by default until you decide; a code created now would not be accepted, and one
-   created later needs that setting turned on first (it will be named in the same report).
+2. Event types. Open the endpoint → **Edit** → the list of events. Enable exactly these six
+   (from `docs/security/order-lifecycle-fixes-2026-11-11.md`):
+
+   - `checkout.session.completed`
+   - `checkout.session.expired`
+   - `charge.refunded`
+   - `refund.updated`
+   - `charge.dispute.created`
+   - `charge.dispute.closed`
+
+   *You should see:* all six listed on the endpoint's page. With fewer, the site still takes
+   payment but does not hear about refunds, disputes or lapsed checkouts.
+3. **Do not create promotion codes in Stripe yet.** The promotion-code box at checkout is off by
+   default (`STRIPE_PROMOTION_CODES`). A code created now cannot be entered anywhere. When you
+   decide to run codes: set `STRIPE_PROMOTION_CODES` to `on`, Deploy, then create the codes.
 
 ---
 
@@ -229,11 +242,31 @@ Railway → the service → **Settings**:
 | Deploy | Pre-deploy command | empty |
 | Deploy | Healthcheck path | `/api/health` |
 | Deploy | Healthcheck timeout | `300` |
-| Deploy | Restart policy | **On Failure**, max restarts `10` |
+| Deploy | Restart policy | **On Failure**, max restarts `100` (see below) |
 | Deploy | Draining time (time to shut down gracefully) | `15` seconds |
 | Deploy | Replicas | 1 |
 | Config-as-code | Railway config file path | empty |
 | Networking | Custom domains | leave as they are for now |
+
+**Restart count: why 100 and not the default 10.** Railway restarts the site when it stops on an
+error, up to this number, and then leaves it down until you redeploy by hand. A file built to
+exhaust memory can get the whole site killed, and each kill uses one restart: at 10, ten such
+uploads in a row take the site offline until you notice. At 100 there is room for that while a
+deployment that can never start (a missing variable) still stops by itself. Every restart after a
+kill or crash also sends you an alert email, so you will know long before the count matters.
+
+**Memory.** Settings → **Resources** (or the service's **Metrics** tab → Memory): note the
+service's **memory limit**. Reading a hostile CAD file took the site to about 1.3 GB in testing,
+so:
+
+- If the limit is **below 2 GB**: raise it to 2 GB or more if your plan allows. Below that, one
+  bad upload can kill the whole server rather than just the one file being read.
+- Then set the variable `MEMORY_BUDGET_MB` to match the limit, as that setting's notes describe
+  (it is being added on the availability-fixes branch — confirm the name and the rule for choosing
+  the number at merge). Until it exists, the limit itself is what protects you.
+
+*You should see, later, in Admin → System:* nothing about memory unless something went wrong; an
+alert titled "The site was killed and restarted" is the sign that the limit was hit.
 
 Why the start command must be empty: the image starts itself. It begins as root for one job —
 making the volume writable — then runs the site as an unprivileged user. A start command typed
@@ -273,6 +306,10 @@ The next step puts the site back on the public internet. Before you press the bu
 *Then, in **Deploy Logs**, in this order:*
 - `entrypoint: making /app/data writable by node (volume mounted as root)` — the first time only
 - `Database ready.` and a line with the database size
+- once, on this first start: lines about **old unpaid orders being closed**. Any order that was
+  left unpaid for more than a day is checked against Stripe (was it paid after all?) and, if not,
+  closed as "not paid". That is expected clean-up, not an error; an order Stripe says *was* paid
+  is marked paid instead
 - `[seo] 22/22 public routes prerendered; canonical host straightedgemfg.com`
 - `File encryption: on — …`
 - `[hosts] CANONICAL_HOST is not set: …` (correct until step 12)
@@ -324,7 +361,7 @@ Everyone, including you, is signed out by this deploy.
 | "Sign-in is paused" | Wait 15 minutes, or use the reset link, which lifts the pause |
 | Lost the phone **and** the recovery codes (later on) | Railway → Variables → add `ADMIN_RECOVERY` with the value `reset-2fa` → Deploy → sign in with your password → enrol again → **delete the variable** → Deploy. The log prints a warning every start until it is removed |
 | The code is always "didn't match" | The phone's clock is off. Set it to automatic time |
-| A brand-new, empty database (not your case; after a restore onto a fresh volume it could be) | The first admin is created with a one-time **setup code** you invent and enter as a Railway variable (expected name `ADMIN_SETUP_CODE` — the exact name and steps are in the review-fixes report and are confirmed at merge). This replaces registering with the admin address and replaces `ADMIN_RECOVERY=verify-email`. Your existing account does not need it |
+| A brand-new, empty database (not your case; it would be after starting on a fresh, empty volume) | The first admin is created with a one-time **setup code** that you invent and enter as a Railway variable (expected name `ADMIN_SETUP_CODE` — *confirm the name at merge*; the steps are in the review-fixes report). You then go through two-step enrolment exactly as above. This replaces registering with the admin address and replaces `ADMIN_RECOVERY=verify-email`. Your existing account is unaffected and does not need it |
 
 ---
 
@@ -357,7 +394,9 @@ tell me whatever you see here that is not a ticking box.
 
 ## Step 9 — Admin → System, and the email check
 
-1. Admin → **System**.
+1. Admin → **System**. (What the page looks like: [`screens/admin-system-tab-1360.png`](screens/admin-system-tab-1360.png)
+   — taken on a test server with the protections deliberately off, so yours should show far
+   fewer red tags.)
    *You should see:* no red banner; **Build** shows a commit; every line under **Protections** is
    **on** except *Canonical host* (set in step 12).
    *If a protection is off:* the line under it says which variable to set.
@@ -406,10 +445,13 @@ Use your own card and a second email address of your own (not the admin one).
 5. Admin → Orders → open the order → download the part file.
    *You should see:* it opens in your CAD program (this proves file encryption round-trips).
 6. **Refund it.** Stripe Dashboard → **Payments** → the payment → **Refund** → full amount.
-   *You should see:* the payment marked Refunded in Stripe. What the order shows in Admin after a
-   refund is part of the order-lifecycle change — its report says what to expect (a refunded
-   state and an email). If the order still says paid, that is the earlier behaviour: change its
-   status by hand and note it for me. Stripe keeps its processing fee on a refund.
+   *You should see:* the payment marked Refunded in Stripe; within a minute the order in Admin →
+   Orders changes to **refunded** and a refund notice arrives in the shop mailbox; Stripe's Event
+   deliveries show `charge.refunded` with status 200. (These come from the order-lifecycle
+   change; its report, `docs/security/order-lifecycle-fixes-2026-11-11.md`, has the exact
+   wording.) *If the order still says paid:* the `charge.refunded` event type is not enabled on
+   the endpoint (step 2a, item 2) — enable it and press **Resend** on the event. Stripe keeps its
+   processing fee on a refund.
 
 ---
 
@@ -714,10 +756,12 @@ alert is not repeated for six hours, so one email means "now".
 | Alert "Emails are failing to send" | Resend problem (limit, domain, key) | Resend dashboard; then the test email button |
 | Alert "answering with server errors" | A bug or an overloaded server | Deploy log for `→ 500`; if it began with a deploy, Rollback B |
 | Alert "restarted after a crash" | Railway restarted the site after an error | Once: note the time. Repeating: Rollback B and tell me |
+| Alert "was killed and restarted" | The container ran out of memory (usually a huge or hostile upload), or a deploy happened with the draining time at 0 | Railway → Metrics → Memory at that time; step 3's memory and draining settings |
+| Alert "N orders need a look" | A payment that does not match its order, a duplicate or late payment, or a dispute | Admin → Orders; the Stripe payment's page for the same order |
 | Alert "storage is N% full" | Customer files are accumulating | Decline spam requests; if genuine, raise `UPLOAD_DIR_MAX_MB` (the volume has room) |
 | UptimeRobot "Down" | The site is not answering from outside | Railway → Deployments: is one Active? Deploy log. Railway's status page |
 | Digest: "told busy" or "timed out" counts above a handful | Customers' models are heavy for the instant quote | Normal in small numbers; they are offered a firm quote. Tell me if it grows |
-| Digest: a status marked "(new status)" | An order state added by a later change | Nothing; it is listed so that it is not missed |
+| Digest: a status marked "(new status)" | An order state this page has no description for yet (refunded, expired and the like are listed this way) | Nothing; every state is listed with its count so that none is missed |
 
 What the counters do **not** remember: they start from zero at every restart or deploy (the
 digest and the System page say when counting began). Orders, requests and sizes are always read

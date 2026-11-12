@@ -12,6 +12,7 @@
  *   orders-attention    orders in a state that needs a person (mismatch, dispute, refund, …)
  *   startup-protections at startup: a critical protection is off
  *   previous-run-crash  at startup: the previous run ended in a crash
+ *   previous-run-killed at startup: the previous run was killed (out of memory, or no draining time)
  *
  * Thresholds: OPS_WEBHOOK_FAIL_THRESHOLD, OPS_MAIL_FAIL_THRESHOLD (per hour),
  * OPS_ERROR_THRESHOLD (per 15 minutes). The storage line is the same
@@ -119,8 +120,7 @@ function evaluate(now = Date.now()) {
     });
   }
 
-  let attention = [];
-  try { attention = status.business(now).orders.needingAttention; } catch { /* database not ready */ }
+  const attention = status.business(now).orders.needingAttention;
   if (attention.length) {
     const byStatus = {};
     for (const o of attention) byStatus[o.status] = (byStatus[o.status] || 0) + 1;
@@ -148,6 +148,18 @@ function evaluateStartup(previousRun) {
       lines: ["Each line below is a setting that is missing or wrong. The site is running, but without that protection."],
       facts: off.map((p) => [p.label, p.fix]),
       cooldownMs: 24 * HOUR,
+    });
+  }
+  if (previousRun && previousRun.ended === "killed") {
+    // Neither a clean stop nor an error: the process was killed. With the draining time set (15 s) a deploy
+    // stops cleanly, so what is left is the container running out of memory or the host going away.
+    out.push({
+      key: "previous-run-killed",
+      title: "The site was killed and restarted",
+      lines: [
+        "The previous run ended without a clean stop and without an error of its own: it was killed from outside. The usual cause is the container running out of memory while reading a very large or hostile upload; the other is a deploy with the draining time still at 0.",
+        "Check Railway → the service → Metrics → Memory around the time of the restart, and Settings → Deploy → draining time (15 seconds). If memory hit the service's limit, raise the limit or lower MEMORY_BUDGET_MB (runbook, step 3).",
+      ],
     });
   }
   if (previousRun && previousRun.ended === "crash") {
