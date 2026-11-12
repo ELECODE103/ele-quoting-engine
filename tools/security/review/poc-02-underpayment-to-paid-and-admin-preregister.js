@@ -1,4 +1,4 @@
-const c = require("/home/claude/ele-quoting-engine/.claude/worktrees/sec-review/tools/security/review/lib/common.js");
+const c = require("./lib/common");
 const crypto = require("crypto");
 (async () => {
   // ---- unknown-process underpayment, full checkout to "paid"

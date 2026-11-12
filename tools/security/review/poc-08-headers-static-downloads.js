@@ -1,4 +1,4 @@
-const c = require("/home/claude/ele-quoting-engine/.claude/worktrees/sec-review/tools/security/review/lib/common.js");
+const c = require("./lib/common");
 const show = (label, h) => console.log(`\n== ${label}\n` + ["content-security-policy","x-frame-options","strict-transport-security","referrer-policy","permissions-policy","x-content-type-options","cache-control","content-type","content-disposition","x-robots-tag","access-control-allow-origin"].filter(k=>h[k]!==undefined).map(k=>`  ${k}: ${h[k]}`).join("\n"));
 (async () => {
   const s = await c.start({ mailer: true });

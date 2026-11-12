@@ -1,6 +1,6 @@
-const c = require("/home/claude/ele-quoting-engine/.claude/worktrees/sec-review/tools/security/review/lib/common.js");
-const jwt = require("/home/claude/ele-quoting-engine/.claude/worktrees/sec-review/node_modules/jsonwebtoken");
-const totp = require("/home/claude/ele-quoting-engine/.claude/worktrees/sec-review/server/security/totp");
+const c = require("./lib/common");
+const jwt = require("jsonwebtoken");
+const totp = require("../../../server/security/totp");
 const crypto = require("crypto");
 (async () => {
   const s = await c.start({ mailer: true });

@@ -1,4 +1,4 @@
-const c = require("/home/claude/ele-quoting-engine/.claude/worktrees/sec-review/tools/security/review/lib/common.js");
+const c = require("./lib/common");
 (async () => {
   const s = await c.start({ mailer: true });
   try {

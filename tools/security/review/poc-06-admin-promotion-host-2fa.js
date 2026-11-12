@@ -1,5 +1,5 @@
-const c = require("/home/claude/ele-quoting-engine/.claude/worktrees/sec-review/tools/security/review/lib/common.js");
-const totp = require("/home/claude/ele-quoting-engine/.claude/worktrees/sec-review/server/security/totp");
+const c = require("./lib/common");
+const totp = require("../../../server/security/totp");
 const crypto = require("crypto");
 (async () => {
   // ---- A: pre-registration of ADMIN_EMAIL, owner clicks the confirmation link
