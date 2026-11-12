@@ -438,7 +438,7 @@ const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#toke
     s.note = `${codes} recovery codes, panel ${text.length} chars`;
   });
   // the tab bar's buttons (the header's menu button shares the class but has no letters in its label)
-  const TAB_LABELS = ["Orders", "RFQs", "Parts", "Materials", "Finishes", "Lead Times", "Pricing", "Calibration", "Quotes", "Security"];
+  const TAB_LABELS = ["Orders", "RFQs", "Parts", "Materials", "Finishes", "Lead Times", "Pricing", "Calibration", "Quotes", "Change log", "Security"];
   const tabs = (await page.locator("button.btn.btn-ghost").allInnerTexts().catch(() => [])).map((t) => t.trim()).filter((t) => TAB_LABELS.includes(t));
   if (tabs.length !== TAB_LABELS.length) console.log(`        (expected ${TAB_LABELS.length} admin tabs, found ${tabs.length}: ${tabs.join(", ")})`);
   for (const label of tabs) {
