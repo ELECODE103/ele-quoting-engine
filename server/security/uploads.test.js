@@ -283,8 +283,10 @@ test("3MF XML bombs: entity expansion is off and nesting is capped", async () =>
 // ─── Time, concurrency, responsiveness ───────────────────────
 
 test("a slow file is cut off at PARSE_TIMEOUT_MS; the site answers throughout; a second sender is told 'busy' (503)", async () => {
-  const s = await server({ env: { PARSE_TIMEOUT_MS: "2500", PARSE_CONCURRENCY: "1", PARSE_QUEUE_MAX: "0" } });
-  const slow = Buffer.from(crossingLinesDxf(5000)); // ~480 kB, tens of seconds of contour building
+  // "Slow" does not depend on how fast the drawing reader is: the test delay keeps the worker busy for 20 s
+  // before any .dxf (parsers/parsePool.js, SE_TEST_HOOKS only), whatever the drawing itself costs.
+  const s = await server({ env: { PARSE_TIMEOUT_MS: "2500", PARSE_CONCURRENCY: "1", PARSE_QUEUE_MAX: "0", PARSE_TEST_DELAY_MS: "20000", PARSE_TEST_DELAY_EXT: ".dxf" } });
+  const slow = Buffer.from(crossingLinesDxf(5000)); // ~480 kB of crossing lines
   const t0 = Date.now();
   const first = s.upload([{ name: "slow.dxf", data: slow }], { ip: "203.0.113.1", fields: { process: "routing" } });
   await new Promise((r) => setTimeout(r, 300));

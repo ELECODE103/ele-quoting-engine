@@ -129,16 +129,25 @@ test("wall-clock timeout: the worker is terminated and the caller gets a firm-qu
   assert.deepStrictEqual([pool.stats().running, pool.stats().idleWorkers, pool.stats().timedOut], [0, 0, 1], "the stuck worker is gone, not parked");
 });
 
-test("timeout against a real pathological file: 5,000 crossing lines (a 480 kB DXF) are stopped mid-parse", async () => {
-  const pool = make({ parseConcurrency: 1, parseTimeoutMs: 1200 });
-  const dxf = write("crossing.dxf", crossingLinesDxf(5000));
-  assert.ok(fs.statSync(dxf).size < 600 * 1024, "the file is small — size limits alone would not catch it");
-  const t0 = Date.now();
-  const r = await settle(pool.run({ filePath: dxf }));
-  assert.strictEqual(r.error.code, "parse-timeout");
-  assert.ok(Date.now() - t0 < 3000, `stopped in ${Date.now() - t0} ms`);
-  // the slot is free again and a good file parses
-  assert.ok(Math.abs((await pool.run({ filePath: cube })).geometry.volume - 8000) < 1, "a good file still parses");
+test("timeout against a small file that is slow to read: a 480 kB DXF is stopped mid-parse", async () => {
+  // How slow this drawing is depends on the drawing reader (5,000 crossing lines took tens of seconds
+  // once and take a fraction of a second after the geometry speed-up), so the slowness is made with the
+  // test delay: the worker is kept busy for 20 s before any .dxf, whatever the drawing itself costs.
+  const hooks = { SE_TEST_HOOKS: process.env.SE_TEST_HOOKS, PARSE_TEST_DELAY_MS: process.env.PARSE_TEST_DELAY_MS, PARSE_TEST_DELAY_EXT: process.env.PARSE_TEST_DELAY_EXT };
+  Object.assign(process.env, { SE_TEST_HOOKS: "1", PARSE_TEST_DELAY_MS: "20000", PARSE_TEST_DELAY_EXT: ".dxf" });
+  try {
+    const pool = make({ parseConcurrency: 1, parseTimeoutMs: 1200 });
+    const dxf = write("crossing.dxf", crossingLinesDxf(5000));
+    assert.ok(fs.statSync(dxf).size < 600 * 1024, "the file is small — size limits alone would not catch it");
+    const t0 = Date.now();
+    const r = await settle(pool.run({ filePath: dxf }));
+    assert.strictEqual(r.error.code, "parse-timeout");
+    assert.ok(Date.now() - t0 < 3000, `stopped in ${Date.now() - t0} ms`);
+    // the slot is free again and a good file parses
+    assert.ok(Math.abs((await pool.run({ filePath: cube })).geometry.volume - 8000) < 1, "a good file still parses");
+  } finally {
+    for (const [k, v] of Object.entries(hooks)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
 });
 
 test("memory ceiling: a worker that outgrows its heap limit is stopped; the server process is untouched", async () => {
