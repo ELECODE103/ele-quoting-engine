@@ -82,6 +82,10 @@ function started(server, opt = {}) {
 
   if (!production && !opt.force) return { previousRun };
 
+  if (typeof process.getuid === "function" && process.getuid() === 0) {
+    console.warn("WARNING: the server is running as root. The image starts it as the unprivileged \"node\" user through docker-entrypoint.sh; a Custom Start Command or RAILWAY_RUN_UID in Railway can bypass that. Clear them (docs/launch/go-live-runbook.md).");
+  }
+
   const checks = require("./checks");
   const digest = require("./digest");
   setImmediate(() => { checks.runStartup(previousRun).catch((err) => console.error("[ops] startup check failed:", err.name)); });

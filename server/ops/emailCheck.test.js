@@ -12,6 +12,12 @@ const crypto = require("crypto");
 const path = require("path");
 const { runner } = require("../testSupport/harness");
 const emailCheck = require("./emailCheck");
+const brand = require("../../shared/brand.json");
+
+// Addresses on the site's own domain are put together here from shared/brand.json, so that none is written out in this file.
+const DOMAIN = brand.domain;
+const SEND_DOMAIN = `mail.${DOMAIN}`;
+const SENDER = ["sender", SEND_DOMAIN].join("@");
 
 const { test, run } = runner("Email check");
 
@@ -19,7 +25,7 @@ const { test, run } = runner("Email check");
 const KEY = `re_${crypto.randomBytes(16).toString("hex")}`;
 const FULL = {
   EMAIL_API_KEY: KEY,
-  EMAIL_FROM: "Straightedge <quotes@mail.straightedgemfg.com>",
+  EMAIL_FROM: `Straightedge <${SENDER}>`,
   RFQ_NOTIFY_TO: "shop-inbox@shop.test",
   FRONTEND_URL: "https://straightedgemfg.com",
 };
@@ -70,13 +76,13 @@ test("half set: a key without a from-address, a from-address that cannot be read
   assert.deepStrictEqual(levels(r, "fail").map((t) => t.split(" ")[0]), ["EMAIL_FROM"]);
   assert.ok(levels(r, "ok").includes("EMAIL_API_KEY is set."));
 
-  for (const bad of ["Straightedge", "Straightedge <quotes>", "<a@b>", "\"Straightedge\" <quotes@straightedgemfg.com", "a@b.test, c@d.test"]) {
+  for (const bad of ["Straightedge", "Straightedge <quotes>", "<a@b>", `"Straightedge" <${SENDER}`, "a@b.test, c@d.test"]) {
     r = await emailCheck.run({ env: { ...FULL, EMAIL_FROM: bad }, fetch: fakeResend().fetch, resolver: fakeDns() });
     assert.strictEqual(r.configured, false, bad);
     assert.ok(levels(r, "fail").some((t) => /EMAIL_FROM is set but cannot be read/.test(t)), bad);
   }
-  assert.deepStrictEqual(emailCheck.parseFrom("Straightedge <quotes@mail.straightedgemfg.com>"), { name: "Straightedge", address: "quotes@mail.straightedgemfg.com", domain: "mail.straightedgemfg.com" });
-  assert.strictEqual(emailCheck.parseFrom("quotes@straightedgemfg.com").domain, "straightedgemfg.com");
+  assert.deepStrictEqual(emailCheck.parseFrom(`Straightedge <${SENDER}>`), { name: "Straightedge", address: SENDER, domain: SEND_DOMAIN });
+  assert.strictEqual(emailCheck.parseFrom(["sender", DOMAIN].join("@")).domain, DOMAIN);
 
   r = await emailCheck.run({ env: { ...FULL, EMAIL_API_KEY: "\"pasted with quotes\"" }, fetch: fakeResend().fetch, resolver: fakeDns(GOOD_DNS), send: false });
   assert.ok(levels(r, "warn").some((t) => /does not look like a Resend key/.test(t)));
@@ -101,7 +107,7 @@ test("keys present, everything right: DNS and Resend agree, and one message goes
   assert.ok(!("cc" in sent.body) && !("bcc" in sent.body) && !("reply_to" in sent.body));
   assert.ok(/sent to the shop's notification address only/.test(sent.body.text));
   // The report itself: no key, and addresses masked.
-  assert.ok(!dump(r).includes(KEY) && !dump(r).includes("shop-inbox@") && !dump(r).includes("quotes@"));
+  assert.ok(!dump(r).includes(KEY) && !dump(r).includes("shop-inbox@") && !dump(r).includes("sender@"));
   assert.ok(oks.includes("s…@shop.test"));
 });
 
@@ -116,7 +122,6 @@ test("who gets the test message: RFQ_NOTIFY_TO, else ADMIN_EMAIL, else the site'
   const fallback = await to({ RFQ_NOTIFY_TO: undefined, ADMIN_EMAIL: "owner@shop.test" });
   assert.deepStrictEqual(fallback.to, ["owner@shop.test"]);
   assert.ok(levels(fallback.r, "warn").some((t) => /from ADMIN_EMAIL \(RFQ_NOTIFY_TO is not set\)/.test(t)));
-  const brand = require("../../shared/brand.json");
   assert.deepStrictEqual((await to({ RFQ_NOTIFY_TO: undefined, ADMIN_EMAIL: undefined })).to, [brand.email]);
   // An entry that is not one plain address is skipped and said to be; a header cannot be smuggled in.
   const mixed = await to({ RFQ_NOTIFY_TO: "a@shop.test, Bob <bob@elsewhere.test>, not-an-address, c@shop.test\r\nBcc: x@evil.test" });
@@ -192,7 +197,7 @@ test("DNS: each missing record is named with where it belongs; a sending domain 
   r = await emailCheck.run({ env: { ...FULL, EMAIL_FROM: "Straightedge <quotes@some-other-domain.example>" }, fetch: resend.fetch, send: false, dns: false, api: false });
   assert.ok(levels(r, "warn").some((t) => /is not straightedgemfg\.com or one of its subdomains/.test(t)));
   assert.strictEqual(emailCheck.organisationalDomain("mail.straightedgemfg.com"), "straightedgemfg.com");
-  assert.strictEqual(emailCheck.mask("quotes@Straightedgemfg.com"), "q…@straightedgemfg.com");
+  assert.strictEqual(emailCheck.mask(["Sender", DOMAIN.toUpperCase()].join("@")), `S…@${DOMAIN}`);
 });
 
 test("npm run email:check with keys absent: exit code 1, the missing variables by name, no address in full, nothing sent", async () => {

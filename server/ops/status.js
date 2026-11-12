@@ -64,6 +64,7 @@ function protections() {
     { key: "admin-email", label: "Owner account named (ADMIN_EMAIL)", on: Boolean(process.env.ADMIN_EMAIL), critical: false, fix: "Set ADMIN_EMAIL." },
     { key: "frontend-url", label: "Public address for links set (FRONTEND_URL)", on: Boolean(process.env.FRONTEND_URL), critical: false, fix: "Set FRONTEND_URL to the https address of the canonical host." },
     { key: "canonical-host", label: "Canonical host set (CANONICAL_HOST)", on: Boolean(canonicalHost.readConfig().canonical), critical: false, fix: "Set CANONICAL_HOST and REDIRECT_HOSTS at domain cutover." },
+    { key: "unprivileged-user", label: "Server runs as an unprivileged user (not root)", on: !(typeof process.getuid === "function" && process.getuid() === 0), critical: false, fix: "In Railway, clear the service's Custom Start Command and remove RAILWAY_RUN_UID so the image's own start-up (docker-entrypoint.sh) is used." },
     { key: "admin-recovery-unset", label: "One-shot admin recovery setting removed", on: !process.env.ADMIN_RECOVERY, critical: false, fix: "Remove ADMIN_RECOVERY: it repeats its action on every start." },
   ];
   return list;
