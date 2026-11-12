@@ -404,11 +404,11 @@ Behaviour:
 
 | Check | Result |
 |---|---|
-| `npm test` | 43/43 suites, 657 cases, exit 0, at commit `21d7d10`. An earlier full run on this branch was 42/43: the email injection test refused the layout's new `<style>` element. That is the change described below. After `21d7d10` only three things changed, none of them covered by a unit test: one CSS declaration (the setup key wraps between its groups of four), one line of the walk script, and four screenshots. The build (22/22), the claims check (exit 0) and the admin journey of the walk (40 screens, 0 violations) were run again on the final tree; the full unit run was not |
+| `npm test` | 43/43 suites, 657 cases, exit 0, on the final source (run again after the last change). An earlier full run on this branch was 42/43: the email injection test refused the layout's new `<style>` element. That is the change described below |
 | `NODE_ENV=production npm run build` | 22/22 routes prerendered |
 | `node scripts/claims-check.js` | exit 0 |
-| `scripts/e2e/hardening-accounts.mjs` (the accounts browser suite, real policy, no bypass) | 96/96 |
-| `tools/security/csp-browser-check.js` | 66 steps, 66 clean, 0 violations, policy proof passed |
+| `scripts/e2e/hardening-accounts.mjs` (the accounts browser suite, real policy, no bypass) | 96/96, on the final build. Run it with `--shots <a scratch folder>`: without it the suite writes its screenshots over `docs/screenshots/hardening-2026-11-11/` (it did here; they were restored from git, and that folder is unchanged on this branch) |
+| `tools/security/csp-browser-check.js` | 66 steps, 66 clean, 0 violations, 0 page errors, policy proof passed, on the final build |
 | `scripts/e2e/journey-qa.mjs` with axe-core 4.14.0 | 303 captures over 101 screens at 390, 768 and 1360 px; 0 problems noted; 1 screen with a serious violation (home page, untouched); 0 sideways scroll |
 | Street address | Masked in the two part-request screenshots and in every email rendering. Not in `client/dist` |
 
