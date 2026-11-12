@@ -5,28 +5,48 @@
  * customer for a week to a month, a restart did not help, and nothing in the
  * admin panel cleared it.
  *
- * The order things give way, least valuable first:
+ * Who gives way: whoever holds the most, first (independent re-review 2026-11-12, RR-01, RR-02,
+ * RR-08: "oldest idle first" removed the quiet customer's row while the flooding sender's rows,
+ * which it kept fresh, survived). A "holder" is an account, or for rows with no account the
+ * address tag they came from. A pass lowers the heaviest holder to the level of the next one, then
+ * both to the next, and so on, until enough is freed: it never takes a row from a lighter holder
+ * while a heavier one still has removable rows above it.
  *
  *   DATABASE (DB_MAX_MB)
  *     always                 lapsed drafts and abandoned parts go on schedule (rowRetention.js)
- *     at DB_SWEEP_PERCENT    the oldest draft quotes of visitors without an account, that no
- *       (80 %)               order or request refers to and nobody has touched for
- *                            DRAFT_SWEEP_MIN_AGE_MINUTES, are removed and the file compacted
+ *     on every save          one sender cannot hold more than its allowance of draft quotes
+ *                            (QUOTE_DRAFT_KB_PER_CLIENT / _PER_ACCOUNT, security/quoteGuards.js)
+ *     at DB_SWEEP_PERCENT    from the heaviest holder down: uploaded parts nothing refers to (each
+ *       (80 %)               holder keeps its newest LOOSE_PARTS_KEEP_PER_HOLDER), then draft quotes
+ *                            no order or request came from, oldest first — an account's too — each
+ *                            holder keeping its newest DRAFT_KEEP_KB_PER_HOLDER. Then the file is compacted.
  *     at the anonymous       NEW draft quotes and NEW uploads from visitors without a confirmed
  *       share (85 %)         account are refused (re-pricing a quote they have open still works)
  *     at 100 %               new drafts and uploads from confirmed accounts are refused too
  *     never refused          checkout, sign-in, orders, payment notices, the admin
+ *     never removed          a row made in the last DRAFT_SWEEP_MIN_AGE_MINUTES; a signed-in
+ *                            customer's part in its first CUSTOMER_PART_KEEP_MINUTES; a quote an
+ *                            order or a request came from
  *
  *   FILES (UPLOAD_DIR_MAX_MB)
  *     always                 uploads past their retention, orphan drawings, payloads with no part
- *     at UPLOAD_DIR_WARN_PERCENT (80 %)
- *                            1. uploads no quote, order or request refers to, oldest first
- *                            2. uploads only a no-account draft refers to, oldest first (the draft
- *                               goes with them) — each untouched for STORAGE_EVICT_MIN_AGE_MINUTES
+ *     on every upload        one sender cannot store more than UPLOAD_STORED_MB_PER_IP / _PER_ACCOUNT
+ *     at UPLOAD_DIR_WARN_PERCENT (80 %), from the heaviest holder down, within a holder in this order:
+ *                            1. uploads no quote, order or request refers to
+ *                            2. uploads only a no-account draft refers to (the draft goes with them)
+ *                            3. what is held softly — files on a request nobody at the shop has
+ *                               taken up, on a saved quote, on an order that was never paid for
+ *                               (after ORDER_UNPAID_PROTECT_HOURS), or on one that is cancelled or
+ *                               expired — beyond the holder's UPLOAD_PROTECTED_MB_PER_HOLDER
  *     at the anonymous share (85 %)   new uploads from visitors without a confirmed account refused
  *     at 100 %               everyone's new uploads refused
- *     never removed          a file on an order, on an open request, or on a signed-in
- *                            customer's quote that can still be ordered
+ *     never removed          a file on an order that was paid for or is being worked on, or on a
+ *                            request the shop has taken up; a file in its first
+ *                            STORAGE_EVICT_MIN_AGE_MINUTES; a signed-in customer's part in its
+ *                            first CUSTOMER_PART_KEEP_MINUTES
+ *
+ * A pass works in pieces of about 40 ms with the event loop turning between them (RR-11), and one
+ * that found nothing it may remove is not repeated for PRESSURE_BACKOFF_MINUTES.
  *
  * Also here: the attachments of requests that are closed (declined, lost,
  * expired) are deleted RFQ_CLOSED_ATTACHMENT_DAYS after they closed; uploads
