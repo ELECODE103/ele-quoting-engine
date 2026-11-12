@@ -501,10 +501,24 @@ function assertSane(quote, lines, parts, rules) {
 
 // ─── Fingerprints ──────────────────────────────────────────────
 
-/** Hash of a part's stored geometry as pricing reads it (the preview mesh is not part of a price). */
+// Recorded with a parse but not a measurement of the part: how long each stage took. Two reads of
+// the same file differ in these and in nothing else, so they are left out of the hash at any depth.
+const NOT_GEOMETRY = /^(timings?|elapsedMs|parseMs|durationMs)$/;
+function measuredOnly(value) {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(measuredOnly);
+  const out = {};
+  for (const [k, v] of Object.entries(value)) if (!NOT_GEOMETRY.test(k)) out[k] = measuredOnly(v);
+  return out;
+}
+
+/**
+ * Hash of a part's stored geometry as pricing reads it. The preview mesh is not part of a price,
+ * and neither are the parser's stage timings; everything else is.
+ */
 function geometryHash(geometry) {
   const { meshData, ...measured } = geometry && typeof geometry === "object" ? geometry : {};
-  return sha(canonical(measured));
+  return sha(canonical(measuredOnly(measured)));
 }
 
 /** What the shop builds from, kept with the order so the traveler can be checked against what was charged. */
