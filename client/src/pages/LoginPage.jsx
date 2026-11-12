@@ -4,9 +4,17 @@ import { useAuth } from '../utils/authContext';
 import { api } from '../utils/api';
 import Wordmark from '../components/Wordmark';
 import HumanCheck from '../components/security/HumanCheck';
+import Notice, { FormError } from '../components/form/Notice';
+import PasswordField from '../components/form/PasswordField';
+import CodeField from '../components/form/CodeField';
 import brand from '../brand';
 import { destinationAfterAuth, nextFrom, authPath } from '../utils/returnTo';
-import { CHECK_BLOCKED_SUBMIT } from '../utils/security';
+import { CHECK_BLOCKED_SUBMIT, CHECK_NOT_DONE } from '../utils/security';
+
+/** "3:42 PM": when a pause that lasts `seconds` from now is over. */
+function clockIn(seconds) {
+  try { return new Date(Date.now() + seconds * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch { return ''; }
+}
 
 /**
  * Sign in. Three things can be asked for beyond email and password, each only
@@ -14,6 +22,9 @@ import { CHECK_BLOCKED_SUBMIT } from '../utils/security';
  *   - the spam check, after repeated wrong passwords (its script is not loaded before that);
  *   - a 6-digit authenticator code, when the account has two-step sign-in;
  *   - a recovery code in its place.
+ *
+ * Whatever goes wrong, what was typed stays, the message takes the focus, and
+ * the message says what to do next (utils/messageCatalogue.js has the words).
  */
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -22,10 +33,11 @@ export default function LoginPage() {
   // ?next=, so the in-progress quote/checkout survives the login detour.
   const returnTo = destinationAfterAuth(location);
   const toCheckout = returnTo.startsWith('/checkout');
-  const { login } = useAuth();
+  const { login, sessionEnded } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);   // { message, code, until }
+  const [errorAt, setErrorAt] = useState(0);
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
   const [needCheck, setNeedCheck] = useState(false);
@@ -39,12 +51,15 @@ export default function LoginPage() {
 
   useEffect(() => { document.title = `Sign in · ${brand.name}`; }, []);
 
+  const fail = (message, extra = {}) => { setError({ message, ...extra }); setErrorAt((n) => n + 1); };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    if (loading) return;
+    setError(null);
     setInfo('');
-    if (needCheck && checkState === 'blocked') return setError(CHECK_BLOCKED_SUBMIT);
-    if (needCheck && checkState !== 'off' && !checkToken) return setError('Finish the spam check below, then sign in again.');
+    if (needCheck && checkState === 'blocked') return fail(CHECK_BLOCKED_SUBMIT);
+    if (needCheck && checkState !== 'off' && !checkToken) return fail(CHECK_NOT_DONE);
     setLoading(true);
 
     try {
@@ -59,9 +74,12 @@ export default function LoginPage() {
         setCode('');
       } else if (err.code === 'human-check-required' && !needCheck) {
         // The server wants the spam check and this page had not shown it yet: not an error of the visitor's.
-        setInfo('One quick check first, after the earlier wrong passwords. It appears below; when it has passed, press Sign in again.');
+        setInfo('One quick check first, after the earlier wrong passwords. It appears below; when it says "Check passed", press Sign in again.');
       } else {
-        setError(err.message || `That email and password didn't match. Try again, or call ${brand.phone}.`);
+        fail(err.message, {
+          code: err.code,
+          until: err.code === 'account-locked' && data.retryAfterSeconds ? clockIn(data.retryAfterSeconds) : '',
+        });
         if (twoFactor) setCode('');
       }
       if (data.challenge || err.code === 'human-check-required') setNeedCheck(true);
@@ -72,78 +90,83 @@ export default function LoginPage() {
     }
   };
 
+  const startOver = () => { setTwoFactor(false); setUseRecovery(false); setCode(''); setPassword(''); setError(null); };
+  const offerReset = error && ['invalid-credentials', 'account-locked'].includes(error.code);
+
   return (
     <div className="auth-shell">
-      <div className="auth-card" style={{ maxWidth: 400 }}>
+      <main className="auth-card" style={{ maxWidth: 400 }}>
         <div className="auth-head">
-          <div style={{ marginBottom: 24 }}><Wordmark size={18} /></div>
-          <h1 className="display" style={{ fontSize: 28, marginBottom: 8 }}>Sign in</h1>
+          <div className="auth-mark"><Wordmark size={18} /></div>
+          <h1 className="display">{twoFactor ? 'One more step' : 'Sign in'}</h1>
           <p>
-            {toCheckout
-              ? 'Sign in to finish checkout. Your quote is saved and will be waiting.'
-              : 'For your orders and saved quotes. You don\'t need an account to get a price.'}
+            {twoFactor
+              ? 'This account has two-step sign-in: your password, then a code.'
+              : toCheckout
+                ? 'Sign in to finish checkout. Your quote is saved and will be waiting.'
+                : 'For your orders and saved quotes. You don\'t need an account to get a price.'}
           </p>
         </div>
 
-        {notice && <div className="auth-ok" role="status">{notice}</div>}
+        {notice && <Notice kind="ok">{notice}</Notice>}
+        {!notice && sessionEnded && !error && (
+          <Notice kind="info">
+            You were signed out. Sessions end on their own after a while, and at once when the password changes.
+            Sign in and you go straight back to where you were{toCheckout ? '; your quote and what you typed are saved' : ''}.
+          </Notice>
+        )}
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 16 }}>
-            <label className="field-label" htmlFor="login-email">Email</label>
-            <input
-              id="login-email"
-              type="email"
-              className="input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-            />
-          </div>
+        <form onSubmit={handleSubmit} aria-busy={loading || undefined}>
+          {/* The email and password stay in the form (and in the password manager's view of it) during the code step; they are just not shown. */}
+          <div hidden={twoFactor || undefined}>
+            <div className="field">
+              <label className="field-label" htmlFor="login-email">Email</label>
+              <input
+                id="login-email"
+                type="email"
+                inputMode="email"
+                className="input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                required
+              />
+            </div>
 
-          <div style={{ marginBottom: twoFactor ? 16 : 8 }}>
-            <label className="field-label" htmlFor="login-password">Password</label>
-            <input
-              id="login-password"
-              type="password"
-              className="input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
+            <PasswordField id="login-password" label="Password" value={password} onChange={setPassword} autoComplete="current-password" style={{ marginBottom: 8 }} />
+
+            <div className="auth-aside">
+              <Link to="/forgot-password">Forgot your password?</Link>
+            </div>
           </div>
 
           {twoFactor && (
-            <div style={{ marginBottom: 8 }}>
-              <label className="field-label" htmlFor="login-code">{useRecovery ? 'Recovery code' : 'Code from your authenticator app'}</label>
-              <input
+            <>
+              <p className="auth-who">Signing in as <b>{email}</b>. <button type="button" className="linklike-inline" onClick={startOver}>Use a different account</button></p>
+              <CodeField
                 id="login-code"
-                type="text"
-                className="input"
+                label={useRecovery ? 'Recovery code' : 'Code from your authenticator app'}
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
-                inputMode={useRecovery ? 'text' : 'numeric'}
-                autoComplete="one-time-code"
-                placeholder={useRecovery ? 'XXXXX-XXXXX' : '6 digits'}
+                onChange={setCode}
+                recovery={useRecovery}
                 autoFocus
-                required
-                aria-describedby="login-code-help"
+                key={useRecovery ? 'recovery' : 'totp'}
+                help={(
+                  <>
+                    {useRecovery
+                      ? 'One of the ten codes you saved when you set up two-step sign-in. Each works once.'
+                      : 'Open the authenticator app on your phone and enter the 6-digit code it shows now for Straightedge.'}{' '}
+                    <button type="button" className="linklike-inline" onClick={() => { setUseRecovery((v) => !v); setCode(''); setError(null); }}>
+                      {useRecovery ? 'Use the authenticator app instead' : 'No phone? Use a recovery code'}
+                    </button>
+                  </>
+                )}
               />
-              <span id="login-code-help" className="field-hint">
-                {useRecovery
-                  ? 'One of the ten codes you saved when you set up two-step sign-in. Each works once.'
-                  : 'This account has two-step sign-in. Open your authenticator app and enter the 6-digit code it shows now.'}{' '}
-                <button type="button" className="linklike-inline" onClick={() => { setUseRecovery((v) => !v); setCode(''); }}>
-                  {useRecovery ? 'Use the authenticator app instead' : 'No phone? Use a recovery code'}
-                </button>
-              </span>
-            </div>
+            </>
           )}
-
-          <div style={{ textAlign: 'right', marginBottom: 20, fontSize: 12 }}>
-            <Link to="/forgot-password" style={{ color: 'var(--accent)' }}>Forgot your password?</Link>
-          </div>
 
           {needCheck && (
             <div style={{ marginBottom: 16 }}>
@@ -151,26 +174,30 @@ export default function LoginPage() {
             </div>
           )}
 
-          {info && <div role="status" className="verify-box" style={{ marginBottom: 16 }}>{info}</div>}
-          {error && <div role="alert" className="auth-error">{error}</div>}
+          {info && <Notice kind="info" style={{ marginBottom: 16 }}>{info}</Notice>}
+          <FormError error={error?.message} at={errorAt}>
+            {offerReset && (
+              <>
+                {error.until && <span>The pause ends at about {error.until}.</span>}
+                <Link to="/forgot-password" className="btn btn-outline">Choose a new password</Link>
+              </>
+            )}
+          </FormError>
 
-          <button
-            type="submit"
-            className="btn btn-primary btn-lg"
-            style={{ width: '100%', justifyContent: 'center', marginBottom: 16 }}
-            disabled={loading}
-          >
+          <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
 
-        <div className="auth-foot" style={{ marginTop: 0 }}>
+        <div className="auth-foot">
           No account yet?{' '}
           <Link to={authPath('/register', nextFrom(location))}>Create one</Link>
           <br />
-          <Link to="/quote" style={{ color: 'var(--text-muted)' }}>Back to the quote</Link>
+          <Link to="/quote" className="quiet">Back to the quote</Link>
+          <br />
+          Locked out or stuck? <a href={brand.phoneHref}>{brand.phone}</a>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { publicConfig, loadTurnstile, CHECK_BLOCKED_MESSAGE } from '../../utils/security';
+import brand from '../../brand';
 
 /**
  * The Cloudflare Turnstile widget, for one form.
@@ -19,8 +20,9 @@ import { publicConfig, loadTurnstile, CHECK_BLOCKED_MESSAGE } from '../../utils/
  *   ref.reset()      get a new token (a token can be spent once)
  *
  * The widget is Cloudflare's own accessible control inside an iframe; what
- * this component adds is a labelled group and a live region that says what
- * is happening in words.
+ * this component adds is a labelled group (`label`, "Spam check"), a status
+ * line that says what is happening in words, and, when the check cannot run,
+ * an alert that says why, what to do, and who to call.
  */
 const HumanCheck = forwardRef(function HumanCheck({ action, onToken, onState, label = 'Spam check' }, ref) {
   const box = useRef(null);
@@ -80,13 +82,14 @@ const HumanCheck = forwardRef(function HumanCheck({ action, onToken, onState, la
       <div ref={box} className="human-check-box" />
       <p className="human-check-note" role="status" aria-live="polite">
         {state === 'loading' && 'Loading the spam check…'}
-        {state === 'ready' && 'One quick check that you are a person. It usually finishes by itself.'}
+        {state === 'ready' && 'Checking that a person is sending this. It usually finishes by itself.'}
         {state === 'solved' && 'Check passed.'}
       </p>
       {state === 'error' && (
         <p className="human-check-problem" role="alert">
-          The spam check hit a problem.{' '}
-          <button type="button" className="linklike-inline" onClick={() => setAttempt((n) => n + 1)}>Try it again</button>
+          The spam check didn't finish.{' '}
+          <button type="button" className="linklike-inline" onClick={() => setAttempt((n) => n + 1)}>Run it again</button>
+          {' '}or, if it keeps stopping, call <a href={brand.phoneHref}>{brand.phone}</a> and we'll take it from there.
         </p>
       )}
       {state === 'blocked' && (
