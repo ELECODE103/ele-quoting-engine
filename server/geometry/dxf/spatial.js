@@ -222,6 +222,79 @@ class SegmentIndex {
 }
 
 /**
+ * Loops indexed by bounding box, for ray queries: which loops could a ray's line touch?
+ *
+ *   const index = new LoopIndex(loops, bbox);       // loops[i].bbox
+ *   index.alongLine(px, py, dx, dy);                // index.near[0 .. index.count) ascending
+ *
+ * A loop left out has its whole bounding box (and so every one of its
+ * segments) on one side of the line, more than `margin` away; raySeg() in
+ * analyze.js returns null for every such segment.
+ */
+class LoopIndex {
+  constructor(loops, bbox) {
+    const n = loops.length;
+    const grid = this.grid = new CoverGrid(bbox, Math.max(4, Math.min(512, Math.ceil(Math.sqrt(n)))));
+    const { cell, x0, y0, nx, ny, margin } = grid;
+    const col = (x) => Math.max(0, Math.min(nx - 1, Math.floor((x - x0) / cell)));
+    const row = (y) => Math.max(0, Math.min(ny - 1, Math.floor((y - y0) / cell)));
+    const WIDE = 64; // a loop over more cells than this is kept on a list every query takes whole
+    const wide = [];
+    const counts = new Int32Array(grid.size + 1);
+    const range = new Int32Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      const b = loops[i].bbox;
+      const c0 = col(b[0] - 2 * margin), c1 = col(b[2] + 2 * margin), r0 = row(b[1] - 2 * margin), r1 = row(b[3] + 2 * margin);
+      range[i * 4] = c0; range[i * 4 + 1] = c1; range[i * 4 + 2] = r0; range[i * 4 + 3] = r1;
+      if ((c1 - c0 + 1) * (r1 - r0 + 1) > WIDE) { wide.push(i); range[i * 4] = -1; continue; }
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) counts[r * nx + c + 1]++;
+    }
+    for (let c = 0; c < grid.size; c++) counts[c + 1] += counts[c];
+    this.start = counts;
+    const fill = counts.slice(0, grid.size);
+    this.items = new Int32Array(counts[grid.size]);
+    for (let i = 0; i < n; i++) {
+      if (range[i * 4] < 0) continue;
+      for (let r = range[i * 4 + 2]; r <= range[i * 4 + 3]; r++) for (let c = range[i * 4]; c <= range[i * 4 + 1]; c++) this.items[fill[r * nx + c]++] = i;
+    }
+    this.wide = Int32Array.from(wide);
+    this.stamp = new Int32Array(n);
+    this.query = 0;
+    this.near = new Int32Array(n);
+    this.count = 0;
+  }
+
+  /** Loops whose bounding box comes within the margin of the line: this.near[0 .. this.count), ascending. */
+  alongLine(px, py, dx, dy) {
+    const { start, items, stamp, near, wide, grid } = this;
+    const { cell, x0, y0, nx, ny, margin } = grid;
+    const q = ++this.query;
+    let n = 0;
+    for (let i = 0; i < wide.length; i++) near[n++] = wide[i];
+    // the cover of the line, as CoverGrid.coverLine() walks it
+    const alongX = Math.abs(dx) >= Math.abs(dy);
+    const k = alongX ? (dx === 0 ? 0 : dy / dx) : dx / dy;
+    const outer = alongX ? nx : ny, inner = alongX ? ny : nx;
+    const o0 = alongX ? x0 : y0, i0 = alongX ? y0 : x0, po = alongX ? px : py, pi = alongX ? py : px;
+    for (let a = 0; a < outer; a++) {
+      const ua = o0 + a * cell, ub = ua + cell;
+      const va = pi + (ua - po) * k, vb = pi + (ub - po) * k;
+      let b0 = Math.floor((Math.min(va, vb) - 3 * margin - i0) / cell), b1 = Math.floor((Math.max(va, vb) + 3 * margin - i0) / cell);
+      if (b0 < 0) b0 = 0; if (b1 > inner - 1) b1 = inner - 1;
+      for (let b = b0; b <= b1; b++) {
+        const c = alongX ? b * nx + a : a * nx + b;
+        for (let m = start[c], e = start[c + 1]; m < e; m++) {
+          const id = items[m];
+          if (stamp[id] !== q) { stamp[id] = q; near[n++] = id; }
+        }
+      }
+    }
+    this.count = n;
+    if (n > 1) near.subarray(0, n).sort();
+  }
+}
+
+/**
  * Points (or small boxes) bucketed on a square grid, for "what is near here"
  * and "which boxes contain this point" queries. Numeric cell keys; cells are
  * created as needed, so the extent of the data does not matter.
@@ -242,4 +315,4 @@ class Buckets {
 
 SegmentIndex.MAX_ITEMS = 12000000;
 
-module.exports = { CoverGrid, SegmentIndex, Buckets, usable, MAX_EXTENT_MM };
+module.exports = { CoverGrid, SegmentIndex, LoopIndex, Buckets, usable, MAX_EXTENT_MM };

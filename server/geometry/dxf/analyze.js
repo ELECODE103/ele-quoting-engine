@@ -30,7 +30,7 @@ const SLIVER_WIDTH_MM = 0.02;    // area / perimeter below this = a zero-area lo
 const MAX_MARKS = 40;
 const TAU = Math.PI * 2;
 
-const { CoverGrid, SegmentIndex, Buckets, usable } = require("./spatial");
+const { CoverGrid, SegmentIndex, LoopIndex, Buckets, usable } = require("./spatial");
 
 const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
 
@@ -553,26 +553,27 @@ function nearestHit(p, nx, ny, loops, own, skip, skip2) {
 }
 
 /**
- * nearestHit() with the segments to test taken from a SegmentIndex instead of
- * every segment of every loop.
+ * nearestHit() with shorter searches: the loops to look at come from a
+ * LoopIndex (when given) and the segments of a long loop from that loop's own
+ * SegmentIndex.
  *
- * Loops are visited in the same order with the same bounding-box test against
- * the same running `best`; within a loop the result is a minimum, so the order
- * of its segments does not matter. The index leaves out only segments that lie
- * entirely to one side of the ray's line, for which raySeg() returns null, and
- * a loop with no segment left has nothing that could lower `best`. The value
- * returned is therefore the one nearestHit() returns.
+ * Why the value is the one nearestHit() returns. Loops are visited in the
+ * same (ascending) order with the same bounding-box test against the same
+ * running `best`; within a loop the result is a minimum, so the order of its
+ * segments does not matter. The indexes leave out only loops and segments
+ * that lie entirely to one side of the ray's line, for which raySeg() returns
+ * null — they could not have lowered `best`, and a loop that cannot lower
+ * `best` does not change what happens to the loops after it.
  *
- * @param {SegmentIndex} index built over `loops` (same order)
- * @param {number} own index in `loops` of the loop the ray starts on (or -1)
+ * @param {LoopIndex|null} loopIndex over `loops` (same order), or null to visit every loop
+ * @param {number} own index in `loops` of the loop the ray starts on
  */
-function nearestHitIndexed(index, loops, p, nx, ny, own, skip, skip2) {
+function nearestHitIndexed(loopIndex, loops, p, nx, ny, own, skip, skip2, mode) {
   let best = Infinity;
-  index.alongLine(p[0], p[1], nx, ny);
-  const { segOf, found, next, head } = index;
-  const near = index.loops, count = index.loopCount;
+  let count = loops.length, near = null;
+  if (loopIndex) { loopIndex.alongLine(p[0], p[1], nx, ny); near = loopIndex.near; count = loopIndex.count; }
   for (let k = 0; k < count; k++) {
-    const li = near[k];
+    const li = near ? near[k] : k;
     const L = loops[li];
     // slab test: skip loops whose bounding box the ray cannot reach before `best`
     const bb = L.bbox;
@@ -583,29 +584,50 @@ function nearestHitIndexed(index, loops, p, nx, ny, own, skip, skip2) {
     else { const a = (bb[1] - p[1]) / ny, b = (bb[3] - p[1]) / ny; t0 = Math.max(t0, Math.min(a, b) - 1e-9); t1 = Math.min(t1, Math.max(a, b) + 1e-9); }
     if (t0 > t1) continue;
     const pts = L.pts, n = pts.length;
-    for (let m = head[li]; m >= 0; m = next[m]) {
-      const j = segOf[found[m]];
-      if (li === own && (j === skip || j === skip2)) continue;
-      const t = raySeg(p[0], p[1], nx, ny, pts[j], pts[(j + 1) % n]);
-      if (t !== null && t > 1e-6 && t < best) best = t;
+    const index = segmentIndexOf(L, mode);
+    if (index) {
+      index.alongLine(p[0], p[1], nx, ny);
+      const { segOf, found, next, head } = index;
+      if (index.loopCount) for (let m = head[0]; m >= 0; m = next[m]) {
+        const j = segOf[found[m]];
+        if (li === own && (j === skip || j === skip2)) continue;
+        const t = raySeg(p[0], p[1], nx, ny, pts[j], pts[(j + 1) % n]);
+        if (t !== null && t > 1e-6 && t < best) best = t;
+      }
+    } else {
+      for (let j = 0; j < n; j++) {
+        if (li === own && (j === skip || j === skip2)) continue;
+        const t = raySeg(p[0], p[1], nx, ny, pts[j], pts[(j + 1) % n]);
+        if (t !== null && t > 1e-6 && t < best) best = t;
+      }
     }
   }
   return best;
 }
 
+const LONG_LOOP = 400; // points: from here a loop's own segment index is quicker than testing them all
+
+/** The loop's own SegmentIndex (built on first use, after the loop has its final orientation), or null for a short loop. */
+function segmentIndexOf(L, mode) {
+  if (L.rayIndex !== undefined) return L.rayIndex;
+  let index = null;
+  if (mode !== "never" && (mode === "always" || L.pts.length >= LONG_LOOP) && usable(L.bbox)) {
+    index = new SegmentIndex([L], L.bbox);
+    if (!index.ok) index = null;
+  }
+  L.rayIndex = index;
+  return index;
+}
+
 /**
- * A SegmentIndex over `loops` when it will shorten the ray searches, else null
- * (the exhaustive nearestHit() is then used; both give the same answer).
- * An index pays for itself when there are many loops to skip or a loop with
- * many segments to skip; `mode` "always" / "never" overrides that for tests.
+ * A LoopIndex over `loops` when there are enough of them for it to shorten the ray searches,
+ * else null (every loop is then visited; the answer is the same). `mode` "always" / "never"
+ * overrides the choice for tests.
  */
-function rayIndex(loops, bbox, mode) {
+function loopIndexFor(loops, bbox, mode) {
   if (mode === "never" || !loops.length || !usable(bbox)) return null;
-  let total = 0, longest = 0;
-  for (const L of loops) { total += L.pts.length; if (L.pts.length > longest) longest = L.pts.length; }
-  if (mode !== "always" && !(loops.length >= 1500 || longest >= 400)) return null;
-  const index = new SegmentIndex(loops, bbox);
-  return index.ok ? index : null;
+  if (mode !== "always" && loops.length < 256) return null;
+  return new LoopIndex(loops, bbox);
 }
 
 // ─── loop measurement ────────────────────────────────────────────────────────
@@ -885,9 +907,8 @@ function analyseCurves(curves, opts = {}) {
     if (L.role === "hole" || !L.closed) continue;
     let best = Infinity, bestAt = null;
     const own = [L];
-    const ownIndex = rayIndex(own, L.bbox, indexMode);
     for (const s of samples(L, budget)) {
-      const t = ownIndex ? nearestHitIndexed(ownIndex, own, s.p, s.d[1], -s.d[0], 0, s.seg, s.seg2) : nearestHit(s.p, s.d[1], -s.d[0], own, L, s.seg, s.seg2);
+      const t = indexMode === "never" ? nearestHit(s.p, s.d[1], -s.d[0], own, L, s.seg, s.seg2) : nearestHitIndexed(null, own, s.p, s.d[1], -s.d[0], 0, s.seg, s.seg2, indexMode);
       if (t < best) { best = t; bestAt = [s.p[0] + s.d[1] * t / 2, s.p[1] - s.d[0] * t / 2]; }
     }
     if (best < Infinity) {
@@ -910,11 +931,11 @@ function analyseCurves(curves, opts = {}) {
   // Narrowest web: rays to the left (into material) against every loop
   let minWeb = null, minWebAt = null;
   const closedShaped = shaped.filter((L) => L.closed);
-  const webIndex = rayIndex(closedShaped, bbox, indexMode);
+  const webIndex = loopIndexFor(closedShaped, bbox, indexMode);
   for (let li = 0; li < closedShaped.length; li++) {
     const L = closedShaped[li];
     for (const s of samples(L, budget)) {
-      const t = webIndex ? nearestHitIndexed(webIndex, closedShaped, s.p, -s.d[1], s.d[0], li, s.seg, s.seg2) : nearestHit(s.p, -s.d[1], s.d[0], closedShaped, L, s.seg, s.seg2);
+      const t = indexMode === "never" ? nearestHit(s.p, -s.d[1], s.d[0], closedShaped, L, s.seg, s.seg2) : nearestHitIndexed(webIndex, closedShaped, s.p, -s.d[1], s.d[0], li, s.seg, s.seg2, indexMode);
       if (t < Infinity && (minWeb === null || t < minWeb)) { minWeb = t; minWebAt = [s.p[0] - s.d[1] * t / 2, s.p[1] + s.d[0] * t / 2]; }
     }
   }
