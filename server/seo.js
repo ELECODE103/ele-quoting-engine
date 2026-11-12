@@ -81,8 +81,28 @@ function loadManifest(distDir) {
   }
 }
 
+/**
+ * One URL per page: no trailing slash, and exactly one "/" at the start. A run of slashes or
+ * backslashes at the front ("//host", "/\\host", "///host") is collapsed to a single "/", because a
+ * Location that begins "//" or "/\\" is read by a browser as another site (independent review
+ * 2026-11-11, F9: `GET //evil.example/` was answered `301 Location: //evil.example`).
+ */
 function normalize(p) {
-  return p.length > 1 ? p.replace(/\/+$/, "") || "/" : "/";
+  const path = String(p).replace(/^[/\\]+/, "/");
+  return path.length > 1 ? path.replace(/\/+$/, "") || "/" : "/";
+}
+
+/**
+ * May this path be sent as a redirect target? Only a path that provably stays on this site: it
+ * starts with one "/" followed by something that is neither "/" nor "\\" (nor an encoded form of
+ * either), and has no backslash or control character anywhere.
+ */
+function isLocalPath(p) {
+  if (typeof p !== "string" || p.length === 0 || p.length > 2048) return false;
+  if (p === "/") return true;
+  if (!/^\/[^/\\]/.test(p)) return false;
+  if (/^\/(%2f|%5c)/i.test(p)) return false;
+  return !/[\\\u0000-\u001f\u007f]/.test(p);
 }
 
 /**
@@ -124,11 +144,15 @@ function createSeoRouter(distDir) {
     if (req.path.startsWith("/api/") || req.path.startsWith("/assets/")) return next();
     const qs = req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
     const clean = normalize(req.path);
+    // Every Location this block sends is a path on this site: checked here, once, for all three
+    // redirects below. A path that is not provably local (an encoded slash or backslash at the
+    // front, a backslash anywhere) is never redirected; it gets the ordinary "not found" answer.
+    if (!isLocalPath(clean)) return res.status(404).set("X-Robots-Tag", "noindex").type("text/plain").send("Not found");
     const lower = clean.toLowerCase();
-    const target = LEGACY_REDIRECTS[lower];
+    const target = Object.prototype.hasOwnProperty.call(LEGACY_REDIRECTS, lower) ? LEGACY_REDIRECTS[lower] : null;
     if (target) return res.redirect(301, target + qs);
     // Public pages are lower-case; /Materials/PEEK -> /materials/peek. App routes carry case-sensitive ids, leave them.
-    if (manifest && lower !== clean && manifest.routes[lower]) return res.redirect(301, lower + qs);
+    if (manifest && lower !== clean && Object.prototype.hasOwnProperty.call(manifest.routes, lower)) return res.redirect(301, lower + qs);
     if (clean !== req.path) return res.redirect(301, clean + qs);
     next();
   });
@@ -192,4 +216,4 @@ function createSeoRouter(distDir) {
   return router;
 }
 
-module.exports = { createSeoRouter, LEGACY_REDIRECTS, CANONICAL_HOST, isInternalBrandPath };
+module.exports = { createSeoRouter, LEGACY_REDIRECTS, CANONICAL_HOST, isInternalBrandPath, normalize, isLocalPath };
