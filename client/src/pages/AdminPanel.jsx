@@ -9,6 +9,7 @@ import CalibrationTab from '../components/admin/CalibrationTab';
 import SecurityTab from '../components/admin/SecurityTab';
 import ChangeLogTab from '../components/admin/ChangeLogTab';
 import { OrderFlags, PaymentStatus } from '../components/admin/OrderPayment';
+import SystemTab from '../components/admin/SystemTab';
 import { useAuth } from '../utils/authContext';
 import '../styles/admin.css';
 
@@ -129,6 +130,7 @@ function AdminConsole() {
     { key: 'quotes', label: 'Quotes' },
     { key: 'security', label: 'Security' },
     { key: 'log', label: 'Change log' },
+    { key: 'system', label: 'System' },
   ];
 
   return (
@@ -461,6 +463,9 @@ function AdminConsole() {
       {/* ─── SECURITY TAB ─── */}
       {tab === 'security' && <SecurityTab onChanged={refresh} />}
       {tab === 'log' && <ChangeLogTab />}
+
+      {/* ─── SYSTEM TAB ─── */}
+      {tab === 'system' && <SystemTab />}
 
       {/* ─── QUOTES TAB ─── */}
       {tab === 'quotes' && (
