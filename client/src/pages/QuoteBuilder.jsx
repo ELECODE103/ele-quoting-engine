@@ -132,6 +132,8 @@ export default function QuoteBuilder() {
     if (parts.length === 0) return;
     const todo = parts.map(dxfTodo).find(Boolean);
     if (todo) { setQuote(null); setQuoteError(todo); return; }
+    // Nothing is asked of the server until the material and finish lists are here and every part has a choice from them.
+    if (materials.length === 0 || finishes.length === 0 || parts.some((p) => !p.materialSlug || !p.finishSlug)) return;
     setQuoteLoading(true);
     try {
       const configs = parts.map((p) => ({
@@ -173,6 +175,26 @@ export default function QuoteBuilder() {
     }
     setQuoteLoading(false);
   }, [parts, selectedLeadTime, selectedProcess, notes, paperwork, materials, finishes]);
+
+  // A file dropped before the material and finish lists arrived (a quick upload on a slow connection)
+  // gets its starting choices once they are here, so a request never carries a placeholder.
+  useEffect(() => {
+    if (materials.length === 0 || finishes.length === 0) return;
+    if (!parts.some((p) => !p.materialSlug || !p.finishSlug)) return;
+    setParts((prev) => prev.map((p) => {
+      if (p.materialSlug && p.finishSlug) return p;
+      const m = materials.find((x) => x.slug === p.materialSlug) || materials.find((x) => x.slug === preferredMaterial) || materials[0];
+      const fresh = !p.materialSlug;
+      return {
+        ...p,
+        ...(fresh ? {
+          materialSlug: m.slug, grade: m.grades?.[0]?.name || '', thicknessMm: pickThickness(m, p.geometry),
+          subProcess: (p.process || selectedProcess) === 'cnc' ? 'milling' : (m.subProcess || ''), layerHeight: m.defaultLayerHeight || 0,
+        } : {}),
+        finishSlug: p.finishSlug || (finishes.find((f) => finishFits(f, m.slug)) || finishes[0]).slug,
+      };
+    }));
+  }, [materials, finishes, parts, preferredMaterial, selectedProcess]);
 
   // What to put back when the server names a setting it will not price (`code`, with the part it is on).
   const lastReset = useRef('');
@@ -267,10 +289,10 @@ export default function QuoteBuilder() {
         geometry: p.geometry,
         dfm: p.dfm,
         meshPreview: p.meshPreview,
-        materialSlug: defaultMat?.slug || 'cnc-delrin',
+        materialSlug: defaultMat?.slug || '', // blank only if the lists have not arrived yet: filled in below when they do
         grade: defaultMat?.grades?.[0]?.name || '',
         thicknessMm: pickThickness(defaultMat, p.geometry),
-        finishSlug: fins[0]?.slug || 'raw',
+        finishSlug: fins[0]?.slug || '',
         quantity: 1,
         process: proc,
         subProcess: proc === 'cnc' ? 'milling' : (defaultMat?.subProcess || ''),
@@ -330,7 +352,7 @@ export default function QuoteBuilder() {
         materialSlug: mats[0].slug,
         grade: mats[0].grades?.[0]?.name || '',
         thicknessMm: pickThickness(mats[0], p.geometry),
-        finishSlug: fins[0]?.slug || 'raw',
+        finishSlug: fins[0]?.slug || '',
         layerHeight: mats[0].defaultLayerHeight || 0,
         infill: 0.2,
       })));
