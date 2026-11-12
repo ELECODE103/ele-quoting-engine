@@ -36,13 +36,13 @@ router.get("/admin/storage", authenticate, requireAdmin, (req, res) => {
   });
 });
 
-router.post("/admin/drafts/purge", authenticate, requireAdmin, (req, res) => {
+router.post("/admin/drafts/purge", authenticate, requireAdmin, async (req, res) => {
   const raw = req.body && req.body.olderThanHours;
   const hours = raw === undefined || raw === null || raw === "" ? 48 : Number(raw);
   if (!Number.isFinite(hours) || hours < 0 || hours > 24 * 3650) return res.status(400).json({ error: "olderThanHours must be a number of hours, 0 or more." });
   try {
-    const result = storagePressure.purgeAnonymousDrafts(models(), { olderThanHours: hours });
-    console.log(`Admin: purged ${result.removedDrafts} no-account draft quote(s) idle for ${hours} h or more`);
+    const result = await storagePressure.purgeAnonymousDrafts(models(), { olderThanHours: hours });
+    console.log(`Admin: cleared ${result.removedDrafts} draft quote(s): no-account drafts idle for ${hours} h or more${result.removedUnderPressure ? `, and ${result.removedUnderPressure} more from whoever held the most because the database was over its line` : ""}`);
     res.json({ olderThanHours: hours, ...result });
   } catch (err) {
     console.error("Draft purge error:", err.message);

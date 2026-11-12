@@ -50,6 +50,8 @@ const state = {
   lastOrphanSweep: null,      // { at, removed }
   running: false,
   nudgedAt: 0,
+  databaseQuietUntil: 0,      // a database pass found nothing it may remove: not again before this
+  storageQuietUntil: 0,
 };
 
 const guards = () => require("../security/uploadGuards");
@@ -61,97 +63,225 @@ function unlinkQuiet(file) {
   try { fs.unlinkSync(file); return true; } catch (err) { if (err.code !== "ENOENT") console.error(`Storage: could not remove a file (${err.code || "error"})`); return false; }
 }
 
+// ─── Who gives way ───────────────────────────────────────────
+//
+// Independent re-review 2026-11-12 (RR-01, RR-02, RR-08), the rule both passes now follow:
+//
+//   Removal goes to whoever holds the most, first. Every sender (an account, or the client a
+//   no-account row came from) has a list of what could be removed from them and how many bytes
+//   that is. The pass finds the level at which enough is freed and takes each sender down to
+//   that level, oldest first: the heaviest holder loses the most, and a sender who is under
+//   the level loses nothing. A visitor with one quote or one part is the last to be touched;
+//   a flood from a few senders is levelled before anybody else is looked at.
+//
+// It used to go by idle time ("untouched for 5 minutes"), which a script renews by re-pricing
+// and a person does not: the flood stayed and the visitor's quote went.
+
+/** The level L at which Σ max(0, held − L) ≥ need, never below `floor`. `held` is an array of numbers. */
+function levelFor(held, need, floor = 0) {
+  const sorted = [...held].sort((x, y) => y - x);
+  let top = sorted.length ? sorted[0] : 0;
+  if (!(need > 0)) return top;
+  // Lower the level from the heaviest holder down, one step per holder.
+  let freed = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const next = Math.max(floor, i + 1 < sorted.length ? sorted[i + 1] : floor);
+    const step = (top - next) * (i + 1);
+    if (freed + step >= need) return Math.max(floor, top - (need - freed) / (i + 1));
+    freed += step;
+    top = next;
+    if (top <= floor) break;
+  }
+  return floor;
+}
+
+/**
+ * Take from each holder, in the order its items are listed, until what it still has is at or
+ * under the level — the heaviest holder first, and no further than `need` (items are whole rows
+ * or files, so the last holders reached may keep what the level alone would have taken).
+ * Between holders of the same weight, the one whose next item is least valuable and oldest goes first.
+ * @param {Map<string, Array<{bytes:number, rank?:number, created?:number}>>} byHolder
+ * @returns {Array} the items to remove
+ */
+function levelDown(byHolder, need, floor = 0) {
+  if (!(need > 0)) return [];
+  const holders = [...byHolder].map(([holder, items]) => ({ holder, items, total: items.reduce((sum, it) => sum + it.bytes, 0) })).filter((h) => h.items.length);
+  const level = levelFor(holders.map((h) => h.total), need, floor);
+  holders.sort((x, y) => (y.total - x.total) || ((x.items[0].rank || 0) - (y.items[0].rank || 0)) || ((x.items[0].created || 0) - (y.items[0].created || 0)));
+  const out = [];
+  let freed = 0;
+  for (const h of holders) {
+    let left = h.total;
+    for (const it of h.items) {
+      if (left <= level || freed >= need) break;
+      out.push(it);
+      left -= it.bytes;
+      freed += it.bytes;
+    }
+    if (freed >= need) break;
+  }
+  return out;
+}
+
+const turn = () => new Promise((resolve) => setImmediate(resolve));
+
+/** Run `work` over `items` a few at a time, letting the event loop turn between groups (never more than ~`budgetMs` at a stretch). */
+async function inPieces(items, work, { budgetMs = 40, sync = false } = {}) {
+  let i = 0;
+  let longest = 0;
+  while (i < items.length) {
+    const t0 = Date.now();
+    require("../models/database").deferred(() => {
+      while (i < items.length && Date.now() - t0 < budgetMs) work(items[i++]);
+    });
+    longest = Math.max(longest, Date.now() - t0);
+    if (!sync && i < items.length) await turn();
+  }
+  return longest;
+}
+
 // ─── Database ────────────────────────────────────────────────
 
 /**
- * Remove the oldest no-account drafts until the database is back under its
- * sweep line (or there are none left to remove), then compact the file.
- * @param {object} models
- * @param {{ force?: boolean, now?: number, database?: object, minAgeMs?: number }} [opt]
- * @returns {null | { removedDrafts: number, bytesBefore: number, bytesAfter: number }}
+ * What a database pressure pass would remove. Pure.
+ *   - lapsed drafts (their hold is over): all of them
+ *   - from each sender, heaviest first: uploaded parts nothing refers to (except its newest
+ *     LOOSE_PARTS_KEEP_PER_HOLDER, and never a signed-in customer's part in its first hour), then
+ *     draft quotes no order or request came from, oldest first, except its newest
+ *     DRAFT_KEEP_KB_PER_HOLDER of them. A row made in the last DRAFT_SWEEP_MIN_AGE_MINUTES is left.
  */
-function relieveDatabase(models, opt = {}) {
-  const database = opt.database || require("../models/database");
-  const now = opt.now || Date.now();
-  const max = limits.databaseMaxBytes;
-  const bytesBefore = database.fileSize();
-  if (!opt.force && bytesBefore < max * limits.dbSweepFraction) return null;
-  const target = max * Math.max(0.1, limits.dbSweepFraction - 0.2);
-  // Two speeds. Up to the line where visitors without an account are turned away, only drafts nobody
-  // has touched for half an hour go. Past it, the site is already refusing people, so the wait is
-  // minutes: a flood's drafts sit untouched from the moment they are made, a visitor's own draft is
-  // touched every time they change something.
-  const refusing = bytesBefore >= max * (1 - limits.dbReservedFraction);
-  const minAgeMs = opt.minAgeMs ?? (refusing ? Math.min(limits.draftSweepUrgentMinAgeMinutes, limits.draftSweepMinAgeMinutes) : limits.draftSweepMinAgeMinutes) * MIN;
+function planDatabaseRelief(models, { need, now = Date.now(), refs = rowRetention.references(models, { now }), floor = 0, graceMs = limits.draftSweepMinAgeMinutes * MIN } = {}) {
+  const byHolder = new Map();
+  const add = (holder, item) => { if (!byHolder.has(holder)) byHolder.set(holder, []); byHolder.get(holder).push(item); };
 
-  const refs = rowRetention.references(models, { now });
-  const need = bytesBefore - target;
-  let freed = 0;
-  const ids = [...refs.expiredQuotes];
-
-  // 1. Uploaded parts that never made it onto a quote, an order or a request (the quote tool prices a
-  //    part seconds after it is uploaded, so one that nothing refers to after this long was abandoned,
-  //    or is a script's). Their rows are what a flood of small files fills the database with. The
-  //    network that left the most of them goes first, oldest first within it, so the one part a
-  //    visitor is still choosing a material for is the last to be touched.
-  const partIds = [];
+  // Parts nothing refers to.
+  const customerKeepMs = limits.customerPartKeepMinutes * MIN;
+  const keepNewest = limits.loosePartsKeepPerHolder;
+  const loose = new Map();
   if (typeof models.partsDB.rowSizes === "function") {
-    const loose = models.partsDB.rowSizes()
-      .map((p) => ({ ...p, created: time(p.createdAt) || 0 }))
-      .filter((p) => !refs.partsProtected.has(p.id) && !refs.partsOnAnonymousDrafts.has(p.id) && now - p.created >= minAgeMs);
-    const perClient = new Map();
-    for (const p of loose) perClient.set(p.clientTag, (perClient.get(p.clientTag) || 0) + 1);
-    loose.sort((a, b) => (perClient.get(b.clientTag) - perClient.get(a.clientTag)) || (a.created - b.created));
-    for (const p of loose) {
-      if (freed >= need) break;
-      partIds.push(p.id);
-      freed += p.bytes;
+    for (const p of models.partsDB.rowSizes()) {
+      if (refs.partsProtected.has(p.id) || refs.partsOnAnonymousDrafts.has(p.id)) continue;
+      const created = time(p.createdAt) || 0;
+      const holder = rowRetention.holderOf(p.ownerId, p.clientTag);
+      if (!loose.has(holder)) loose.set(holder, []);
+      loose.get(holder).push({ kind: "part", id: p.id, bytes: p.bytes, created, exempt: now - created < graceMs || (p.ownerId && now - created < customerKeepMs) });
     }
   }
-
-  // 2. Draft quotes of visitors without an account, longest untouched first.
-  const candidates = refs.anonymousDrafts
-    .filter((d) => d.lastActivity == null || now - d.lastActivity >= minAgeMs)
-    .sort((a, b) => (a.lastActivity || 0) - (b.lastActivity || 0));
-  for (const d of candidates) {
-    if (freed >= need) break;
-    ids.push(d.id);
-    freed += d.bytes;
+  for (const [holder, parts] of loose) {
+    parts.sort((x, y) => x.created - y.created);
+    const removable = parts.slice(0, Math.max(0, parts.length - keepNewest)).filter((p) => !p.exempt);
+    for (const p of removable) add(holder, p);
   }
-  if (ids.length === 0 && partIds.length === 0) {
-    const result = { removedDrafts: 0, removedParts: 0, bytesBefore, bytesAfter: bytesBefore };
+
+  // Drafts no order or request came from: each sender keeps its newest, up to the keep allowance.
+  const keepBytes = limits.draftKeepBytesPerHolder;
+  const drafts = new Map();
+  for (const d of refs.drafts) { if (!drafts.has(d.holder)) drafts.set(d.holder, []); drafts.get(d.holder).push(d); }
+  for (const [holder, list] of drafts) {
+    list.sort((x, y) => (y.lastActivity || y.created || 0) - (x.lastActivity || x.created || 0)); // newest first
+    let kept = 0;
+    const removable = [];
+    for (const d of list) {
+      if (kept + d.bytes <= keepBytes || now - d.created < graceMs) { kept += d.bytes; continue; }
+      removable.push({ kind: "draft", id: d.id, bytes: d.bytes, created: d.created });
+    }
+    removable.reverse(); // oldest first
+    for (const d of removable) add(holder, d);
+  }
+
+  const chosen = levelDown(byHolder, need, floor);
+  return {
+    quoteIds: [...refs.expiredQuotes, ...chosen.filter((c) => c.kind === "draft").map((c) => c.id)],
+    partIds: chosen.filter((c) => c.kind === "part").map((c) => c.id),
+    lapsed: refs.expiredQuotes.length,
+    holders: byHolder.size,
+    removableBytes: [...byHolder.values()].reduce((sum, items) => sum + items.reduce((n, it) => n + it.bytes, 0), 0),
+  };
+}
+
+/**
+ * Bring the database back under its sweep line, taking from whoever holds the most first.
+ * The work is done in pieces (plan, deletes a few at a time, the save, the compaction), with
+ * the event loop turning between them: the pass used to hold the thread 2 to 3 s at 54 MB
+ * (re-review RR-11). A pass that finds nothing it may remove is not repeated for
+ * PRESSURE_BACKOFF_MINUTES.
+ * @param {object} models
+ * @param {{ force?: boolean, now?: number, database?: object, sync?: boolean }} [opt]
+ * @returns {Promise<null | { removedDrafts, removedParts, bytesBefore, bytesAfter, longestPieceMs }>}
+ */
+async function relieveDatabase(models, opt = {}) {
+  const database = opt.database || require("../models/database");
+  const now = opt.now || Date.now();
+  const size = () => (typeof database.liveSize === "function" ? database.liveSize() : database.fileSize());
+  const max = limits.databaseMaxBytes;
+  const bytesBefore = size();
+  if (!opt.force && bytesBefore < max * limits.dbSweepFraction) return null;
+  if (!opt.force && state.databaseQuietUntil > Date.now()) return null;
+  const target = max * Math.max(0.1, limits.dbSweepFraction - 0.2);
+  let removedDrafts = 0;
+  let removedParts = 0;
+  let longest = 0;
+  // Up to three rounds: removing drafts leaves their parts with nothing referring to them.
+  for (let round = 0; round < 3; round++) {
+    const used = typeof database.usedSize === "function" ? database.usedSize() : size();
+    const need = used - target;
+    if (need <= 0 && round > 0) break;
+    const t0 = Date.now();
+    const plan = planDatabaseRelief(models, { need, now });
+    longest = Math.max(longest, Date.now() - t0);
+    if (plan.quoteIds.length === 0 && plan.partIds.length === 0) break;
+    if (!opt.sync) await turn();
+    longest = Math.max(longest, await inPieces(plan.quoteIds, (id) => models.quotesDB.delete(id), opt));
+    longest = Math.max(longest, await inPieces(plan.partIds, (id) => { const row = models.partsDB.getRow(id); if (row) evictPart(models, row); }, opt));
+    removedDrafts += plan.quoteIds.length;
+    removedParts += plan.partIds.length;
+  }
+  if (removedDrafts === 0 && removedParts === 0) {
+    state.databaseQuietUntil = Date.now() + limits.pressureBackoffMinutes * MIN;
+    const result = { removedDrafts: 0, removedParts: 0, bytesBefore, bytesAfter: bytesBefore, longestPieceMs: longest };
     state.lastDatabaseRelief = { at: new Date(now).toISOString(), ...result };
     return result;
   }
-  database.batch(() => {
-    for (const id of ids) models.quotesDB.delete(id);
-    for (const id of partIds) { const row = models.partsDB.getRow(id); if (row) evictPart(models, row); }
-  });
-  if (database.compact) database.compact();
-  if (partIds.length) guards().storage.invalidate();
-  const bytesAfter = database.fileSize();
-  const result = { removedDrafts: ids.length, removedParts: partIds.length, bytesBefore, bytesAfter };
+  // The file only gets smaller when it is compacted; that and the save are one piece each.
+  if (!opt.sync) await turn();
+  const t1 = Date.now();
+  if (database.compact) database.compact(); else if (database.flush) database.flush();
+  const compactMs = Date.now() - t1;
+  longest = Math.max(longest, compactMs);
+  if (removedParts) guards().storage.invalidate();
+  const bytesAfter = size();
+  const result = { removedDrafts, removedParts, bytesBefore, bytesAfter, longestPieceMs: longest };
   state.lastDatabaseRelief = { at: new Date(now).toISOString(), ...result };
-  console.warn(`Database at ${Math.round((bytesBefore / max) * 100)}% of its ceiling: removed ${partIds.length} uploaded part(s) that nothing refers to and ${ids.length} old draft quote(s) of visitors without an account; ${mb(bytesBefore)} MB → ${mb(bytesAfter)} MB.`);
+  console.warn(`Database at ${Math.round((bytesBefore / max) * 100)}% of its ceiling: removed ${removedParts} uploaded part(s) that nothing refers to and ${removedDrafts} draft quote(s), from whoever held the most first; ${mb(bytesBefore)} MB → ${mb(bytesAfter)} MB (longest piece of work ${longest} ms).`);
   return result;
 }
 
 /**
- * The admin's "clear old drafts" action: every no-account draft that no order
- * or request refers to and that nobody has touched for `olderThanHours`.
+ * The admin's "clear old drafts" action: every no-account draft that no order or request came
+ * from and that nobody has touched for `olderThanHours`; and, when the database is over its
+ * sweep line, the same pass the server runs by itself (which also takes an account's drafts,
+ * heaviest holder first), forced, so the button always does what can be done.
  */
-function purgeAnonymousDrafts(models, { olderThanHours = 48, now = Date.now(), database = require("../models/database") } = {}) {
+async function purgeAnonymousDrafts(models, { olderThanHours = 48, now = Date.now(), database = require("../models/database") } = {}) {
   const hours = Math.max(0, Number(olderThanHours) || 0);
   const refs = rowRetention.references(models, { now });
   // Idle drafts, and the ones that have already lapsed and were only waiting for the next scheduled sweep.
   const ids = [...refs.expiredQuotes, ...refs.anonymousDrafts.filter((d) => d.lastActivity == null || now - d.lastActivity >= hours * 60 * MIN).map((d) => d.id)];
-  const bytesBefore = database.fileSize ? database.fileSize() : 0;
+  const size = () => (typeof database.liveSize === "function" ? database.liveSize() : database.fileSize ? database.fileSize() : 0);
+  const bytesBefore = size();
   if (ids.length) {
-    database.batch(() => { for (const id of ids) models.quotesDB.delete(id); });
+    await inPieces(ids, (id) => models.quotesDB.delete(id));
+    await turn();
     if (database.compact) database.compact();
   }
-  const bytesAfter = database.fileSize ? database.fileSize() : 0;
-  return { removedDrafts: ids.length, keptDrafts: refs.anonymousDrafts.length - ids.length, bytesBefore, bytesAfter };
+  let pressure = null;
+  if (size() >= limits.databaseMaxBytes * limits.dbSweepFraction) {
+    state.databaseQuietUntil = 0;
+    pressure = await relieveDatabase(models, { force: true, now, database });
+  }
+  const bytesAfter = size();
+  const also = pressure ? pressure.removedDrafts : 0;
+  return { removedDrafts: ids.length + also, removedUnderPressure: also, removedParts: pressure ? pressure.removedParts : 0, keptDrafts: Math.max(0, refs.drafts.length - ids.length - also), bytesBefore, bytesAfter };
 }
 
 // ─── Files ───────────────────────────────────────────────────
@@ -166,63 +296,93 @@ function evictPart(models, row) {
 }
 
 /**
- * Evict uploads until the folders are back under the warning line less a
- * margin. Never touches a file on an order, an open request or a signed-in
- * customer's live quote.
- * @returns {null | { removedUploads, removedDrafts, bytesBefore, bytesAfter }}
+ * What a file pressure pass would remove. Pure.
+ * From each sender, heaviest first, oldest first within a kind:
+ *   1. uploads nothing refers to
+ *   2. uploads only a never-reopened no-account draft refers to (the draft goes too)
+ *   3. what is held softly — files on a request nobody at the shop has opened, on a saved quote,
+ *      on an order never paid for — beyond the sender's protected share
+ *      (UPLOAD_PROTECTED_MB_PER_HOLDER); the saved quote goes with its file, and an unanswered
+ *      request's own attachment counts here too.
+ * Never: a file on an order that was paid for or is being worked on, or on a request the shop
+ * has taken up; a file in its first STORAGE_EVICT_MIN_AGE_MINUTES; a signed-in customer's part
+ * in its first CUSTOMER_PART_KEEP_MINUTES.
  */
-function relieveStorage(models, opt = {}) {
+function planStorageRelief(models, { need, now = Date.now(), refs = rowRetention.references(models, { now }), graceMs = limits.storageEvictMinAgeMinutes * MIN } = {}) {
+  const customerKeepMs = limits.customerPartKeepMinutes * MIN;
+  const protectedShare = limits.uploadProtectedBytesPerHolder;
+  const byHolder = new Map();
+  const soft = new Map();
+  const add = (map, holder, item) => { if (!map.has(holder)) map.set(holder, []); map.get(holder).push(item); };
+  for (const p of models.partsDB.rowSizes()) {
+    if (refs.partsHard.has(p.id)) continue;
+    const created = time(p.createdAt) || 0;
+    if (now - created < graceMs || (p.ownerId && now - created < customerKeepMs)) continue;
+    const holder = rowRetention.holderOf(p.ownerId, p.clientTag);
+    const item = { kind: "part", id: p.id, bytes: p.fileBytes, created };
+    if (refs.partsProtected.has(p.id)) add(soft, holder, { ...item, rank: 2 });
+    else add(byHolder, holder, { ...item, rank: refs.partsOnAnonymousDrafts.has(p.id) ? 1 : 0 });
+  }
+  for (const r of refs.softRequests) {
+    if (now - r.created < graceMs || !(r.drawingBytes > 0)) continue;
+    add(soft, r.holder, { kind: "attachment", id: r.id, bytes: r.drawingBytes, created: r.created, rank: 2 });
+  }
+  // Of what a sender holds softly, its newest bytes up to the protected share stay.
+  for (const [holder, items] of soft) {
+    items.sort((x, y) => y.created - x.created);
+    let kept = 0;
+    for (const it of items) {
+      if (kept + it.bytes <= protectedShare) { kept += it.bytes; continue; }
+      add(byHolder, holder, it);
+    }
+  }
+  for (const items of byHolder.values()) items.sort((x, y) => (x.rank - y.rank) || (x.created - y.created));
+  return { chosen: levelDown(byHolder, need, 0), holders: byHolder.size };
+}
+
+/**
+ * Evict uploads until the folders are back under the warning line less a margin, taking from
+ * whoever holds the most first. In pieces, like the database pass.
+ * @returns {Promise<null | { removedUploads, removedDrafts, removedAttachments, bytesBefore, bytesAfter }>}
+ */
+async function relieveStorage(models, opt = {}) {
   const g = guards();
   const now = opt.now || Date.now();
   const max = limits.storageMaxBytes;
   let bytesBefore = g.storage.scan();
   if (!opt.force && bytesBefore < max * limits.storageWarnFraction) return null;
+  if (!opt.force && state.storageQuietUntil > Date.now()) return null;
   // Cheapest first: uploads on disk that no part row names at all.
   if (sweepOrphanUploads(models, { now }).removed > 0) bytesBefore = g.storage.scan();
   const target = max * Math.max(0.1, limits.storageWarnFraction - 0.15);
-  const minAgeMs = opt.minAgeMs ?? limits.storageEvictMinAgeMinutes * MIN;
-  const database = opt.database || require("../models/database");
-
   const refs = rowRetention.references(models, { now });
-  const rows = models.partsDB.getAll()
-    .map((p) => ({ row: p, created: time(p.createdAt) || 0 }))
-    .filter((p) => !refs.partsProtected.has(p.row.id) && now - p.created >= minAgeMs)
-    .sort((a, b) => a.created - b.created);
+  const plan = planStorageRelief(models, { need: bytesBefore - target, now, refs, ...(opt.minAgeMs !== undefined ? { graceMs: opt.minAgeMs } : {}) });
+  if (!opt.sync) await turn();
 
-  let used = bytesBefore;
   let removedUploads = 0;
+  let removedAttachments = 0;
   const removedDraftIds = new Set();
-  const evict = (list) => {
-    for (const { row } of list) {
-      if (used <= target) return;
-      used -= evictPart(models, row);
-      removedUploads++;
+  const draftsByPart = new Map();
+  for (const d of refs.drafts) for (const id of d.partIds) { if (!draftsByPart.has(id)) draftsByPart.set(id, []); draftsByPart.get(id).push(d.id); }
+  await inPieces(plan.chosen, (it) => {
+    if (it.kind === "attachment") {
+      if (deleteRequestAttachment(models, it.id).attachmentRemoved) removedAttachments++;
+      return;
     }
-  };
-  database.batch(() => {
-    // 1. Nothing refers to it.
-    evict(rows.filter((p) => !refs.partsOnAnonymousDrafts.has(p.row.id)));
-    // 2. Only no-account drafts refer to it, and none of those was touched recently: the drafts go too.
-    if (used > target) {
-      const second = rows.filter((p) => {
-        const drafts = refs.partsOnAnonymousDrafts.get(p.row.id);
-        return drafts && drafts.every((d) => d.lastActivity == null || now - d.lastActivity >= minAgeMs);
-      });
-      for (const { row } of second) {
-        if (used <= target) break;
-        for (const d of refs.partsOnAnonymousDrafts.get(row.id)) {
-          if (!removedDraftIds.has(d.id)) { removedDraftIds.add(d.id); models.quotesDB.delete(d.id); }
-        }
-        used -= evictPart(models, row);
-        removedUploads++;
-      }
+    // A draft whose file is gone cannot be priced or ordered: it goes with the file.
+    for (const quoteId of draftsByPart.get(it.id) || []) {
+      if (!removedDraftIds.has(quoteId)) { removedDraftIds.add(quoteId); models.quotesDB.delete(quoteId); }
     }
-  });
+    const row = models.partsDB.getRow(it.id);
+    if (row) { evictPart(models, row); removedUploads++; }
+  }, opt);
+  if (removedUploads || removedAttachments) { const database = opt.database || require("../models/database"); if (database.flush) database.flush(); }
   g.storage.invalidate();
   const bytesAfter = g.storage.scan();
-  const result = { removedUploads, removedDrafts: removedDraftIds.size, bytesBefore, bytesAfter };
+  const result = { removedUploads, removedDrafts: removedDraftIds.size, removedAttachments, bytesBefore, bytesAfter };
   state.lastStorageRelief = { at: new Date(now).toISOString(), ...result };
-  if (removedUploads) console.warn(`File storage at ${Math.round((bytesBefore / max) * 100)}% of its ceiling: removed ${removedUploads} upload(s) that no order, open request or customer's saved quote refers to; ${mb(bytesBefore)} MB → ${mb(bytesAfter)} MB.`);
+  if (removedUploads || removedAttachments) console.warn(`File storage at ${Math.round((bytesBefore / max) * 100)}% of its ceiling: removed ${removedUploads} upload(s) and ${removedAttachments} request attachment(s) that nothing paid for or answered refers to, from whoever held the most first; ${mb(bytesBefore)} MB → ${mb(bytesAfter)} MB.`);
+  else state.storageQuietUntil = Date.now() + limits.pressureBackoffMinutes * MIN;
   return result;
 }
 
@@ -326,12 +486,12 @@ function deleteRequestAttachment(models, id) {
 // ─── Scheduling ──────────────────────────────────────────────
 
 /** One pass: cheap checks first; the heavy work only when a line has been crossed. */
-function tick(models, opt = {}) {
+async function tick(models, opt = {}) {
   if (state.running) return;
   state.running = true;
   try {
-    if (models.USE_SQLITE !== false) relieveDatabase(models, opt);
-    relieveStorage(models, opt);
+    if (models.USE_SQLITE !== false) await relieveDatabase(models, opt);
+    await relieveStorage(models, opt);
   } catch (err) {
     console.error("Storage pressure check failed:", err.message);
   } finally {
@@ -339,12 +499,16 @@ function tick(models, opt = {}) {
   }
 }
 
-/** Ask for a pass soon (after an insert found a line crossed). At most one every 20 seconds. */
+/**
+ * Ask for a pass soon: after a row was added, or after a request was refused because a line was
+ * crossed (a refused upload AND a refused new quote). At most one every 20 seconds, and a pass that
+ * found nothing to remove is not repeated for PRESSURE_BACKOFF_MINUTES (the passes check that).
+ */
 function nudge(models) {
   const now = Date.now();
   if (now - state.nudgedAt < 20 * 1000) return;
   state.nudgedAt = now;
-  const t = setTimeout(() => tick(models), 50);
+  const t = setTimeout(() => { tick(models).catch(() => {}); }, 50);
   if (t.unref) t.unref();
 }
 
@@ -354,8 +518,8 @@ function start(models, opt = {}) {
     try { sweepOrphanUploads(models); sweepClosedRequestAttachments(models); } catch (err) { console.error("Storage sweep failed:", err.message); }
   };
   slow();
-  tick(models);
-  const fast = setInterval(() => tick(models), opt.intervalMs || 5 * MIN);
+  tick(models).catch(() => {});
+  const fast = setInterval(() => { tick(models).catch(() => {}); }, opt.intervalMs || 5 * MIN);
   const hourly = setInterval(slow, opt.slowIntervalMs || 60 * MIN);
   if (fast.unref) fast.unref();
   if (hourly.unref) hourly.unref();
@@ -378,7 +542,7 @@ function status() {
 }
 
 module.exports = {
-  relieveDatabase, relieveStorage, purgeAnonymousDrafts,
+  relieveDatabase, relieveStorage, purgeAnonymousDrafts, planDatabaseRelief, planStorageRelief, levelFor, levelDown,
   sweepOrphanUploads, sweepClosedRequestAttachments,
   deleteRequest, deleteRequestAttachment,
   tick, nudge, start, status, state,

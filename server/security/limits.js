@@ -45,35 +45,78 @@ const limits = {
   /** Hard ceiling on everything stored under data/uploads, data/quote-drawings, data/rfq-drawings and data/part-payloads. */
   get storageMaxBytes() { return envInt("UPLOAD_DIR_MAX_MB", 2048, 10, 1000000) * MB; },
   /**
-   * Database file size past which new uploads are refused. Every write rewrites the whole file:
-   * measured, a write blocks the server for about 2 ms per MB of database (0.4 s at 200 MB) and
-   * memory runs at ~5× the file. A part row used to carry its preview mesh (up to ~3 MB); the mesh
-   * and other large detail now live in files (partInline* above), so a row is tens of kB at most
-   * and this ceiling is a backstop, not something a busy month reaches.
+   * Database size past which new quotes and uploads are refused. Every save rewrites the whole
+   * file on the one thread: measured on a loaded 2-core machine (independent re-review 2026-11-12,
+   * RR-11), one save is 13 ms at 8 MB, 29 ms at 16 MB, 54 ms at 32 MB and 155 ms at 60 MB, so a save
+   * stays under 50 ms up to about 28 MB. The default is 16 MB (a save around 30 ms, with room for a
+   * slower CPU). Draft quotes are capped per sender in bytes (QUOTE_DRAFT_KB_*), so what grows the
+   * database now is real orders: when the log says the database is at 80 %, raise this, knowing
+   * that each extra MB costs about 2 ms on every save.
    */
-  get databaseMaxBytes() {
-    // Derived: a sixteenth of the memory budget, between 64 and 256 MB (64 MB at 1 GB, 128 MB at 2 GB,
-    // 256 MB from 4 GB up). The database lives in memory and a save copies it, so the file has to stay
-    // small beside the memory the service has.
-    const derived = Math.max(64, Math.min(256, Math.floor(this.memoryBudgetMb / 16)));
-    return envInt("DB_MAX_MB", derived, 4, 16384) * MB;
-  },
+  get databaseMaxBytes() { return envInt("DB_MAX_MB", 16, 4, 16384) * MB; },
+  /**
+   * Draft quotes one sender may have stored, in bytes as stored (independent re-review 2026-11-12,
+   * RR-01, RR-02). Counted per address and per account, checked when a draft is made AND when a
+   * re-price makes one bigger. A full 100-line quote is about 16 kB as stored; a typical one 2 to 5.
+   * A draft made while signed in counts against the account AND against the address it came from
+   * (an address can register ten accounts an hour). Ten senders at their cap hold 5 MB of a 16 MB
+   * database between them.
+   */
+  get quoteDraftBytesPerClient() { return envInt("QUOTE_DRAFT_KB_PER_CLIENT", 512, 16, 1048576) * 1024; },
+  get quoteDraftBytesPerAccount() { return envInt("QUOTE_DRAFT_KB_PER_ACCOUNT", 512, 16, 1048576) * 1024; },
+  /** Re-prices of ONE quote in an hour: what a person at the quote tool does, with room (it re-prices on every change). */
+  get quoteRepricePerQuoteHour() { return envInt("QUOTE_REPRICE_PER_QUOTE_HOUR", 300, 10, 100000); },
+  /**
+   * Under pressure, draft bytes of each sender the clean-up does not touch (its newest drafts up to
+   * this). The clean-up takes from whoever holds the most first, so a visitor with one quote is
+   * the last to lose anything and a flood is levelled down to this.
+   */
+  get draftKeepBytesPerHolder() { return envInt("DRAFT_KEEP_KB_PER_HOLDER", 64, 0, 1048576) * 1024; },
+  /** Uploaded parts nothing refers to that each sender keeps under database pressure (its newest). */
+  get loosePartsKeepPerHolder() { return envInt("LOOSE_PARTS_KEEP_PER_HOLDER", 10, 0, 100000); },
+  /** A signed-in customer's uploaded part is never removed by a pressure pass inside this many minutes of its upload. */
+  get customerPartKeepMinutes() { return envInt("CUSTOMER_PART_KEEP_MINUTES", 60, 0, 100000); },
+  /** After a pressure pass that found nothing it may remove, minutes before the next one looks again. */
+  get pressureBackoffMinutes() { return envInt("PRESSURE_BACKOFF_MINUTES", 5, 0, 1440); },
   /** Share of the database ceiling at which the oldest no-account draft quotes are swept (services/storagePressure.js). */
   get dbSweepFraction() { return envInt("DB_SWEEP_PERCENT", 80, 20, 95) / 100; },
   /** Share of the database ceiling kept for customers with a confirmed email: visitors without one stop at 100 − this. */
   get dbReservedFraction() { return envInt("DB_RESERVED_PERCENT", 15, 0, 50) / 100; },
-  /** A no-account draft is left alone by the emergency sweep until nobody has touched it for this long, minutes. */
-  get draftSweepMinAgeMinutes() { return envInt("DRAFT_SWEEP_MIN_AGE_MINUTES", 30, 0, 100000); },
+  /**
+   * A row is left alone by a pressure pass for this many minutes after it was MADE (it may be in
+   * the middle of being priced). It was 30 minutes since it was last touched, which a script
+   * renews by re-pricing while a person does not (re-review RR-02): who loses rows is now decided
+   * by who holds the most (DRAFT_KEEP_KB_PER_HOLDER), not by who was idle.
+   */
+  get draftSweepMinAgeMinutes() { return envInt("DRAFT_SWEEP_MIN_AGE_MINUTES", 2, 0, 100000); },
   /** The same, once the database is so full that visitors without an account are being turned away: shorter, so the pause is short. */
+  // Not used since the re-review of 2026-11-12 (the clean-up no longer goes by idle time); kept so an existing setting is not an error.
   get draftSweepUrgentMinAgeMinutes() { return envInt("DRAFT_SWEEP_URGENT_MIN_AGE_MINUTES", 5, 0, 100000); },
   /** A draft quote of a visitor without an account that is never opened again lapses after this many hours. */
   get anonDraftHours() { return envInt("QUOTE_ANON_DRAFT_HOURS", 48, 1, 24 * 365); },
-  /** Bytes one client address may have STORED at once (CAD files and what is derived from them, request attachments). */
-  get uploadStoredBytesPerClient() { return envInt("UPLOAD_STORED_MB_PER_IP", 400, 1, 1000000) * MB; },
+  /**
+   * Bytes one client address may have STORED at once (CAD files and what is derived from them,
+   * request attachments), and the same per account. 150 MB each (it was 400 for an address and
+   * nothing for an account): ten senders at their cap hold 1.5 GB, 73 % of the default 2 GB ceiling,
+   * short of the line where anyone else is refused (re-review 2026-11-12, RR-08).
+   */
+  get uploadStoredBytesPerClient() { return envInt("UPLOAD_STORED_MB_PER_IP", 150, 1, 1000000) * MB; },
+  get uploadStoredBytesPerAccount() { return envInt("UPLOAD_STORED_MB_PER_ACCOUNT", 150, 1, 1000000) * MB; },
+  /**
+   * Bytes of one sender that a pressure pass will not remove although nothing has been paid for
+   * or answered: files on a request nobody at the shop has opened yet, on a saved quote, on an
+   * order that was never paid. Default: a third of what the sender may store (50 MB).
+   */
+  get uploadProtectedBytesPerHolder() {
+    const derived = Math.max(1, Math.floor(this.uploadStoredBytesPerClient / MB / 3));
+    return envInt("UPLOAD_PROTECTED_MB_PER_HOLDER", derived, 0, 1000000) * MB;
+  },
+  /** An order that was never paid protects its files outright for this many hours; after that only inside the sender's protected share. */
+  get orderUnpaidProtectHours() { return envInt("ORDER_UNPAID_PROTECT_HOURS", 48, 1, 24 * 365); },
   /** Share of the file-storage ceiling kept for customers with a confirmed email: visitors without one stop at 100 − this. */
   get storageReservedFraction() { return envInt("UPLOAD_DIR_RESERVED_PERCENT", 15, 0, 50) / 100; },
-  /** An upload is not evicted under storage pressure until it (and any draft that names it) has been idle this long, minutes. */
-  get storageEvictMinAgeMinutes() { return envInt("STORAGE_EVICT_MIN_AGE_MINUTES", 30, 0, 100000); },
+  /** An upload is not evicted under storage pressure in its first minutes (it may still be being read or priced). Who loses files after that is decided by who holds the most. */
+  get storageEvictMinAgeMinutes() { return envInt("STORAGE_EVICT_MIN_AGE_MINUTES", 2, 0, 100000); },
   /** Days after a request is declined, lost or expired before its attachment is deleted. */
   get rfqClosedAttachmentDays() { return envInt("RFQ_CLOSED_ATTACHMENT_DAYS", 14, 0, 3650); },
   /** An upload on disk that no part row names (the process died mid-parse) is deleted after this many minutes. */

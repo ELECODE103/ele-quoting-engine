@@ -102,16 +102,20 @@ class PartsStore {
     return this.table.getAll().map((r) => String(r.storedName || "").split(/[\\/]/).pop()).filter(Boolean);
   }
 
-  /** How much room each part's row takes in the database, without reading the rows' contents. */
+  /**
+   * One light row per part for retention and the pressure passes: who holds it, how big its row
+   * is in the database and how many bytes of files it has. No row's contents are read.
+   * @returns {Array<{ id, createdAt, clientTag, ownerId, storedName, bytes, fileBytes }>}
+   */
   rowSizes() {
     if (typeof this.table._query === "function") {
-      return this.table._query(`SELECT id, created_at, client_tag, 300 + COALESCE(LENGTH(geometry_json), 0) + COALESCE(LENGTH(dfm_json), 0) + COALESCE(LENGTH(file_name), 0) AS n FROM ${this.tableName}`)
-        .map((r) => ({ id: r.id, createdAt: r.created_at, clientTag: r.client_tag || "", bytes: Number(r.n) || 300 }));
+      return this.table._query(`SELECT id, created_at, client_tag, owner_id, stored_name, 300 + COALESCE(LENGTH(CAST(geometry_json AS BLOB)), 0) + COALESCE(LENGTH(CAST(dfm_json AS BLOB)), 0) + COALESCE(LENGTH(file_name), 0) AS n, COALESCE(file_size, 0) + COALESCE(mesh_bytes, 0) + COALESCE(detail_bytes, 0) AS f FROM ${this.tableName}`)
+        .map((r) => ({ id: r.id, createdAt: r.created_at, clientTag: r.client_tag || "", ownerId: r.owner_id || "", storedName: r.stored_name || "", bytes: Number(r.n) || 300, fileBytes: Number(r.f) || 0 }));
     }
     return this.table.getAll().map((r) => {
       let bytes = 300;
       try { bytes += JSON.stringify(r.geometry || "").length + JSON.stringify(r.dfm || "").length; } catch { /* not counted */ }
-      return { id: r.id, createdAt: r.createdAt, clientTag: r.clientTag || "", bytes };
+      return { id: r.id, createdAt: r.createdAt, clientTag: r.clientTag || "", ownerId: r.ownerId || "", storedName: r.storedName || "", bytes, fileBytes: (Number(r.fileSize) || 0) + (Number(r.meshBytes) || 0) + (Number(r.detailBytes) || 0) };
     });
   }
 
@@ -123,6 +127,16 @@ class PartsStore {
       return rows.length ? Number(rows[0].n) || 0 : 0;
     }
     return this.table.getAll().filter((r) => r.clientTag === clientTag).reduce((sum, r) => sum + (Number(r.fileSize) || 0) + (Number(r.meshBytes) || 0) + (Number(r.detailBytes) || 0), 0);
+  }
+
+  /** The same for one account (parts uploaded while signed in to it). */
+  storedBytesForOwner(ownerId) {
+    if (!ownerId) return 0;
+    if (typeof this.table._query === "function") {
+      const rows = this.table._query(`SELECT COALESCE(SUM(COALESCE(file_size, 0) + COALESCE(mesh_bytes, 0) + COALESCE(detail_bytes, 0)), 0) AS n FROM ${this.tableName} WHERE owner_id = ?`, [ownerId]);
+      return rows.length ? Number(rows[0].n) || 0 : 0;
+    }
+    return this.table.getAll().filter((r) => r.ownerId === ownerId).reduce((sum, r) => sum + (Number(r.fileSize) || 0) + (Number(r.meshBytes) || 0) + (Number(r.detailBytes) || 0), 0);
   }
 
   _hydrate(row, { mesh = false } = {}) {

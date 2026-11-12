@@ -372,6 +372,7 @@ router.post(
           geometry: parsed.geometry,
           dfm: parsed.dfm,
           clientTag: uploadGuards.clientTag(client), // whose stored bytes these are (a keyed hash, not the address)
+          ownerId: req.user?.userId || "",            // and the account, when signed in (bytes are capped per account too)
         });
         pending.delete(storedPath); // the part row owns the file now
         uploadGuards.storage.add(file.size);
@@ -674,6 +675,12 @@ function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, proc
   // The only thing the client says about the paperwork is yes or no. The fee is
   // worked out here from the rate card and the number of lines; any amount sent
   // with the request is ignored.
+  // Who is asking and for which row, before any pricing work is done for them: a sender who may not
+  // start another quote, or has re-priced this one more than a person does, is told so now.
+  const existingRow = isValidUUID(quoteId) && typeof quotesDB.table?.getById === "function" ? quotesDB.table.getById(quoteId) : null;
+  const repricing = Boolean(existingRow && quoteEditableBy(existingRow, user));
+  if (repricing) quoteGuards.assertMayReprice(existingRow.id);
+  else quoteGuards.assertMayCreate({ user, clientKey: ctx.clientKey });
   const priced = priceQuote(partConfigs, leadTimeSlug, { paperwork: wantsPaperwork(paperwork) });
   // A warm-up pass of the yielding runner (services/pricingMemo.js) stops here: nothing is written until the final pass.
   if (pricingMemo.warming()) return null;
@@ -681,7 +688,7 @@ function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, proc
     process: sanitizeString(String(builderProcess || partConfigs[0]?.process || ""), 40),
     parts: partConfigs.map((c) => whitelist(c, CONFIG_FIELDS)),
   };
-  const existing = isValidUUID(quoteId) ? quotesDB.getById(quoteId) : null;
+  const existing = existingRow ? quotesDB.getById(quoteId) : null;
   const record = {
     ...priced.quote,
     gate: priced.gate,
@@ -695,23 +702,32 @@ function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, proc
   };
   if (notes !== undefined) record.notes = sanitizeString(String(notes || ""), 2000);
   const database = require("../models/database");
+  const clientTag = ctx.clientKey ? uploadGuards.clientTag(ctx.clientKey) : "";
   let saved;
   if (existing && quoteEditableBy(existing, user)) {
+    // A re-price. What is asked of a new row is asked of a re-price that makes the row bigger: the
+    // sender's allowance of stored drafts, in bytes, and the database ceiling (security/quoteGuards.js).
+    const changes = { ...record, userId: user?.userId || existing.userId || null };
+    const asStored = { ...changes, notes: record.notes !== undefined ? record.notes : existing.notes };
+    quoteGuards.assertRoomForDraft({ user, clientKey: ctx.clientKey, bytes: quotesDB.sizeOf(asStored), existing: { id: existing.id, bytes: quotesDB.rowBytes(existing.id) } });
+    quoteGuards.recordReprice(existing.id);
     // Re-pricing a draft is the most frequent write there is and the cheapest to lose: it may wait a
     // moment for the file (models/database.js deferred()), so a busy quote tool does not rewrite the
     // database file on every keystroke.
-    saved = database.deferred(() => quotesDB.update(existing.id, { ...record, userId: user?.userId || existing.userId || null }));
+    saved = database.deferred(() => quotesDB.update(existing.id, { ...changes, ...(existing.clientTag ? {} : { clientTag }) }));
   } else {
     // A NEW row. Its id is always made here: a quote id the client sends only ever names a quote
     // that already exists (and that the requester may edit, above); it is never used as the id of
-    // a new one. New rows are limited per client and per account, and stop first for visitors
-    // without an account when the database is nearly full (security/quoteGuards.js).
+    // a new one. New rows are limited per client and per account in number and in bytes, and stop
+    // first for visitors without an account when the database is nearly full (security/quoteGuards.js).
     quoteGuards.assertMayCreate({ user, clientKey: ctx.clientKey });
     // A quote that has moved on (ordered, sent as an RFQ) is forked, keeping the buyer's notes and drawing.
     const carry = existing && (!existing.userId || existing.userId === user?.userId)
       ? { notes: existing.notes || "", drawingFileName: existing.drawingFileName || "", drawingPath: existing.drawingPath || "" }
       : {};
-    saved = quotesDB.insert({ ...carry, ...record }); // a new row is written at once (only re-pricing may wait)
+    const row = { ...carry, ...record, clientTag };
+    quoteGuards.assertRoomForDraft({ user, clientKey: ctx.clientKey, bytes: quotesDB.sizeOf(row) });
+    saved = quotesDB.insert(row); // a new row is written at once (only re-pricing may wait)
     quoteGuards.recordCreated({ user, clientKey: ctx.clientKey });
     storagePressure.nudge(require("../models"));
   }

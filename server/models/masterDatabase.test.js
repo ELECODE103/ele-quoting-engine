@@ -106,10 +106,12 @@ test("after it: every row master wrote is still there, and the new columns have 
   assert.deepStrictEqual(rows(db, "SELECT email, password_hash FROM users")[0], before.user, "the account is untouched");
   assert.deepStrictEqual(rows(db, "SELECT id, email, notes, quote_id FROM rfqs")[0], before.rfq, "so is the request");
   for (const p of before.parts) assert.strictEqual(rows(db, "SELECT file_name FROM parts WHERE id = ?", [p.id])[0].file_name, p.file_name);
-  // The re-priced quote: same id, counts stored, two distinct lines kept once each.
+  // The re-priced quote: same id, counts stored, the three lines stored deflated, the part ids and the client beside the row.
   const q = rows(db, "SELECT * FROM quotes WHERE id = ?", [CLIENT_CHOSEN])[0];
   const stored = JSON.parse(q.line_items_json);
-  assert.deepStrictEqual([q.part_count, q.total_units, stored.pool.length, stored.use], [3, 16, 2, [0, 0, 1]]);
+  assert.deepStrictEqual([q.part_count, q.total_units, stored.$lines, stored.n], [3, 16, 2, 3]);
+  assert.strictEqual(require("./quotesStore").unpackLines(stored).length, 3);
+  assert.ok(/^[0-9a-f-]{36}(,[0-9a-f-]{36})*$/.test(q.part_ids) && /^[0-9a-f]{24}$/.test(q.client_tag), "round-2 columns are filled when the row is next written");
   // The other quote master wrote was never touched: still a plain array.
   const untouched = rows(db, "SELECT line_items_json FROM quotes WHERE id != ? ORDER BY created_at LIMIT 1", [CLIENT_CHOSEN])[0];
   assert.ok(Array.isArray(JSON.parse(untouched.line_items_json)));

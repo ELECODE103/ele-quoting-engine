@@ -334,6 +334,14 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       'ALTER TABLE rfqs ADD COLUMN drawing_bytes INTEGER',
       // Requests: when the attachment of a closed request was deleted.
       'ALTER TABLE rfqs ADD COLUMN attachment_removed_at TEXT',
+      // Availability fixes, round 2 (2026-11-12). All additive.
+      // Quotes: which client made the draft (the same keyed hash as on parts) and which parts it names,
+      // so "how many bytes of drafts does this sender hold" and "what refers to this part" are one
+      // SQL query each instead of reading and parsing every quote.
+      'ALTER TABLE quotes ADD COLUMN client_tag TEXT',
+      'ALTER TABLE quotes ADD COLUMN part_ids TEXT',
+      // Parts: the account that uploaded it, when signed in (bytes are capped per account too).
+      'ALTER TABLE parts ADD COLUMN owner_id TEXT',
     ];
     for (const sql of migrations) {
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }
@@ -446,6 +454,31 @@ function fileSize() {
   try { return fs.statSync(DB_PATH).size; } catch (_) { return 0; }
 }
 
+/**
+ * Size of the database as it is in memory NOW, in bytes: what the next save will write. The file on
+ * disk can be up to DB_DRAFT_FLUSH_MS behind (re-priced drafts wait for the file), so a ceiling that
+ * is asked about the file can be walked past by re-pricing; a ceiling is asked about this.
+ */
+function liveSize() {
+  if (!dbInstance) return fileSize();
+  try {
+    const pages = dbInstance.exec("PRAGMA page_count")[0].values[0][0];
+    const size = dbInstance.exec("PRAGMA page_size")[0].values[0][0];
+    return Number(pages) * Number(size);
+  } catch (_) { return fileSize(); }
+}
+
+/** Bytes of the database that hold rows (pages in use): what is left once deleted rows' pages are counted out. */
+function usedSize() {
+  if (!dbInstance) return fileSize();
+  try {
+    const pages = dbInstance.exec("PRAGMA page_count")[0].values[0][0];
+    const free = dbInstance.exec("PRAGMA freelist_count")[0].values[0][0];
+    const size = dbInstance.exec("PRAGMA page_size")[0].values[0][0];
+    return (Number(pages) - Number(free)) * Number(size);
+  } catch (_) { return fileSize(); }
+}
+
 function getDatabase() {
   return dbInstance;
 }
@@ -465,4 +498,4 @@ process.on("SIGTERM", () => onStop("SIGTERM"));
 process.on("SIGINT", () => onStop("SIGINT"));
 process.once("beforeExit", () => { try { flush(); } catch { /* nothing more to do */ } });
 
-module.exports = { getDatabase, saveToDisk, batch, deferred, flush, pending, compact, fileSize, ready, DB_PATH, payloadMigration: () => payloadMigration };
+module.exports = { getDatabase, saveToDisk, batch, deferred, flush, pending, compact, fileSize, liveSize, usedSize, ready, DB_PATH, payloadMigration: () => payloadMigration };

@@ -117,8 +117,9 @@ const mb = (bytes) => Math.round(bytes / (1024 * 1024));
 const database = {
   lastWarnAt: 0,
   lastRefuseLogAt: 0,
+  /** The database as it is in memory now (what the next save writes): the file can lag behind re-priced drafts. */
   size() {
-    try { return require("../models/database").fileSize(); } catch { return 0; }
+    try { const d = require("../models/database"); return typeof d.liveSize === "function" ? d.liveSize() : d.fileSize(); } catch { return 0; }
   },
   /**
    * Room for a new row? `opt.reserved: false` asks for a visitor without a
@@ -183,6 +184,17 @@ function storedBytesFor(key) {
   } catch { return 0; }
 }
 
+/** Bytes an account has stored right now (parts uploaded while signed in to it, and its requests' attachments). */
+function storedBytesForAccount(userId) {
+  if (!userId) return 0;
+  try {
+    const models = require("../models");
+    let total = typeof models.partsDB.storedBytesForOwner === "function" ? models.partsDB.storedBytesForOwner(userId) : 0;
+    for (const r of models.rfqsDB.query((x) => x.userId === userId && x.drawingPath)) total += Number(r.drawingBytes) || 0;
+    return total;
+  } catch { return 0; }
+}
+
 // ─── Per-client daily byte budget ────────────────────────────
 
 const budget = {
@@ -235,6 +247,7 @@ const FULL_MESSAGE = `We can't take new files right now. Email them to ${brand.e
 const FULL_ANONYMOUS_MESSAGE = `We can't take new files from visitors without an account right now. Sign in (or create an account and confirm your email) and upload again, or email the files to ${brand.email} and we'll quote them by hand.`;
 const NOT_READ_MESSAGE = "We stopped reading this upload because another file in it could not be read in time. Upload this file by itself and it will be read.";
 const storedLimitMessage = () => `You've reached what we keep for one network at a time (${mb(limits.uploadStoredBytesPerClient)} MB of files). Files that are not on an order or a saved quote are cleared after a few days. Email your files to ${brand.email} or call ${brand.phone} and we'll quote them by hand.`;
+const storedLimitAccountMessage = () => `Your account has reached what we keep for one account at a time (${mb(limits.uploadStoredBytesPerAccount)} MB of files). Files that are not on an order are cleared after a few days. Email your files to ${brand.email} or call ${brand.phone} and we'll quote them by hand.`;
 const dailyLimitMessage = () => `You've reached today's upload limit from this network (${mb(limits.uploadDailyBytesPerClient)} MB in 24 hours). Email your files to ${brand.email} or call ${brand.phone} and we'll quote them by hand.`;
 
 /**
@@ -329,6 +342,11 @@ function admit(opt = {}) {
     if (storedBytesFor(key) + incoming > limits.uploadStoredBytesPerClient) {
       return refuse(429, { error: storedLimitMessage(), code: "stored-limit" });
     }
+    // An account is not a way round the cap: anyone with a mailbox has one (re-review 2026-11-12, rule D).
+    const accountId = req.user && req.user.userId ? req.user.userId : "";
+    if (accountId && storedBytesForAccount(accountId) + incoming > limits.uploadStoredBytesPerAccount) {
+      return refuse(429, { error: storedLimitAccountMessage(), code: "stored-limit" });
+    }
     req.uploadClientKey = key;
 
     // ── Count what really arrives ──
@@ -357,7 +375,7 @@ function admit(opt = {}) {
     // charged, as it arrives: past the route's maximum, the client's daily budget or its stored-bytes
     // cap, the request is answered and cut off. (With a Content-Length the body cannot exceed what was
     // declared, and that was checked above.)
-    const storedLeft = hasLength ? Infinity : Math.max(0, limits.uploadStoredBytesPerClient - storedBytesFor(key));
+    const storedLeft = hasLength ? Infinity : Math.max(0, Math.min(limits.uploadStoredBytesPerClient - storedBytesFor(key), accountId ? limits.uploadStoredBytesPerAccount - storedBytesForAccount(accountId) : Infinity));
     const stop = () => {
       cut = true;
       const got = received();
@@ -424,4 +442,4 @@ function safeFileName(name, fallback = "file") {
   return clean || fallback;
 }
 
-module.exports = { storage, database, budget, admit, account, lingerThenClose, safeFileName, clientTag, storedBytesFor, isConfirmedCustomer, STORAGE_DIRS, DRAWING_DIRS, PART_PAYLOAD_DIR, DATA_DIR, FULL_MESSAGE, FULL_ANONYMOUS_MESSAGE, NOT_READ_MESSAGE };
+module.exports = { storage, database, budget, admit, account, lingerThenClose, safeFileName, clientTag, storedBytesFor, storedBytesForAccount, isConfirmedCustomer, STORAGE_DIRS, DRAWING_DIRS, PART_PAYLOAD_DIR, DATA_DIR, FULL_MESSAGE, FULL_ANONYMOUS_MESSAGE, NOT_READ_MESSAGE };

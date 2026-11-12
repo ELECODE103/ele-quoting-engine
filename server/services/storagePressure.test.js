@@ -108,26 +108,41 @@ test("new draft rows are limited per client and per account; re-pricing a quote 
   }
 });
 
-test("a quote's lines are stored once per distinct line: 100 lines of one part is a few kB, and reads back exactly", async () => {
+test("a quote's lines are stored deflated: 100 lines that ALL DIFFER are about 15 kB (they were 282), and read back exactly", async () => {
   const partId = await h.uploadCube();
-  const lines = Array.from({ length: 100 }, () => cncLine(partId, 1));
+  // The worst case for storage, not the best: every line a different quantity, so no two lines are equal.
+  const lines = Array.from({ length: 100 }, (_, i) => cncLine(partId, i + 1));
   const r = await h.post("/api/quote", { parts: lines }, buyer);
   assert.strictEqual(r.status, 200);
   const raw = models.quotesDB.table.getById(r.body.quoteId);
-  const storedBytes = JSON.stringify(raw.lineItems).length;
-  assert.ok(storedBytes < 12 * 1024, `the 100 lines take ${storedBytes} bytes in the row (they took about 290,000)`);
+  const storedBytes = models.quotesDB.rowBytes(r.body.quoteId);
+  assert.ok(JSON.stringify(r.body.lineItems).length > 250 * 1024, "the lines are a quarter of a megabyte of JSON");
+  assert.ok(storedBytes < 32 * 1024, `the whole row takes ${storedBytes} bytes`);
+  assert.strictEqual(raw.lineItems.$lines, 2);
   const back = models.quotesDB.getById(r.body.quoteId);
   assert.strictEqual(back.lineItems.length, 100);
   assert.deepStrictEqual(back.lineItems, JSON.parse(JSON.stringify(r.body.lineItems)), "what is read back is what was priced, line for line");
-  assert.notStrictEqual(back.lineItems[0], back.lineItems[1], "each line is its own object");
-  assert.deepStrictEqual([raw.partCount, raw.totalUnits], [100, 100], "the counts the admin list shows are stored with the quote");
+  assert.strictEqual(back.config.parts.length, 100, "the buyer's inputs read back too");
+  assert.deepStrictEqual(back.config.parts.map((c) => c.quantity), lines.map((l) => l.quantity));
+  assert.deepStrictEqual([raw.partCount, raw.totalUnits], [100, 5050], "the counts the admin list shows are stored with the quote");
+  // beside the row: which parts it names and which client made it (a keyed hash, not the address)
+  assert.strictEqual(raw.partIds, partId);
+  assert.ok(/^[0-9a-f]{24}$/.test(raw.clientTag), raw.clientTag);
   // a line refers to its part; nothing of the part is copied into the quote
-  assert.ok(!/"boundingBox"|"positions"|"checks"/.test(JSON.stringify(raw)), "no geometry or DFM in the quote row");
+  assert.ok(!/"boundingBox"|"positions"|"checks"/.test(JSON.stringify(back)), "no geometry or DFM in the quote row");
   // mixed lines keep their order
   const mixed = [cncLine(partId, 1), cncLine(partId, 2), cncLine(partId, 1), cncLine(partId, 5), cncLine(partId, 2)];
   const m = await h.post("/api/quote", { parts: mixed }, buyer);
   assert.deepStrictEqual(models.quotesDB.getById(m.body.quoteId).lineItems.map((li) => li.quantity), [1, 2, 1, 5, 2]);
-  assert.strictEqual(models.quotesDB.table.getById(m.body.quoteId).lineItems.pool.length, 3);
+  // rows written before this — a plain array, and the pooled form of 2026-11-11 — read as they always did
+  const line = back.lineItems[0];
+  const plain = models.quotesDB.table.insert({ status: "draft", lineItems: [line, line], config: { parts: [lines[0], lines[0]] } });
+  const pooled = models.quotesDB.table.insert({ status: "draft", lineItems: { $lines: 1, pool: [line], use: [0, 0, 0] }, config: { parts: [lines[0]] } });
+  assert.deepStrictEqual(models.quotesDB.getById(plain.id).lineItems, [line, line]);
+  assert.deepStrictEqual(models.quotesDB.getById(pooled.id).lineItems, [line, line, line]);
+  assert.deepStrictEqual(models.quotesDB.meta().find((q) => q.id === pooled.id).partIds, [partId], "an older row's part ids are worked out once…");
+  assert.strictEqual(models.quotesDB.table.getById(pooled.id).partIds, partId, "…and kept beside the row from then on");
+  models.quotesDB.delete(plain.id); models.quotesDB.delete(pooled.id);
 });
 
 test("the admin's quote list is a list: totals and counts, capped, never every line of every quote", async () => {
@@ -135,71 +150,102 @@ test("the admin's quote list is a list: totals and counts, capped, never every l
   assert.strictEqual(list.status, 200);
   assert.ok(list.body.length >= 5);
   const big = list.body.find((q) => q.partCount === 100);
-  assert.ok(big && big.totalUnits === 100 && big.orderTotal > 0 && !("lineItems" in big) && !("config" in big));
+  assert.ok(big && big.totalUnits === 5050 && big.orderTotal > 0 && !("lineItems" in big) && !("config" in big));
   assert.ok(list.text.length / list.body.length < 600, `${Math.round(list.text.length / list.body.length)} bytes per quote in the list`);
   assert.strictEqual((await h.get("/api/admin/quotes?limit=2", admin)).body.length, 2);
   assert.ok(Number(list.headers.get("x-total-count")) >= list.body.length);
   assert.strictEqual((await h.get("/api/admin/quotes", buyer)).status, 403);
 });
 
-test("database nearly full: new drafts and uploads from visitors without an account stop first; customers, re-pricing, sign-in and checkout go on; then it recovers by itself", async () => {
+/** Draft rows written straight into the table, as if `tag` (or the account `userId`) had made them through the quote tool. */
+function insertDrafts(n, { tag = "", userId = null, bytesEach = 40000, createdAgoMs = 3 * MIN, touchedAgoMs = 0 } = {}) {
+  const db = database.getDatabase();
+  const lines = JSON.stringify({ $lines: 2, n: 1, z: crypto.randomBytes(Math.ceil(bytesEach * 0.74)).toString("base64") });
+  const ids = [];
+  for (let i = 0; i < n; i++) {
+    const id = crypto.randomUUID();
+    db.run("INSERT INTO quotes (id, user_id, client_tag, status, line_items_json, config_json, part_ids, created_at, updated_at, expires_at) VALUES (?, ?, ?, 'draft', ?, '{}', '', ?, ?, ?)",
+      [id, userId, tag, lines, new Date(Date.now() - createdAgoMs - i).toISOString(), new Date(Date.now() - touchedAgoMs).toISOString(), new Date(Date.now() + 30 * DAY).toISOString()]);
+    ids.push(id);
+  }
+  database.compact();
+  return ids;
+}
+const draftsLeft = (where, arg) => database.getDatabase().exec(`SELECT COUNT(*) FROM quotes WHERE ${where}`, [arg])[0].values[0][0];
+
+test("database nearly full: visitors without an account are asked to sign in first; customers, re-pricing, sign-in and checkout go on; the clean-up then takes from whoever holds the most, however busy they keep their rows", async () => {
   require("../security/quoteGuards").resetForTests();
   const partIds = [];
   for (let i = 0; i < 4; i++) partIds.push(await h.uploadCube());
-  const mats = (await h.get("/api/materials?process=cnc")).body; // the materials the catalog lists
-  // What a script does: draft after draft, no upload needed, each as big as an anonymous quote may be (25 distinct lines).
-  const junk = (n) => ({ parts: Array.from({ length: 25 }, (_, i) => ({ ...cncLine(partIds[i % 4], 1 + ((n * 25 + i) % 97)), materialSlug: mats[(n + i) % mats.length].slug, grade: "" })) });
-  const mine = await h.post("/api/quote", { parts: [cncLine(partIds[0], 2)] });           // a real visitor's draft, made before the flood
-  const customers = await h.post("/api/quote", { parts: [cncLine(partIds[0], 4)] }, buyer); // a customer's saved quote
+  const mine = await h.post("/api/quote", { parts: [cncLine(partIds[0], 2)] });           // a real visitor's draft…
+  const customers = await h.post("/api/quote", { parts: [cncLine(partIds[0], 4)] }, buyer); // …and a customer's saved quote
   assert.strictEqual(mine.status, 200);
-  let made = 0;
-  let refused = null;
+  // The visitor priced it six hours ago and has not been back: by idle time theirs is the oldest row there is.
+  database.getDatabase().run("UPDATE quotes SET created_at = ?, updated_at = ? WHERE id = ?", [new Date(Date.now() - 6 * HOUR).toISOString(), new Date(Date.now() - 6 * HOUR).toISOString(), mine.body.quoteId]);
+  // The flood: six addresses and two accounts, every draft re-priced a moment ago (a script keeps
+  // them fresh; that used to make them untouchable while the visitor's quote was deleted).
   const ceiling = 4;
-  for (let n = 0; n < 400 && !refused; n++) {
-    const r = await h.post("/api/quote", junk(n));
-    if (r.status === 200) made++; else refused = r;
-  }
-  assert.ok(refused, `the flood is stopped (after ${made} drafts, database ${dbMb().toFixed(2)} MB)`);
-  assert.strictEqual(refused.status, 503);
-  assert.strictEqual(refused.body.code, "quotes-paused");
-  assert.ok(/sign in/i.test(refused.body.error) && /email/i.test(refused.body.error), refused.body.error);
-  assert.ok(dbMb() <= ceiling, `the database stopped growing under its ${ceiling} MB ceiling: ${dbMb().toFixed(2)} MB`);
-  assert.ok(dbMb() >= ceiling * 0.8, "and it took the anonymous share to get there");
+  const holders = [...Array.from({ length: 6 }, (_, i) => ({ tag: `flood-${i}` })), { userId: "flood-account-a", tag: "flood-x" }, { userId: "flood-account-b", tag: "flood-y" }];
+  let made = 0;
+  while (dbMb() < ceiling * 0.9 && made < 400) { for (const who of holders) { insertDrafts(1, who); made++; } }
+  assert.ok(dbMb() >= ceiling * 0.85 && dbMb() <= ceiling, `the flood took the database to ${dbMb().toFixed(2)} MB of ${ceiling} with ${made} drafts`);
 
   // While it is in that state:
+  const refused = await h.post("/api/quote", { parts: [cncLine(partIds[1], 1)] });
+  assert.deepStrictEqual([refused.status, refused.body.code], [503, "quotes-paused"]);
+  assert.ok(/sign in/i.test(refused.body.error) && /email/i.test(refused.body.error), refused.body.error);
   const anonUpload = await h.form("/api/upload", {}, { files: { name: "cube.stl", data: cubeFile } });
   assert.deepStrictEqual([anonUpload.status, anonUpload.body.code], [503, "uploads-paused"], "a visitor without an account cannot add parts either");
-  assert.strictEqual((await h.post("/api/quote", { quoteId: mine.body.quoteId, parts: [cncLine(partIds[0], 3)] })).status, 200, "a visitor can still re-price the quote they have open");
+  assert.strictEqual((await h.post("/api/quote", { quoteId: mine.body.quoteId, parts: [cncLine(partIds[0], 3)] })).status, 200, "a visitor can still change the quote they have open");
+  const grow = await h.post("/api/quote", { quoteId: mine.body.quoteId, parts: Array.from({ length: 25 }, (_, i) => cncLine(partIds[i % 4], i + 1)) });
+  assert.deepStrictEqual([grow.status, grow.body.code], [503, "quotes-paused"], "but not grow it from one line to twenty-five: a re-price that makes the row bigger is asked what a new row is asked");
   const custUpload = await h.form("/api/upload", {}, { files: { name: "cube.stl", data: cubeFile } }, buyer);
   assert.strictEqual(custUpload.status, 200, "a customer with a confirmed email still uploads");
-  assert.strictEqual(custUpload.body.parts.length, 1);
   assert.strictEqual((await h.post("/api/quote", { parts: [cncLine(partIds[1], 1)] }, buyer)).status, 200, "and starts a new quote");
   assert.strictEqual(typeof (await h.login("customer@example.test")), "string", "sign-in works");
   const checkout = await h.post("/api/orders/checkout-session", { quoteId: customers.body.quoteId, shippingName: "A Buyer", shippingAddress: "1 Test St", shippingCity: "Elgin", shippingState: "IL", shippingZip: "60120" }, buyer);
   assert.strictEqual(checkout.status, 200, `checkout works: ${checkout.text.slice(0, 120)}`);
   assert.ok(models.ordersDB.getAll().some((o) => o.quoteId === customers.body.quoteId), "the order was written");
 
-  // Recovery, with nobody doing anything: the pressure pass that runs on a timer (and is nudged by
-  // every refused request). While visitors are being turned away the wait is short: a draft nobody
-  // has touched for five minutes goes (thirty when the database is only at the sweep line).
+  // Recovery, with nobody doing anything: the pass that runs on a timer and after every refusal.
   const before = dbMb();
+  const floodBefore = draftsLeft("client_tag LIKE ?", "flood-%");
   const quiet = console.warn; console.warn = () => {};
   let result;
-  try {
-    const tooSoon = pressure.relieveDatabase(models, { now: Date.now() + 2 * MIN });
-    assert.strictEqual(tooSoon.removedDrafts, 0, "two minutes on, nothing is old enough: a visitor's draft is not taken from under them");
-    await h.post("/api/quote", { quoteId: mine.body.quoteId, parts: [cncLine(partIds[0], 5)] }); // the visitor changes a quantity
-    result = pressure.relieveDatabase(models, { now: Date.now() + 6 * MIN });
-  } finally { console.warn = quiet; }
-  assert.ok(result && result.removedDrafts >= 5, `${result && result.removedDrafts} of the flood's ${made} drafts removed, oldest first`);
-  assert.ok(models.quotesDB.getById(mine.body.quoteId), "the visitor's own draft, re-priced a moment before, outlives the older junk");
+  try { result = await pressure.relieveDatabase(models); } finally { console.warn = quiet; }
+  const floodAfter = draftsLeft("client_tag LIKE ?", "flood-%");
+  assert.ok(result && result.removedDrafts >= 10, `${result && result.removedDrafts} drafts removed`);
+  assert.strictEqual(floodBefore - floodAfter, result.removedDrafts, "every one of them the flood's, although the flood's were the most recently touched rows in the database");
+  assert.ok(draftsLeft("user_id = ?", "flood-account-a") < made / holders.length, "an account's drafts are not exempt: anyone with a mailbox has an account");
+  // levelled: no flood sender is left holding much more than another
+  // levelled from the top: the senders that lost rows are left holding the same, and none was emptied
+  const left = holders.map((who) => (who.userId ? draftsLeft("user_id = ?", who.userId) : draftsLeft("client_tag = ?", who.tag)));
+  const each = made / holders.length;
+  const cut = left.filter((n) => n < each);
+  assert.ok(cut.length >= holders.length - 2 && Math.max(...cut) - Math.min(...cut) <= 1 && Math.min(...left) >= 1, `drafts left per flood sender (each had ${each}): ${left.join(" ")}`);
+  assert.ok(models.quotesDB.getById(mine.body.quoteId), "the visitor's quote, idle for six hours, is still there");
+  assert.strictEqual((await h.get(`/api/quote/${mine.body.quoteId}`)).status, 200);
+  assert.ok(models.quotesDB.getById(customers.body.quoteId), "so is the customer's");
   assert.ok(dbMb() < ceiling * 0.8 && dbMb() < before, `database ${before.toFixed(2)} MB → ${dbMb().toFixed(2)} MB`);
-  const anonAgain = await h.post("/api/quote", junk(1000));
+  assert.ok(result.longestPieceMs < 150, `the longest piece of the pass held the thread ${result.longestPieceMs} ms (load ${require("os").loadavg()[0].toFixed(1)})`);
+  const anonAgain = await h.post("/api/quote", { parts: [cncLine(partIds[2], 1)] });
   assert.strictEqual(anonAgain.status, 200, "visitors without an account can start quotes again");
   assert.strictEqual((await h.form("/api/upload", {}, { files: { name: "cube.stl", data: cubeFile } })).status, 200, "and upload again");
-  // What was NOT removed: the customer's quote, the order's quote, and the visitor's own recent draft is still theirs to re-price.
-  assert.ok(models.quotesDB.getById(customers.body.quoteId), "a customer's quote is never swept");
   assert.strictEqual(pressure.status().database.lastRelief.removedDrafts, result.removedDrafts);
+
+  // A pass that finds nothing it may remove is not run again at every new row (it used to be, and held the thread seconds each time).
+  database.getDatabase().run("DELETE FROM quotes WHERE client_tag LIKE 'flood-%'"); database.compact();
+  let looked = 0;
+  const realRefs = require("./rowRetention").references;
+  require("./rowRetention").references = (...args) => { looked++; return realRefs(...args); };
+  try {
+    assert.strictEqual((await pressure.relieveDatabase(models, { force: true })).removedDrafts, 0);
+    pressure.state.databaseQuietUntil = Date.now() + 5 * MIN;
+    process.env.DB_SWEEP_PERCENT = "20"; // "over the line" for the sake of the check
+    const n = looked;
+    assert.strictEqual(await pressure.relieveDatabase(models), null);
+    assert.strictEqual(looked, n, "nothing was read for it");
+  } finally { require("./rowRetention").references = realRefs; delete process.env.DB_SWEEP_PERCENT; pressure.state.databaseQuietUntil = 0; }
 });
 
 test("admin: 'clear old drafts' deletes idle no-account drafts and nothing else", async () => {
@@ -247,7 +293,7 @@ test("L6: uploads that are never quoted fill the database with part rows — the
     assert.ok(dbMb() >= ceiling * 0.85, `the flood took the database to ${dbMb().toFixed(2)} MB of ${ceiling} with ${flood} unquoted parts`);
     assert.strictEqual(guards.database.hasRoom({ reserved: false }), false, "visitors without an account are being turned away");
     const before = dbMb();
-    const result = pressure.relieveDatabase(models);
+    const result = await pressure.relieveDatabase(models);
     const left = db.exec("SELECT COUNT(*) FROM parts WHERE client_tag = 'a-script'")[0].values[0][0];
     assert.ok(result.removedParts >= 20 && left > 0 && left === flood - result.removedParts, `${result.removedParts} of the ${flood} unquoted parts removed, all of them the script's (${left} left)`);
     assert.ok(dbMb() < ceiling * 0.8 && dbMb() < before, `database ${before.toFixed(2)} MB → ${dbMb().toFixed(2)} MB`);
@@ -303,7 +349,7 @@ test("a file on a saved quote that can still be ordered is never swept; when one
 
 // ─── H4: the file folders ────────────────────────────────────
 
-test("files nearly full: the oldest uploads nothing refers to go first, then those only a no-account draft refers to; orders, open requests and customers' quotes are never touched", async () => {
+test("files nearly full, every sender holding the same: the oldest uploads nothing refers to go first, then those only a no-account draft refers to; orders, open requests and customers' quotes inside their protected share are not touched", async () => {
   require("../security/quoteGuards").resetForTests();
   // Start from empty folders (earlier tests left small files and their rows behind; those rows are minutes old and are not candidates).
   for (const dir of guards.STORAGE_DIRS) if (fs.existsSync(dir)) for (const f of fs.readdirSync(dir)) fs.unlinkSync(path.join(dir, f));
@@ -318,7 +364,7 @@ test("files nearly full: the oldest uploads nothing refers to go first, then tho
   const onCustomerQuote = await storedPart(MB, 6 * HOUR);
   const onAnonDraft = await storedPart(MB, 5 * HOUR);
   const onReopenedDraft = await storedPart(MB, 4 * HOUR);
-  const looseNew = await storedPart(MB, 2 * MIN);       // just uploaded: someone is still choosing a material
+  const looseNew = await storedPart(MB, 1 * MIN);       // just uploaded: someone is still choosing a material
   const onFreshDraft = await storedPart(MB, 3 * HOUR);
   const order = models.ordersDB.insert({ userId: "u1", status: "paid", total: 10 });
   models.orderItemsDB.insert({ orderId: order.id, partId: onOrder.id, fileName: "a.stl", quantity: 1 });
@@ -344,7 +390,7 @@ test("files nearly full: the oldest uploads nothing refers to go first, then tho
 
   const quiet = console.warn; console.warn = () => {};
   let r;
-  try { r = pressure.relieveStorage(models); } finally { console.warn = quiet; }
+  try { r = await pressure.relieveStorage(models); } finally { console.warn = quiet; }
   assert.ok(r && r.removedUploads >= 2, JSON.stringify(r));
   assert.ok(r.bytesAfter <= 10 * MB * 0.66, `back under the line with a margin: ${(r.bytesAfter / MB).toFixed(1)} MB`);
   // first the uploads nothing refers to, oldest first …

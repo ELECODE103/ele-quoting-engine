@@ -128,6 +128,8 @@ const FIELD_TO_COLUMN = {
   clientTag: "client_tag",
   drawingBytes: "drawing_bytes",
   attachmentRemovedAt: "attachment_removed_at",
+  partIds: "part_ids",
+  ownerId: "owner_id",
 };
 
 // 0/1 columns that read back as booleans (SQLite has no boolean type).
