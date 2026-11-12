@@ -61,7 +61,8 @@ export default function ChangeLogTab() {
         {done && <div role="status" style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 10 }}>{done}</div>}
       </div>
 
-      <div className="card" style={{ overflow: 'hidden' }}>
+      {/* Scrolls sideways on a phone, so it can be reached and scrolled from the keyboard (as the other admin tables are). */}
+      <div className="card table-scroll" tabIndex={0} role="region" aria-label="Change log table" style={{ overflow: 'hidden' }}>
         {error && <div role="alert" style={{ padding: 16, color: 'var(--error-text)', fontSize: 12 }}>{error}</div>}
         {rows === null && !error && <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-dim)' }}>Loading…</div>}
         {rows && rows.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-dim)' }}>No changes recorded yet.</div>}
