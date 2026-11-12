@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import PublicLayout from '../components/PublicLayout';
 import { api } from '../utils/api';
@@ -8,6 +8,7 @@ import brand, { PROCESS_LABELS } from '../brand';
 import { fact, when, PAPERWORK_HELP } from '../facts';
 import useFormGuard from '../utils/useFormGuard';
 import VerifyEmailNotice from '../components/security/VerifyEmailNotice';
+import { FormError } from '../components/form/Notice';
 
 const within = when('quote-turnaround', (v) => ` within ${v}`);
 const UPLOAD_EXT = ['.pdf', '.dxf', '.dwg', '.png', '.jpg', '.jpeg']; // what POST /api/rfq accepts
@@ -68,8 +69,13 @@ export default function RfqPage() {
   const [drawing, setDrawing] = useState(null);
   const [fileError, setFileError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null); // { message, field }
+  const [errorAt, setErrorAt] = useState(0);
   const [sent, setSent] = useState(null);
+  const sentHeading = useRef(null);
+  // The answer replaces the form: put the reader on its heading, at the top of the page.
+  useEffect(() => { if (sent) { window.scrollTo(0, 0); sentHeading.current?.focus({ preventScroll: true }); } }, [sent]);
+  const fail = (message, field = '') => { setError({ message, field }); setErrorAt((n) => n + 1); };
 
   useEffect(() => {
     if (quoteId || !/[?&]nocad=1/.test(location.search)) return undefined;
@@ -108,18 +114,19 @@ export default function RfqPage() {
     setFileError('');
     if (f) {
       const ext = (f.name.match(/\.[^.]+$/) || [''])[0].toLowerCase();
-      if (!UPLOAD_EXT.includes(ext)) { setFileError(`That file type (${ext || 'unknown'}) will not upload. Use a PDF, DXF, DWG, JPG or PNG, or email it to ${brand.email}.`); e.target.value = ''; return setDrawing(null); }
-      if (f.size > MAX_MB * 1024 * 1024) { setFileError(`That file is over ${MAX_MB} MB. Send a smaller file, or email it to ${brand.email}.`); e.target.value = ''; return setDrawing(null); }
+      if (!UPLOAD_EXT.includes(ext)) { setFileError(`We can't take ${ext || 'that kind of'} files on this form, so it was not attached. Attach a PDF, DXF, DWG, JPG or PNG, or send the request without it and email the file to ${brand.email}.`); e.target.value = ''; return setDrawing(null); }
+      if (f.size > MAX_MB * 1024 * 1024) { setFileError(`That file is over ${MAX_MB} MB, the most this form takes, so it was not attached. Attach a smaller one, or send the request without it and email the file to ${brand.email}.`); e.target.value = ''; return setDrawing(null); }
     }
     setDrawing(f);
   }
 
   async function submit(e) {
     e.preventDefault();
-    setError('');
-    if (!form.contactName.trim()) return setError('Add your name so we know who to send it to.');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return setError('Add a working email so the quote has somewhere to go.');
-    if (part && !form.notes.trim()) return setError('Say what the part is and what it does, so we know what is coming.');
+    if (busy) return;
+    setError(null);
+    if (!form.contactName.trim()) return fail('Add your name so we know who to send it to.', 'contactName');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return fail(form.email.trim() ? 'That email address doesn\'t look complete. Check it, so the quote has somewhere to go.' : 'Add your email so the quote has somewhere to go.', 'email');
+    if (part && !form.notes.trim()) return fail('Say what the part is and what it does, so we know what is coming.', 'notes');
     setBusy(true);
     try {
       // Extra fields ride in the notes: the endpoint stores and emails `notes` as written.
@@ -142,9 +149,8 @@ export default function RfqPage() {
         ...trap,
       }, part ? null : drawing, headers));
       setSent(res);
-      window.scrollTo(0, 0);
     } catch (err) {
-      setError(err.message || `It didn't send. Call ${brand.phone} and we'll take it by phone.`);
+      fail(err.message || `It didn't send. Call ${brand.phone} and we'll take it by phone.`, err.code === 'content-mismatch' ? 'drawing' : '');
     }
     setBusy(false);
   }
@@ -166,7 +172,7 @@ export default function RfqPage() {
           <section className="section">
             <div className="pub-wrap" style={{ maxWidth: 680 }}>
               <div className="eyebrow" style={{ marginBottom: 14 }}>Request received</div>
-              <h1 className="display" style={{ marginBottom: 16 }}>{sent.shipTo ? 'Now send us the part.' : 'We have your request.'}</h1>
+              <h1 className="display" style={{ marginBottom: 16 }} tabIndex={-1} ref={sentHeading}>{sent.shipTo ? 'Now send us the part.' : 'We have your request.'}</h1>
               {sent.shipTo ? (
                 <p className="lede" style={{ marginBottom: 20 }}>
                   Write the reference on the box and ship the part to the address below, at your cost. We measure it and send a price
@@ -220,7 +226,7 @@ export default function RfqPage() {
         <section className="section">
           <div className="pub-wrap" style={{ maxWidth: 680 }}>
             <div className="eyebrow" style={{ marginBottom: 14 }}>Request received</div>
-            <h1 className="display" style={{ marginBottom: 16 }}>It's in the queue.</h1>
+            <h1 className="display" style={{ marginBottom: 16 }} tabIndex={-1} ref={sentHeading}>It's in the queue.</h1>
             <p className="lede" style={{ marginBottom: 20 }}>
               The engineer who will run the job reads it and replies to <b>{form.email}</b>{within}. If the print needs
               a conversation first, that is the reply you will get.
@@ -329,7 +335,7 @@ export default function RfqPage() {
               </p>
             </div>
 
-            <form id="request" className="card" style={{ padding: 24, position: 'relative' }} onSubmit={submit} noValidate aria-label={part ? 'Send-the-part request' : 'Firm quote request'}>
+            <form id="request" className="card rfq-form" style={{ position: 'relative' }} onSubmit={submit} noValidate aria-busy={busy || undefined} aria-label={part ? 'Send-the-part request' : 'Firm quote request'}>
               {guard.honeypot}
               {!quote && (
                 <div className="mode-toggle" role="group" aria-label="What you have">
@@ -341,16 +347,16 @@ export default function RfqPage() {
                 {part ? 'Name, email and what the part is are required. No file to attach: the part itself is what we work from.' : 'Name and email are required. Everything else helps the number.'}
               </p>
               <div className="rfq-grid">
-                <label><span className="field-label">Name <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span><input className="input" value={form.contactName} onChange={set('contactName')} autoComplete="name" required aria-required="true" /></label>
-                <label><span className="field-label">Email <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span><input className="input" type="email" value={form.email} onChange={set('email')} autoComplete="email" required aria-required="true" /></label>
+                <label><span className="field-label">Name <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span><input className="input" value={form.contactName} onChange={set('contactName')} autoComplete="name" required aria-required="true" aria-invalid={error?.field === 'contactName' || undefined} aria-describedby={error?.field === 'contactName' ? 'rfq-error' : undefined} /></label>
+                <label><span className="field-label">Email <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span><input className="input" type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={form.email} onChange={set('email')} autoComplete="email" required aria-required="true" aria-invalid={error?.field === 'email' || undefined} aria-describedby={error?.field === 'email' ? 'rfq-error' : undefined} /></label>
                 <label><span className="field-label">Company</span><input className="input" value={form.company} onChange={set('company')} autoComplete="organization" /></label>
-                <label><span className="field-label">Phone</span><input className="input" value={form.phone} onChange={set('phone')} autoComplete="tel" /></label>
+                <label><span className="field-label">Phone</span><input className="input" type="tel" inputMode="tel" value={form.phone} onChange={set('phone')} autoComplete="tel" /></label>
 
                 {part ? (
                   <>
                     <label className="full">
                       <span className="field-label">What the part is and what it does <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span>
-                      <textarea className="input" rows={3} placeholder="e.g. carton guide on the sealer infeed; rides on a stainless rail. Worn on the leading edge." value={form.notes} onChange={set('notes')} required aria-required="true" />
+                      <textarea className="input" rows={3} placeholder="e.g. carton guide on the sealer infeed; rides on a stainless rail. Worn on the leading edge." value={form.notes} onChange={set('notes')} required aria-required="true" aria-invalid={error?.field === 'notes' || undefined} aria-describedby={error?.field === 'notes' ? 'rfq-error' : undefined} />
                     </label>
                     <label className="full"><span className="field-label">What machine is it from?</span><input className="input" placeholder="Make and model if you have it, or what the machine does" value={form.machine} onChange={set('machine')} /></label>
                     <label className="full"><span className="field-label">Material, if known</span><input className="input" placeholder="e.g. white, waxy, floats in water" value={form.material} onChange={set('material')} /></label>
@@ -373,7 +379,7 @@ export default function RfqPage() {
                     <label className="full"><span className="field-label">Finish, marking, packaging</span><input className="input" placeholder="e.g. deburr all edges, engrave PN, bag 10 per" value={form.finishNotes} onChange={set('finishNotes')} /></label>
                     <label className="full">
                       <span className="field-label">Drawing (PDF, DXF, DWG, JPG or PNG)</span>
-                      <input className="input" type="file" accept=".pdf,.dxf,.dwg,.png,.jpg,.jpeg" onChange={pickFile} />
+                      <input className="input" type="file" accept=".pdf,.dxf,.dwg,.png,.jpg,.jpeg" onChange={pickFile} aria-invalid={Boolean(fileError) || error?.field === 'drawing' || undefined} aria-describedby={fileError ? 'rfq-file-error' : error?.field === 'drawing' ? 'rfq-error' : undefined} />
                       <span className="field-hint">One file, up to {MAX_MB} MB. Email anything else to {brand.email} with your reference.</span>
                     </label>
                     <label className="full"><span className="field-label">Anything else</span><textarea className="input" rows={4} placeholder="What the part does, what it mates with, what went wrong with the last supplier." value={form.notes} onChange={set('notes')} /></label>
@@ -388,8 +394,8 @@ export default function RfqPage() {
                 </label>
               </div>
               {guard.widget}
-              {fileError && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{fileError}</div>}
-              {error && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{error}</div>}
+              {fileError && <div id="rfq-file-error" role="alert" className="auth-error" style={{ marginTop: 12, marginBottom: 0 }}>{fileError}</div>}
+              <FormError id="rfq-error" error={error?.message} at={errorAt} style={{ marginTop: 12, marginBottom: 0 }} />
               <button className="btn btn-primary btn-lg" type="submit" disabled={busy} style={{ width: '100%', justifyContent: 'center', marginTop: 18 }}>
                 {busy ? 'Sending…' : part ? 'Send the request' : 'Send for a firm quote'}
               </button>
