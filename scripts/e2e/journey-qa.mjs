@@ -139,6 +139,10 @@ async function startServer({ turnstile = true, env: extra = {} } = {}) {
   if (turnstile) {
     env.TURNSTILE_SITE_KEY = `e2e-site-${crypto.randomBytes(6).toString('hex')}`;
     env.TURNSTILE_SECRET_KEY = `e2e-secret-${crypto.randomBytes(12).toString('hex')}`;
+  } else {
+    // Since the availability fixes production does not start without the Turnstile keys unless this says so
+    // (server/security/botCheckStartup.js). The journeys that run without the spam check say so here.
+    env.ALLOW_LAUNCH_WITHOUT_BOT_CHECK = '1';
   }
   const logFile = path.join(SCRATCH, `${LABEL}-server.log`);
   const log = fs.createWriteStream(logFile, { flags: 'a' });
