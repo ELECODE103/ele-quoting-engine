@@ -4,6 +4,7 @@
  */
 const { getDatabase, saveToDisk } = require("./database");
 const { randomUUID: uuidv4 } = require("crypto"); // RFC 4122 v4, same format the uuid package produced
+const taxShipping = require("./taxShippingMigration"); // shipping and tax fields (2026-11-11): columns and their names in one place
 
 // Mapping of JS field names → SQLite JSON column names per table
 const JSON_COLUMNS = {
@@ -11,7 +12,7 @@ const JSON_COLUMNS = {
   finishes: {},
   lead_times: {},
   pricing_rules: { rules: "rules_json" },
-  quotes: { lineItems: "line_items_json", gate: "gate_json", config: "config_json" },
+  quotes: { lineItems: "line_items_json", gate: "gate_json", config: "config_json", ...taxShipping.JSON_FIELDS.quotes },
   parts: { geometry: "geometry_json", dfm: "dfm_json" },
   orders: {},
   order_items: { geometry: "geometry_json", dfm: "dfm_json", config: "config_json" },
@@ -121,10 +122,12 @@ const FIELD_TO_COLUMN = {
   // Part payloads kept in files (2026-11-11): bytes of preview mesh / geometry detail under data/part-payloads
   meshBytes: "mesh_bytes",
   detailBytes: "detail_bytes",
+  // Shipping method, carrier account, tax and exemption fields (2026-11-11)
+  ...taxShipping.FIELD_MAP,
 };
 
 // 0/1 columns that read back as booleans (SQLite has no boolean type).
-const BOOLEAN_COLUMNS = new Set(["active", "paperwork", "return_part", "buyer_emailed"]);
+const BOOLEAN_COLUMNS = new Set(["active", "paperwork", "return_part", "buyer_emailed", ...taxShipping.BOOLEAN_COLUMNS]);
 
 // Reverse mapping for deserialization
 const COLUMN_TO_FIELD = {};
