@@ -656,7 +656,7 @@ h2.display.h3-like { font-size: 20px; letter-spacing: -0.3px; margin-bottom: 14p
 .verify-box b { color: inherit; }
 .verify-box .cta-row { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .admin-banner { border: 1px solid var(--error); background: var(--error-bg); color: #7F1D1D; border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 24px; display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 13.5px; line-height: 1.5; }
-.setup-key { font-family: var(--font-mono); font-size: 16px; letter-spacing: 1px; background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-md); padding: 10px 12px; word-break: break-all; user-select: all; }
+.setup-key { font-family: var(--font-mono); font-size: 16px; letter-spacing: 1px; background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-md); padding: 10px 12px; overflow-wrap: anywhere; user-select: all; } /* wraps between the groups of four, not inside one */
 .recovery-codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; font-family: var(--font-mono); font-size: 15px; background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-md); padding: 16px 20px; margin: 12px 0; list-style: none; }
 .human-gate-backdrop { position: fixed; inset: 0; background: rgba(16, 28, 51, 0.45); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 16px; }
 .human-gate { background: #fff; border-radius: 12px; padding: 24px; max-width: 420px; width: 100%; box-shadow: var(--shadow-xl); }

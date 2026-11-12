@@ -242,6 +242,9 @@ async function runAxe(page) {
 /** Record a screen: screenshot, messages, sideways scroll, small touch targets (phone), axe. */
 async function shot(page, name, { mask = [], note = '', fullPage = true, settle = 250 } = {}) {
   try {
+    // A full-page capture draws the sticky header wherever the page is scrolled to, across
+    // the content; taken from the top, the header is where a buyer sees it.
+    if (fullPage) await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(settle);
     const file = `${name}-${width}.jpg`;
     const opts = { fullPage, type: 'jpeg', quality: 72, mask, maskColor: '#101C33', animations: 'disabled' };
