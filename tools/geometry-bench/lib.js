@@ -238,6 +238,9 @@ function runInWorker(file, options = {}, { heapMb = 768, warm = true } = {}) {
       worker.postMessage({ id: 2, filePath: file, options });
     };
     worker.on("message", (msg) => {
+      // Since the availability fixes the worker first says which thread it is ({ hello, tid }: the pool reads
+      // that thread's CPU time); it is not an answer to a job.
+      if (msg && msg.hello) return undefined;
       if (msg.id === 1) return void start();
       finish(msg);
     });
@@ -248,7 +251,7 @@ function runInWorker(file, options = {}, { heapMb = 768, warm = true } = {}) {
       const b = Buffer.alloc(84 + 50); b.writeUInt32LE(1, 80); b.writeFloatLE(1, 84 + 12 + 12); b.writeFloatLE(1, 84 + 12 + 28);
       fs.writeFileSync(tiny, b);
       worker.postMessage({ id: 1, filePath: tiny, options: {} });
-      worker.once("message", () => fs.rmSync(tiny, { force: true }));
+      worker.on("message", (msg) => { if (msg && msg.id === 1) fs.rmSync(tiny, { force: true }); });
     } else start();
   });
 }
