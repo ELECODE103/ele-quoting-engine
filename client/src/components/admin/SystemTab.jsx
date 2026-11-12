@@ -7,7 +7,9 @@ import { formatFileSize, formatDateTime } from '../../utils/format';
  * Everything shown comes from GET /api/admin/system/status (server/ops/status.js).
  * No secret or address is ever in that answer: a setting is "on" or "off".
  */
-const cell = { padding: '9px 14px', borderBottom: '1px solid var(--border-subtle)', fontSize: 12.5, verticalAlign: 'top' };
+// overflowWrap: a long value with no spaces (the figures under "Limits and budgets") wraps inside its cell.
+// Without it the row is wider than a phone and the card becomes a sideways-scrolling region the keyboard cannot reach.
+const cell = { padding: '9px 14px', borderBottom: '1px solid var(--border-subtle)', fontSize: 12.5, verticalAlign: 'top', overflowWrap: 'anywhere' };
 const label = { ...cell, color: 'var(--text-dim)', width: '42%' };
 
 function Section({ title, children, note }) {
