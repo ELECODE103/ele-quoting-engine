@@ -61,7 +61,17 @@ function addColumns(db) {
  * @returns {{columns: string[], examined: number, moved: number, meshFiles: number, geometryFiles: number, bytesMoved: number, failed: number, vacuumed: boolean}}
  */
 function apply(db, { log = console.log, warn = console.warn } = {}) {
-  const result = { columns: addColumns(db), examined: 0, moved: 0, meshFiles: 0, geometryFiles: 0, bytesMoved: 0, failed: 0, vacuumed: false };
+  const result = { columns: addColumns(db), examined: 0, moved: 0, meshFiles: 0, geometryFiles: 0, bytesMoved: 0, failed: 0, vacuumed: false, encryptedInline: 0 };
+  // With a file-encryption key set, what an earlier start left inline (small meshes, small DXF
+  // outlines) moves to encrypted files too. Runs before the first-time move below so the VACUUM
+  // there, or the one here, gives the space back.
+  const inline = moveInlineWhenEncrypted(db, { warn });
+  result.encryptedInline = inline.moved;
+  if (inline.moved > 0) {
+    db.run("VACUUM");
+    result.vacuumed = true;
+    log(`  Part payloads: file encryption is on — moved the shape data of ${inline.moved} part(s) out of the database rows into encrypted files.`);
+  }
 
   // Rows not yet looked at. Ids first: rows are rewritten while we go.
   const ids = [];
@@ -120,4 +130,46 @@ function apply(db, { log = console.log, warn = console.warn } = {}) {
   return result;
 }
 
-module.exports = { apply, COLUMNS };
+/**
+ * File encryption is on: no outline, hole position or preview vertex stays in a database row (the
+ * database file is not encrypted). Rows already migrated whose detail is still inline are split
+ * again under the encrypted rule (models/partPayloads.js split()). Safe to repeat: a row that is
+ * done has detail_bytes > 0 and is skipped; a row whose files could not be written is left as it was.
+ */
+function moveInlineWhenEncrypted(db, { warn = console.warn } = {}) {
+  const out = { moved: 0, failed: 0 };
+  if (!require("../services/fileCrypto").isEnabled()) return out;
+  const ids = [];
+  const pending = db.prepare("SELECT id FROM parts WHERE mesh_bytes IS NOT NULL AND COALESCE(detail_bytes, 0) = 0 AND geometry_json IS NOT NULL");
+  while (pending.step()) ids.push(pending.getAsObject().id);
+  pending.free();
+  if (ids.length === 0) return out;
+  const select = db.prepare("SELECT geometry_json, mesh_bytes FROM parts WHERE id = ?");
+  for (const id of ids) {
+    select.bind([id]);
+    const found = select.step() ? select.getAsObject() : null;
+    select.reset();
+    let geometry = null;
+    if (found && typeof found.geometry_json === "string" && found.geometry_json) { try { geometry = JSON.parse(found.geometry_json); } catch { geometry = null; } }
+    if (!geometry || typeof geometry !== "object" || Array.isArray(geometry)) continue;
+    const { row, meshJson, geometryJson } = payloads.split(geometry, { encrypted: true });
+    if (meshJson === null && geometryJson === null) continue;
+    const written = [];
+    try {
+      let meshBytes = Number(found.mesh_bytes) || 0;
+      let detailBytes = 0;
+      if (meshJson !== null) { meshBytes = payloads.write(id, "mesh", meshJson, { ceiling: false }); written.push("mesh"); }
+      if (geometryJson !== null) { detailBytes = payloads.write(id, "geometry", geometryJson, { ceiling: false }); written.push("geometry"); }
+      db.run("UPDATE parts SET geometry_json = ?, mesh_bytes = ?, detail_bytes = ? WHERE id = ?", [JSON.stringify(row), meshBytes, detailBytes, id]);
+      out.moved++;
+    } catch (err) {
+      for (const kind of written) payloads.remove(id, kind);
+      out.failed++;
+    }
+  }
+  select.free();
+  if (out.failed > 0) warn(`WARNING: ${out.failed} part(s) still have shape data in their database row (their files could not be written). Tried again at the next start.`);
+  return out;
+}
+
+module.exports = { apply, moveInlineWhenEncrypted, COLUMNS };

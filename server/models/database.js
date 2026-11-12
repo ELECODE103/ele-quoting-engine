@@ -321,6 +321,19 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
       'ALTER TABLE rfqs ADD COLUMN return_part INTEGER DEFAULT 0',
       // Orders taken from a firm quote for a shipped-in part: the original goes back in the box.
       'ALTER TABLE orders ADD COLUMN return_part INTEGER DEFAULT 0',
+      // Availability fixes (2026-11-11). All additive.
+      // Quotes: when a draft was last reopened (a no-account draft nobody reopens lapses in 48 hours),
+      // and the line and piece counts, so the admin list does not have to load every quote's lines.
+      'ALTER TABLE quotes ADD COLUMN last_opened_at TEXT',
+      'ALTER TABLE quotes ADD COLUMN part_count INTEGER',
+      'ALTER TABLE quotes ADD COLUMN total_units INTEGER',
+      // Parts and requests: which client the stored bytes belong to (a keyed hash of the client key,
+      // never the address itself), for the cap on bytes stored per client.
+      'ALTER TABLE parts ADD COLUMN client_tag TEXT',
+      'ALTER TABLE rfqs ADD COLUMN client_tag TEXT',
+      'ALTER TABLE rfqs ADD COLUMN drawing_bytes INTEGER',
+      // Requests: when the attachment of a closed request was deleted.
+      'ALTER TABLE rfqs ADD COLUMN attachment_removed_at TEXT',
     ];
     for (const sql of migrations) {
       try { dbInstance.run(sql); } catch (e) { /* column already exists */ }
@@ -350,9 +363,24 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
 let batchDepth = 0;
 let dirty = false;
 
+// Writes that may wait a moment (see deferred() below).
+let deferDepth = 0;
+let deferTimer = null;
+const DEFER_MS = Math.max(50, Math.min(10000, Number(process.env.DB_DRAFT_FLUSH_MS) || 1500));
+
 function saveToDisk() {
   if (!dbInstance) return;
   if (batchDepth > 0) { dirty = true; return; }
+  if (deferDepth > 0 && !stopping) {
+    // Marked "may wait": one save for everything that arrives in the next moment.
+    dirty = true;
+    if (!deferTimer) {
+      deferTimer = setTimeout(() => { deferTimer = null; if (dirty) saveToDisk(); }, DEFER_MS);
+      if (deferTimer.unref) deferTimer.unref();
+    }
+    return;
+  }
+  if (deferTimer) { clearTimeout(deferTimer); deferTimer = null; }
   const buffer = Buffer.from(dbInstance.export());
   // Write beside the file and rename, so a crash mid-write cannot leave a
   // half-written database behind.
@@ -373,11 +401,44 @@ function batch(fn) {
   }
 }
 
+/**
+ * Run `fn` with its saves allowed to wait up to DB_DRAFT_FLUSH_MS (1.5 s): the change is in the
+ * database at once (every read sees it), and reaches the file with the next save or when the
+ * timer fires, whichever is first. For writes that are cheap to lose and frequent — re-pricing a
+ * draft quote, which the quote tool does on every change. A crash in that moment loses at most the
+ * last re-price, which the browser sends again. Anything else (an order, an account, a payment)
+ * saves at once as before, and takes the waiting changes to disk with it.
+ */
+function deferred(fn) {
+  deferDepth++;
+  try {
+    return fn();
+  } finally {
+    deferDepth--;
+  }
+}
+
+/** Write now whatever is waiting (shutdown, tests). */
+function flush() {
+  if (dirty && batchDepth === 0) {
+    const depth = deferDepth;
+    deferDepth = 0;
+    try { saveToDisk(); } finally { deferDepth = depth; }
+  }
+}
+
+/** Is a deferred write still waiting for the file? */
+function pending() {
+  return dirty;
+}
+
 /** Give back the space of deleted rows (the file only shrinks after this). */
 function compact() {
   if (!dbInstance) return;
   dbInstance.run("VACUUM");
-  saveToDisk();
+  const depth = deferDepth;
+  deferDepth = 0; // a compaction is written at once
+  try { saveToDisk(); } finally { deferDepth = depth; }
 }
 
 /** Size of the database file on disk, in bytes (0 if it has not been written). */
@@ -389,4 +450,19 @@ function getDatabase() {
   return dbInstance;
 }
 
-module.exports = { getDatabase, saveToDisk, batch, compact, fileSize, ready, DB_PATH, payloadMigration: () => payloadMigration };
+// A stop must not lose what is waiting: Railway sends SIGTERM on every deploy. On the signal the
+// waiting changes are written at once and deferral is switched off for the rest of the process's
+// life, so nothing written during a graceful shutdown can be left behind either. If this is the only
+// SIGTERM/SIGINT listener the process then exits, as it would have without it; when the process has
+// its own shutdown handling (server/ops on the deploy branch) that decides when to exit.
+let stopping = false;
+function onStop(signal) {
+  stopping = true;
+  try { flush(); } catch (err) { console.error("Database: could not write waiting changes at shutdown:", err.message); }
+  if (process.listenerCount(signal) <= 1) process.exit(signal === "SIGINT" ? 130 : 0);
+}
+process.on("SIGTERM", () => onStop("SIGTERM"));
+process.on("SIGINT", () => onStop("SIGINT"));
+process.once("beforeExit", () => { try { flush(); } catch { /* nothing more to do */ } });
+
+module.exports = { getDatabase, saveToDisk, batch, deferred, flush, pending, compact, fileSize, ready, DB_PATH, payloadMigration: () => payloadMigration };

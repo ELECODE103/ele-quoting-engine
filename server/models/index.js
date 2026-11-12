@@ -16,7 +16,8 @@ const materialsDB = new DBClass("materials");
 const finishesDB = new DBClass("finishes");
 const leadTimesDB = new DBClass("lead_times");
 const pricingDB = new DBClass("pricing_rules");
-const quotesDB = new DBClass("quotes");
+// A quote's priced lines are stored once per distinct line (models/quotesStore.js); reads give back the same array.
+const quotesDB = new (require("./quotesStore").QuotesStore)(new DBClass("quotes"));
 // A part's preview mesh and large geometry detail live in files, not in the row (models/partsStore.js).
 const partsDB = new (require("./partsStore").PartsStore)(new DBClass("parts"));
 const ordersDB = new DBClass("orders");

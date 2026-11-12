@@ -86,6 +86,32 @@ class PartsStore {
     return row ? this._hydrate(row, opt) : null;
   }
 
+  /**
+   * The row as stored and nothing else: the summary geometry, `meshBytes` / `detailBytes`, no file
+   * read. For callers that only need to know what a part is and where its large pieces are.
+   */
+  getRow(id) {
+    return this.table.getById(id);
+  }
+
+  /** The stored file name of every part (for the sweep of uploads no part refers to). */
+  storedNames() {
+    if (typeof this.table._query === "function") {
+      return this.table._query(`SELECT stored_name FROM ${this.tableName} WHERE stored_name IS NOT NULL`).map((r) => String(r.stored_name).split(/[\\/]/).pop());
+    }
+    return this.table.getAll().map((r) => String(r.storedName || "").split(/[\\/]/).pop()).filter(Boolean);
+  }
+
+  /** Bytes stored for one client tag: uploads plus what was derived from them. */
+  storedBytesFor(clientTag) {
+    if (!clientTag) return 0;
+    if (typeof this.table._query === "function") {
+      const rows = this.table._query(`SELECT COALESCE(SUM(COALESCE(file_size, 0) + COALESCE(mesh_bytes, 0) + COALESCE(detail_bytes, 0)), 0) AS n FROM ${this.tableName} WHERE client_tag = ?`, [clientTag]);
+      return rows.length ? Number(rows[0].n) || 0 : 0;
+    }
+    return this.table.getAll().filter((r) => r.clientTag === clientTag).reduce((sum, r) => sum + (Number(r.fileSize) || 0) + (Number(r.meshBytes) || 0) + (Number(r.detailBytes) || 0), 0);
+  }
+
   _hydrate(row, { mesh = false } = {}) {
     const out = { ...row };
     let geometry = row.geometry;

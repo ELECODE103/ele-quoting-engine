@@ -215,6 +215,128 @@ async function decryptFile(encPath) {
   return decryptBuffer(await fs.promises.readFile(encPath));
 }
 
+/** Read `length` bytes at `position`. */
+async function readAt(handle, position, length) {
+  const buf = Buffer.alloc(length);
+  const { bytesRead } = await handle.read(buf, 0, length, position);
+  return buf.subarray(0, bytesRead);
+}
+
+/**
+ * Decrypt an encrypted file as a STREAM: constant memory, nothing held on the
+ * main thread however large the file is (a part's preview mesh is megabytes).
+ *
+ * The promise this module makes — no plaintext before the file has passed its
+ * integrity check — is kept by reading the file twice: once through the
+ * cipher with the output thrown away, which authenticates it, and only then a
+ * second time for the stream that is handed back. Both passes are chunked and
+ * asynchronous.
+ *
+ * @returns {Promise<{ stream: import("stream").Readable, bytes: number }>} the plaintext and its length
+ * @throws {FileCryptoError} no-key / wrong-key / corrupt, before any plaintext
+ */
+async function openDecryptStream(encPath) {
+  const keys = decryptKeys();
+  if (keys.length === 0) throw new FileCryptoError("no-key", "This file is encrypted and no file encryption key is configured (NORD_FILE_ENC_KEY).");
+  let handle;
+  let size;
+  let head;
+  try {
+    handle = await fs.promises.open(encPath, "r");
+    size = (await handle.stat()).size;
+    head = await readAt(handle, 0, Math.min(HEADER_LEN, size));
+  } catch (err) {
+    if (handle) await handle.close().catch(() => {});
+    throw new FileCryptoError("corrupt", `This encrypted file could not be opened (${err.code || "error"}).`);
+  }
+  await handle.close().catch(() => {});
+
+  const v1 = head.length >= HEADER_LEN && head.subarray(0, MAGIC.length).equals(MAGIC);
+  let candidates, iv, tag, start;
+  if (v1) {
+    const keyId = head.subarray(MAGIC.length, MAGIC.length + KEY_ID_LEN);
+    iv = head.subarray(MAGIC.length + KEY_ID_LEN, MAGIC.length + KEY_ID_LEN + IV_LEN);
+    tag = head.subarray(HEADER_LEN - TAG_LEN, HEADER_LEN);
+    start = HEADER_LEN;
+    candidates = keys.filter((k) => k.id.equals(keyId));
+    if (candidates.length === 0) throw new FileCryptoError("wrong-key", "This file was encrypted with a different key than the one configured (NORD_FILE_ENC_KEY). Put the earlier key in NORD_FILE_ENC_KEY_PREVIOUS to read it.");
+  } else {
+    if (size < IV_LEN + TAG_LEN) throw new FileCryptoError("corrupt", "This encrypted file is incomplete.");
+    iv = head.subarray(0, IV_LEN);
+    tag = head.subarray(IV_LEN, IV_LEN + TAG_LEN);
+    start = IV_LEN + TAG_LEN;
+    candidates = keys; // v0 files carry no key id: try each
+  }
+
+  const decipherFor = (k) => { const d = crypto.createDecipheriv(ALGO, k.key, iv); d.setAuthTag(tag); return d; };
+  const cipherText = () => fs.createReadStream(encPath, { start });
+  // Pass 1: authenticate (output discarded). The first key that passes is the key.
+  let good = null;
+  for (const k of candidates) {
+    try {
+      const decipher = decipherFor(k);
+      decipher.on("data", () => {}); // discard
+      await pipeline(cipherText(), decipher);
+      good = k;
+      break;
+    } catch { /* authentication failed under this key (or the file could not be read): try the next */ }
+  }
+  if (!good) {
+    throw new FileCryptoError(v1 ? "corrupt" : "wrong-key", v1
+      ? "This encrypted file is damaged: it failed authentication (the integrity check)."
+      : "This file could not be decrypted with the configured key (wrong key, or the file is damaged).");
+  }
+  // Pass 2: the plaintext, streamed.
+  const source = cipherText();
+  const stream = decipherFor(good);
+  source.on("error", (err) => stream.destroy(err));
+  source.pipe(stream);
+  return { stream, bytes: Math.max(0, size - start) };
+}
+
+/**
+ * Can the configured key (or a listed previous key) open this encrypted file?
+ * Reads the 8-byte header only: the file names the key it was written under.
+ * @returns {true | false | null} null: cannot tell (an old-format file, or unreadable)
+ */
+function keyOpens(encPath) {
+  let fd;
+  try {
+    fd = fs.openSync(encPath, "r");
+    const head = Buffer.alloc(MAGIC.length + KEY_ID_LEN);
+    if (fs.readSync(fd, head, 0, head.length, 0) < head.length || !head.subarray(0, MAGIC.length).equals(MAGIC)) return null;
+    const keyId = head.subarray(MAGIC.length);
+    return decryptKeys().some((k) => k.id.equals(keyId));
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* already closed */ }
+  }
+}
+
+/**
+ * At start-up: do the keys we have open the encrypted files that are on disk?
+ * Looks at the newest files in each folder (headers only).
+ * @param {string[]} dirs
+ * @returns {{ checked: number, locked: number }}
+ */
+function checkKeysAgainst(dirs, perDir = 25) {
+  let checked = 0;
+  let locked = 0;
+  for (const dir of dirs) {
+    let names;
+    try { names = fs.readdirSync(dir).filter((n) => n.endsWith(ENC_SUFFIX)); } catch { continue; }
+    const newest = names.map((n) => { try { return { n, t: fs.statSync(path.join(dir, n)).mtimeMs }; } catch { return null; } }).filter(Boolean).sort((a, b) => b.t - a.t).slice(0, perDir);
+    for (const f of newest) {
+      const ok = keyOpens(path.join(dir, f.n));
+      if (ok === null) continue;
+      checked++;
+      if (!ok) locked++;
+    }
+  }
+  return { checked, locked };
+}
+
 /** The bytes of a stored file, whether or not it is encrypted. */
 async function readStored(storedPath) {
   return isEncryptedPath(storedPath) ? decryptFile(storedPath) : fs.promises.readFile(storedPath);
@@ -255,6 +377,6 @@ async function sendDownload(res, storedPath, downloadName) {
 module.exports = {
   isEnabled, configProblem, isEncryptedPath,
   encryptFileInPlace, encryptFile, encryptBuffer,
-  decryptBuffer, decryptToBuffer, decryptFile, readStored, sendDownload,
+  decryptBuffer, decryptToBuffer, decryptFile, openDecryptStream, keyOpens, checkKeysAgainst, readStored, sendDownload,
   FileCryptoError, ENC_SUFFIX, MIN_SECRET_LENGTH,
 };
