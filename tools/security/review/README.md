@@ -27,3 +27,4 @@ env -u HTTPS_PROXY -u HTTP_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost
 | poc-06 | ADMIN_EMAIL promotion ride, Host-header link poisoning (safe), 2FA code reuse and brute-force accounting |
 | poc-07 | CSRF: every cookie-session state change without `X-CSRF-Token` is refused (control: with it, 200) |
 | poc-08 | Production security headers, 404, static exposure, download content-type on every response kind |
+| poc-09 | Static-path exposure (24 paths), traversal, open redirect (F9), error-answer no-leak (17 shapes), secrets/ops confirmations |

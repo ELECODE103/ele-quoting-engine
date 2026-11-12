@@ -11,6 +11,17 @@ on this host (`tools/security/review/lib/`). Every finding below has a reproduct
 `tools/security/review/` or a `file:line` path. Nothing hit the live site, Stripe, Cloudflare or
 Resend, and no real secret was written anywhere.
 
+**Scope note (coordinator reassignment, mid-review).** Two other reviewers took item 3
+(uploads/parsing/storage) + item 6 (abuse quantification) and the payment-amount half of item 2
+(quote→checkout→Stripe→webhook→paid, firm-quote/PO/paperwork/lead-time/quantity amounts). I kept
+item 1 (auth/sessions), item 2 **authorisation/IDOR/mass-assignment excluding payment amounts**,
+item 4 (injection/output), item 5 (browser policy/transport) and item 7 (secrets/operations). F1–F2
+below are price-integrity work I had already finished and carried to a paid order before the split;
+I keep them in the record (they belong to reviewer (b) now) because they are the launch-blockers and
+F2's root cause is also an authorisation/TOCTOU issue in my scope. F6's abuse table now belongs to
+reviewer (a); I keep the numbers I measured. My deeper work since the split (F9, §5.1 secrets/ops,
+expanded §3) is in the kept areas.
+
 **Headline:** the account, session, CSRF, upload, parsing, header, CORS and injection work is
 genuinely strong — most of what I tried there failed, as intended. The launch-blocking problems are
 in **price integrity at checkout**: a buyer can pay a small fraction of the engine's price, and I
@@ -31,6 +42,20 @@ residual **admin-account land-grab** that the accounts branch reduced but did no
 | F6 | **Low** | Abuse | `server/routes/rfq.js` create; `server/security/botGuard.js` | With Turnstile keys **not set** (the state the site launches in if the owner forgets), an anonymous script can create accounts and fill the admin RFQ queue at the per-IP limits (see §4). Mail-to-arbitrary-address is correctly blocked in that state. Acknowledged, but worth the owner seeing the numbers. |
 | F7 | **Info** | Hardening | `server/routes/auth.js` login/register responses | The session token is still returned in the JSON body (not only the cookie). Harmless for the browser app, but it widens the blast radius of any future XSS and means a logged response body is a credential. |
 | F8 | **Info** | Hardening | `server/routes/orders.js` `/checkout-session` | Stripe sessions are created on an authenticated route at the general 200/15-min rate; a bored account holder can mint ~200 unpaid Stripe sessions per 15 minutes. No money moves; it is dashboard noise and Stripe API volume only. |
+| F9 | **Low** | Open redirect / transport | `server/seo.js` `normalize` L85 + the trailing-slash redirect L136 | On the canonical (apex) host, a path beginning with `//`, `/\` or `///` is 301-redirected to a **protocol-relative** `Location` (`//evil.example`), which a browser follows cross-origin. `https://straightedgemfg.com//evil.example/` bounces the visitor to `https://evil.example` — a phishing primitive on the real domain. Confirmed in `poc-09` and by unit-reasoning over `normalize`. (The `www→apex` redirect prepends the host and is safe; only apex-host requests reach this path.) Fix: reject or collapse leading `/`/`\` runs before emitting a `Location`, or redirect only to a path that starts with a single `/` and no `\`. |
+
+### 1.1 Injection, output and error handling (item 4) — deeper pass
+
+I threw 17 malformed/hostile request shapes at the API and the static layer (`poc-09`): invalid
+JSON, `null`/`[]` bodies, object/array field substitution (`{"email":{"$ne":""}}` — meaningless
+here, there is no NoSQL, but it confirms type handling), bad percent-encoding on both API and page
+URLs, a 3,000-character id, a NUL in an id, `TRACE`, wrong content-type to the JSON-only auth
+router, a 2 MB body, a 200,000-deep JSON array, and `__proto__`/`constructor` in the quote body at
+two depths. **Every one returned a short written message, no stack, no filesystem path, no library
+name, and left `Object.prototype` clean and the process healthy.** `X-Powered-By` is absent. The
+error-handler path (`server/index.js` L144–173) and `sanitizeString`/`cleanSubject`/`cleanAddress`
+hold. Prototype pollution is not reachable: bodies are read through explicit field lists and the one
+content-keyed map in the 3MF reader is prototype-less.
 
 I looked hard and found **nothing** exploitable in: SQL injection (every statement is parameterised;
 table/column names are constrained — `SqliteDB.js`), stored/reflected XSS (React escapes, email
@@ -72,6 +97,7 @@ and cache headers are all correct on every response kind I tested (§3).
   per-address budget, or notify + auto-lift faster.
 - **F5** partId-as-capability — scope quote-session/geometry reads and the DXF edit key to the part's
   uploader/owner, not to anyone who can name the UUID.
+- **F9** open redirect in the SEO normalizer — collapse leading slash/backslash runs before the 301.
 - **F7** stop returning the session token in JSON once the browser app no longer reads it.
 
 ### Accept (reasonable as-is, documented)
@@ -115,6 +141,52 @@ Both hardening teams' work largely holds up. What I re-tested and confirmed:
 - **Real Turnstile and Resend behaviour** — stubbed on-host by design; I verified the *wiring* and
   fail-closed logic, not Cloudflare's/Resend's own responses.
 - **Railway persistence / multi-instance** — environmental; see F3 and the docs' own O1/O4/O5.
+
+### 3.1 Secrets and operations (item 7)
+
+All positive — I confirmed rather than found:
+
+- **No secret committed, now or in history.** `git log -S` (pickaxe) over the whole history for
+  `sk_live_`, `sk_test_…`, `whsec_…`, `re_…` (Resend), `AKIA…` (AWS) and `-----BEGIN` returns only
+  placeholders in `.env.example`, documentation, and `scripts/create-stripe-promo-codes.js` (which
+  reads `process.env` and only compares the key *prefix* — it stores nothing). No private key, no
+  real API key, no password in the tree or its history.
+- **`.env` family is git-ignored** (`.env`, `.env.*` with `!.env.example`); `data/` and `uploads/`
+  are ignored. No `.db`, `.sqlite`, `.enc`, `.pem`, `.key`, outbox or credentials file is tracked.
+- **The shop's street address is server-side only.** It lives in `server/config/shipFrom.json`
+  (used for documents) and nowhere under `client/dist`; only `client/dist` is served (`seo.js` L140),
+  so it is absent from the public bundle, the JSON-LD (which carries locality/region/country only)
+  and — per the mailer design — from logs. The history-pickaxe hit on the street *number* was a
+  coincidental digit match in `tools/vet-quotes/results.json`; the full address string is not in that
+  file, and `tools/` is never served. Clean.
+- **Startup logging** names every protection that is off by reason (bot check, email, webhook secret,
+  file key, test hooks) with no secret values — good operational signal, confirmed on a live boot.
+- **The admin-email guessability behind F3**: `.env.example` ships the placeholder `owner@example.com`,
+  not the real address — but the real `ADMIN_EMAIL` is trivially derivable from the public brand
+  (`quotes@straightedgemfg.com` and the domain are in the shipped bundle), which is what makes the F3
+  land-grab practical. Note it when deciding the F3 fix.
+- **Dependencies.** `npm audit --omit=dev` is clean for both the server and the client production
+  trees (0/0). The only advisories are Vite/esbuild in the client *build* tooling (dev-server only,
+  not in `vite build` output) — matches the server doc's accepted O8.
+- **`railway.toml`**: `npm install` → `npm run build` → `npm start`, health check `/api/health`
+  (the route is unauthenticated and leaks no version — confirmed). The two operational cautions the
+  docs already raise stand and I echo them: confirm the **Railway volume is persistent** (if the DB
+  resets on deploy, F3 reopens and all accounts/orders vanish each deploy) and set **`TRUST_PROXY_HOPS`
+  correctly** if Cloudflare is placed in front of Railway (else every visitor shares one rate-limit
+  bucket). `SE_TEST_HOOKS` and `EMAIL_OUTBOX_DIR` must never be set in production; startup warns if
+  they are.
+
+### 3.2 Static exposure, redirects, transport (items 5/7)
+
+Confirmed (`poc-09`): `/.env`, `/.git/*`, `/data/*`, `/server/*`, `/package*.json`, `/railway.toml`,
+`/docs/*`, `/shared/*.json`, `*.js.map` and the internal `/brand/*.html|pdf|documents/` paths all
+**404**; no source maps are emitted by the build; encoded and raw `../`, `..\`, `..%2f`, `..%5c`
+traversal (both through the Node client and on a raw socket) all stay inside `client/dist` and 404.
+The one open redirect is F9. HSTS (1 year, preload), `frame-ancestors 'none'` + `X-Frame-Options:
+DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, the full `Permissions-Policy`, `nosniff`
+and `Cache-Control: no-store` on every API response are present on HTML, API JSON, 404 and downloads
+alike. CORS reflects no foreign origin and grants a foreign-origin preflight nothing, even with a
+forged `Host` matching the origin (`poc-06` B).
 
 ---
 
@@ -175,6 +247,7 @@ Scripts in `tools/security/review/` (see its `README.md`); run each with the pro
 - **F3:** `poc-02`/`poc-06` (anonymous register of `ADMIN_EMAIL` succeeds as `customer`; owner opening the confirm link flips that account to `admin` and the attacker's live session becomes admin, then downloads the DB and edits pricing).
 - **F4:** `poc-05` (five wrong passwords from `203.0.113.200` ⇒ owner's correct password+code from `203.0.113.1` answered 429 `account-locked`).
 - **F5:** `poc-04` tail (buyer B puts A's `partId` in B's own quote, reads the geometry + mesh + edit key, changes A's DXF units).
-- Negative controls: `poc-04` (full authz matrix — every admin/owner-scoped route correct), `poc-07` (CSRF), `poc-08` (headers/static/downloads).
+- **F9:** `poc-09` ("redirects" block — `GET //evil.example/` on the apex host ⇒ `301 Location: //evil.example`).
+- Negative controls: `poc-04` (full authz matrix — every admin/owner-scoped route correct), `poc-07` (CSRF), `poc-08` (headers/static/downloads), `poc-09` (24 static paths 404 / traversal blocked, 17 error shapes no-leak, secrets/ops confirmations).
 
 — End of review.
