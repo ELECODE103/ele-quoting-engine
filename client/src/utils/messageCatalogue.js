@@ -47,7 +47,7 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     },
     'account-locked': {
       '*': {
-        text: ({ minutes }) => `Sign-in for this address is paused for ${minutes ? plural(minutes, 'minute') : 'a few minutes'}, because the wrong password was entered several times and we stop guessing early. Nobody got in. Choose a new password to sign in now, or wait and try again.`,
+        text: ({ minutes }) => `Sign-in for this address is paused for ${minutes ? plural(minutes, 'minute') : 'a few minutes'}, because the wrong password was entered several times in a row. The pause is there to stop anyone guessing their way in, and nobody got in. Choose a new password to sign in now, or wait and try again.`,
         action: 'reset',
       },
     },

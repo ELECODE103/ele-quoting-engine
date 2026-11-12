@@ -256,7 +256,7 @@ async function phaseWithKeys() {
     // Checkout is held for the unconfirmed address.
     const notice = buyer.getByRole('region', { name: 'Confirm your email address' });
     await notice.waitFor();
-    const pay = buyer.getByRole('button', { name: /Pay & Place Order/ });
+    const pay = buyer.getByRole('button', { name: /Pay and place order/ }); // button wording changed in the journey pass (sentence case, no ampersand)
     check('checkout explains that the email must be confirmed, and the pay button is off', (await notice.textContent()).includes(buyerEmail) && await pay.isDisabled());
     await buyer.getByLabel('Full Name').fill('Dana Buyer');
     await buyer.getByLabel('Street Address').fill('100 Main St');
@@ -273,9 +273,12 @@ async function phaseWithKeys() {
     await buyer.getByText(/Sent again to/).waitFor();
     const second = await waitMail(buyerEmail, /confirm your email/, { after: 1 });
     check('"Send the link again" sends a second email', Boolean(second));
-    await buyer.getByRole('button', { name: 'Send the link again' }).click();
-    await buyer.getByText(/We just sent one/).waitFor();
-    check('a second resend inside a minute is refused politely', true);
+    // Journey pass: after a send the button counts down the minute the server makes everyone wait, so the
+    // second press cannot be made by accident. The server's refusal is still there for anything that asks anyway.
+    const again = buyer.getByRole('button', { name: /Send again in \d+ s/ });
+    await again.waitFor();
+    const refused = await apiFrom(buyer, 'POST', '/api/auth/verify-email/resend');
+    check('a second resend inside a minute: the button waits out the minute, and the server refuses politely if asked anyway', await again.isDisabled() && refused.status === 429 && /We just sent one/.test(refused.text), `${refused.status} ${refused.text}`);
 
     // The link opened where nobody is signed in: a button, no automatic confirmation.
     const strangerCtx = await newContext();

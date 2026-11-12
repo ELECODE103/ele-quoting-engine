@@ -47,7 +47,7 @@ function AppShell({ children }) {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
       <Header />
-      <Suspense fallback={<Spinner />}>{children}</Suspense>
+      <div id="content" tabIndex={-1}><Suspense fallback={<Spinner />}>{children}</Suspense></div>
     </div>
   );
 }

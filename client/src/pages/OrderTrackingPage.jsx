@@ -253,7 +253,7 @@ export default function OrderTrackingPage() {
             {/* Shipping Info */}
             {(order.shippingName || order.shippingAddress) && (
               <div style={card}>
-                <h2 style={h2}>Shipping Address</h2>
+                <h2 style={h2}>Shipping address</h2>
                 <div style={{ color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.8 }}>
                   {order.shippingName && <div>{order.shippingName}</div>}
                   {order.shippingAddress && <div>{order.shippingAddress}</div>}

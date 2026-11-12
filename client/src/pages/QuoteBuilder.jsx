@@ -136,9 +136,15 @@ export default function QuoteBuilder() {
   // Anodize and powder coat are sent out to a finisher, so a quote with either
   // one ships on Standard: picking one while a faster lead time is selected
   // moves the quote back to Standard (the picker explains why).
+  const [leadMoved, setLeadMoved] = useState('');
   useEffect(() => {
-    if (selectedLeadTime !== 'standard' && parts.some((p) => SENT_OUT_FINISHES.has(p.finishSlug))) setSelectedLeadTime('standard');
-  }, [parts, selectedLeadTime]);
+    if (selectedLeadTime !== 'standard' && parts.some((p) => SENT_OUT_FINISHES.has(p.finishSlug))) {
+      // Said out loud: a lead time that changes by itself, and a ship date with it, is a surprise otherwise.
+      setLeadMoved(leadTimes.find((lt) => lt.slug === selectedLeadTime)?.name || 'The faster lead time');
+      setSelectedLeadTime('standard');
+    }
+  }, [parts, selectedLeadTime, leadTimes]);
+  useEffect(() => { if (leadMoved && !parts.some((p) => SENT_OUT_FINISHES.has(p.finishSlug))) setLeadMoved(''); }, [parts, leadMoved]);
 
   const fetchQuote = useCallback(async () => {
     if (parts.length === 0) return;
@@ -429,8 +435,6 @@ export default function QuoteBuilder() {
             className="dropzone"
             role="button"
             tabIndex={0}
-            aria-labelledby="dropzone-title"
-            aria-describedby="dropzone-help"
             style={{ maxWidth: 640, width: '100%' }}
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
@@ -517,6 +521,16 @@ export default function QuoteBuilder() {
               <ProcessPicker compact processes={processes} value={selectedProcess} onChange={handleProcessChange} />
               <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Switching re-prices every part in this quote.</span>
             </div>
+
+            {leadMoved && (
+              <div className="gate-box" role="status" style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                <span style={{ flex: '1 1 320px' }}>
+                  <b>Lead time moved from {leadMoved} to Standard, and the ship date with it.</b>{' '}
+                  Anodize and powder coat go out to a finisher, so a quote with either one ships on Standard. Pick a finish done here to get {leadMoved} back.
+                </span>
+                <button type="button" className="btn btn-ghost" onClick={() => setLeadMoved('')}>OK</button>
+              </div>
+            )}
 
             {/* Gate notice: shown up top so it isn't buried in the rail (or below the fold on a phone) */}
             {needsRfq && (

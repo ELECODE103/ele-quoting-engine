@@ -375,7 +375,7 @@ async function journeyA() {
     await shot(page, 'a05-quote-paperwork-ticked');
     const finish = page.locator('select').filter({ has: page.locator('option[value="cnc-anodize-clear"]') });
     if (await finish.count()) {
-      await page.locator('input[name="lead-time"]').nth(1).check({ force: true }).catch(() => {});
+      await page.locator('label.lead-option').nth(1).click().catch(() => {});
       await page.waitForTimeout(700);
       await finish.selectOption('cnc-anodize-clear');
       await page.waitForTimeout(1500);
@@ -404,7 +404,7 @@ async function journeyA() {
     await page.locator('form button[type="submit"]').click();
     await page.waitForURL(/\/checkout\//, { timeout: 20000 });
     await page.getByText(/Confirm your email/i).first().waitFor();
-    probe('quote survives registration', await page.getByText('dxf_plate_holes.step').count() > 0, 'the checkout page lists the uploaded part');
+    probe('quote survives registration', await page.getByText('dxf_plate_holes.step').first().waitFor({ timeout: 8000 }).then(() => true, () => false), 'the checkout page lists the uploaded part');
     await shot(page, 'a10-checkout-confirm-email');
     await shot(page, 'a10b-checkout-confirm-email-first-screen', { fullPage: false });
   });

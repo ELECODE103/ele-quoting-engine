@@ -31,7 +31,7 @@ export default function PublicLayout({ children }) {
     <div style={{ minHeight: '100vh', background: '#fff', display: 'flex', flexDirection: 'column' }}>
       <SiteHeader />
 
-      <main style={{ flex: 1 }}>{children}</main>
+      <main id="content" tabIndex={-1} style={{ flex: 1 }}>{children}</main>
 
       <footer className="pub-footer">
         <div className="pub-wrap">

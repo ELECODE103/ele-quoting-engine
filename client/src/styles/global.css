@@ -844,3 +844,13 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
 .traveler-facts dt { color: var(--text-muted); font-weight: 600; }
 .traveler-facts dd { margin: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
 @media (max-width: 600px) { .traveler-facts { grid-template-columns: 1fr; gap: 2px; } .traveler-facts dd { margin-bottom: 8px; } }
+
+/* Skip link: off screen until the keyboard reaches it */
+.skip-link { position: absolute; left: 12px; top: 0; transform: translateY(-160%); z-index: 100; background: var(--ink); color: var(--bone); padding: 12px 16px; border-radius: 0 0 8px 8px; font: 600 14px/1 var(--font-body); text-decoration: none; }
+.skip-link:focus { transform: none; outline: 2px solid var(--bone); outline-offset: -4px; box-shadow: none; }
+#content:focus { outline: none; }
+
+/* Nothing that takes the focus sits under the sticky header or, in the quote tool on a phone,
+   under the total bar (WCAG 2.2, 2.4.11 Focus Not Obscured): the browser scrolls it clear of both. */
+html { scroll-padding-top: 132px; }
+@media (max-width: 1024px) { html:has(.qb-bar) { scroll-padding-bottom: 104px; } }
