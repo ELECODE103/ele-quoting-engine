@@ -15,6 +15,7 @@ const rfqToken = require("./rfqToken");
 const stripeClient = require("./stripeClient");
 const { accountLinkBase } = require("../security/links");
 const tax = require("./tax");
+const shipping = require("./shipping");
 
 const ORDER_LINK_DAYS = 180; // how long an emailed order link for an account-less (RFQ) buyer keeps working
 
@@ -61,17 +62,16 @@ function orderUrl(order, base) {
  * before tax, which is what settleFromSession checks the payment against.
  */
 function orderLines(order, { itemCount, description }) {
-  const totalCents = Math.round(((order.total || 0) - (Number(order.tax) || 0)) * 100);
+  const totalCents = tax.preTaxCents(order);
   const feeCents = order.paperwork ? Math.min(totalCents, Math.max(0, Math.round((Number(order.paperworkFee) || 0) * 100))) : 0;
-  const ownShippingLine = (order.shippingMode && order.shippingMode !== "formula") || order.taxMode === "stripe";
-  const shipCents = ownShippingLine ? Math.min(totalCents - feeCents, Math.max(0, Math.round((Number(order.shippingCost) || 0) * 100))) : 0;
+  const shipCents = shipping.stripeShippingCents(order, totalCents - feeCents);
   const line = (name, text, cents) => ({
     price_data: { currency: "usd", product_data: { name, description: text }, unit_amount: cents }, // Stripe uses cents
     quantity: 1,
   });
   const lines = [{ kind: "goods", line: line(`${brand.name} Order — ${itemCount} part${itemCount !== 1 ? "s" : ""}`, description || "Custom machined and printed parts", totalCents - feeCents - shipCents) }];
   if (feeCents > 0) lines.push({ kind: "paperwork", line: line(templates.PAPERWORK_LABEL, "Ships with the parts", feeCents) });
-  if (shipCents > 0) lines.push({ kind: "shipping", line: line("Shipping", order.packedWeightLb ? `Ground, about ${Math.ceil(order.packedWeightLb)} lb packed` : "Ground", shipCents) });
+  if (shipCents > 0) { const words = shipping.stripeShippingLine(order); lines.push({ kind: "shipping", line: line(words.name, words.description, shipCents) }); }
   return lines;
 }
 function stripeLineItems(order, opts) {
@@ -89,18 +89,8 @@ function stripeLineItems(order, opts) {
 async function createCheckoutSession(order, { itemCount, description, successUrl, cancelUrl, metadata = {} }) {
   const stripe = stripeClient.get();
   if (!stripe) throw Object.assign(new Error("Payment processing is not configured"), { status: 503 });
-  let taxed = null;
-  if (order.taxMode === "stripe") {
-    try {
-      taxed = await tax.stripeParams(stripe, order, customerEmail(order), require("./checkout").currentRules());
-    } catch (err) {
-      // Stripe refuses an address it cannot place. Nothing about the address is logged.
-      if (err && (err.code === "customer_tax_location_invalid" || /tax_location|address/i.test(String(err.code || "")))) {
-        throw Object.assign(new Error("We couldn't work out sales tax for that address. Check the street, city, state and ZIP code and try again."), { code: "tax-address", status: 400 });
-      }
-      throw err;
-    }
-  }
+  // null for an order with tax off. An address Stripe cannot place is thrown as { code: "tax-address", status: 400 }.
+  const taxed = await tax.stripeParams(stripe, order, customerEmail(order), require("./checkout").currentRules());
   const lines = orderLines(order, { itemCount, description }).map(({ kind, line }) => (taxed ? taxed.decorate(line, kind) : line));
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
@@ -126,14 +116,8 @@ async function createCheckoutSession(order, { itemCount, description, successUrl
 async function markPaid(order, { base, warning, taxCents = 0, taxIds = "" } = {}) {
   if (order.status !== "pending_payment") return { order, changed: false };
   const updates = { status: warning ? "paid_amount_mismatch" : "paid", paidAt: new Date().toISOString() };
-  // Sales tax Stripe added on its page: stored on the order and added to its total, so the
-  // order's lines (parts, fees, shipping, tax) still add up to what was paid.
-  if (taxCents > 0) {
-    const preTax = (order.total || 0) - (Number(order.tax) || 0);
-    updates.tax = taxCents / 100;
-    updates.total = Math.round((preTax + taxCents / 100) * 100) / 100;
-  }
-  if (taxIds) updates.customerTaxIds = taxIds;
+  // Sales tax Stripe added on its page: stored on the order and added to its total (services/tax.js).
+  Object.assign(updates, tax.paidUpdates(order, { taxCents, taxIds }));
   if (order.leadDays !== null && order.leadDays !== undefined) updates.shipBy = shipBy.shipByDate(Number(order.leadDays));
   const paid = ordersDB.update(order.id, updates);
   const items = itemsFor(paid);
@@ -159,8 +143,8 @@ async function markPaid(order, { base, warning, taxCents = 0, taxIds = "" } = {}
  */
 async function settleFromSession(order, session, { base } = {}) {
   if (session.payment_status && session.payment_status !== "paid") return { order, changed: false };
-  const expected = Math.round(((order.total || 0) - (Number(order.tax) || 0)) * 100);
-  const read = tax.readSession(session);
+  const expected = tax.preTaxCents(order);
+  const read = tax.taxFromSession(session);
   const charged = read.preTaxCents;
   const paid = { base, taxCents: read.taxCents, taxIds: read.taxIds };
   if (charged && expected > 0 && Math.abs(charged - expected) > 1) {

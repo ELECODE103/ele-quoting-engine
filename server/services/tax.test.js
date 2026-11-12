@@ -160,6 +160,33 @@ test("the shop is told what a declared exemption did", () => {
   assert.ok(/WITH tax/.test(taxed) && /refund/.test(taxed) && /^Manufacturing machinery/.test(taxed));
 });
 
+// The pieces a caller that opens Stripe sessions elsewhere needs, each a plain function.
+test("pure builders: the Customer, the session options, a line's tax treatment, the pre-tax figure and what a paid session adds", () => {
+  const c = tax.customerParams({ ...ORDER, taxExempt: true, taxExemptStatus: "untaxed" }, "dana@buyer.test");
+  assert.deepStrictEqual([c.email, c.tax_exempt, c.shipping.address.state, c.shipping.address.country, c.tax.validate_location, c.metadata.orderId], ["dana@buyer.test", "exempt", "OH", "US", "immediately", "o-1"]);
+  assert.strictEqual(tax.customerParams({ ...ORDER, taxExempt: true, taxExemptStatus: "taxed" }, "").tax_exempt, "none", "a declaration that is not trusted is taxed");
+
+  assert.deepStrictEqual(tax.sessionOptions(ORDER, rules(ON), "cus_1"), { customer: "cus_1", automatic_tax: { enabled: true } });
+  assert.deepStrictEqual(tax.sessionOptions(ORDER, rules({ ...ON, taxIdCollection: "on" }), "cus_1"), { customer: "cus_1", automatic_tax: { enabled: true }, tax_id_collection: { enabled: true }, customer_update: { name: "auto" } });
+  assert.deepStrictEqual(tax.sessionOptions({ ...ORDER, taxMode: "off" }, rules(ON), "cus_1"), {}, "an order checked out with tax off adds nothing, whatever the setting is now");
+
+  const plain = line("Parts", 1000);
+  assert.strictEqual(tax.decorateLine(plain, "goods", { taxMode: "off" }, rules(ON)), plain, "untouched");
+  const goods = tax.decorateLine(plain, "goods", ORDER, rules({ ...ON, taxProductCode: "txcd_99999999" }));
+  assert.deepStrictEqual([goods.price_data.tax_behavior, goods.price_data.product_data.tax_code, goods.price_data.unit_amount], ["exclusive", "txcd_99999999", 1000]);
+  assert.strictEqual(tax.decorateLine(plain, "shipping", ORDER, rules({ ...ON, taxShipping: "nontaxable" })).price_data.product_data.tax_code, tax.NONTAXABLE_CODE);
+  assert.strictEqual("tax_code" in tax.decorateLine(plain, "goods", ORDER, rules(ON)).price_data.product_data, false, "no code set: Stripe's preset applies");
+
+  assert.strictEqual(tax.preTaxCents({ total: 277.39, tax: 18.15 }), 25924);
+  assert.strictEqual(tax.preTaxCents({ total: 259.24 }), 25924);
+  assert.deepStrictEqual(tax.paidUpdates({ total: 259.24, tax: 0 }, { taxCents: 1815, taxIds: "" }), { tax: 18.15, total: 277.39 });
+  assert.deepStrictEqual(tax.paidUpdates({ total: 277.39, tax: 18.15 }, { taxCents: 1815, taxIds: "" }), { tax: 18.15, total: 277.39 }, "settling twice does not add the tax twice");
+  assert.deepStrictEqual(tax.paidUpdates({ total: 259.24 }, { taxCents: 0, taxIds: "ca_gst_hst 1" }), { customerTaxIds: "ca_gst_hst 1" });
+  assert.deepStrictEqual(tax.paidUpdates({ total: 259.24 }, tax.taxFromSession({ currency: "usd", amount_subtotal: 25924, amount_total: 25924 })), {});
+  assert.strictEqual(tax.isAddressError({ code: "customer_tax_location_invalid" }), true);
+  assert.strictEqual(tax.isAddressError(new Error("network")), false);
+});
+
 (async () => {
   console.log("Tax");
   for (const t of tests) {

@@ -104,53 +104,102 @@ function taxAddress(order) {
   };
 }
 
+// ─── Stripe: pure builders ───────────────────────────────────────────────────
+// Each of these is a plain function of the order and the settings: no network, no database. The
+// one call that talks to Stripe (creating the Customer) is `stripeParams` below, which only
+// strings them together, so a caller that opens sessions somewhere else can use the pieces.
+
+/** Is this order checked out with Stripe Tax? */
+const taxed = (order) => Boolean(order) && order.taxMode === "stripe";
+
 /**
- * The extra Stripe Checkout parameters for an order checked out with Stripe Tax, after creating
- * the Stripe Customer the session is tied to. For an order with tax off this returns null and
- * the session is created exactly as it always was.
- *
- * @param {object} stripe  the Stripe client (or the test stub)
- * @param {object} order   the stored order (taxMode, taxExemptStatus, ship-to fields)
- * @param {string} email
- * @returns {Promise<null | { session: object, decorate: (line, kind) => object }>}
- *          `session`: parameters to spread into checkout.sessions.create (they replace customer_email);
- *          `decorate`: adds tax_behavior and the tax code to one line item ("goods" | "paperwork" | "shipping").
+ * The Stripe Customer a taxed order's session is tied to: Checkout taxes an existing customer at
+ * the saved shipping address when it does not collect one itself, so the address typed at
+ * checkout is the address taxed. `tax_exempt` is "exempt" only for a declared exemption the
+ * owner has chosen to trust.
  */
-async function stripeParams(stripe, order, email, rules = {}) {
-  if (order.taxMode !== "stripe") return null;
-  const s = settings({ ...rules, taxMode: "stripe" });
+function customerParams(order, email) {
   const where = taxAddress(order);
   const exempt = order.taxExempt === true && order.taxExemptStatus === "untaxed";
-  const customer = await stripe.customers.create({
+  return {
     email: email || undefined,
     name: where.name || undefined,
-    // Checkout taxes an existing customer at the saved shipping address when it does not collect one itself.
     shipping: { name: where.name || "Customer", address: where.address },
     address: where.address,
     tax_exempt: exempt ? "exempt" : "none",
     // A bad address is refused here, with a message we can show, rather than on Stripe's page.
     tax: { validate_location: "immediately" },
     metadata: { orderId: order.id },
-  });
-  const session = {
-    customer: customer.id,
+  };
+}
+
+/** The Checkout Session options a taxed order adds (they replace `customer_email`). {} for an untaxed order. */
+function sessionOptions(order, rules = {}, customerId) {
+  if (!taxed(order)) return {};
+  const s = settings({ ...rules, taxMode: "stripe" });
+  return {
+    customer: customerId,
     automatic_tax: { enabled: true },
     // Tax ID collection with an existing customer needs the name kept in step (Stripe's requirement).
     ...(s.taxIds ? { tax_id_collection: { enabled: true }, customer_update: { name: "auto" } } : {}),
   };
-  const decorate = (line, kind) => {
-    const code = kind === "shipping" && s.shipping === "nontaxable" ? NONTAXABLE_CODE : s.productCode;
-    return {
-      ...line,
-      price_data: {
-        ...line.price_data,
-        // Our prices never include tax: Stripe adds it on top.
-        tax_behavior: "exclusive",
-        product_data: { ...line.price_data.product_data, ...(code ? { tax_code: code } : {}) },
-      },
-    };
+}
+
+/** One line item with its tax treatment ("goods" | "paperwork" | "shipping"). Unchanged for an untaxed order. */
+function decorateLine(line, kind, order, rules = {}) {
+  if (!taxed(order)) return line;
+  const s = settings({ ...rules, taxMode: "stripe" });
+  const code = kind === "shipping" && s.shipping === "nontaxable" ? NONTAXABLE_CODE : s.productCode;
+  return {
+    ...line,
+    price_data: {
+      ...line.price_data,
+      // Our prices never include tax: Stripe adds it on top.
+      tax_behavior: "exclusive",
+      product_data: { ...line.price_data.product_data, ...(code ? { tax_code: code } : {}) },
+    },
   };
-  return { session, decorate };
+}
+
+/** Did Stripe refuse the address it was asked to tax at? (The buyer is asked to check it; nothing about it is logged.) */
+const isAddressError = (err) => Boolean(err) && (err.code === "customer_tax_location_invalid" || /tax_location|address/i.test(String(err.code || "")));
+const ADDRESS_ERROR = { code: "tax-address", status: 400, message: "We couldn't work out sales tax for that address. Check the street, city, state and ZIP code and try again." };
+
+/** What an order comes to before tax, in cents: the figure Stripe's lines add up to and a payment is checked against. */
+const preTaxCents = (order) => Math.round(((Number(order.total) || 0) - (Number(order.tax) || 0)) * 100);
+
+/**
+ * The fields a paid session adds to an order: the tax Stripe reports (stored, and added to the
+ * total so the order's lines still add up to what was paid) and any tax IDs it collected.
+ * {} when Stripe added no tax. `read` is taxFromSession(session).
+ */
+function paidUpdates(order, read = {}) {
+  const out = {};
+  if (read.taxCents > 0) {
+    out.tax = read.taxCents / 100;
+    out.total = Math.round((preTaxCents(order) + read.taxCents)) / 100;
+  }
+  if (read.taxIds) out.customerTaxIds = read.taxIds;
+  return out;
+}
+
+/**
+ * The extra Stripe Checkout parameters for an order checked out with Stripe Tax, after creating
+ * the Stripe Customer the session is tied to. For an order with tax off this returns null and
+ * the session is created exactly as it always was.
+ *
+ * @returns {Promise<null | { session: object, decorate: (line, kind) => object }>}
+ */
+async function stripeParams(stripe, order, email, rules = {}) {
+  if (!taxed(order)) return null;
+  let customer;
+  try {
+    customer = await stripe.customers.create(customerParams(order, email));
+  } catch (err) {
+    if (isAddressError(err)) throw Object.assign(new Error(ADDRESS_ERROR.message), { code: ADDRESS_ERROR.code, status: ADDRESS_ERROR.status });
+    throw err;
+  }
+  return { session: sessionOptions(order, rules, customer.id), decorate: (line, kind) => decorateLine(line, kind, order, rules) };
 }
 
 /**
@@ -158,7 +207,7 @@ async function stripeParams(stripe, order, email, rules = {}) {
  * `preTax` is what the lines came to before any promo code and before tax: the figure the
  * order's own total is checked against.
  */
-function readSession(session = {}) {
+function taxFromSession(session = {}) {
   const d = session.total_details || {};
   const tax = Math.max(0, Math.round(Number(d.amount_tax) || 0));
   const discount = Math.max(0, Math.round(Number(d.amount_discount) || 0));
@@ -195,4 +244,4 @@ function exemptionLine(order) {
     : `${why}: charged WITH tax. Read the certificate, then refund the tax in Stripe if it holds.`;
 }
 
-module.exports = { settings, publicInfo, exemptionFor, stripeParams, readSession, orderLine, exemptionLine, taxAddress, reasonLabel, EXEMPT_REASONS, NONTAXABLE_CODE };
+module.exports = { settings, publicInfo, exemptionFor, taxed, customerParams, sessionOptions, decorateLine, isAddressError, preTaxCents, paidUpdates, taxFromSession, stripeParams, readSession: taxFromSession, orderLine, exemptionLine, taxAddress, reasonLabel, EXEMPT_REASONS, NONTAXABLE_CODE };
