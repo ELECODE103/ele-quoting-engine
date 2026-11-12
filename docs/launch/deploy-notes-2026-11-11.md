@@ -188,6 +188,21 @@ dependency on both.
 9. **The database download no longer contains the customer files or previews** (hardening
    report). The new full backup does; the tested restore drill is section 4.
 
+### What already existed for the domain move, and what was missing
+
+| Piece | Found | Action |
+|---|---|---|
+| Canonical tags, sitemap, `robots.txt`, JSON-LD | Built for `https://straightedgemfg.com` at build time (`client/src/seo`, `scripts/seo/prerender.mjs`); the same on every host | None needed |
+| `www.straightedgemfg.com` → bare domain | `server/seo.js`, for pages only (API paths are not redirected there) | Kept; the new middleware covers API paths too when `www` is in `REDIRECT_HOSTS` |
+| `nordmfg.com`, `www.nordmfg.com` → new domain | Missing: both were served as a second copy of the site | Built (`REDIRECT_HOSTS`) |
+| Railway's own host | Served and indexable | Built: `X-Robots-Tag: noindex, nofollow` on any `*.up.railway.app` host, always |
+| Links in emails, Stripe success and cancel pages, firm-quote links | `FRONTEND_URL`, else the request's host only if it is one of ours (`security/links.js`, `orderEvents.baseUrl`) | None; the runbook changes `FRONTEND_URL` at cutover, and a mismatch with `CANONICAL_HOST` is warned about at startup and on Admin → System |
+| CORS | The request's own origin and `FRONTEND_URL` only (`security/cors.js`) | None: a redirected host never serves a page, so no page on it calls the API |
+| Session cookie `__Host-se_session` | Bound to the exact host by its prefix (no Domain attribute is allowed) | None possible or wanted: moving host signs each visitor out once. Said in the runbook |
+| Stripe webhook address | One endpoint, one signing secret; Stripe fails a delivery on any redirect | The webhook path is never redirected on any host, so the endpoint on the old domain keeps working until its address is edited (same secret) |
+| HSTS | On every host, `includeSubDomains; preload` | Canonical host only until `HSTS_ALL_HOSTS=true` (finding 6) |
+| Turnstile | Hostnames are a list in Cloudflare | Runbook: all four names plus Railway's host |
+
 ## 4. What was built, and how it was tested
 
 | Item | Files | Tests |
