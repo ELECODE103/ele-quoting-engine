@@ -650,6 +650,52 @@
     "total": 82
    }
   },
+  "cup-500k": {
+   "size": "large",
+   "family": "cup",
+   "ext": ".stl",
+   "n": 500000,
+   "input": {
+    "bytes": 19960084,
+    "sha256": "c8ffec3b998123cfe11bc05d2959a7da563134c0507bee9ab7ca690e52dc0699"
+   },
+   "hash": {
+    "geometry": "5169e270c32b4bbe63675731b4eba252118db8833c0f8e964ba57d3ca09c2147",
+    "dfm": "2e991216e54f98102abad5c577655c2fe04cb0514e30772b973c88f2f9afc2b2",
+    "price": "242638502db68f1089989e8c3d5a542868acaec8557068bbf1a4f8174a00bd4e"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "ok",
+    "triangles": 399200,
+    "holes": 1,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 4855,
+    "cpuMs": 3635,
+    "peakHeapMb": 371.2,
+    "peakV8HeapMb": 181.9,
+    "peakRssMb": 514.8,
+    "baseRssMb": 93.6,
+    "afterParseMs": 87,
+    "load": 4.1
+   },
+   "stages": {
+    "mesh": 700,
+    "segment": 236,
+    "bvh": 705,
+    "shape": 321,
+    "outline": 250,
+    "features": 9,
+    "thickness": 307,
+    "access": 1074,
+    "overhang": 6,
+    "selfIntersect": 517,
+    "total": 4126
+   }
+  },
   "dxf-annotated-as-mm": {
    "size": "small",
    "family": "dxf-annotated-as-mm",
@@ -746,6 +792,28 @@
    },
    "stages": null
   },
+  "dxf-crossing-100k": {
+   "size": "large",
+   "family": "dxf-crossing",
+   "ext": ".dxf",
+   "n": 100000,
+   "input": {
+    "bytes": 9564744,
+    "sha256": "89cd3ca7115f42987a32e88c655b57d8993fd1e7a4d330d6adaf7d2845610140"
+   },
+   "unfinished": "resource",
+   "note": "Set maximum size exceeded",
+   "timing": {
+    "wallMs": 1546473,
+    "cpuMs": 625970,
+    "peakHeapMb": 1534.3,
+    "peakV8HeapMb": 1522.5,
+    "peakRssMb": 1678.1,
+    "baseRssMb": 83.4,
+    "afterParseMs": 0,
+    "load": 9.7
+   }
+  },
   "dxf-crossing-20k": {
    "size": "medium",
    "family": "dxf-crossing",
@@ -809,6 +877,27 @@
    },
    "stages": null
   },
+  "dxf-crossing-50k": {
+   "size": "large",
+   "family": "dxf-crossing",
+   "ext": ".dxf",
+   "n": 50000,
+   "input": {
+    "bytes": 4782394,
+    "sha256": "f71ae79522dd24a5ef1827503a3a6e3b488740c2e2e99df216bdfa7148282282"
+   },
+   "unfinished": "resource",
+   "note": "Set maximum size exceeded",
+   "timing": {
+    "wallMs": 1173369,
+    "cpuMs": 477003,
+    "peakHeapMb": 1286.8,
+    "peakRssMb": 1402.2,
+    "baseRssMb": 79.3,
+    "afterParseMs": 1,
+    "load": 5
+   }
+  },
   "dxf-crossing-5k": {
    "size": "medium",
    "family": "dxf-crossing",
@@ -870,6 +959,39 @@
     "baseRssMb": 74.7,
     "afterParseMs": 250,
     "load": 6.9
+   },
+   "stages": null
+  },
+  "dxf-dense-outline-100k": {
+   "size": "large",
+   "family": "dxf-dense-outline",
+   "ext": ".dxf",
+   "n": 100000,
+   "input": {
+    "bytes": 4280538,
+    "sha256": "7230b1b9b186ae24d4c39cfcb273af17a5d899c593a77c330db2528f90093509"
+   },
+   "hash": {
+    "geometry": "c7a50748226aa9f7d06e8e6afd7ae123ef2396028107a2b8cbb9a5b492c3e204",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 109 separate parts (outlines that are not inside one another). Upload on",
+    "fullMessage": "This DXF contains 109 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation l"
+   },
+   "timing": {
+    "wallMs": 2232,
+    "cpuMs": 925,
+    "peakHeapMb": 221.1,
+    "peakV8HeapMb": 214.3,
+    "peakRssMb": 316.9,
+    "baseRssMb": 78.6,
+    "afterParseMs": 0,
+    "load": 5.1
    },
    "stages": null
   },
@@ -1380,6 +1502,39 @@
    },
    "stages": null
   },
+  "dxf-loose-outline-50k": {
+   "size": "large",
+   "family": "dxf-loose-outline",
+   "ext": ".dxf",
+   "n": 50000,
+   "input": {
+    "bytes": 4840391,
+    "sha256": "43097f5e564a13661da3fc652edf1924405ab49de3c6edd0146b09f4aed3330e"
+   },
+   "hash": {
+    "geometry": "a5c427adfed31476ba8c914c61e847d85085d2916927655f889ce18bc537a54f",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 6 separate parts (outlines that are not inside one another). Upload one ",
+    "fullMessage": "This DXF contains 6 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation lay"
+   },
+   "timing": {
+    "wallMs": 3133,
+    "cpuMs": 1469,
+    "peakHeapMb": 275.9,
+    "peakV8HeapMb": 268.5,
+    "peakRssMb": 376.3,
+    "baseRssMb": 79,
+    "afterParseMs": 0,
+    "load": 5.3
+   },
+   "stages": null
+  },
   "dxf-loose-outline-5k": {
    "size": "medium",
    "family": "dxf-loose-outline",
@@ -1409,6 +1564,39 @@
     "baseRssMb": 75.2,
     "afterParseMs": 90,
     "load": 11.2
+   },
+   "stages": null
+  },
+  "dxf-loose-outline-99k": {
+   "size": "large",
+   "family": "dxf-loose-outline",
+   "ext": ".dxf",
+   "n": 99000,
+   "input": {
+    "bytes": 9582731,
+    "sha256": "1dc607179136ddfe55cedbfe2ae36f2b07bf1ca54059530f670a49e76f257a01"
+   },
+   "hash": {
+    "geometry": "6241ae3a9e71af098636efe17216e4ca9ae78633e3a30cd9e03617abd2ea402f",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 36 separate parts (outlines that are not inside one another). Upload one",
+    "fullMessage": "This DXF contains 36 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation la"
+   },
+   "timing": {
+    "wallMs": 2668,
+    "cpuMs": 1280,
+    "peakHeapMb": 343.8,
+    "peakV8HeapMb": 331.9,
+    "peakRssMb": 453.9,
+    "baseRssMb": 83.5,
+    "afterParseMs": 0,
+    "load": 5.1
    },
    "stages": null
   },
@@ -1624,6 +1812,39 @@
    },
    "stages": null
   },
+  "dxf-open-contours-10k": {
+   "size": "large",
+   "family": "dxf-open-contours",
+   "ext": ".dxf",
+   "n": 30000,
+   "input": {
+    "bytes": 1850870,
+    "sha256": "9705a59100e7bdd7b6ef23b8adbd396d7ab9aaebbdb243b667adb15fed9f7e54"
+   },
+   "hash": {
+    "geometry": "c691ac022c1f9198a1e7e6ea9d26615d92f838a67ba073734d49754118abf575",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 16,337 contours — more than the instant quote reads (5,000). Perforated panel",
+    "fullMessage": "This DXF has 16,337 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
+   },
+   "timing": {
+    "wallMs": 53428,
+    "cpuMs": 36154,
+    "peakHeapMb": 176.9,
+    "peakV8HeapMb": 172.4,
+    "peakRssMb": 272,
+    "baseRssMb": 76.1,
+    "afterParseMs": 0,
+    "load": 3.8
+   },
+   "stages": null
+  },
   "dxf-open-contours-1k": {
    "size": "medium",
    "family": "dxf-open-contours",
@@ -1683,6 +1904,39 @@
     "baseRssMb": 74.9,
     "afterParseMs": 0,
     "load": 7.2
+   },
+   "stages": null
+  },
+  "dxf-open-contours-33k": {
+   "size": "large",
+   "family": "dxf-open-contours",
+   "ext": ".dxf",
+   "n": 99000,
+   "input": {
+    "bytes": 6106345,
+    "sha256": "c0ec4150e6022a4ae1e28f58bd3b0a14c331c15d3dd1407f5455cf45f8fbcc01"
+   },
+   "hash": {
+    "geometry": "26180477f2eb9a0c92fc86f2ce3efc8af60b6148d40d3725b77a49677f286ba2",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 51,549 contours — more than the instant quote reads (5,000). Perforated panel",
+    "fullMessage": "This DXF has 51,549 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
+   },
+   "timing": {
+    "wallMs": 879426,
+    "cpuMs": 453019,
+    "peakHeapMb": 686,
+    "peakV8HeapMb": 677.4,
+    "peakRssMb": 795.8,
+    "baseRssMb": 80.3,
+    "afterParseMs": 1,
+    "load": 4.7
    },
    "stages": null
   },
@@ -1781,6 +2035,28 @@
     "load": 6.9
    },
    "stages": null
+  },
+  "dxf-perforated-100k": {
+   "size": "large",
+   "family": "dxf-perforated",
+   "ext": ".dxf",
+   "n": 99999,
+   "input": {
+    "bytes": 3322307,
+    "sha256": "65212410d43a6eeee42847bcd51a80143e70dd6ebbecbfc75af728219ed598b9"
+   },
+   "unfinished": "resource",
+   "note": "Set maximum size exceeded",
+   "timing": {
+    "wallMs": 29476,
+    "cpuMs": 16116,
+    "peakHeapMb": 1512.7,
+    "peakV8HeapMb": 1506.8,
+    "peakRssMb": 1646.1,
+    "baseRssMb": 77.7,
+    "afterParseMs": 1,
+    "load": 6.4
+   }
   },
   "dxf-perforated-1k": {
    "size": "small",
@@ -2403,6 +2679,39 @@
     "baseRssMb": 75.3,
     "afterParseMs": 138,
     "load": 7.2
+   },
+   "stages": null
+  },
+  "dxf-windows-30k": {
+   "size": "large",
+   "family": "dxf-windows",
+   "ext": ".dxf",
+   "n": 30000,
+   "input": {
+    "bytes": 2703248,
+    "sha256": "c8b0189664e8752ec8d50f9a3c2bdc6561681a96d37f46fe361dd349bd92aa34"
+   },
+   "hash": {
+    "geometry": "89868a4939690e70d2eeb51afebf2af14597d1fa81b8694150599af24f4263f5",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 30,001 contours — more than the instant quote reads (5,000). Perforated panel",
+    "fullMessage": "This DXF has 30,001 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
+   },
+   "timing": {
+    "wallMs": 658546,
+    "cpuMs": 433698,
+    "peakHeapMb": 256,
+    "peakV8HeapMb": 250.6,
+    "peakRssMb": 360.1,
+    "baseRssMb": 77.2,
+    "afterParseMs": 1,
+    "load": 5.4
    },
    "stages": null
   },
@@ -4567,6 +4876,52 @@
     "total": 92
    }
   },
+  "lattice-500k": {
+   "size": "large",
+   "family": "lattice",
+   "ext": ".stl",
+   "n": 500000,
+   "input": {
+    "bytes": 23805084,
+    "sha256": "b31aa826614bad785879eab5270b67561a1dfee58011da79b5900b36d1f84ff1"
+   },
+   "hash": {
+    "geometry": "4e6693b3edba0219f56ab2a12c2f2c6faa31da6f1c131d0aab2c32383e504e01",
+    "dfm": "75560bb95545c6d0c29ba619647424a05e952117e0175fd8d9ddb043cdd3a40a",
+    "price": "611eb20fa2ad9cd53d3838bcd6f5cbd5da68e01211df955695fef26bec598b02"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "ok",
+    "triangles": 476100,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 30459,
+    "cpuMs": 26015,
+    "peakHeapMb": 1785.2,
+    "peakV8HeapMb": 1586.8,
+    "peakRssMb": 1932,
+    "baseRssMb": 97.2,
+    "afterParseMs": 108,
+    "load": 3.9
+   },
+   "stages": {
+    "mesh": 902,
+    "segment": 1650,
+    "bvh": 1336,
+    "shape": 406,
+    "outline": 3156,
+    "features": 218,
+    "thickness": 3081,
+    "access": 18287,
+    "overhang": 433,
+    "selfIntersect": 0,
+    "total": 29469
+   }
+  },
   "lattice-round-100k": {
    "size": "medium",
    "family": "lattice-round",
@@ -4972,6 +5327,52 @@
     "total": 146
    }
   },
+  "multibody-500k": {
+   "size": "large",
+   "family": "multibody",
+   "ext": ".stl",
+   "n": 500000,
+   "input": {
+    "bytes": 20431484,
+    "sha256": "a49554f1e8f5f1b2dc4eb1b4a3554ae5b0b39f2dc525fa220dcdebeeaf0922dc"
+   },
+   "hash": {
+    "geometry": "5d2f819e8248c78ca5e22bb41f24377a5b984c6239c67d943e21487dbf6c8524",
+    "dfm": "1f6764d014744739d2d1c07e718585ecf5fe25540eb055969e17dcb24a982ab1",
+    "price": "18d8d538a7670d3497361b26afecd9b7f2085fac2007ac1c3dd8218721837d4a"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "ok",
+    "triangles": 408628,
+    "holes": 264,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 505153,
+    "cpuMs": 324063,
+    "peakHeapMb": 478.8,
+    "peakV8HeapMb": 389,
+    "peakRssMb": 706.1,
+    "baseRssMb": 94,
+    "afterParseMs": 167,
+    "load": 3.4
+   },
+   "stages": {
+    "mesh": 782,
+    "segment": 499396,
+    "bvh": 930,
+    "shape": 688,
+    "outline": 546,
+    "features": 450,
+    "thickness": 377,
+    "access": 806,
+    "overhang": 8,
+    "selfIntersect": 0,
+    "total": 503985
+   }
+  },
   "nonmanifold-boxes": {
    "size": "small",
    "family": "defect",
@@ -5150,6 +5551,52 @@
     "overhang": 0,
     "selfIntersect": 30,
     "total": 146
+   }
+  },
+  "open-sheet-500k": {
+   "size": "large",
+   "family": "open-sheet",
+   "ext": ".stl",
+   "n": 500000,
+   "input": {
+    "bytes": 24010084,
+    "sha256": "7e6a12364606fa2044db5c16c9646407bf4b22b537fb006da2d4f926c589c395"
+   },
+   "hash": {
+    "geometry": "81cee4f9c128f63693892af3403d1d9ecea5aec6cc53875c49e29c3adad73599",
+    "dfm": "4b455fb0b24970762343005ceebf5bc7c542ab14a1b2e8150977533d99abf634",
+    "price": "912b41d69c7971539f1e96032c63bd1523009db907e365c8518f8ebcc0b07268"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "ok",
+    "triangles": 480200,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 5291,
+    "cpuMs": 3032,
+    "peakHeapMb": 445,
+    "peakV8HeapMb": 224.9,
+    "peakRssMb": 584.7,
+    "baseRssMb": 97.5,
+    "afterParseMs": 109,
+    "load": 5.8
+   },
+   "stages": {
+    "mesh": 1428,
+    "segment": 199,
+    "bvh": 706,
+    "shape": 336,
+    "outline": 166,
+    "features": 38,
+    "thickness": 110,
+    "access": 492,
+    "overhang": 6,
+    "selfIntersect": 0,
+    "total": 3481
    }
   },
   "open-sphere-100k": {
@@ -5647,6 +6094,52 @@
     "total": 135
    }
   },
+  "plate-500k": {
+   "size": "large",
+   "family": "plate",
+   "ext": ".stl",
+   "n": 500000,
+   "input": {
+    "bytes": 17707284,
+    "sha256": "160176c00160ec33b80f6b4cdc4a949ea6ac50b75c347ad6e309850623a63baf"
+   },
+   "hash": {
+    "geometry": "b4dc7b9190be7b57310603d86194acd69f21faa6a9064ff30371dd542f038ae9",
+    "dfm": "399c5428da6b848aa65197a9a5217d5a1adac66d8af1ed8053aa119126c9f3e3",
+    "price": "562a1bbcd2177033546bbfb9ca2cb220ecfd325c6af2c858343aa5e7a7d3fadc"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "ok",
+    "triangles": 354144,
+    "holes": 2601,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 7294,
+    "cpuMs": 4464,
+    "peakHeapMb": 468.6,
+    "peakV8HeapMb": 297.3,
+    "peakRssMb": 595.3,
+    "baseRssMb": 91.5,
+    "afterParseMs": 340,
+    "load": 4.5
+   },
+   "stages": {
+    "mesh": 608,
+    "segment": 1544,
+    "bvh": 803,
+    "shape": 429,
+    "outline": 710,
+    "features": 568,
+    "thickness": 414,
+    "access": 479,
+    "overhang": 21,
+    "selfIntersect": 458,
+    "total": 6041
+   }
+  },
   "plate-defects-10k": {
    "size": "small",
    "family": "defect",
@@ -5780,6 +6273,52 @@
     "overhang": 0,
     "selfIntersect": 87,
     "total": 512
+   }
+  },
+  "plate-dense-500k": {
+   "size": "large",
+   "family": "plate-dense",
+   "ext": ".stl",
+   "n": 500000,
+   "input": {
+    "bytes": 12862284,
+    "sha256": "f882d89bacebf5c76a5fea79e6a0966136310764450c89613d03b2483161892c"
+   },
+   "hash": {
+    "geometry": "12bbaca8d4f588aa7816c9a427149e18fc8bef41768ca32108c276ee63b78810",
+    "dfm": "80892c5cc8ed16b9970fa9f5e339fa83ac9739787e1ad77d8bd67de28db48d88",
+    "price": "48a8fd4b0250ebc1b0abcbd2d0373c32c2797c9a96fe2f2f290ed19860868edc"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "ok",
+    "triangles": 257244,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 15585,
+    "cpuMs": 10194,
+    "peakHeapMb": 2386.7,
+    "peakV8HeapMb": 2269.1,
+    "peakRssMb": 2537.6,
+    "baseRssMb": 86.6,
+    "afterParseMs": 118,
+    "load": 4.2
+   },
+   "stages": {
+    "mesh": 200,
+    "segment": 129,
+    "bvh": 411,
+    "shape": 244,
+    "outline": 9960,
+    "features": 42,
+    "thickness": 356,
+    "access": 275,
+    "overhang": 7,
+    "selfIntersect": 3313,
+    "total": 14938
    }
   },
   "plate-holes-only-10k": {
@@ -6051,6 +6590,39 @@
     "selfIntersect": 77,
     "total": 426
    }
+  },
+  "relief-500k": {
+   "size": "large",
+   "family": "relief",
+   "ext": ".stl",
+   "n": 500000,
+   "input": {
+    "bytes": 43804684,
+    "sha256": "053d24c20ff0b78a68ee87c2af6ed593afebf906a70747800738c9558fae1dfd"
+   },
+   "hash": {
+    "geometry": "e4427ee278c0613eeb7d5b098ec26232c5ec1d2448e08ca87e01d869472e88a8",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": "model-too-large",
+    "message": "This model has 876,092 triangles, more than the instant quote reads (500,000). Export it a",
+    "fullMessage": "This model has 876,092 triangles, more than the instant quote reads (500,000). Export it at a coarser resolution and upload again, or send it to us for a firm quote."
+   },
+   "timing": {
+    "wallMs": 42,
+    "cpuMs": 37,
+    "peakHeapMb": 52.7,
+    "peakV8HeapMb": 8.2,
+    "peakRssMb": 156.6,
+    "baseRssMb": 116.6,
+    "afterParseMs": 1,
+    "load": 3.9
+   },
+   "stages": null
   },
   "roughblob-100k": {
    "size": "medium",
@@ -6502,6 +7074,52 @@
     "total": 2
    }
   },
+  "soup-100k": {
+   "size": "medium",
+   "family": "soup",
+   "ext": ".stl",
+   "n": 100000,
+   "input": {
+    "bytes": 5000084,
+    "sha256": "06a0c391b86c8608b3d1fb7de67179c1cf07ed8f9934250c7dc3447c7fd97270"
+   },
+   "hash": {
+    "geometry": "fc2f9f1e1e7620bbea01550d6e44960c1263bd3bc2599c66fed50633799ace59",
+    "dfm": "bcb9478014473d98bcc4837a104cca05b0ab44a1982589c4061c8415c7b655ea",
+    "price": "c764d2ff6cf4765d77b21899cfd38b81cbff7ef37807bd209f9116a3de9dc257"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 100000,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 5159,
+    "cpuMs": 3855,
+    "peakHeapMb": 457.7,
+    "peakV8HeapMb": 405.9,
+    "peakRssMb": 554.2,
+    "baseRssMb": 79.4,
+    "afterParseMs": 94,
+    "load": 5.6
+   },
+   "stages": {
+    "mesh": 167,
+    "segment": 335,
+    "bvh": 305,
+    "shape": 345,
+    "outline": 1558,
+    "features": 247,
+    "thickness": 486,
+    "access": 1345,
+    "overhang": 55,
+    "selfIntersect": 1,
+    "total": 4844
+   }
+  },
   "soup-10k": {
    "size": "small",
    "family": "soup",
@@ -6590,6 +7208,52 @@
     "overhang": 1,
     "selfIntersect": 12,
     "total": 197
+   }
+  },
+  "soup-500k": {
+   "size": "large",
+   "family": "soup",
+   "ext": ".stl",
+   "n": 500000,
+   "input": {
+    "bytes": 25000084,
+    "sha256": "f1e2f9323ea1aee60ef7c1476e09415a718c31de90a823f22de3e0220be3258b"
+   },
+   "hash": {
+    "geometry": "4a9790cc762ab88b78231a10a90aa18e1c993b0824fa96cf40891772aa669bc0",
+    "dfm": "f9d8b6f3eaf88a03965518d436f09873e712de949327e4e0cbf8aea58ab23882",
+    "price": "f0eec9c931a917fe1b002c359c87b1c7405d586d9c3552fb534770d389154580"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "ok",
+    "triangles": 500000,
+    "holes": 0,
+    "kind": "prismatic",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 31260,
+    "cpuMs": 17308,
+    "peakHeapMb": 2100.4,
+    "peakV8HeapMb": 1853.9,
+    "peakRssMb": 2275.5,
+    "baseRssMb": 98.6,
+    "afterParseMs": 99,
+    "load": 5.4
+   },
+   "stages": {
+    "mesh": 1445,
+    "segment": 2101,
+    "bvh": 2348,
+    "shape": 1480,
+    "outline": 16895,
+    "features": 263,
+    "thickness": 1362,
+    "access": 4134,
+    "overhang": 159,
+    "selfIntersect": 0,
+    "total": 30188
    }
   },
   "soup-wide-10k": {
@@ -7369,6 +8033,52 @@
     "total": 2845
    }
   },
+  "textplate-500k": {
+   "size": "large",
+   "family": "textplate",
+   "ext": ".stl",
+   "n": 500000,
+   "input": {
+    "bytes": 16080484,
+    "sha256": "d035c32c2f3c647fc4319dce7fed561258100fb21467dabad0386683333160e0"
+   },
+   "hash": {
+    "geometry": "00a6b5a6072389a2adef3d241b52c984ad813ab776c34a5b91d954a3cc09c89f",
+    "dfm": "ea4139abb4413054d26cf580301a23c558953d05bc4fc39dd79c59bb301ea3ba",
+    "price": "cc052183bca1b970edf2e0f8ce2d57701ae7177b9bb103bd373604878f716540"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "ok",
+    "triangles": 321608,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 3388,
+    "cpuMs": 2362,
+    "peakHeapMb": 328.7,
+    "peakV8HeapMb": 170.7,
+    "peakRssMb": 445.7,
+    "baseRssMb": 90,
+    "afterParseMs": 113,
+    "load": 4
+   },
+   "stages": {
+    "mesh": 451,
+    "segment": 144,
+    "bvh": 467,
+    "shape": 231,
+    "outline": 150,
+    "features": 189,
+    "thickness": 358,
+    "access": 353,
+    "overhang": 12,
+    "selfIntersect": 334,
+    "total": 2689
+   }
+  },
   "textplate-7k": {
    "size": "small",
    "family": "textplate",
@@ -7639,6 +8349,14 @@
     "total": 182
    }
   },
+  "torus-500k": {
+   "size": "large",
+   "family": "torus",
+   "ext": ".stl",
+   "n": 500000,
+   "unfinished": "time",
+   "note": "not finished after 40 minutes"
+  },
   "tslot-block": {
    "size": "small",
    "family": "primitive",
@@ -7907,6 +8625,52 @@
     "overhang": 0,
     "selfIntersect": 56,
     "total": 202
+   }
+  },
+  "waffle-500k": {
+   "size": "large",
+   "family": "waffle",
+   "ext": ".stl",
+   "n": 500000,
+   "input": {
+    "bytes": 16871284,
+    "sha256": "4a3b47b8c81c3b036bea856309eef95979b1d40feb551e5d92dd8b4bda1f71f6"
+   },
+   "hash": {
+    "geometry": "d86b844a2063ae28bbc797a3284f8c300dbff38d1129aae7237fbf4778825d63",
+    "dfm": "ede68d81bf85da8839f8b85fd1fd2a7798e879e4986aea740af3e45c4e6dc822",
+    "price": "271d1cdebf9d3eecd6e3c2c0e98322846989ef0766a97806565bcc215f5b52c1"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "ok",
+    "triangles": 337424,
+    "holes": 0,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 5121,
+    "cpuMs": 3985,
+    "peakHeapMb": 337.9,
+    "peakV8HeapMb": 186.7,
+    "peakRssMb": 443.7,
+    "baseRssMb": 90.2,
+    "afterParseMs": 163,
+    "load": 4
+   },
+   "stages": {
+    "mesh": 441,
+    "segment": 187,
+    "bvh": 476,
+    "shape": 239,
+    "outline": 223,
+    "features": 1009,
+    "thickness": 400,
+    "access": 1115,
+    "overhang": 17,
+    "selfIntersect": 310,
+    "total": 4424
    }
   },
   "zero-area-only": {

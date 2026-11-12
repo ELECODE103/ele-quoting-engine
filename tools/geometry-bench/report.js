@@ -23,15 +23,17 @@ const size = (c, r) => {
   if (s.loops != null) return `${s.loops.toLocaleString("en-US")} contours`;
   return c.n != null ? `~${c.n.toLocaleString("en-US")}${c.ext === ".dxf" ? " ent." : " tri"}` : "";
 };
-console.log("| Case | Size | Before (CPU, wall) | After (CPU, wall) | Peak memory after: V8 heap / process | Result identical |");
+console.log("| Case | Size | Before: CPU (wall) · peak heap + arrays | After: CPU (wall) | After: peak V8 heap / process | Result identical |");
 console.log("|---|---|---|---|---|---|");
 for (const c of lib.select(cases, args)) {
   const b = index[c.id], a = after[c.id];
   if (!a) continue;
-  const before = !b ? "not recorded" : b.unfinished ? `did not finish (${b.note})` : `${t(b.timing.cpuMs)} (${t(b.timing.wallMs)})`;
+  const before = !b ? "not run" : b.unfinished ? `did not finish (${b.note})` : `${t(b.timing.cpuMs)} (${t(b.timing.wallMs)})`;
+  const heapBefore = b && b.timing ? ` · ${Math.round(b.timing.peakHeapMb)} MB` : "";
   const now = a.timing ? `${t(a.timing.cpuMs)} (${t(a.timing.wallMs)})` : "–";
   const mem = a.timing ? `${a.timing.peakV8HeapMb != null ? Math.round(a.timing.peakV8HeapMb) : "?"} / ${Math.round(a.timing.peakRssMb)} MB` : "–";
   const outcome = a.summary && a.summary.status === "refused" ? ` — refused: ${a.summary.code || a.summary.message.slice(0, 60)}` : "";
-  const same = !b ? "no baseline" : b.unfinished ? `no baseline answer${outcome}` : a.identical ? "yes" : "**NO**";
-  console.log(`| ${c.id} | ${size(c, a)} | ${before} | ${now} | ${mem} | ${same} |`);
+  const same = a.reference === "step1" ? (a.identical ? "yes, to commit 413f781 ¹" : "**NO**")
+    : !b ? "no baseline" : b.unfinished ? `no baseline answer${outcome}` : a.identical ? "yes" : "**NO**";
+  console.log(`| ${c.id} | ${size(c, a)} | ${before}${heapBefore} | ${now} | ${mem} | ${same} |`);
 }

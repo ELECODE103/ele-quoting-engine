@@ -55,13 +55,27 @@ async function main(argv) {
   const args = lib.parseArgs(argv);
   const list = lib.select(cases, args);
   const index = JSON.parse(fs.readFileSync(path.join(lib.BASELINE_DIR, "index.json"), "utf8"));
+  // Large cases the untouched code could not finish in the time available have a second
+  // reference: the first optimised commit (see baseline-step1/README.md). Used only where the
+  // main baseline has no answer, and said so on the line.
+  const step1File = path.join(lib.HERE, "baseline-step1", "index.json");
+  const step1 = !process.env.GEOMETRY_BENCH_BASELINE && fs.existsSync(step1File) ? JSON.parse(fs.readFileSync(step1File, "utf8")).cases : {};
   const skipPrice = index.pricingFingerprint !== lib.pricingFingerprint();
   if (skipPrice) console.log("NOTE: pricing rules or the material catalog changed since the baseline was recorded — prices are not compared (geometry and DFM still are). Re-record the baseline to compare prices again.");
   const results = {};
-  let bad = 0, n = 0, unfinished = 0;
+  let bad = 0, n = 0, unfinished = 0, viaStep1 = 0;
   const report = (c, now, fullText, err) => {
     n++;
     const base0 = index.cases[c.id];
+    const alt = step1[c.id];
+    if (!err && now && (!base0 || base0.unfinished) && alt && alt.hash) {
+      const same = alt.input.sha256 === now.input.sha256 && ["geometry", "dfm", "price"].every((k) => (k === "price" && skipPrice) || alt.hash[k] === now.hash[k]);
+      viaStep1++;
+      results[c.id] = { timing: now.timing || null, stages: now.stages || null, summary: now.summary, identical: same, reference: "step1", baselineUnfinished: base0 ? base0.note : "not run on the untouched code" };
+      if (!same) { bad++; console.log(`\u2717 ${c.id}: differs from the first optimised commit (413f781); the untouched code has no answer for it`); }
+      else if (!args.quiet) console.log(`  identical* ${c.id.padEnd(38)} ${fmtMs(now.timing.cpuMs).padStart(9)}   * to commit 413f781 (untouched code: ${base0 ? base0.note : "not run"})`);
+      return;
+    }
     if (!err && base0 && base0.unfinished) {
       // The baseline code never produced an answer for this input (it ran out of time or memory),
       // so there is nothing to be identical to. Shown, counted apart, not a failure.
@@ -92,8 +106,8 @@ async function main(argv) {
     await runMany(list, { jobs: Number(args.jobs) || 1, heap: Number(args.heap) || 768, onResult: (c, r, full, err) => report(c, r, full, err) });
   }
   if (args.out) fs.writeFileSync(String(args.out), JSON.stringify({ node: process.version, cases: results }, null, 1) + "\n");
-  console.log(`\n${n - bad - unfinished}/${n - unfinished} cases identical to the baseline${bad ? ` — ${bad} DIFFER` : ""}${unfinished ? ` (${unfinished} more have no baseline answer: the old code did not finish them)` : ""}`);
-  return { bad, n, unfinished, results };
+  console.log(`\n${n - bad - unfinished}/${n - unfinished} cases identical to the baseline${bad ? ` — ${bad} DIFFER` : ""}${viaStep1 ? ` (${viaStep1} of them against commit 413f781, where the untouched code has no answer)` : ""}${unfinished ? ` (${unfinished} more have no baseline answer: the old code did not finish them)` : ""}`);
+  return { bad, n, unfinished, viaStep1, results };
 }
 
 if (require.main === module) main(process.argv.slice(2)).then((r) => process.exit(r.bad ? 1 : 0)).catch((err) => { console.error(err.stack || err.message); process.exit(1); });
