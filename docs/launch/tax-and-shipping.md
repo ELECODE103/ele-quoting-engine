@@ -169,11 +169,38 @@ For occasional LTL: none of the instant options prices it. Under the table or in
 13. **Other states.** Do we have presence anywhere besides Illinois (a contractor, stored material, trade shows)? At what sales level into one state should we call you? Which states' thresholds should we watch first?
 14. **Registration.** Does Straightedge Manufacturing LLC hold its own IDOR registration and account ID, or only the parent? What filing frequency will IDOR assign, and who files the ST-1?
 15. **Filing.** Do you file from Stripe's tax reports, or should we buy Stripe's filing plan?
-16. **Promo codes.** A Stripe promotion code reduces the amount charged. Is tax then on the reduced amount (that is how Stripe computes it)?
+16. **Promotion codes** (off unless switched on). A Stripe promotion code reduces the amount charged. Is tax then on the reduced amount (that is how Stripe computes it)?
 
 ---
 
-## 5. How to switch each option on
+## 5. Owner's steps: what to do first, then how to switch each option on
+
+This section stands on its own: it is the part to follow on the day. Nothing in it needs a developer.
+
+### 5.1 Before switching the rate table on
+
+1. Take your current UPS or FedEx ground rates (your account's, not the retail list) for 1, 5, 10, 20, 35 and 50 lb to a far zone, add what packing costs you, and decide the rows.
+2. Decide the longest part and the heaviest order you are willing to ship by parcel without looking (48 in and 50 lb are set; carriers add handling charges above those).
+3. Decide whether buyers may ship on their own carrier account and whether they may pick up. Pickup hands out the shop's street address, by email and on the order page, to a buyer who has paid for a pickup order, and to no one else.
+
+### 5.2 Before switching sales tax on
+
+Do these in order. Until all of them are done, leave "Sales tax at checkout" on Off.
+
+1. **Accountant.** Take section 4 to your accountant. The answers that change a setting are question 2 (which tax applies to custom parts), question 3 (the rate at the shop) and question 5 (whether the shipping line is taxed).
+2. **Illinois.** Confirm that Straightedge Manufacturing LLC itself is registered with the Illinois Department of Revenue for sales tax and has its account ID. If it is not, register through MyTax Illinois (about one to two business days) before taking a taxed order.
+3. **Stripe dashboard → Settings → Tax** (in the Stripe account the site takes payments with):
+   - switch Stripe Tax on;
+   - check the head office address: it must be the address the parts ship from;
+   - set the preset product tax code your accountant chose (Stripe's general code for physical goods is "General - Tangible Goods", `txcd_99999999`);
+   - under Registrations, add Illinois. Add no other state unless your accountant says you are registered there: Stripe collects only where a registration is entered.
+4. **Test mode.** With Stripe in test mode and the site's tax switch on, place three orders: one shipped to an Illinois address in another county (is the rate the one your accountant expects?), one shipped to another state (expect no tax while only Illinois is registered), one pickup. Check the tax line on the order page and on the order confirmation.
+5. **Decide exemptions.** Whether buyers may declare an exemption, and whether a declaration with a certificate is charged without tax at once (trusted) or charged with tax and refunded by you after you have read the certificate (the default).
+6. Then switch it on (5.3), and for the first weeks compare Stripe's tax report with what you expected.
+
+Stripe Tax costs 0.5% of each taxed transaction on the pay-as-you-go plan and does not file returns: the ST-1 is still filed by you or your accountant.
+
+### 5.3 The switches
 
 Admin → **Pricing**. The Simple view shows the switches; **Everything → Shipping & tax** shows all of them with the rate table. Every change needs a one-line note and lands in the pricing History, where any earlier state can be restored. At the top of the group is a preview: type a weight, a longest side, a parts total and a state and it says, in a sentence, what a buyer would be charged with the settings on screen, saved or not.
 
@@ -202,7 +229,9 @@ Rate table and included shipping apply to the contiguous United States. An order
 | Charge exempt buyers no tax on sight | **Trust declared exemptions** → On. Off (the default) charges tax and tells you to refund it after you have read the certificate |
 | Ask for a business tax ID on Stripe's page | **Ask for a business tax ID on Stripe's page** → On. Does nothing for US buyers |
 
-**On an order** (Admin → Orders → open one): a "Shipping & tax" block shows the shipping method, shipping charged, packed weight, tax charged and exemption status. A pickup order carries "Customer pickup: do not ship". A carrier-account order shows the carrier and the **full account number** (the only place it is shown in full). An order with a declared exemption shows what was done about tax and a button to open the certificate. To refund tax after reading a certificate: refund that amount on the payment in the Stripe dashboard; the site does not do it for you.
+### 5.4 On an order
+
+Admin → Orders → open one: a "Shipping & tax" block shows the shipping method, shipping charged, packed weight, tax charged and exemption status. A pickup order carries "Customer pickup: do not ship". A carrier-account order shows the carrier and the **full account number** (the only place it is shown in full). An order with a declared exemption shows what was done about tax and a button to open the certificate. To refund tax after reading a certificate: refund that amount on the payment in the Stripe dashboard; the site does not do it for you.
 
 **Marking a pickup order "Shipped"** sends the buyer "ready for pickup", not a shipping notice.
 
@@ -214,7 +243,7 @@ All server-side; the browser chooses, the server computes.
 
 - **Settings** (`server/config/ruleSchema.js`): a "Shipping & tax" group in the existing rules mechanism, with two new rule types (a named choice, a short pattern-checked text) alongside numbers and tables. Typed, validated, in the history, restorable. Defaults are today's behaviour. No existing rule, default or range changed.
 - **Shipping** (`server/services/shipping.js`): packed weight from each part's measured volume × its material's own density × quantity, plus the packaging allowance; the longest side from the part's measured extents. The rate table bills the next whole pound. An order gets **no price** ("we'll confirm freight") when a part is over the longest side, the order is over the parcel weight or past the last table row, the weight or size cannot be worked out (a missing density is never replaced by a typical one and never read as zero), or the address is outside the contiguous states. Such an order goes to the firm-quote path through the existing quote gate, unless the buyer can use their own carrier account or pick it up.
-- **Delivery choices** (`server/services/checkout.js`): ship / carrier account / pickup, each honoured only if its switch is on. The total for a choice is parts + lead-time fee + that choice's shipping, held to the order minimum, plus the paperwork fee. For "ship" that is the quote's own total to the cent.
+- **Delivery choices** (`server/services/checkout.js`): ship / carrier account / pickup, each honoured only if its switch is on. The total for a choice is parts + lead-time fee + that choice's shipping, held to the order minimum, plus the paperwork fee. Shipping is worked out at checkout, every time, from the quote's priced lines under the settings in force at that moment (`shipping.shippingFor`); the shipping figure stored on a quote is what the buyer was shown when it was priced and is never read back as the charge. When nothing has changed since the quote was priced the two agree and the order comes to the quote's own total, to the cent. If you change a shipping setting while a quote is open, the checkout page shows, and the order is charged, shipping under the new setting.
 - **Stripe** (`server/services/orderEvents.js`): shipping is its own line whenever it is charged by the table or included, and always when tax is on (so Stripe can tax it, or not, separately). With every switch at its default the session is identical to before (asserted key by key in the tests).
 - **Carrier account numbers**: validated (5 to 20 letters and digits), sealed with AES-256-GCM bound to the order's id, stored as ciphertext plus the last four characters. Emails, PDFs, the traveler, the order list, the production queue and the buyer's own order page show the last four only. The admin's view of one order opens the full number. Never sent to Stripe, never logged.
 - **Pickup address**: stays in `server/config/shipFrom.json`. Given out only in the order confirmation email and on the buyer's order page, and only for a pickup order that has been paid. Stripe is given city, state and ZIP for tax, not the street.
@@ -232,13 +261,13 @@ All server-side; the browser chooses, the server computes.
 | What | Where | Result |
 |---|---|---|
 | Settings: defaults are today's, choices and codes validated, placeholders marked | `server/config/ruleSchema.test.js` | 15 checks |
-| Weights, table, oversize, unknown weight, destination, free-over, carrier accounts, preview | `server/services/shipping.test.js` | 20 checks |
-| Tax settings, exemptions, Stripe parameters, reading a paid session | `server/services/tax.test.js` | 12 checks |
-| End to end through the real routes with Stripe stubbed: each shipping method, each tax mode, firm quotes, POs, reorder, tampering (method, weights, totals, exemption flag, carrier account), logs and emails searched for the account number and the street address | `server/routes/taxShipping.test.js` | 47 tests |
+| Weights, table, oversize, unknown weight, destination, free-over, carrier accounts, preview | `server/services/shipping.test.js` | 25 checks |
+| Tax settings, exemptions, Stripe parameters, reading a paid session | `server/services/tax.test.js` | 13 checks |
+| End to end through the real routes with Stripe stubbed: each shipping method, each tax mode, firm quotes, POs, reorder, tampering (method, weights, totals, the shipping figure stored on a quote, exemption flag, carrier account), logs and emails searched for the account number and the street address | `server/routes/taxShipping.test.js` | 50 tests |
 | A database shaped like the previous version's upgrades in place; old quote, order and request still read, document and check out | `server/models/taxShippingMigration.test.js` | 8 checks |
 | The same with a database produced by the base branch's own code, in production mode, in a browser: old order page, Reorder, old draft quote checkout | `scripts/e2e/tax-shipping-upgrade-make-db.js` then `scripts/e2e/tax-shipping-upgrade.mjs` | 12 checks |
 | One browser pass (Chromium, 1360 px, production mode, the server's real Content-Security-Policy) through checkout for every shipping method and tax mode, the firm-quote page, the admin settings and order view | `scripts/e2e/tax-shipping.mjs` | 56 checks, 28 screenshots |
-| Existing suites | `npm test` | all green (see the hand-back note for the count) |
+| Every suite in the repository, old and new | `npm test` | 45 of 45 suites |
 
 Screenshots: `docs/screenshots/tax-shipping-2026-11-11/`. The pickup address is masked in the one screenshot that contains it. The carrier account number in the screenshots is made up.
 
