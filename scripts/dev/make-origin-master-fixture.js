@@ -56,12 +56,18 @@ const path = require("path");
   const a5 = await h.post(`/api/rfq/quote/${link5}/accept`, { method: "card", ...SHIP });
   if (a5.status !== 201) throw new Error("accept 5: " + a5.text);
 
+  // 6. a saved quote that was never ordered (added 2026-11-12 for scripts/dev/upgrade-proof.js; made last, so the
+  //    rows above are exactly what they were when the committed fixture was written, which predates this step)
+  const q6 = await h.post("/api/quote", { parts: [h.cncConfig(partId, 4)], leadTimeSlug: "standard" }, buyer);
+  if (q6.status !== 200) throw new Error("quote 6: " + q6.text);
+
   const out = process.argv[2];
   fs.copyFileSync(process.env.QUOTING_DB_PATH, out);
   fs.writeFileSync(out.replace(/\.db$/, ".json"), JSON.stringify({
     madeWith: "origin/master", jwtSecret: "test-secret (the test harness's fixed value; not a real secret)",
     buyer: { email: "legacy-buyer@fixture.test", password: "Passw0rd1" },
     paidOrder: c1.body.orderId, pendingOrder: c2.body.orderId, pendingQuote: q2.body.quoteId,
+    savedQuote: q6.body.quoteId, savedQuoteTotal: q6.body.total,
     quotedRfq: r3.body.rfqId, quotedLink: link3,
     poRfq: r4.body.rfqId, poLink: link4,
     cardRfq: r5.body.rfqId, cardLink: link5,

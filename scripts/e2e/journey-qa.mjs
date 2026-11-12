@@ -897,7 +897,7 @@ async function journeyH() {
     await page.getByRole('button', { name: 'Orders', exact: true }).waitFor({ timeout: 10000 });
   });
   await step('h: admin tabs', async () => {
-    for (const tab of ['Orders', 'RFQs', 'Parts', 'Materials', 'Finishes', 'Lead Times', 'Pricing', 'Calibration', 'Quotes', 'Security']) {
+    for (const tab of ['Orders', 'RFQs', 'Parts', 'Materials', 'Finishes', 'Lead Times', 'Pricing', 'Calibration', 'Quotes', 'Security', 'Change log', 'System']) {
       const b = page.getByRole('button', { name: tab, exact: true }).or(page.getByRole('tab', { name: tab, exact: true }));
       if (!await b.count()) { probe(`admin tab ${tab}`, 'not found'); continue; }
       await b.first().click();
