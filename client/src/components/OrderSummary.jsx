@@ -41,7 +41,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
 
   if (!quote) {
     return (
-      <aside style={{ ...rail, alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: 12, gap: 10 }} aria-live="polite">
+      <aside id="order-summary" className="order-summary" style={{ ...rail, alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: 12, gap: 10 }} aria-live="polite">
         {quoteError ? (
           <>
             <div role="alert" style={{ color: 'var(--error-text)', lineHeight: 1.5 }}>{quoteError}</div>
@@ -61,7 +61,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
   const reasons = quote.gate?.reasons || [];
 
   return (
-    <aside style={rail} aria-label={needsRfq ? 'Budgetary summary' : 'Order summary'}>
+    <aside id="order-summary" className="order-summary" style={rail} aria-label={needsRfq ? 'Budgetary summary' : 'Order summary'}>
       <div className="font-display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 20, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
         {needsRfq ? 'Budgetary summary' : 'Order summary'}
         {quoteLoading && <div className="spinner" aria-label="Updating" />}
@@ -115,7 +115,7 @@ export default function OrderSummary({ quote, leadTimes, selectedLeadTime, onLea
               name="paperwork"
               checked={paperwork}
               onChange={(e) => onPaperworkChange(e.target.checked)}
-              style={{ marginTop: 2, flexShrink: 0, accentColor: 'var(--accent)' }}
+              style={{ marginTop: 1, flexShrink: 0, width: 18, height: 18, accentColor: 'var(--accent)' }}
             />
             <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1 }}>
               {PAPERWORK_LABEL}

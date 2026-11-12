@@ -78,6 +78,7 @@ function createEnvMap(renderer) {
 export default function ThreeViewer({ positions, color = '#5B8CB8', style }) {
   const mountRef = useRef(null);
   const stateRef = useRef({});
+  const controls = useRef(null); // { zoomIn, zoomOut } of the scene now on screen
 
   useEffect(() => {
     const container = mountRef.current;
@@ -216,26 +217,49 @@ export default function ThreeViewer({ positions, color = '#5B8CB8', style }) {
     }
     updateCamera();
 
+    // Pointer events cover mouse, pen and touch. The canvas has `touch-action: pan-y`, so on a
+    // phone a vertical swipe over the preview scrolls the page as it does everywhere else (the
+    // browser takes the gesture and sends pointercancel), and a sideways drag turns the part.
+    const el = renderer.domElement;
+    el.style.touchAction = 'pan-y';
     const onDown = (e) => { isDragging = true; prevX = e.clientX; prevY = e.clientY; };
     const onUp = () => { isDragging = false; };
     const onMove = (e) => {
       if (!isDragging) return;
       theta += (e.clientX - prevX) * 0.008;
-      phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi - (e.clientY - prevY) * 0.008));
+      if (e.pointerType !== 'touch') phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi - (e.clientY - prevY) * 0.008));
       prevX = e.clientX;
       prevY = e.clientY;
       updateCamera();
     };
+    const zoom = (delta) => { radius = Math.max(40, Math.min(400, radius + delta)); updateCamera(); };
+    // The wheel scrolls the page, as it does over everything else on it. Zoom is Ctrl/⌘ + wheel
+    // (which is also what a trackpad pinch sends), the + and − buttons, or the keyboard.
     const onWheel = (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
-      radius = Math.max(40, Math.min(400, radius + e.deltaY * 0.15));
+      zoom(e.deltaY * 0.15);
+    };
+    const onKey = (e) => {
+      const step = 0.12;
+      if (e.key === 'ArrowLeft') theta -= step;
+      else if (e.key === 'ArrowRight') theta += step;
+      else if (e.key === 'ArrowUp') phi = Math.max(0.1, phi - step);
+      else if (e.key === 'ArrowDown') phi = Math.min(Math.PI - 0.1, phi + step);
+      else if (e.key === '+' || e.key === '=') { zoom(-20); e.preventDefault(); return; }
+      else if (e.key === '-' || e.key === '_') { zoom(20); e.preventDefault(); return; }
+      else return;
+      e.preventDefault();
       updateCamera();
     };
+    controls.current = { zoomIn: () => zoom(-25), zoomOut: () => zoom(25) };
 
-    renderer.domElement.addEventListener('mousedown', onDown);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('mousemove', onMove);
-    renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('pointermove', onMove);
+    el.addEventListener('wheel', onWheel, { passive: false });
+    container.addEventListener('keydown', onKey);
 
     // ── Render loop ───────────────────────────────────────
     let animId;
@@ -261,13 +285,31 @@ export default function ThreeViewer({ positions, color = '#5B8CB8', style }) {
       cancelAnimationFrame(animId);
       envMap.dispose();
       renderer.dispose();
-      renderer.domElement.removeEventListener('mousedown', onDown);
-      window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('mousemove', onMove);
-      renderer.domElement.removeEventListener('wheel', onWheel);
+      el.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('pointermove', onMove);
+      el.removeEventListener('wheel', onWheel);
+      container.removeEventListener('keydown', onKey);
+      controls.current = null;
       window.removeEventListener('resize', onResize);
     };
   }, [positions, color]);
 
-  return <div ref={mountRef} style={{ width: '100%', height: '100%', ...style }} />;
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative', ...style }}>
+      <div
+        ref={mountRef}
+        className="viewer-canvas"
+        tabIndex={0}
+        role="img"
+        aria-label="3D preview of the part. Arrow keys turn it; plus and minus zoom."
+        style={{ width: '100%', height: '100%' }}
+      />
+      <div className="viewer-zoom">
+        <button type="button" aria-label="Zoom in" onClick={() => controls.current?.zoomIn()}>+</button>
+        <button type="button" aria-label="Zoom out" onClick={() => controls.current?.zoomOut()}>−</button>
+      </div>
+    </div>
+  );
 }

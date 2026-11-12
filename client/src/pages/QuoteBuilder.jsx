@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import HumanGate from '../components/security/HumanGate';
-import { formatCurrency, formatDim } from '../utils/format';
+import { formatCurrency, formatDim, formatShipDate } from '../utils/format';
 import ThreeViewer from '../components/ThreeViewer';
 import DxfPreview from '../components/DxfPreview';
 import DFMPanel from '../components/DFMPanel';
@@ -11,7 +11,9 @@ import OrderSummary from '../components/OrderSummary';
 import ProcessPicker from '../components/ProcessPicker';
 import { when, SENT_OUT_FINISHES } from '../facts';
 import brand, { PROCESS_LABELS } from '../brand';
-import { sessionQuoteId, storedQuoteId, storeQuoteId } from '../utils/returnTo';
+import { sessionQuoteId, storedQuoteId, storeQuoteId, authPath } from '../utils/returnTo';
+import { describeRefusal } from '../utils/messages';
+import { useAuth } from '../utils/authContext';
 
 // Closest stock thickness to the model's thinnest dimension (routing materials carry a thickness table).
 function pickThickness(mat, geometry) {
@@ -30,6 +32,11 @@ const LINKABLE_PROCESSES = ['cnc', 'routing', '3d-printing'];
 // DXF parts are priced only once the customer has settled what the file cannot say:
 // the drawing units (when the file is unitless) and the stock thickness.
 const isDxfName = (name) => /\.dxf$/i.test(name || '');
+// What the upload accepts. Checked before a file leaves the browser, so a drawing or a photo
+// dropped here is answered at once and does not count against the day's upload allowance.
+const CAD_TYPES = ['.step', '.stp', '.stl', '.3mf', '.iges', '.igs', '.dxf'];
+const extOf = (name) => (String(name || '').match(/\.[^.]+$/) || [''])[0].toLowerCase();
+const DRAWING_TYPES = ['.pdf', '.dwg', '.png', '.jpg', '.jpeg'];
 function dxfTodo(p) {
   if (!p.geometry?.is2D) return null;
   if (p.geometry.profile2d?.units?.needsConfirmation) return `Choose inches or millimetres for ${p.fileName} to see a price.`;
@@ -69,6 +76,11 @@ export default function QuoteBuilder() {
   const [unitsBusy, setUnitsBusy] = useState(false);
   const fileRef = useRef();
   const quoteTimer = useRef(null);
+  const { isAuthenticated } = useAuth();
+  // The files of the last upload that was refused whole (server busy, the check not passed): "Try again" sends them again.
+  const [retryFiles, setRetryFiles] = useState(null);
+  const errorBox = useRef(null);
+  useEffect(() => { if (uploadErrors.length > 0 && errorBox.current) errorBox.current.focus(); }, [uploadErrors]);
 
   // Notes + optional drawing for the shop. Stored with the quote; never priced.
   const [notes, setNotes] = useState('');
@@ -155,7 +167,6 @@ export default function QuoteBuilder() {
       setDrawingName(q.drawingFileName || '');
       setQuoteError(null);
     } catch (err) {
-      console.error('Quote error:', err);
       setQuoteError(err?.message || `We couldn't price this setup. Change the material or quantity and try again, or call ${brand.phone}.`);
     }
     setQuoteLoading(false);
@@ -169,7 +180,7 @@ export default function QuoteBuilder() {
       const r = await api.uploadQuoteDrawing(quote.quoteId, file);
       setDrawingName(r.drawingFileName);
     } catch (err) {
-      setDrawingError(err.message || 'Could not attach the drawing.');
+      setDrawingError(err.message);
     }
     setDrawingBusy(false);
     if (drawingRef.current) drawingRef.current.value = '';
@@ -193,7 +204,19 @@ export default function QuoteBuilder() {
   // `ctx` carries the process/materials/finishes to use when the caller has just switched process.
   const handleFiles = useCallback(async (fileList, ctx) => {
     if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList);
+    const all = Array.from(fileList);
+    // Anything that is not a model is answered here, in words, before it is sent.
+    const wrong = all.filter((f) => !CAD_TYPES.includes(extOf(f.name)));
+    const files = all.filter((f) => CAD_TYPES.includes(extOf(f.name)));
+    const wrongErrors = wrong.map((f) => ({
+      fileName: f.name,
+      error: DRAWING_TYPES.includes(extOf(f.name))
+        ? `The instant quote reads 3D models, not drawings or photos. Upload a STEP, STL, IGES or 3MF of the part (or a DXF for a flat routed part), or send this file with a firm-quote request and a person prices it.`
+        : `We can't read ${extOf(f.name) || 'that kind of'} files here. Upload a STEP, STL, IGES or 3MF model, or a DXF for a flat routed part.`,
+      action: DRAWING_TYPES.includes(extOf(f.name)) ? 'rfq' : null,
+    }));
+    setRetryFiles(null);
+    if (files.length === 0) { setUploadErrors(wrongErrors); if (fileRef.current) fileRef.current.value = ''; return; }
     const proc = ctx?.process || selectedProcess;
     // A DXF is a 2D profile: routing only. Offer the switch instead of failing the upload.
     if (proc !== 'routing' && files.some((f) => isDxfName(f.name))) { setDxfOffer(files); return; }
@@ -230,11 +253,20 @@ export default function QuoteBuilder() {
         if (newParts.length > 0 && !prev) return newParts[0].partId;
         return prev;
       });
-      if (result.errors?.length > 0) setUploadErrors(result.errors);
+      // Each refused file comes back with the server's reason and a code; the words on screen are the catalogue's.
+      const refused = (result.errors || []).map((e) => {
+        const said = describeRefusal({ status: 200, code: e.code, serverMessage: e.error, data: e, context: 'upload' });
+        return { fileName: e.fileName, error: said.message, code: e.code, action: e.offerRfq ? 'rfq' : said.action };
+      });
+      if (refused.some((e) => e.code === 'busy')) setRetryFiles(files.filter((f) => refused.some((e) => e.code === 'busy' && e.fileName === f.name)));
+      setUploadErrors([...wrongErrors, ...refused]);
     } catch (err) {
-      setUploadErrors([{ fileName: 'Upload', error: err.message || `The file didn't make it to our server. Try again, or email it to ${brand.email}.` }]);
+      // The whole upload was refused (or never arrived). `err.message` is already the buyer's wording.
+      if (err.action === 'retry' || err.status === 0) setRetryFiles(files);
+      setUploadErrors([...wrongErrors, { fileName: files.length === 1 ? files[0].name : `${files.length} files`, error: err.message, code: err.code, action: err.data?.offerRfq ? 'rfq' : err.action }]);
     }
     setUploading(false);
+    if (fileRef.current) fileRef.current.value = ''; // so the same file can be chosen again
   }, [materials, finishes, selectedProcess, preferredMaterial]);
 
   const handleDrop = useCallback((e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }, [handleFiles]);
@@ -300,7 +332,7 @@ export default function QuoteBuilder() {
       updatePart(partId, { geometry: p.geometry, dfm: p.dfm, dfmAll: p.dfmAll });
       setUploadErrors([]);
     } catch (err) {
-      setUploadErrors([{ fileName: 'Units', error: err.message || 'Could not change the units. Try again.' }]);
+      setUploadErrors([{ fileName: parts.find((x) => x.partId === partId)?.fileName || 'Units', error: err.message }]);
     }
     setUnitsBusy(false);
   }
@@ -397,7 +429,8 @@ export default function QuoteBuilder() {
             className="dropzone"
             role="button"
             tabIndex={0}
-            aria-label="Upload a part file"
+            aria-labelledby="dropzone-title"
+            aria-describedby="dropzone-help"
             style={{ maxWidth: 640, width: '100%' }}
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
@@ -407,10 +440,10 @@ export default function QuoteBuilder() {
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true" style={{ marginBottom: 16, opacity: 0.7 }}>
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            <div className="font-display" style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+            <div id="dropzone-title" className="font-display" style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
               Upload a part
             </div>
-            <div style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.7, maxWidth: 460, margin: '0 auto' }}>
+            <div id="dropzone-help" style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.7, maxWidth: 460, margin: '0 auto' }}>
               Drop a STEP, STL, IGES or 3MF file here, or click to choose one. Flat part? Drop a DXF and pick the thickness. The price shows in a few seconds.<br />
               Up to {brand.rfqQuantityThreshold} pieces checks out online. More than that, a person quotes it{when('quote-turnaround', (v) => ` within ${v}`)}.
             </div>
@@ -434,13 +467,13 @@ export default function QuoteBuilder() {
           <div className="flex-col fade-in" style={{ alignItems: 'center', gap: 20, paddingTop: 48 }}>
             <div className="spinner" style={{ width: 40, height: 40, borderWidth: 3 }} />
             <div className="font-display" style={{ fontSize: 14, color: 'var(--text-muted)' }} role="status">Reading the geometry…</div>
-            <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>A few seconds for most files. Large STEP assemblies take longer.</div>
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', textAlign: 'center', maxWidth: 360 }}>A few seconds for most files. A large or very detailed model can take up to a minute; the price appears here when it is read, so there is no need to upload it twice.</div>
           </div>
         )}
 
         {/* DXF with another process selected: offer routing rather than refusing the file */}
         {dxfOffer && !uploading && (
-          <div className="gate-box fade-up" role="alertdialog" aria-label="DXF files are quoted for CNC routing" style={{ marginBottom: 16, maxWidth: 720, width: '100%', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <div className="gate-box fade-up" role="alert" aria-label="DXF files are quoted for CNC routing" style={{ marginBottom: 16, maxWidth: 720, width: '100%', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
             <span style={{ flex: '1 1 320px' }}>
               <b>{dxfOffer.filter((f) => isDxfName(f.name)).map((f) => f.name).join(', ')} is a 2D drawing.</b>{' '}
               A DXF has an outline but no thickness, so we cut it from sheet on the router — it cannot be quoted for {PROCESS_LABELS[selectedProcess] || selectedProcess}.
@@ -453,14 +486,26 @@ export default function QuoteBuilder() {
           </div>
         )}
 
-        {/* Upload errors */}
+        {/* Upload errors: what happened to each file, and what to do next */}
         {uploadErrors.length > 0 && (
-          <div className="card fade-up" role="alert" style={{ padding: 16, marginBottom: 16, borderColor: '#FECACA', background: 'var(--error-bg)', maxWidth: 720, width: '100%' }}>
-            {uploadErrors.map((err, i) => (
-              <div key={i} style={{ fontSize: 12, color: 'var(--error-text)', marginBottom: 4 }}>
-                ⚠ {err.fileName}: {err.error}
-              </div>
-            ))}
+          <div className="card fade-up upload-problems" role="alert" tabIndex={-1} ref={errorBox}>
+            <div className="upload-problems-head">
+              {uploadErrors.length === 1 ? 'This file was not priced' : `${uploadErrors.length} files were not priced`}
+              {parts.length > 0 ? '. The parts already in your quote are untouched.' : ''}
+            </div>
+            <ul>
+              {uploadErrors.map((err, i) => (
+                <li key={i}><b>{err.fileName}</b> {err.error}</li>
+              ))}
+            </ul>
+            <div className="notice-actions">
+              {retryFiles && <button type="button" className="btn btn-primary" onClick={() => handleFiles(retryFiles)}>Try again</button>}
+              {uploadErrors.some((e) => e.action === 'rfq') && (
+                <button type="button" className="btn btn-outline" onClick={() => navigate(quote?.quoteId ? `/rfq/${quote.quoteId}` : '/rfq')}>Request a firm quote</button>
+              )}
+              <button type="button" className="btn btn-ghost" onClick={() => { setUploadErrors([]); setRetryFiles(null); }}>Dismiss</button>
+              <span className="upload-problems-reach">Or call <a href={brand.phoneHref}>{brand.phone}</a>.</span>
+            </div>
           </div>
         )}
 
@@ -487,13 +532,15 @@ export default function QuoteBuilder() {
             )}
 
             {/* View toggle */}
-            <div className="qb-toolbar" role="tablist" aria-label="Part view">
-              <button role="tab" aria-selected={!showDFM} className={`btn ${showDFM ? 'btn-ghost' : 'btn-ghost active'}`} onClick={() => setShowDFM(false)}>
-                {active.geometry?.is2D ? '2D preview' : '3D preview'}
-              </button>
-              <button role="tab" aria-selected={showDFM} className={`btn ${showDFM ? 'btn-ghost active' : 'btn-ghost'}`} onClick={() => setShowDFM(true)}>
-                DFM check
-              </button>
+            <div className="qb-toolbar">
+              <div role="tablist" aria-label="Part view" style={{ display: 'flex', gap: 8 }}>
+                <button type="button" role="tab" aria-selected={!showDFM} className={`btn ${showDFM ? 'btn-ghost' : 'btn-ghost active'}`} onClick={() => setShowDFM(false)}>
+                  {active.geometry?.is2D ? '2D preview' : '3D preview'}
+                </button>
+                <button type="button" role="tab" aria-selected={showDFM} className={`btn ${showDFM ? 'btn-ghost active' : 'btn-ghost'}`} onClick={() => setShowDFM(true)}>
+                  DFM check
+                </button>
+              </div>
 
               {/* Price badge */}
               {activeLineItem && (
@@ -542,7 +589,7 @@ export default function QuoteBuilder() {
                   <div className="viewer-meta">
                     <span>{formatDim(active.geometry?.flatWidth || 0)} × {formatDim(active.geometry?.flatHeight || 0)}</span>
                     <span>{((active.geometry?.flatArea || 0) / 645.16).toFixed(1)} in² footprint</span>
-                    <span className="hint">Drag to orbit · Scroll to zoom</span>
+                    <span className="hint">Drag to turn · Ctrl + scroll or +/− to zoom</span>
                   </div>
                 </div>
               </div>
@@ -604,7 +651,7 @@ export default function QuoteBuilder() {
                       <button
                         key={b.qty}
                         onClick={() => updatePart(active.partId, { quantity: b.qty })}
-                        aria-label={`Set quantity to ${b.qty}, ${formatCurrency(b.perUnit)} each`}
+                        aria-label={`${b.qty} pc${b.qty > 1 ? 's' : ''}, ${formatCurrency(b.perUnit)} each, ${formatCurrency(b.lineTotal)}: use this quantity`}
                         aria-pressed={isActive}
                         style={{
                           display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 16, alignItems: 'center',
@@ -675,7 +722,7 @@ export default function QuoteBuilder() {
             className="dropzone"
             role="button"
             tabIndex={0}
-            style={{ marginTop: 24, padding: '20px 32px', maxWidth: 720, width: '100%', fontSize: 12 }}
+            style={{ marginTop: 24, padding: '20px 32px', maxWidth: 720, width: '100%', fontSize: 13 }}
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
             onClick={() => fileRef.current?.click()}
@@ -724,6 +771,23 @@ export default function QuoteBuilder() {
           quoteError={quoteError}
           quoteLoading={quoteLoading}
         />
+      )}
+      {/* Phone and tablet: the total and the one button that matters, always within reach of the thumb.
+          The summary itself (lead time, paperwork, line items) is one tap away. Same numbers, same
+          destinations as the summary's own button (components/OrderSummary.jsx). */}
+      {parts.length > 0 && quote && (
+        <div className="qb-bar" role="region" aria-label={needsRfq ? 'Budgetary total' : 'Total and checkout'}>
+          <a href="#order-summary" className="qb-bar-total">
+            <span className="price-label">{needsRfq ? 'Budgetary' : 'Total'}{quoteLoading ? ' · updating' : ''}</span>
+            <b>{formatCurrency(quote.orderTotal)}</b>
+            <span className="qb-bar-sub">{quote.shipBy ? `Ships by ${formatShipDate(quote.shipBy)} · ` : ''}details</span>
+          </a>
+          {needsRfq ? (
+            <button type="button" className="btn btn-primary btn-lg" onClick={() => navigate(quote.quoteId ? `/rfq/${quote.quoteId}` : '/rfq')}>Request a firm quote</button>
+          ) : (
+            <button type="button" className="btn btn-primary btn-lg" onClick={() => { const to = `/checkout/${quote.quoteId}`; navigate(isAuthenticated ? to : authPath('/login', to)); }}>Check out</button>
+          )}
+        </div>
       )}
     </div>
   );
