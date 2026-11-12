@@ -48,28 +48,23 @@ function parseSTLBinary(buffer) {
   const triangleCount = buffer.readUInt32LE(80);
   if (triangleCount > limits.meshMaxTriangles) throw modelTooLarge(triangleCount);
   if (84 + triangleCount * 50 > buffer.length) throw Object.assign(new Error(DAMAGED), { code: "file-damaged", expose: true });
-  const vertices = [];
-  const normals = [];
-
+  // Straight into flat typed arrays: 9 numbers per triangle and 3 per normal.
+  // (One small array per corner cost ~150 MB of heap on a 500,000-triangle
+  // file and most of the garbage-collection time.)
+  const positions = new Float64Array(triangleCount * 9);
+  const normals = new Float64Array(triangleCount * 3);
+  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   let offset = 84;
   for (let i = 0; i < triangleCount; i++) {
-    // Normal
-    const nx = buffer.readFloatLE(offset); offset += 4;
-    const ny = buffer.readFloatLE(offset); offset += 4;
-    const nz = buffer.readFloatLE(offset); offset += 4;
-    normals.push([nx, ny, nz]);
-
-    // 3 vertices
-    for (let v = 0; v < 3; v++) {
-      const x = buffer.readFloatLE(offset); offset += 4;
-      const y = buffer.readFloatLE(offset); offset += 4;
-      const z = buffer.readFloatLE(offset); offset += 4;
-      vertices.push([x, y, z]);
-    }
-    offset += 2; // attribute byte count
+    normals[i * 3] = view.getFloat32(offset, true);
+    normals[i * 3 + 1] = view.getFloat32(offset + 4, true);
+    normals[i * 3 + 2] = view.getFloat32(offset + 8, true);
+    const o = i * 9;
+    for (let k = 0; k < 9; k++) positions[o + k] = view.getFloat32(offset + 12 + k * 4, true);
+    offset += 50; // 12 floats + the 2-byte attribute count
   }
 
-  return analyzeTriangleMesh(vertices, normals, triangleCount, { source: "stl" });
+  return analyzePackedMesh({ positions, vertexRows: triangleCount * 3, normals, normalRows: triangleCount }, triangleCount, { source: "stl" });
 }
 
 function parseSTLAscii(text) {
@@ -97,12 +92,237 @@ function parseSTLAscii(text) {
 
 // ─── GEOMETRY ANALYSIS ────────────────────────────────────────
 /**
+ * Mesh analysis for parsers that collect one [x, y, z] row per corner (ASCII
+ * STL, 3MF, STEP, IGES). A well-formed result (exactly three corners per
+ * triangle, a normal row for every triangle) is packed into flat typed arrays
+ * and analysed by analyzePackedMesh(), the one implementation every format
+ * shares. Anything else — an ASCII STL whose facet and vertex counts
+ * disagree, a STEP whose bodies only partly carry normals — keeps the
+ * row-by-row code below, so what such a file returns (or the error it raises)
+ * is exactly what it was.
+ *
  * @param {number[][]} vertices 3 per triangle
  * @param {number[][]} normals  per triangle (STL) or per corner (STEP/IGES/3MF, 3 per triangle)
  * @param {number} triangleCount
  * @param {object} meta { source, brepFaces, cornerNormals }
  */
 function analyzeTriangleMesh(vertices, normals, triangleCount, meta = {}) {
+  if (triangleCount === 0) {
+    throw new Error("No triangles found in mesh");
+  }
+  const packed = packRows(vertices, normals, triangleCount);
+  if (packed) return analyzePackedMesh(packed, triangleCount, meta);
+  return analyzeTriangleRows(vertices, normals, triangleCount, meta);
+}
+
+/** Rows → flat Float64Arrays, or null when the rows are not three numbers per corner / one normal row per triangle. */
+function packRows(vertices, normals, triangleCount) {
+  if (!Array.isArray(vertices) || !Array.isArray(normals)) return null;
+  if (vertices.length !== triangleCount * 3 || normals.length < triangleCount) return null;
+  const positions = new Float64Array(vertices.length * 3);
+  for (let i = 0; i < vertices.length; i++) {
+    const r = vertices[i];
+    if (!Array.isArray(r) || r.length !== 3 || typeof r[0] !== "number" || typeof r[1] !== "number" || typeof r[2] !== "number") return null;
+    positions[i * 3] = r[0]; positions[i * 3 + 1] = r[1]; positions[i * 3 + 2] = r[2];
+  }
+  const flat = new Float64Array(normals.length * 3);
+  for (let i = 0; i < normals.length; i++) {
+    const r = normals[i];
+    if (!Array.isArray(r) || r.length !== 3 || typeof r[0] !== "number" || typeof r[1] !== "number" || typeof r[2] !== "number") return null;
+    flat[i * 3] = r[0]; flat[i * 3 + 1] = r[1]; flat[i * 3 + 2] = r[2];
+  }
+  return { positions, vertexRows: vertices.length, normals: flat, normalRows: normals.length };
+}
+
+/**
+ * The analysis on flat arrays. Same arithmetic, in the same order, as the
+ * row-by-row version it replaces (sums over triangles in file order).
+ *
+ * @param {{positions: Float64Array, vertexRows: number, normals: Float64Array, normalRows: number}} m
+ *        positions: xyz per corner, 3 corners per triangle; normals: xyz per row
+ */
+function analyzePackedMesh(m, triangleCount, meta = {}) {
+  if (triangleCount === 0) {
+    throw new Error("No triangles found in mesh");
+  }
+  const pos = m.positions;
+
+  // Bounding box (Math.min / Math.max, as before: a NaN coordinate makes the box NaN)
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (let i = 0, end = m.vertexRows * 3; i < end; i += 3) {
+    const x = pos[i], y = pos[i + 1], z = pos[i + 2];
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+  }
+
+  const boundingBox = {
+    min: { x: minX, y: minY, z: minZ },
+    max: { x: maxX, y: maxY, z: maxZ },
+    width: maxX - minX,
+    height: maxY - minY,
+    depth: maxZ - minZ,
+  };
+
+  // Surface area and volume (signed volume method); down-facing area steeper
+  // than 45° from the geometric normal (see analyzeTriangleRows for the notes).
+  let totalSurfaceArea = 0;
+  let totalVolume = 0;
+  let overhangArea = 0;
+  const OVERHANG_NZ = -Math.SQRT1_2;
+
+  for (let i = 0; i < triangleCount; i++) {
+    const o = i * 9;
+    const x0 = pos[o], y0 = pos[o + 1], z0 = pos[o + 2];
+    const x1 = pos[o + 3], y1 = pos[o + 4], z1 = pos[o + 5];
+    const x2 = pos[o + 6], y2 = pos[o + 7], z2 = pos[o + 8];
+
+    const ax = x1 - x0, ay = y1 - y0, az = z1 - z0;
+    const bx = x2 - x0, by = y2 - y0, bz = z2 - z0;
+    const cx = ay * bz - az * by;
+    const cy = az * bx - ax * bz;
+    const cz = ax * by - ay * bx;
+    const crossMag = Math.sqrt(cx * cx + cy * cy + cz * cz);
+    const area = 0.5 * crossMag;
+    totalSurfaceArea += area;
+
+    if (crossMag > 0 && cz / crossMag < OVERHANG_NZ) overhangArea += area;
+
+    totalVolume += (
+      x0 * (y1 * z2 - y2 * z1) +
+      x1 * (y2 * z0 - y0 * z2) +
+      x2 * (y0 * z1 - y1 * z0)
+    ) / 6.0;
+  }
+  totalVolume = Math.abs(totalVolume);
+  const overhangFraction = totalSurfaceArea > 0 ? overhangArea / totalSurfaceArea : 0;
+
+  const features = estimateFeaturesPacked(m.normals, triangleCount);
+
+  const dims = [boundingBox.width, boundingBox.height, boundingBox.depth].sort((a, b) => a - b);
+  const estimatedThickness = dims[0];
+  const flatWidth = dims[2];
+  const flatHeight = dims[1];
+
+  const flatArea = flatWidth * flatHeight;
+  const edgeSurfaceArea = Math.max(totalSurfaceArea - 2 * flatArea * 0.7, flatArea * 0.1);
+  const estimatedPerimeter = estimatedThickness > 0.01 ? edgeSurfaceArea / estimatedThickness : flatWidth * 2 + flatHeight * 2;
+
+  const legacy = {
+    estimatedThickness,
+    estimatedPerimeter: Math.min(estimatedPerimeter, (flatWidth + flatHeight) * 4),
+    estimatedHoles: features.holes,
+    estimatedSlots: features.slots,
+    estimatedBends: features.bends,
+  };
+
+  // Geometry recognition (server/geometry, SCHEMA.md) on the same arrays, no copy.
+  const recognized = recognizePacked(m, triangleCount, meta);
+  const better = legacyFromFeatures(recognized) || {};
+  const pick = (key, fallback) => (Number.isFinite(better[key]) ? better[key] : fallback);
+
+  return {
+    boundingBox,
+    surfaceArea: totalSurfaceArea,
+    volume: totalVolume,
+    overhangFraction,
+    triangleCount,
+    vertexCount: m.vertexRows,
+
+    estimatedThickness: pick("estimatedThickness", estimatedThickness),
+    flatWidth,
+    flatHeight,
+    flatArea: flatWidth * flatHeight,
+    estimatedPerimeter: pick("estimatedPerimeter", legacy.estimatedPerimeter),
+
+    estimatedHoles: pick("estimatedHoles", features.holes),
+    estimatedBends: features.bends,
+    estimatedSlots: pick("estimatedSlots", features.slots),
+    legacy,
+
+    features: recognized,
+
+    units: "mm",
+
+    meshData: {
+      positions: downsamplePacked(pos, m.vertexRows, 50000),
+      triangleCount: Math.min(triangleCount, 50000),
+    },
+  };
+}
+
+/** recognizeFeatures() for packed input: the recogniser reads the position array as it is. */
+function recognizePacked(m, triangleCount, meta) {
+  const source = meta.source || "stl";
+  try {
+    const positions = m.positions.length === triangleCount * 9 ? m.positions : m.positions.subarray(0, triangleCount * 9);
+    const vertexNormals = meta.cornerNormals && m.normalRows === triangleCount * 3 ? m.normals : null;
+    return analyzeGeometry({ positions, source, brepFaces: meta.brepFaces || null, vertexNormals });
+  } catch (err) {
+    return {
+      schemaVersion: 1, source, error: err.message,
+      holes: [], holeCount: null, pockets: [], slots: [], bosses: [],
+      confidence: { holes: 0, pockets: 0, walls: 0, shape: 0, overall: 0 },
+      notes: [`Geometry recognition failed: ${err.message}`],
+    };
+  }
+}
+
+/**
+ * estimateFeatures() for packed normals. Only the number of normal-direction
+ * buckets of each size is used, so the buckets are counted in a small table
+ * (a unit normal × 4 rounds to −4 … 4 per axis) instead of one string key per
+ * triangle; anything outside that range keeps its string key.
+ */
+function estimateFeaturesPacked(normals, triangleCount) {
+  const table = new Int32Array(729);
+  const other = new Map();
+  for (let i = 0; i < triangleCount; i++) {
+    const rx = Math.round(normals[i * 3] * 4), ry = Math.round(normals[i * 3 + 1] * 4), rz = Math.round(normals[i * 3 + 2] * 4);
+    if (rx >= -4 && rx <= 4 && ry >= -4 && ry <= 4 && rz >= -4 && rz <= 4) table[(rx + 4) * 81 + (ry + 4) * 9 + (rz + 4)]++;
+    else { const key = `${rx},${ry},${rz}`; other.set(key, (other.get(key) || 0) + 1); }
+  }
+  let smallClusters = 0, mediumClusters = 0;
+  const tally = (c) => {
+    if (c < triangleCount * 0.02) smallClusters++;
+    if (c >= triangleCount * 0.02 && c < triangleCount * 0.15) mediumClusters++;
+  };
+  for (let k = 0; k < table.length; k++) if (table[k] > 0) tally(table[k]);
+  for (const c of other.values()) tally(c);
+
+  const holeIndicators = Math.floor(smallClusters / 4);
+  const bendIndicators = Math.floor(mediumClusters / 2);
+  const slotIndicators = Math.floor(smallClusters / 8);
+  return {
+    holes: Math.max(0, Math.min(holeIndicators, 50)),
+    bends: Math.max(0, Math.min(bendIndicators, 20)),
+    slots: Math.max(0, Math.min(slotIndicators, 15)),
+  };
+}
+
+/** downsampleVertices() for packed positions: a plain array, every Nth triangle when there are more than maxTriangles. */
+function downsamplePacked(pos, vertexRows, maxTriangles) {
+  const totalTriangles = Math.floor(vertexRows / 3);
+  if (totalTriangles <= maxTriangles) return Array.from(pos.length === vertexRows * 3 ? pos : pos.subarray(0, vertexRows * 3));
+  const step = totalTriangles / maxTriangles;
+  const result = new Array(maxTriangles * 9);
+  let w = 0;
+  for (let t = 0; t < maxTriangles; t++) {
+    const triIdx = Math.floor(t * step) * 3;
+    if (triIdx + 2 < vertexRows) {
+      const o = triIdx * 3;
+      for (let k = 0; k < 9; k++) result[w++] = pos[o + k];
+    }
+  }
+  result.length = w;
+  return result;
+}
+
+/**
+ * The row-by-row analysis, kept for input packRows() declines (see analyzeTriangleMesh).
+ */
+function analyzeTriangleRows(vertices, normals, triangleCount, meta = {}) {
   if (triangleCount === 0) {
     throw new Error("No triangles found in mesh");
   }

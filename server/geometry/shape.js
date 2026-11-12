@@ -17,6 +17,34 @@ function sampleVertices(mesh, max = 20000) {
 
 function extentsAlong(points, axes) {
   const m = axes.length;
+  // The two shapes this is called with thousands of times (one axis, a frame of
+  // three) are written out; the arithmetic and the comparisons are those of the
+  // general loop below.
+  if (m === 3) {
+    const a = axes[0], b = axes[1], c = axes[2];
+    const a0 = a[0], a1 = a[1], a2 = a[2], b0 = b[0], b1 = b[1], b2 = b[2], c0 = c[0], c1 = c[1], c2 = c[2];
+    let la = Infinity, ha = -Infinity, lb = Infinity, hb = -Infinity, lc = Infinity, hc = -Infinity;
+    for (let i = 0, n = points.length; i < n; i++) {
+      const p = points[i], x = p[0], y = p[1], z = p[2];
+      let t = x * a0 + y * a1 + z * a2;
+      if (t < la) la = t; if (t > ha) ha = t;
+      t = x * b0 + y * b1 + z * b2;
+      if (t < lb) lb = t; if (t > hb) hb = t;
+      t = x * c0 + y * c1 + z * c2;
+      if (t < lc) lc = t; if (t > hc) hc = t;
+    }
+    return { lo: [la, lb, lc], hi: [ha, hb, hc], size: [ha - la, hb - lb, hc - lc] };
+  }
+  if (m === 1) {
+    const a = axes[0], a0 = a[0], a1 = a[1], a2 = a[2];
+    let la = Infinity, ha = -Infinity;
+    for (let i = 0, n = points.length; i < n; i++) {
+      const p = points[i];
+      const t = p[0] * a0 + p[1] * a1 + p[2] * a2;
+      if (t < la) la = t; if (t > ha) ha = t;
+    }
+    return { lo: [la], hi: [ha], size: [ha - la] };
+  }
   const lo = new Array(m).fill(Infinity), hi = new Array(m).fill(-Infinity);
   for (const p of points) {
     for (let k = 0; k < m; k++) {
@@ -132,20 +160,25 @@ function score25D(mesh, a, tolDeg = 1.5) {
 function scoreRevolved(mesh, a, c0, tolDeg = 4) {
   const sTol = Math.sin(tolDeg * DEG);
   let ok = 0, lateral = 0, total = 0;
+  const { area, normal, centroid } = mesh;
+  const a0 = a[0], a1 = a[1], a2 = a[2], cx = c0[0], cy = c0[1], cz = c0[2];
+  // Written out per component (no temporary vectors): this runs for every
+  // triangle and every candidate axis. Same operations, same order.
   for (let t = 0; t < mesh.n; t++) {
-    const ar = mesh.area[t];
+    const ar = area[t];
     total += ar;
-    const n = [mesh.normal[t * 3], mesh.normal[t * 3 + 1], mesh.normal[t * 3 + 2]];
-    const nd = Math.abs(v.dot(n, a));
+    const nx = normal[t * 3], ny = normal[t * 3 + 1], nz = normal[t * 3 + 2];
+    const nd = Math.abs(nx * a0 + ny * a1 + nz * a2);
     if (nd > 0.995) { ok += ar; continue; }
     lateral += ar;
-    const p = [mesh.centroid[t * 3] - c0[0], mesh.centroid[t * 3 + 1] - c0[1], mesh.centroid[t * 3 + 2] - c0[2]];
-    const tt = v.dot(p, a);
-    const r = [p[0] - a[0] * tt, p[1] - a[1] * tt, p[2] - a[2] * tt];
-    const rl = v.len(r);
+    const px = centroid[t * 3] - cx, py = centroid[t * 3 + 1] - cy, pz = centroid[t * 3 + 2] - cz;
+    const tt = px * a0 + py * a1 + pz * a2;
+    const rx = px - a0 * tt, ry = py - a1 * tt, rz = pz - a2 * tt;
+    const rl = Math.sqrt(rx * rx + ry * ry + rz * rz);
     if (rl < 1e-9) { ok += ar; continue; }
-    const tang = v.cross(a, [r[0] / rl, r[1] / rl, r[2] / rl]);
-    if (Math.abs(v.dot(n, tang)) < sTol) ok += ar;
+    const ux = rx / rl, uy = ry / rl, uz = rz / rl;
+    const tx = a1 * uz - a2 * uy, ty = a2 * ux - a0 * uz, tz = a0 * uy - a1 * ux; // tangent = a × radial
+    if (Math.abs(nx * tx + ny * ty + nz * tz) < sTol) ok += ar;
   }
   return { lateralScore: lateral > 0 ? (ok - (total - lateral)) / lateral : 0, score: total > 0 ? ok / total : 0, lateralFraction: total > 0 ? lateral / total : 0 };
 }
