@@ -17,6 +17,8 @@
  *   webhookRefused     Stripe webhook answered 503 (no signing secret configured)
  *   webhookFailed      Stripe webhook answered anything else
  *   signinPaused       a sign-in refused because the account is paused (429 account-locked)
+ *   signinPauseStarted an account was paused after repeated wrong passwords (its notice email was
+ *                      queued; at most three a day per account, and only for addresses with an account)
  *   storageRefused     an upload refused because storage or the database is at its ceiling
  *   rateLimited        any 429 from a rate limiter
  *   mailSent / mailFailed / mailNotConfigured
@@ -78,6 +80,8 @@ function watchMailer(mailer = require("../services/mailer")) {
     const wasConfigured = mailer.configured();
     const ok = await original.call(mailer, message);
     try {
+      // The "sign-in paused" notice goes out at the moment an account is paused: that moment is the lockout.
+      if (template === "accountLocked") events.record("signinPauseStarted", { notable: true });
       if (ok) events.record("mailSent");
       else if (!wasConfigured) events.record("mailNotConfigured");
       else {

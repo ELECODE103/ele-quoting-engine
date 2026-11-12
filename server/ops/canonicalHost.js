@@ -162,6 +162,19 @@ function redirectLocation(canonical, originalUrl) {
   return `https://${canonical}${safeTarget(originalUrl)}`;
 }
 
+// Which host names requests have arrived for since the process started (at most 20 names, health checks left out).
+// Shown on Admin → System: after cutover the canonical host must be in this list. If it is not, either DNS does not
+// point here yet or the platform is not passing the visitor's Host header through.
+const hostsSeen = new Map();
+function noteHost(host) {
+  const name = cleanHost(host) || "(not a host name)";
+  if (hostsSeen.has(name)) hostsSeen.set(name, hostsSeen.get(name) + 1);
+  else if (hostsSeen.size < 20) hostsSeen.set(name, 1);
+}
+function seenHosts() {
+  return [...hostsSeen.entries()].map(([host, requests]) => ({ host, requests })).sort((a, b) => b.requests - a.requests);
+}
+
 /**
  * @param {object} [opt]
  * @param {object} [opt.env] settings to read instead of process.env (tests)
@@ -171,6 +184,7 @@ function middleware(opt = {}) {
   return function canonicalHost(req, res, next) {
     const host = requestHost(req);
     const canonical = cfg.canonical;
+    if (!isExemptPath(req.path)) noteHost(host);
 
     // HSTS on the canonical host only, until the owner says every host is staying on HTTPS.
     if (canonical && !cfg.hstsAllHosts && host !== canonical) res.removeHeader("Strict-Transport-Security");
@@ -207,4 +221,4 @@ function install(app, opt = {}) {
   return cfg;
 }
 
-module.exports = { install, middleware, readConfig, describe, cleanHost, requestHost, isExemptPath, safeTarget, redirectLocation, isRailwayHost, EXEMPT_PATHS };
+module.exports = { install, middleware, readConfig, describe, cleanHost, requestHost, isExemptPath, safeTarget, redirectLocation, isRailwayHost, seenHosts, EXEMPT_PATHS };

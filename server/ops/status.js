@@ -148,6 +148,7 @@ function hosts() {
     noindex: [...cfg.noindex],
     hstsAllHosts: cfg.hstsAllHosts,
     frontendUrlHost: canonicalHost.cleanHost(process.env.FRONTEND_URL),
+    seen: canonicalHost.seenHosts(),
     problems: cfg.problems,
   };
 }

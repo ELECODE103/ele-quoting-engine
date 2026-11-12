@@ -192,6 +192,13 @@ test("live server: the canonical host is served with HSTS; Railway's host is ser
     assert.strictEqual(unknown.headers.location, undefined);
     assert.strictEqual(unknown.headers["strict-transport-security"], undefined);
 
+    // Admin → System can show which host names requests arrived for: the canonical host must be among them after cutover.
+    const admin = await s.admin();
+    const seen = (await s.get("/api/admin/system/status", { token: admin, headers: { Host: CANON } })).body.hosts.seen;
+    const names = seen.map((x) => x.host);
+    for (const h of [CANON, RAILWAY, "something-else.up.railway.app", "unlisted.example"]) assert.ok(names.includes(h), `${h} in ${names}`);
+    assert.ok(seen.find((x) => x.host === CANON).requests >= 2);
+
     // The startup log says what is in force, in one line.
     assert.ok(s.log().includes(`[hosts] canonical host ${CANON}; redirecting to it: ${OLD.join(", ")}`), s.log().split("\n").filter((l) => l.includes("[hosts]")).join("\n"));
   } finally { await s.stop(); }

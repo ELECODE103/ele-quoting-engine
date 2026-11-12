@@ -112,7 +112,7 @@ function build(now = Date.now()) {
       ["Emails sent / failed", `${c.mailSent || 0} / ${c.mailFailed || 0}`],
       ["Stripe webhooks ok / bad signature / other failure", `${c.webhookOk || 0} / ${c.webhookRejected || 0} / ${(c.webhookFailed || 0) + (c.webhookRefused || 0)}`],
       ["Server errors (5xx)", String(c.serverError || 0)],
-      ["Sign-in attempts refused while an account was paused", String(c.signinPaused || 0)],
+      ["Sign-in: accounts paused / attempts refused while paused", `${c.signinPauseStarted || 0} / ${c.signinPaused || 0}`],
       ["Uploads refused: storage full", String(c.storageRefused || 0)],
       ["File parsing: timed out / told “busy” / out of memory", `${poolDelta("timedOut")} / ${poolDelta("busy")} / ${poolDelta("outOfMemory")}`],
       ["Requests turned away by a rate limit", String(c.rateLimited || 0)],

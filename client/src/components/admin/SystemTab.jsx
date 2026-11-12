@@ -94,6 +94,7 @@ export default function SystemTab() {
         <Row k="Node">{s.build.node} · {s.build.environment}</Row>
         <Row k="Previous run ended">{prev ? (prev.ended === 'clean' ? 'cleanly' : prev.ended === 'crash' ? <Tag ok={false}>with a crash{prev.errorName ? ` (${prev.errorName})` : ''}</Tag> : 'without a clean stop (killed or out of memory)') : 'no record'}</Row>
         <Row k="Canonical host">{s.hosts.canonical || <Tag ok={false}>not set</Tag>}{s.hosts.redirects.length ? ` · redirecting from ${s.hosts.redirects.join(', ')}` : ''}</Row>
+        <Row k="Requests have arrived for">{(s.hosts.seen || []).map((x) => `${x.host} (${x.requests})`).join(' · ') || 'nothing yet'}</Row>
         {s.hosts.problems.map((x, i) => <Row key={i} k="Host setting"><span style={{ color: 'var(--error)' }}>{x}</span></Row>)}
       </Section>
 
@@ -121,7 +122,7 @@ export default function SystemTab() {
         <Row k="Emails sent / failed / not sent (email off)">{t.mailSent || 0} / {t.mailFailed || 0} / {t.mailNotConfigured || 0}</Row>
         <Row k="Stripe webhooks ok / bad signature / other failure">{t.webhookOk || 0} / {t.webhookRejected || 0} / {(t.webhookFailed || 0) + (t.webhookRefused || 0)}</Row>
         <Row k="Server errors (5xx)">{t.serverError || 0}</Row>
-        <Row k="Sign-in attempts refused while an account was paused">{t.signinPaused || 0}</Row>
+        <Row k="Sign-in: accounts paused / attempts refused while paused">{t.signinPauseStarted || 0} / {t.signinPaused || 0}</Row>
         <Row k="Uploads refused: storage full">{t.storageRefused || 0}</Row>
         <Row k="File parsing: timed out / told “busy” / out of memory">{p.timedOut || 0} / {p.busy || 0} / {p.outOfMemory || 0}</Row>
       </Section>

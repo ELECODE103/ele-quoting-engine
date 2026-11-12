@@ -149,6 +149,10 @@ test("mailer watch: sent, failed and not-configured are counted by template name
   assert.ok(dump.includes("orderConfirmation"));
   assert.ok(!dump.includes("private-marker") && !dump.includes("Secret subject marker"), "no address and no subject is kept");
   assert.strictEqual(m.sent.length, 4, "every message still went to the real send exactly once");
+  // The pause notice marks the moment an account was paused, whether or not the email itself could be sent.
+  m.on = true; m.ok = true;
+  await m.send({ to: "someone@customer.test", subject: "x", template: "accountLocked" });
+  assert.strictEqual(events.snapshot().totals.signinPauseStarted, 1);
   events.reset();
 });
 
@@ -436,6 +440,7 @@ test("digest contents: new orders, every status including ones this code has nev
   for (let i = 0; i < 2; i++) events.record("mailFailed");
   for (let i = 0; i < 9; i++) events.record("mailSent");
   events.record("webhookRejected"); events.record("webhookOk"); events.record("serverError"); events.record("signinPaused"); events.record("signinPaused");
+  events.record("signinPauseStarted");
 
   const m = await withEnv({ FRONTEND_URL: "https://straightedgemfg.com", ...SECRETS, EMAIL_FROM: ADDRESSES.EMAIL_FROM, SE_TEST_HOOKS: undefined }, async () => digest.build(now));
   assert.strictEqual(m.subject, "Straightedge daily digest — Thu, Nov 12, 2026");
@@ -455,7 +460,7 @@ test("digest contents: new orders, every status including ones this code has nev
   assert.ok(/Emails sent \/ failed: 9 \/ 2/.test(t));
   assert.ok(/Stripe webhooks ok \/ bad signature \/ other failure: 1 \/ 1 \/ 0/.test(t));
   assert.ok(/Server errors \(5xx\): 1/.test(t));
-  assert.ok(/refused while an account was paused: 2/.test(t));
+  assert.ok(/Sign-in: accounts paused \/ attempts refused while paused: 1 \/ 2/.test(t));
   assert.ok(/3 new orders · 2 requests waiting · 4 orders needing a look · 4 failures to check\./.test(t), t.split("\n").slice(0, 4).join("\n"));
   assert.ok(t.includes("https://straightedgemfg.com/admin"));
   assert.ok(/start again when the site restarts/.test(t), "says what resets on a restart");
@@ -479,7 +484,7 @@ test("status report: build, uptime, hosts, protections, sizes, counts — and ne
   assert.strictEqual(report.build.branch, "master");
   assert.strictEqual(report.build.node, process.version);
   assert.ok(report.uptimeSeconds >= 0 && typeof report.startedAt === "string");
-  assert.deepStrictEqual(report.hosts, { canonical: "straightedgemfg.com", redirects: ["www.straightedgemfg.com", "nordmfg.com"], noindex: [], hstsAllHosts: false, frontendUrlHost: "straightedgemfg.com", problems: [] });
+  assert.deepStrictEqual(report.hosts, { canonical: "straightedgemfg.com", redirects: ["www.straightedgemfg.com", "nordmfg.com"], noindex: [], hstsAllHosts: false, frontendUrlHost: "straightedgemfg.com", seen: [], problems: [] });
   assert.ok(report.protections.every((p) => typeof p.on === "boolean" && typeof p.label === "string"));
   assert.ok(report.protections.filter((p) => p.critical).every((p) => p.on), JSON.stringify(report.protections.filter((p) => !p.on)));
   assert.ok(report.storage.files.maxBytes === 2048 * MB && report.storage.database.maxBytes === 256 * MB && report.storage.warnPercent === 80);

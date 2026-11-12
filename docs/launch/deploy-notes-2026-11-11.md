@@ -143,6 +143,7 @@ dependency on both.
 | Node 20.20.2 exactly | The sandbox has 20.20.0 and 22.23.4 | Suites run on both of those |
 | Railway behaviour: start-up as root, `chown` of the mounted volume, SIGTERM delivery, draining time | Needs a real deployment | The entrypoint and the shutdown handler are tested locally as root with a root-owned folder; runbook step 5 lists the log lines that prove each on Railway |
 | That the volume is mounted at `/app/data` | Dashboard only | Runbook step 1 |
+| That Railway's edge passes the visitor's `Host` header through unchanged | Needs the live edge. The redirects decide by `Host` (not `X-Forwarded-Host`, which a client can set). The CORS check and the emailed-link host check from the hardening branch rely on the same thing | Admin → System lists the host names requests arrived for; runbook step 12.3 checks it and says what to do if the canonical host is not there |
 | Namecheap: CNAME or ALIAS at `@` | No DNS change was made | Runbook step 12 has the order to try them in |
 | Resend, Stripe, Cloudflare, Railway dashboards as they look today | No account access by design | The runbook names what to look for, not pixel positions |
 | The real Turnstile widget under the page policy | Carried over from the hardening report: the sandbox cannot load Cloudflare's script | Runbook step 8 |

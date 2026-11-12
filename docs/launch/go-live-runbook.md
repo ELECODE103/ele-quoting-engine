@@ -511,7 +511,12 @@ replacement starts.)
 | `https://nordmfg.com/api/health` | `{"status":"ok"…}` — **not** redirected (on purpose) |
 | `https://straightedgemfg.com/sitemap.xml` | 22 addresses, all on `straightedgemfg.com` |
 | the Railway address (`….up.railway.app`) | the site (it is kept working, and marked no-index for search engines) |
+| Admin → System → *Requests have arrived for* (after signing in again, below) | `straightedgemfg.com` is in the list |
 
+*If `nordmfg.com` still shows the site instead of moving you, and that list does not contain
+`straightedgemfg.com`:* Railway is not passing the visitor's host name to the site the way this
+relies on. Remove `CANONICAL_HOST` and `REDIRECT_HOSTS`, Deploy, and tell me — nothing is broken
+without them; the old names simply keep serving the site.
 *If a WARNING line appears under `[hosts]`:* it says which setting it could not use (a typo in a
 host name, or `FRONTEND_URL` not matching). Fix and Deploy.
 *If the browser says "too many redirects":* `CANONICAL_HOST` was set to the `www` name. It must be
