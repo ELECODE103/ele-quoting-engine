@@ -6,6 +6,7 @@
  * the worker was parsing.
  *
  *   node tools/geometry-bench/live-upload.js --base http://localhost:3473 sphere-100k sphere-500k dxf-crossing-5k
+ *   (--first-client N starts the made-up client addresses at N, for a second run against the same server)
  *
  * Starts nothing. Against a local test server only (it sends its own
  * X-Forwarded-For so each file is a different client for the rate limits).
@@ -27,7 +28,7 @@ const STANDARD = {
   const base = String(args.base || "http://localhost:3010").replace(/\/$/, "");
   const materials = await (await fetch(`${base}/api/materials`)).json();
   const rows = [];
-  let client = 0;
+  let client = Number(args["first-client"]) || 0; // --first-client N: start the made-up addresses at N (several runs against one server)
   for (const id of args._) {
     const c = byId(id);
     if (!c) { console.error(`unknown case ${id}`); continue; }
@@ -62,7 +63,7 @@ const STANDARD = {
       try {
         const q = await fetch(`${base}/api/quote`, {
           method: "POST", headers: { "Content-Type": "application/json", "X-Forwarded-For": ip },
-          body: JSON.stringify({ parts: [{ partId: part.partId, materialSlug: cfg.materialSlug, grade: mat && mat.grades && mat.grades[0] && mat.grades[0].name, thicknessMm: cfg.thicknessMm, quantity: 1, process: cfg.process, subProcess: cfg.subProcess }], leadTimeSlug: "standard" }),
+          body: JSON.stringify({ parts: [{ partId: part.partId, editKey: part.editKey, materialSlug: cfg.materialSlug, grade: mat && mat.grades && mat.grades[0] && mat.grades[0].name, thicknessMm: cfg.thicknessMm, quantity: 1, process: cfg.process, subProcess: cfg.subProcess }], leadTimeSlug: "standard" }),
         });
         const qb = await q.json();
         if (q.ok && qb.lineItems) { row.price = qb.lineItems[0].lineTotal; row.checkout = qb.gate ? (qb.gate.requiresRfq ? "RFQ" : "instant") : undefined; }

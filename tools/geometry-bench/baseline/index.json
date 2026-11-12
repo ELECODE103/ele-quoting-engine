@@ -10,41 +10,28 @@
     "sha256": "b2b0a209fd1fda384c8ea3be17213b900efbb7f88be635dd8e593a08f2449211"
    },
    "hash": {
-    "geometry": "d988aabe3d5a711ae29b66ab2eb1784f84ff2111821a2f0e67bd3a67eeefe107",
-    "dfm": "a28983756e159a2915ea30402860910e5b9a0ef9083aa8fe62bc9bcd42662307",
-    "price": "b8a47e2cfd360e66045aa4d3e190044195816105524e8c0d68eb307060b0cbab"
+    "geometry": "439a5663775d4f14c5dcf33ee8a54568131bedddd53960e9c673f19dfa50a05f",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "triangles": 2,
-    "holes": 0,
-    "kind": "prismatic",
-    "recognised": true
+    "status": "refused",
+    "code": "file-damaged",
+    "message": "This file is damaged or incomplete. Re-export it from your CAD program and upload again.",
+    "fullMessage": "This file is damaged or incomplete. Re-export it from your CAD program and upload again."
    },
    "timing": {
-    "wallMs": 9,
-    "cpuMs": 5,
+    "wallMs": 2,
+    "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 74.9,
-    "afterParseMs": 63,
-    "load": 3.8
+    "baseRssMb": 64.9,
+    "afterParseMs": 0,
+    "load": 0.9
    },
-   "stages": {
-    "mesh": 0,
-    "segment": 0,
-    "bvh": 0,
-    "shape": 6,
-    "outline": 0,
-    "features": 1,
-    "thickness": 0,
-    "access": 0,
-    "overhang": 0,
-    "selfIntersect": 0,
-    "total": 7
-   }
+   "stages": null
   },
   "ascii-missing-vertex": {
    "size": "small",
@@ -56,26 +43,26 @@
     "sha256": "5956c29878d2ff15950b1676a9da249036176b8f085734b60e8a160a469fc2c6"
    },
    "hash": {
-    "geometry": "036fc5f8ef0974e54c5fc3e4e111e845d3dc1b728540429cc0c2652ed304cb1e",
+    "geometry": "439a5663775d4f14c5dcf33ee8a54568131bedddd53960e9c673f19dfa50a05f",
     "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
     "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
     "status": "refused",
-    "code": null,
-    "message": "Cannot read properties of undefined (reading '0')",
-    "fullMessage": "Cannot read properties of undefined (reading '0')"
+    "code": "file-damaged",
+    "message": "This file is damaged or incomplete. Re-export it from your CAD program and upload again.",
+    "fullMessage": "This file is damaged or incomplete. Re-export it from your CAD program and upload again."
    },
    "timing": {
     "wallMs": 1,
-    "cpuMs": 1,
+    "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 74.8,
-    "afterParseMs": 1,
-    "load": 3.8
+    "baseRssMb": 64.5,
+    "afterParseMs": 0,
+    "load": 1
    },
    "stages": null
   },
@@ -801,18 +788,29 @@
     "bytes": 9564744,
     "sha256": "89cd3ca7115f42987a32e88c655b57d8993fd1e7a4d330d6adaf7d2845610140"
    },
-   "unfinished": "resource",
-   "note": "Set maximum size exceeded",
+   "hash": {
+    "geometry": "2349e312f5fac140502e08e656b574c8b52c74cfec67105bf8fcfcb047eb9655",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 99,961 contours — more than the instant quote reads (5,000). Perforated panel",
+    "fullMessage": "This DXF has 99,961 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
+   },
    "timing": {
-    "wallMs": 1546473,
-    "cpuMs": 625970,
-    "peakHeapMb": 1534.3,
-    "peakV8HeapMb": 1522.5,
-    "peakRssMb": 1678.1,
-    "baseRssMb": 83.4,
-    "afterParseMs": 0,
-    "load": 9.7
-   }
+    "wallMs": 899,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 397.2,
+    "baseRssMb": 74.2,
+    "afterParseMs": 1,
+    "load": 0.9
+   },
+   "stages": null
   },
   "dxf-crossing-20k": {
    "size": "medium",
@@ -823,18 +821,29 @@
     "bytes": 1912813,
     "sha256": "5352ed277ea7aad1c2f11ddfc4a54379abd5e9fde20211446543271df708fc44"
    },
-   "unfinished": "resource",
-   "note": "Set maximum size exceeded",
+   "hash": {
+    "geometry": "5a4c6ec2deeca0df842ba5b4bc08065df795ddbc59b3ee2bd83c707be639cd63",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 20,000 contours — more than the instant quote reads (5,000). Perforated panel",
+    "fullMessage": "This DXF has 20,000 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
+   },
    "timing": {
-    "wallMs": 492589,
-    "cpuMs": 200823,
-    "peakHeapMb": 714.8,
-    "peakV8HeapMb": 710.2,
-    "peakRssMb": 824.6,
-    "baseRssMb": 76.2,
-    "afterParseMs": 1,
-    "load": 4.6
-   }
+    "wallMs": 311,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 156.9,
+    "baseRssMb": 66.9,
+    "afterParseMs": 0,
+    "load": 0.9
+   },
+   "stages": null
   },
   "dxf-crossing-2k": {
    "size": "small",
@@ -877,17 +886,29 @@
     "bytes": 4782394,
     "sha256": "f71ae79522dd24a5ef1827503a3a6e3b488740c2e2e99df216bdfa7148282282"
    },
-   "unfinished": "resource",
-   "note": "Set maximum size exceeded",
+   "hash": {
+    "geometry": "55b7081f4088a497923e543d3c01adb4dd707ab28ecbc7cb601aa72a10bfeca9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 49,989 contours — more than the instant quote reads (5,000). Perforated panel",
+    "fullMessage": "This DXF has 49,989 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
+   },
    "timing": {
-    "wallMs": 1173369,
-    "cpuMs": 477003,
-    "peakHeapMb": 1286.8,
-    "peakRssMb": 1402.2,
-    "baseRssMb": 79.3,
+    "wallMs": 604,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 211.1,
+    "baseRssMb": 69.3,
     "afterParseMs": 1,
-    "load": 5
-   }
+    "load": 0.9
+   },
+   "stages": null
   },
   "dxf-crossing-5k": {
    "size": "medium",
@@ -1404,8 +1425,33 @@
    "family": "dxf-line-grid",
    "ext": ".dxf",
    "n": 99904,
-   "unfinished": "time",
-   "note": "not finished after 45 minutes"
+   "input": {
+    "bytes": 4098869,
+    "sha256": "66925355bdde35c41899ed6841041b914d5ae4e85f46b5c664cc5b0667f910f2"
+   },
+   "hash": {
+    "geometry": "4dc31cd0a5b38c24616f37f558accd70b83adf304bf9edac85b3c05323f8222c",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 99,900 contours — more than the instant quote reads (5,000). Perforated panel",
+    "fullMessage": "This DXF has 99,900 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
+   },
+   "timing": {
+    "wallMs": 838,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 318.9,
+    "baseRssMb": 69.2,
+    "afterParseMs": 0,
+    "load": 0.9
+   },
+   "stages": null
   },
   "dxf-line-grid-50": {
    "size": "medium",
@@ -1448,25 +1494,26 @@
     "sha256": "dc081276c8c0316a40884f326c639d4e14cd5a7296fd3a95be27bd631acb3b6d"
    },
    "hash": {
-    "geometry": "c9f8bda5174ae4545f3836f54d2fa09746af1f6f814802edb001ae1c009c5974",
-    "dfm": "d5767247f572a01f370de9eb86b17d16dac3fb5a7d969c97bb8e1a7793aa6cd8",
-    "price": "c7523fa281246a90e58f9487f8c444d99beecd99e5d88e641c8988e4b32c6ea6"
+    "geometry": "cfae36d41c837ab99ed827a40225fabc48fd38a9730b15768dd23af92ac913b9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "loops": 3999,
-    "holes": 0,
-    "problems": 8032
+    "status": "refused",
+    "code": "geometry-out-of-range",
+    "message": "This model's size doesn't come out as a real part: it is far larger than anything we make,",
+    "fullMessage": "This model's size doesn't come out as a real part: it is far larger than anything we make, or sits very far from the origin. Check the export units and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 12389,
-    "cpuMs": 3502,
-    "peakHeapMb": 251,
-    "peakRssMb": 351.6,
-    "baseRssMb": 74.9,
-    "afterParseMs": 264,
-    "load": 7.8
+    "wallMs": 166,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 105.1,
+    "baseRssMb": 65.1,
+    "afterParseMs": 0,
+    "load": 0.9
    },
    "stages": null
   },
@@ -1673,17 +1720,29 @@
     "bytes": 3807913,
     "sha256": "470f4f9226d6781bf0d35e52563f4e0fea09c523977fb639c7239b33cf065243"
    },
-   "unfinished": "resource",
-   "note": "Set maximum size exceeded",
+   "hash": {
+    "geometry": "6a46988cea33b5492af3d1211f6b26ad34f0651150a28b91dc8f1e56d63e982b",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 20,001 contours — more than the instant quote reads (5,000). Perforated panel",
+    "fullMessage": "This DXF has 20,001 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
+   },
    "timing": {
-    "wallMs": 43687,
-    "cpuMs": 26272,
-    "peakHeapMb": 1811.3,
-    "peakRssMb": 1947.7,
-    "baseRssMb": 78.4,
-    "afterParseMs": 1,
-    "load": 2.1
-   }
+    "wallMs": 3818,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 891.8,
+    "baseRssMb": 68.5,
+    "afterParseMs": 0,
+    "load": 0.9
+   },
+   "stages": null
   },
   "dxf-mixed-cutouts-4k": {
    "size": "medium",
@@ -2110,18 +2169,29 @@
     "bytes": 3322307,
     "sha256": "65212410d43a6eeee42847bcd51a80143e70dd6ebbecbfc75af728219ed598b9"
    },
-   "unfinished": "resource",
-   "note": "Set maximum size exceeded",
+   "hash": {
+    "geometry": "36ecdc1af394e73fc0b144682195885ee382d83ae6689a2fbb6522cd10fa1621",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 100,000 contours — more than the instant quote reads (5,000). Perforated pane",
+    "fullMessage": "This DXF has 100,000 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
+   },
    "timing": {
-    "wallMs": 29476,
-    "cpuMs": 16116,
-    "peakHeapMb": 1512.7,
-    "peakV8HeapMb": 1506.8,
-    "peakRssMb": 1646.1,
-    "baseRssMb": 77.7,
-    "afterParseMs": 1,
-    "load": 6.4
-   }
+    "wallMs": 641,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 269.5,
+    "baseRssMb": 68,
+    "afterParseMs": 0,
+    "load": 0.9
+   },
+   "stages": null
   },
   "dxf-perforated-1k": {
    "size": "small",
@@ -2669,18 +2739,29 @@
     "bytes": 16972,
     "sha256": "887c76275d63a86391f3e8a054af14bff78c47e01ad5248914616b6c3921bcca"
    },
-   "unfinished": "resource",
-   "note": "Set maximum size exceeded",
+   "hash": {
+    "geometry": "cfae36d41c837ab99ed827a40225fabc48fd38a9730b15768dd23af92ac913b9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": "geometry-out-of-range",
+    "message": "This model's size doesn't come out as a real part: it is far larger than anything we make,",
+    "fullMessage": "This model's size doesn't come out as a real part: it is far larger than anything we make, or sits very far from the origin. Check the export units and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
+   },
    "timing": {
-    "wallMs": 42506,
-    "cpuMs": 13357,
-    "peakHeapMb": 724.1,
-    "peakV8HeapMb": 721.4,
-    "peakRssMb": 807.8,
-    "baseRssMb": 72.9,
-    "afterParseMs": 1,
-    "load": 6.3
-   }
+    "wallMs": 80,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 89.8,
+    "baseRssMb": 65.2,
+    "afterParseMs": 0,
+    "load": 0.9
+   },
+   "stages": null
   },
   "dxf-two-kilometres-crossing": {
    "size": "small",
@@ -2692,26 +2773,26 @@
     "sha256": "64d4edb17761f14952cd3f9825df402eed19eab86478b92bff64768816583816"
    },
    "hash": {
-    "geometry": "9a44becef180e59130871c48144edaf6145d43e1a5838bb72144c1c361aeac33",
-    "dfm": "be47a6d07de4260dc5a3a3e6916e668a0d615a04aa540d4844def35f4d0e1ee1",
-    "price": "1a10c2dcadf7e8571d605dddf8cfd18837a6dfe0da03414c037eb91694ad1012"
+    "geometry": "cfae36d41c837ab99ed827a40225fabc48fd38a9730b15768dd23af92ac913b9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "loops": 300,
-    "holes": 0,
-    "problems": 459
+    "status": "refused",
+    "code": "geometry-out-of-range",
+    "message": "This model's size doesn't come out as a real part: it is far larger than anything we make,",
+    "fullMessage": "This model's size doesn't come out as a real part: it is far larger than anything we make, or sits very far from the origin. Check the export units and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 116,
-    "cpuMs": 62,
-    "peakHeapMb": 16.7,
-    "peakV8HeapMb": 13.9,
-    "peakRssMb": 83,
-    "baseRssMb": 74.1,
-    "afterParseMs": 207,
-    "load": 6.5
+    "wallMs": 21,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 67.1,
+    "baseRssMb": 64,
+    "afterParseMs": 1,
+    "load": 0.9
    },
    "stages": null
   },
@@ -4411,40 +4492,28 @@
     "sha256": "820b0e6ea2386580db747bb92e5e11c8ba33f771c39cca4d4ada74684d61790c"
    },
    "hash": {
-    "geometry": "c3a49c83dac60ca407c4ee887ba3cf2c623507971d24c59eef1708c077e85ada",
-    "dfm": "318fa170413ed4877a8e2990f217948a3d408fa6d0a379115a3b3ea798c0ea9e",
-    "price": "ca4f293ac43b87895a6c5117265fdf6096d65ac9b296b76305cb3058f81a570d"
+    "geometry": "bb20424b215850d68b5dc3cc9e46cb0cad5e9b340c4a24a5de764893de8d80f6",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "triangles": 4,
-    "holes": 0,
-    "kind": "flat",
-    "recognised": true
+    "status": "refused",
+    "code": "geometry-not-measurable",
+    "message": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no",
+    "fullMessage": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 7,
-    "cpuMs": 4,
+    "wallMs": 6,
+    "cpuMs": null,
     "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 74.3,
-    "afterParseMs": 146,
-    "load": 7.2
+    "baseRssMb": 64.7,
+    "afterParseMs": 0,
+    "load": 1
    },
-   "stages": {
-    "mesh": 0,
-    "segment": 0,
-    "bvh": 0,
-    "shape": 5,
-    "outline": 0,
-    "features": 1,
-    "thickness": 0,
-    "access": 0,
-    "overhang": 0,
-    "selfIntersect": 0,
-    "total": 6
-   }
+   "stages": null
   },
   "hexprism": {
    "size": "small",
@@ -4501,40 +4570,28 @@
     "sha256": "aa11ceedcad227bb1350abc5dc7660cc88a3f12b28d9772305468a9f66ca596a"
    },
    "hash": {
-    "geometry": "c2336b1c3c3902be279cd00cc3be85279c7bf87208303849aecb126ff1baa184",
-    "dfm": "3c4fd50d08c59f6ae25db345e8c01d8d7914c8f4180504b8d57e14cd1cbdb7ce",
-    "price": "89977707a0aef8dee2fdcf5b9c319eea50cc8f7188952a739a53fec912eb2afa"
+    "geometry": "ff8483b217feb00e9dd2ea03de375704699df42acba097ff0891219e74b0ab4a",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "triangles": 99456,
-    "holes": 0,
-    "kind": "revolved",
-    "recognised": true
+    "status": "refused",
+    "code": "nested-shells",
+    "message": "This model has one closed shape inside another (a sealed hollow, or a part inside a part).",
+    "fullMessage": "This model has one closed shape inside another (a sealed hollow, or a part inside a part). The instant quote can't price that reliably, so we quote these by hand: email the file to quotes@straightedgemfg.com and we'll come back with a price."
    },
    "timing": {
-    "wallMs": 29052,
-    "cpuMs": 26438,
-    "peakHeapMb": 215.4,
-    "peakRssMb": 308.7,
-    "baseRssMb": 79.6,
-    "afterParseMs": 66,
-    "load": 5.2
+    "wallMs": 53,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 89.4,
+    "baseRssMb": 69.6,
+    "afterParseMs": 1,
+    "load": 1
    },
-   "stages": {
-    "mesh": 228,
-    "segment": 27341,
-    "bvh": 120,
-    "shape": 204,
-    "outline": 92,
-    "features": 45,
-    "thickness": 142,
-    "access": 373,
-    "overhang": 20,
-    "selfIntersect": 219,
-    "total": 28786
-   }
+   "stages": null
   },
   "hollow-sphere-10k": {
    "size": "small",
@@ -4546,40 +4603,28 @@
     "sha256": "558dddb7c87d3987cfcd147c598033d779f69ca7e3e41c6fe83105dc0c63e196"
    },
    "hash": {
-    "geometry": "3097ca5508f9d135861f1188059c3df4ab989308bc29cb5ffa0281aa5e8f39d5",
-    "dfm": "8eaa3155eec7371d942d1e2dbb6d60b29d9254c686f716dc05c86e6135062535",
-    "price": "5227bd366873cb81792b06ecbf37caf0ba59d81e778d9979a95e40b54bf6ff75"
+    "geometry": "ff8483b217feb00e9dd2ea03de375704699df42acba097ff0891219e74b0ab4a",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "triangles": 9520,
-    "holes": 0,
-    "kind": "revolved",
-    "recognised": true
+    "status": "refused",
+    "code": "nested-shells",
+    "message": "This model has one closed shape inside another (a sealed hollow, or a part inside a part).",
+    "fullMessage": "This model has one closed shape inside another (a sealed hollow, or a part inside a part). The instant quote can't price that reliably, so we quote these by hand: email the file to quotes@straightedgemfg.com and we'll come back with a price."
    },
    "timing": {
-    "wallMs": 2151,
-    "cpuMs": 455,
-    "peakHeapMb": 51.6,
-    "peakRssMb": 145.6,
-    "baseRssMb": 75.7,
-    "afterParseMs": 196,
-    "load": 8
+    "wallMs": 24,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 71.6,
+    "baseRssMb": 65.3,
+    "afterParseMs": 0,
+    "load": 1
    },
-   "stages": {
-    "mesh": 48,
-    "segment": 664,
-    "bvh": 91,
-    "shape": 177,
-    "outline": 115,
-    "features": 0,
-    "thickness": 133,
-    "access": 416,
-    "overhang": 41,
-    "selfIntersect": 147,
-    "total": 1832
-   }
+   "stages": null
   },
   "icosphere-1k": {
    "size": "small",
@@ -7104,40 +7149,28 @@
     "sha256": "65ce138ec1e2b27df6423fd59fc3d3f6d28b82d244d6d394e713eab5a3540186"
    },
    "hash": {
-    "geometry": "1222c7e9b4bb2bc45d143e6610988c7fd0cb98d2c87d78713a6643d3811dfcf3",
-    "dfm": "2912d618abef7df2d852b5e496f6328de33f40d55c5af5450dfbe572e202a28f",
-    "price": "d6c29ed3e2abde244cb66b23c9cda2eb4af4ad13f51425afb7de31255ab3bdfc"
+    "geometry": "bb20424b215850d68b5dc3cc9e46cb0cad5e9b340c4a24a5de764893de8d80f6",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "triangles": 1,
-    "holes": 0,
-    "kind": "flat",
-    "recognised": true
+    "status": "refused",
+    "code": "geometry-not-measurable",
+    "message": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no",
+    "fullMessage": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 8,
-    "cpuMs": 3,
+    "wallMs": 3,
+    "cpuMs": null,
     "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 74.8,
-    "afterParseMs": 101,
-    "load": 7.2
+    "baseRssMb": 64.8,
+    "afterParseMs": 1,
+    "load": 1
    },
-   "stages": {
-    "mesh": 0,
-    "segment": 0,
-    "bvh": 0,
-    "shape": 2,
-    "outline": 0,
-    "features": 0,
-    "thickness": 0,
-    "access": 0,
-    "overhang": 0,
-    "selfIntersect": 0,
-    "total": 2
-   }
+   "stages": null
   },
   "soup-100k": {
    "size": "medium",
@@ -7321,6 +7354,14 @@
     "total": 30188
    }
   },
+  "soup-wide-100k": {
+   "size": "medium",
+   "family": "soup-wide",
+   "ext": ".stl",
+   "n": 100000,
+   "unfinished": "resource",
+   "note": "stopped by the machine (SIGKILL) — out of memory at 4.8 GB resident, heap limit lifted to 4096 MB"
+  },
   "soup-wide-10k": {
    "size": "small",
    "family": "soup-wide",
@@ -7331,40 +7372,28 @@
     "sha256": "17a11bdae5bd412dba74ce18b6edf75f12071e038d5c4cda65a8c75b8539052d"
    },
    "hash": {
-    "geometry": "3dc526121a31a287d6d3df9c7a0f8e5058c59afb768ffb6ad51b47940114ec74",
-    "dfm": "544588b10370b8243f399703843b6336720a7c3b0868bee89f371c400d1b076d",
-    "price": "14b9dfdebc12bac22768ca90d62bab10e18e468eeaaf9a3611a742e51e5bacb9"
+    "geometry": "bb20424b215850d68b5dc3cc9e46cb0cad5e9b340c4a24a5de764893de8d80f6",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "triangles": 10000,
-    "holes": 0,
-    "kind": "prismatic",
-    "recognised": true
+    "status": "refused",
+    "code": "geometry-not-measurable",
+    "message": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no",
+    "fullMessage": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 25005,
-    "cpuMs": 18836,
-    "peakHeapMb": 180.5,
-    "peakRssMb": 310.9,
-    "baseRssMb": 75.2,
-    "afterParseMs": 78,
-    "load": 1.7
+    "wallMs": 4550,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 117.1,
+    "baseRssMb": 65.4,
+    "afterParseMs": 1,
+    "load": 1
    },
-   "stages": {
-    "mesh": 36,
-    "segment": 54,
-    "bvh": 53,
-    "shape": 191,
-    "outline": 587,
-    "features": 23,
-    "thickness": 4256,
-    "access": 19113,
-    "overhang": 589,
-    "selfIntersect": 2,
-    "total": 24913
-   }
+   "stages": null
   },
   "soup-wide-1k": {
    "size": "small",
@@ -7410,6 +7439,14 @@
     "selfIntersect": 1,
     "total": 341
    }
+  },
+  "soup-wide-500k": {
+   "size": "large",
+   "family": "soup-wide",
+   "ext": ".stl",
+   "n": 500000,
+   "unfinished": "resource",
+   "note": "stopped by the machine (SIGKILL) — out of memory at 4.7 GB resident, heap limit lifted to 4096 MB"
   },
   "sphere-100k": {
    "size": "medium",
@@ -7917,41 +7954,28 @@
     "sha256": "779a0571b77c4752bf7898c5731c65998e18afa82a6f5d0f6576e5da1b4c9891"
    },
    "hash": {
-    "geometry": "f61816ba8f1333918dc0d9c4132b79fa0c73b75adff73a0de7e56e3c9f224f87",
-    "dfm": "5140554cd4d0812b6f7c1dc64f6a6c3944f1d5570a1fa76006891636763bb157",
-    "price": "71877dc8fda8efa957565d2c5d06f6364c555f91e51d823b02df828ce86941c1"
+    "geometry": "cfae36d41c837ab99ed827a40225fabc48fd38a9730b15768dd23af92ac913b9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "triangles": 736,
-    "holes": 0,
-    "kind": "flat",
-    "recognised": true
+    "status": "refused",
+    "code": "geometry-out-of-range",
+    "message": "This model's size doesn't come out as a real part: it is far larger than anything we make,",
+    "fullMessage": "This model's size doesn't come out as a real part: it is far larger than anything we make, or sits very far from the origin. Check the export units and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 243,
-    "cpuMs": 68,
-    "peakHeapMb": 14.8,
-    "peakV8HeapMb": 11.3,
-    "peakRssMb": 85.8,
-    "baseRssMb": 74.6,
-    "afterParseMs": 168,
-    "load": 3.8
+    "wallMs": 1,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 64.8,
+    "afterParseMs": 1,
+    "load": 0.9
    },
-   "stages": {
-    "mesh": 8,
-    "segment": 10,
-    "bvh": 13,
-    "shape": 44,
-    "outline": 9,
-    "features": 8,
-    "thickness": 31,
-    "access": 21,
-    "overhang": 0,
-    "selfIntersect": 75,
-    "total": 220
-   }
+   "stages": null
   },
   "stl-kilometre": {
    "size": "small",
@@ -7963,41 +7987,28 @@
     "sha256": "1d248e234eeb6c1b48483b9426b92bda267fe0d9c29a73171387b6947bd3ed03"
    },
    "hash": {
-    "geometry": "a036e97f82eddb2459888e09919d26139f30e7ef931553cfb561af64cbfe4518",
-    "dfm": "b80316c8f2a5e53931515b447a267d3273a67701c27c7ae1b7bb8901f4fbc778",
-    "price": "120fe4eeeb7115b4c3839d09d83f830903046c32b375c1229043196bb3363a16"
+    "geometry": "cfae36d41c837ab99ed827a40225fabc48fd38a9730b15768dd23af92ac913b9",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "triangles": 960,
-    "holes": 0,
-    "kind": "revolved",
-    "recognised": true
+    "status": "refused",
+    "code": "geometry-out-of-range",
+    "message": "This model's size doesn't come out as a real part: it is far larger than anything we make,",
+    "fullMessage": "This model's size doesn't come out as a real part: it is far larger than anything we make, or sits very far from the origin. Check the export units and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 246,
-    "cpuMs": 71,
-    "peakHeapMb": 15.8,
-    "peakV8HeapMb": 11.5,
-    "peakRssMb": 86.1,
-    "baseRssMb": 74.9,
-    "afterParseMs": 227,
-    "load": 3.9
+    "wallMs": 3,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 64.8,
+    "afterParseMs": 1,
+    "load": 0.9
    },
-   "stages": {
-    "mesh": 14,
-    "segment": 43,
-    "bvh": 9,
-    "shape": 44,
-    "outline": 5,
-    "features": 0,
-    "thickness": 34,
-    "access": 18,
-    "overhang": 1,
-    "selfIntersect": 55,
-    "total": 223
-   }
+   "stages": null
   },
   "stl-microscopic": {
    "size": "small",
@@ -8009,41 +8020,28 @@
     "sha256": "375ecffe2b24e6ed357215f47db24b89d872a6afd295cce1d26409f053e64b87"
    },
    "hash": {
-    "geometry": "5d8354268b9111b7e3c73d4a9fd09dc00dcb48ba6199879116790cde35b114b5",
-    "dfm": "4048dceb0a3332e05ee7eb4f8852d480579e94e9648003dc852ca9580d81ff05",
-    "price": "271c193527b7da22c262d9a3edb5c6c585ba93682992d1aa6c5daf70b66e0b38"
+    "geometry": "b16f60658b54579384fb4d2312052e0949395454200f59ad65cdd0a80cc07b27",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "triangles": 736,
-    "holes": 1,
-    "kind": "flat",
-    "recognised": true
+    "status": "refused",
+    "code": "geometry-too-small",
+    "message": "This model comes out smaller than anything we can hold or measure. Check the export units ",
+    "fullMessage": "This model comes out smaller than anything we can hold or measure. Check the export units (millimetres or inches) and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 252,
-    "cpuMs": 71,
-    "peakHeapMb": 17.1,
-    "peakV8HeapMb": 12.5,
-    "peakRssMb": 86.8,
-    "baseRssMb": 74.8,
-    "afterParseMs": 281,
-    "load": 3.9
+    "wallMs": 73,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 74.7,
+    "baseRssMb": 65.1,
+    "afterParseMs": 0,
+    "load": 0.9
    },
-   "stages": {
-    "mesh": 7,
-    "segment": 20,
-    "bvh": 10,
-    "shape": 47,
-    "outline": 12,
-    "features": 8,
-    "thickness": 35,
-    "access": 20,
-    "overhang": 0,
-    "selfIntersect": 73,
-    "total": 233
-   }
+   "stages": null
   },
   "stl-nan-vertex": {
    "size": "small",
@@ -8055,41 +8053,28 @@
     "sha256": "37365e402159d5133813793cc8fd7989a16e141f76d006edbeffbe25e7fe20ed"
    },
    "hash": {
-    "geometry": "9de8d9520e5c07bdb3802ebfb36b279f0a3e72c231d0fb456b27867a868e9b6c",
-    "dfm": "f68e3363ddf55a2a686e884c89ec5d8ec9d8c93df85deca57a5a82452008860c",
-    "price": "8aaa626e6cdebecd3afda7c3bac7cd564a2040c50ed07b88d5555cd2026f75da"
+    "geometry": "bb20424b215850d68b5dc3cc9e46cb0cad5e9b340c4a24a5de764893de8d80f6",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "triangles": 960,
-    "holes": 0,
-    "kind": "freeform",
-    "recognised": true
+    "status": "refused",
+    "code": "geometry-not-measurable",
+    "message": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no",
+    "fullMessage": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 121,
-    "cpuMs": 55,
-    "peakHeapMb": 16.9,
-    "peakV8HeapMb": 12.6,
-    "peakRssMb": 84.4,
-    "baseRssMb": 75.3,
-    "afterParseMs": 184,
-    "load": 3.8
+    "wallMs": 0,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 0,
+    "baseRssMb": 65,
+    "afterParseMs": 1,
+    "load": 0.9
    },
-   "stages": {
-    "mesh": 3,
-    "segment": 5,
-    "bvh": 5,
-    "shape": 17,
-    "outline": 1,
-    "features": 5,
-    "thickness": 6,
-    "access": 12,
-    "overhang": 0,
-    "selfIntersect": 54,
-    "total": 108
-   }
+   "stages": null
   },
   "textplate-100k": {
    "size": "medium",
@@ -8786,56 +8771,28 @@
     "sha256": "a8cc9b09fa2f1f184beedcfe81b86f6760ef278c583f9deab4ea6fda23e60a7c"
    },
    "hash": {
-    "geometry": "7bfe1334e6bef8ebd4d9ad0ed5477b5d9909c41d5e7db263ffb0537a43fe5523",
-    "dfm": "15468d579ad85aeb9707a9c01d61939bfeab46549edf068f42a41ec9137cee42",
-    "price": "cff7730e33acc800e80536f288e0f60cad3307225e56498e5ade4fcbba0f4912"
+    "geometry": "bb20424b215850d68b5dc3cc9e46cb0cad5e9b340c4a24a5de764893de8d80f6",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
    },
    "snapshot": true,
    "summary": {
-    "status": "ok",
-    "triangles": 2,
-    "holes": 0,
-    "kind": "freeform",
-    "recognised": true
+    "status": "refused",
+    "code": "geometry-not-measurable",
+    "message": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no",
+    "fullMessage": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
     "wallMs": 2,
-    "cpuMs": 2,
+    "cpuMs": null,
     "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 74.6,
-    "afterParseMs": 94,
-    "load": 7.2
+    "baseRssMb": 64.6,
+    "afterParseMs": 0,
+    "load": 1
    },
-   "stages": {
-    "mesh": 0,
-    "segment": 0,
-    "bvh": 0,
-    "shape": 1,
-    "outline": 0,
-    "features": 0,
-    "thickness": 0,
-    "access": 0,
-    "overhang": 0,
-    "selfIntersect": 0,
-    "total": 1
-   }
-  },
-  "soup-wide-100k": {
-   "size": "medium",
-   "family": "soup-wide",
-   "ext": ".stl",
-   "n": 100000,
-   "unfinished": "resource",
-   "note": "stopped by the machine (SIGKILL) — out of memory at 4.8 GB resident, heap limit lifted to 4096 MB"
-  },
-  "soup-wide-500k": {
-   "size": "large",
-   "family": "soup-wide",
-   "ext": ".stl",
-   "n": 500000,
-   "unfinished": "resource",
-   "note": "stopped by the machine (SIGKILL) — out of memory at 4.7 GB resident, heap limit lifted to 4096 MB"
+   "stages": null
   }
  },
  "node": "v22.23.4",
