@@ -76,7 +76,13 @@ const { dxfPlate } = require("./fixtures");
       const cfg = order.items[0].config || {};
       r.note(`  checkout ${co3.status}; order line stores thickness ${cfg.thicknessMm} mm and grade "${cfg.grade}"`);
       r.finding(co3.status === 200 && cfg.thicknessMm === 0.01, "a stock thickness the material is not sold in is priced and ordered");
-      r.finding(co3.status === 200 && /PEEK/.test(cfg.grade || ""), "free text sent as the grade is stored on the order line (priced as the first listed grade)");
+      const { pdfText } = require(path.join(ROOT, "server", "testSupport", "pdfText.js"));
+      const printed = [];
+      for (const doc of ["packing-slip", "coc"]) {
+        const res = await h.s.req({ url: `/api/pdf/${doc}/${co3.body.orderId}`, token: admin });
+        if (res.status === 200 && /PEEK natural/.test(pdfText(res.buffer))) printed.push(doc);
+      }
+      r.finding(co3.status === 200 && /PEEK/.test(cfg.grade || ""), `free text sent as the grade is stored on the order line (priced as the first listed grade) and printed on: ${printed.join(", ") || "no document"}`);
     } else {
       r.finding(false, "thickness outside the material's list is refused");
     }

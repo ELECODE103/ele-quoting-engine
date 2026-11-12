@@ -107,6 +107,25 @@ const { start, report, money, SHIP, ROOT, nextIp } = require("./lib");
     if (fo.length > 1) r.note(`  both orders have their own open Stripe session for ${money(fo[0].total)}; the quote record points at only one of them`);
     r.finding(fo.length > 1 || go.length > 1, "F-11: two accepts sent at the same moment both succeed: one quote, two orders (the check and the status change are separated by the call to Stripe)");
 
+    // ── control: the same race on the instant path ──
+    const racer = await h.register("fq-race@example.test");
+    const cube = await h.upload("cube_20mm.stl");
+    const cfg = (quantity) => ({ partId: cube.partId, process: "cnc", materialSlug: "cnc-aluminum-6061", quantity });
+    const iq = await h.post("/api/quote", { parts: [cfg(1)], leadTimeSlug: "standard" }, racer);
+    const [c1, c2] = await Promise.all([h.post("/api/orders/checkout-session", { quoteId: iq.body.quoteId, ...SHIP }, racer), h.post("/api/orders/checkout-session", { quoteId: iq.body.quoteId, ...SHIP }, racer)]);
+    r.finding(c1.body.orderId !== c2.body.orderId, `two checkout requests at once for one instant quote make two orders (${c1.status}, ${c2.status}; same order: ${c1.body.orderId === c2.body.orderId})`);
+    // Re-pricing the quote in place while its checkout request is waiting on Stripe.
+    const iq2 = await h.post("/api/quote", { parts: [cfg(1)], leadTimeSlug: "standard" }, racer);
+    const flying = h.post("/api/orders/checkout-session", { quoteId: iq2.body.quoteId, ...SHIP }, racer);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await h.post("/api/quote", { quoteId: iq2.body.quoteId, parts: [cfg(90)], leadTimeSlug: "standard" }, racer);
+    const landed = await flying;
+    const ls = h.lastSession();
+    const lo = (await h.get(`/api/orders/${landed.body.orderId}`, racer)).body;
+    const lq = (await h.get(`/api/quote/${iq2.body.quoteId}`, racer)).body;
+    r.note(`quote re-priced to 90 pcs while its 1-piece checkout was in flight: order ${lo.items[0].quantity} pc, ${money(lo.total)}, Stripe ${money(ls.amount_total / 100)}; the quote row now reads ${lq.lineItems[0].quantity} pcs, ${money(lq.orderTotal)}, status "${lq.status}"`);
+    r.finding(Math.abs(lo.total - ls.amount_total / 100) > 0.005 || lo.items[0].quantity !== 1, "re-pricing a quote during its checkout makes the order and the charge disagree");
+
     // ── amount paid vs amount quoted ──
     const k = await quoted(1234.567);
     const ka = await accept(k.token, { method: "card", total: 1, quotedTotal: 1, amount: 100 });
