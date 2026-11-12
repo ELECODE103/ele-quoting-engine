@@ -49,10 +49,10 @@
   "action": ""
  },
  {
-  "name": "account-locked",
-  "subject": "Straightedge: sign-in paused on your account",
-  "preheader": "Too many wrong passwords, so sign-in is paused for 15 minutes. Nobody got in.",
-  "words": 151,
+  "name": "account-sign-in-attempts",
+  "subject": "Straightedge: wrong passwords tried on your account",
+  "preheader": "Someone tried several wrong passwords. Nobody got in.",
+  "words": 146,
   "action": "Choose a new password"
  },
  {
