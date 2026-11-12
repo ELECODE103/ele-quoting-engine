@@ -7,11 +7,17 @@ const { ready: dbReady } = require("./models/database");
 const { seedDatabase } = require("./config/seed");
 
 // ─── Environment Variable Validation ────────────────────────────
-const REQUIRED_ENV_PROD = ["JWT_SECRET", "STRIPE_SECRET_KEY"];
+// STRIPE_WEBHOOK_SECRET is required: without it every Stripe event is refused, so a buyer who
+// pays and closes the tab stays "awaiting payment" and the shop is never told (review F-18).
+const REQUIRED_ENV_PROD = ["JWT_SECRET", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"];
 if (process.env.NODE_ENV === "production") {
-  const missing = REQUIRED_ENV_PROD.filter((key) => !process.env[key]);
+  // Names only: the value of a variable is never printed.
+  const missing = REQUIRED_ENV_PROD.filter((key) => !String(process.env[key] || "").trim());
   if (missing.length > 0) {
     console.error(`FATAL: Missing required environment variables: ${missing.join(", ")}`);
+    if (missing.includes("STRIPE_WEBHOOK_SECRET")) {
+      console.error("FATAL: STRIPE_WEBHOOK_SECRET is not set, so the server will not start. Without it Stripe cannot tell this site that a customer has paid: orders would stay \"awaiting payment\" and the shop would get no order email. In the Stripe dashboard open Developers > Webhooks, add an endpoint for https://<your site>/api/stripe/webhook, copy its signing secret (it starts with whsec_) and set it as STRIPE_WEBHOOK_SECRET in the host's variables.");
+    }
     process.exit(1);
   }
 }
@@ -213,14 +219,25 @@ async function start() {
     if (rowTimer.unref) rowTimer.unref();
   }
 
+  // Unpaid orders whose checkout session has lapsed are closed out as expired (and one that was
+  // paid without our hearing of it is settled). At startup and every ten minutes.
+  require("./services/orderLifecycle").startSweep();
+
   // Say at startup what is switched off, so a missing setting is found in the
   // deploy log and not by a customer.
   if (process.env.NODE_ENV === "production") {
     const mailer = require("./services/mailer");
     require("./security").startupWarnings(); // bot check and email verification: what is off, by name
     for (const line of require("./security/testHooks").startupWarnings()) console.warn(line);
-    if (!mailer.configured()) console.warn("WARNING: EMAIL_API_KEY / EMAIL_FROM not set — no email is sent: RFQ notices, firm quotes, order confirmations and shipping notices are only logged.");
-    if (!process.env.STRIPE_WEBHOOK_SECRET) console.warn("WARNING: STRIPE_WEBHOOK_SECRET not set — Stripe webhooks are refused; orders are marked paid only when the buyer returns to the order page.");
+    if (!mailer.configured()) {
+      console.warn("WARNING: EMAIL_API_KEY / EMAIL_FROM not set — no email is sent: RFQ notices, firm quotes, order confirmations and shipping notices are only logged.");
+      console.warn("WARNING: THE SHOP WILL RECEIVE NO ORDER EMAILS. New paid orders, purchase-order orders, payments that need attention, refunds and disputes will appear only in admin until EMAIL_API_KEY and EMAIL_FROM are set.");
+    }
+    if (!/^whsec_/.test(String(process.env.STRIPE_WEBHOOK_SECRET || ""))) console.warn("WARNING: STRIPE_WEBHOOK_SECRET does not look like a Stripe signing secret (those start with whsec_). If it is not the secret of this site's webhook endpoint, every Stripe event will be refused and orders will not be marked paid.");
+    {
+      const pay = require("./services/orderLifecycle").paymentSettings();
+      console.log(`Payments: card checkout sessions stay open ${pay.sessionMinutes} minutes; promotion codes at checkout are ${pay.promotionCodes ? "ON (STRIPE_PROMOTION_CODES)" : "off"}.`);
+    }
     if (!process.env.ADMIN_EMAIL) console.warn("WARNING: ADMIN_EMAIL not set — no account will be given the admin role.");
     if (!process.env.FRONTEND_URL) console.warn("WARNING: FRONTEND_URL not set — links in emails use the request's host only when it is one of ours, otherwise the brand URL. Set FRONTEND_URL=https://straightedgemfg.com.");
     if (!process.env.NORD_FILE_ENC_KEY) {
