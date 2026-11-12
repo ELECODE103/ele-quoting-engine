@@ -377,7 +377,7 @@ function detectPockets(mesh, patches, patchOf, adjacency, holePatchIds, cylinder
 
 /** True when ≥ 80% of sampled rays from the patch along its normal leave the part. */
 function openAbove(mesh, f, bvh) {
-  const { raycast } = require("./bvh");
+  const { occluded } = require("./bvh");
   const n = f.normal;
   const eps = 1e-6 * mesh.diag;
   const step = Math.max(1, Math.floor(f.tris.length / 24));
@@ -385,9 +385,8 @@ function openAbove(mesh, f, bvh) {
   for (let i = 0; i < f.tris.length; i += step) {
     const t = f.tris[i];
     const ox = mesh.centroid[t * 3] + n[0] * eps, oy = mesh.centroid[t * 3 + 1] + n[1] * eps, oz = mesh.centroid[t * 3 + 2] + n[2] * eps;
-    const h = raycast(bvh, ox, oy, oz, n[0], n[1], n[2], eps, Infinity, t);
     count++;
-    if (!h) free++;
+    if (!occluded(bvh, ox, oy, oz, n[0], n[1], n[2], eps, t)) free++;
   }
   return count > 0 && free / count >= 0.8;
 }
@@ -448,14 +447,14 @@ function detectSlots(profile, partialCylinders, shape, thickness, bvh) {
     if (c.length < 2 * c.radius) continue; // a notch or a slot end, not a channel
     // the open side of the channel must face free space
     if (bvh) {
-      const { raycast } = require("./bvh");
+      const { occluded } = require("./bvh");
       const [u, w] = v.basis(c.axis);
       // covered arc runs CCW from arcStart to arcEnd; the gap runs CCW from arcEnd to arcStart
       const gap = ((c.arcStart - c.arcEnd) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
       const mid = c.arcEnd + gap / 2; // bisector of the open side
       const d = v.add(v.scale(u, Math.cos(mid)), v.scale(w, Math.sin(mid)));
       const o = c.center;
-      if (raycast(bvh, o[0], o[1], o[2], d[0], d[1], d[2], 1e-6, Infinity)) continue;
+      if (occluded(bvh, o[0], o[1], o[2], d[0], d[1], d[2], 1e-6)) continue;
     }
     const a = v.canon(c.axis);
     const through = shape.extents ? c.length >= 0.95 * shape.extents(a) : false;

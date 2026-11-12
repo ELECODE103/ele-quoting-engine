@@ -20,7 +20,7 @@ const DEG = Math.PI / 180;
  * @returns {object} fit description with kind: "cylinder"|"cone"|"unknown"
  */
 function fitCurved(s) {
-  const { normals, points, weights, vertices } = s;
+  const { normals, points, weights } = s; // s.vertices and s.pairs may be computed on demand: read them only where they are used
   const n = normals.length;
   if (n < 2) return { kind: "unknown" };
   let W = 0;
@@ -66,6 +66,7 @@ function fitCurved(s) {
   for (let i = 0; i < n; i++) cAx += weights[i] * v.dot(normals[i], axis);
   cAx /= W;
   const [u, w] = v.basis(axis);
+  const vertices = s.vertices;
   const pts = vertices && vertices.length >= 3 ? vertices : points;
 
   if (Math.abs(cAx) < Math.sin(3 * DEG)) {

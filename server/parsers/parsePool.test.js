@@ -180,6 +180,20 @@ test("timeout against a small file that is slow to read: a 480 kB DXF is stopped
   }
 });
 
+// (geometry speed-up, merged at the second integration pass) The drawing that used to BE the slow file, read for real:
+// the case above makes its slowness with the test delay, this one holds that the reader is now fast. The bound is on
+// the clock with a wide margin (it reads in about 0.15 s of CPU; the parse limit itself is on CPU time).
+test("5,000 crossing lines (a 480 kB DXF that used to take tens of seconds) are read well inside the time limit", async () => {
+  const pool = make({ parseConcurrency: 1, parseTimeoutMs: 10000 });
+  const dxf = write("crossing-fast.dxf", crossingLinesDxf(5000));
+  const t0 = Date.now();
+  const parsed = await pool.run({ filePath: dxf });
+  const took = Date.now() - t0;
+  assert.strictEqual(parsed.geometry.profile2d.openCount, 5000, "every line is reported as an open contour");
+  assert.ok(parsed.geometry.profile2d.problems.some((p) => p.code === "crossing"), "crossings are reported");
+  assert.ok(took < 8000, `read in ${took} ms`);
+});
+
 test("memory ceiling: a worker that outgrows its heap limit is stopped; the server process is untouched", async () => {
   const pool = make({ parseConcurrency: 1, parseMaxHeapMb: 24, parseTimeoutMs: 60000 });
   const stl = write("big.stl", binaryStl(400000)); // 20 MB of triangles → several hundred MB of arrays
