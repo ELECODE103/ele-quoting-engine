@@ -135,6 +135,10 @@ const SHIP = { shippingName: "A", shippingAddress: "1 A St", shippingCity: "C", 
     // Carol checks out; reorder later needs no key either.
     const co = await h.post("/api/orders/checkout-session", { quoteId: guestQuote, ...SHIP }, carol);
     assert.strictEqual(co.status, 200, co.text);
+    // (relaunch merge, re-review RR-14) Reorder is for an order that was paid for: before payment it is refused,
+    // whoever asks. What this case holds is that the reorder of Carol's order needs no part key, so pay it first.
+    assert.strictEqual((await h.post(`/api/orders/${co.body.orderId}/reorder`, {}, carol)).body.code, "reorder-not-available");
+    assert.strictEqual((await h.completed(h.models.ordersDB.getById(co.body.orderId).stripeSessionId)).status, 200);
     const re = await h.post(`/api/orders/${co.body.orderId}/reorder`, {}, carol);
     assert.strictEqual(re.status, 201, re.text);
     assert.strictEqual((await h.post(`/api/orders/${co.body.orderId}/reorder`, {}, bob)).status, 403);
