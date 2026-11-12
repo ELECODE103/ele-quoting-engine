@@ -25,8 +25,15 @@ function expandV6(addr) {
 
 /** Normalised client key for an address string. */
 function keyForAddress(address) {
-  const raw = String(address || "").trim();
+  let raw = String(address || "").trim();
   if (!raw) return "unknown";
+  // An address written with its port ("203.0.113.9:51234", "[2001:db8::1]:443") is the same client
+  // on every port: the port is dropped before the address is classified. (It used to become its own
+  // limiter key per port.)
+  const v4port = raw.match(/^(\d{1,3}(?:\.\d{1,3}){3}):\d{1,5}$/);
+  if (v4port) raw = v4port[1];
+  const v6port = raw.match(/^\[([0-9a-fA-F:.%\w]+)\](?::\d{1,5})?$/);
+  if (v6port) raw = v6port[1];
   if (net.isIPv4(raw)) return raw;
   if (net.isIPv6(raw.split("%")[0])) {
     const g = expandV6(raw);

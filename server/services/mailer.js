@@ -23,6 +23,7 @@
 const fs = require("fs");
 const path = require("path");
 const brand = require("../../shared/brand.json");
+const mailCaps = require("./mailCaps");
 
 function configured() {
   return Boolean(process.env.EMAIL_API_KEY && process.env.EMAIL_FROM);
@@ -68,6 +69,19 @@ function templateLabel(message) {
 async function send(message) {
   const { text, html } = message || {};
   const label = templateLabel(message);
+  // Site-wide hourly caps on the mail a stranger can cause (services/mailCaps.js): confirmations to
+  // addresses nobody has confirmed, and new-request notices to the shop. Mail about orders, payments
+  // and accounts is never capped. When a cap is first reached in an hour the owner gets one notice.
+  const cap = mailCaps.admit(label);
+  if (!cap.allowed) {
+    console.warn(`[mailer] hourly cap reached for ${cap.kind === "shop" ? "new-request notices" : "mail to unconfirmed addresses"}: template ${label} not sent`);
+    if (cap.notify) {
+      mailCaps.noteNoticeSent();
+      // Not awaited into the caller's result, and not itself capped (its template is not one of the capped ones).
+      send({ to: shopNotifyAddress(), ...mailCaps.ownerNotice(cap.kind) }).catch(() => {});
+    }
+    return false;
+  }
   // Recipients and the subject are cleaned here, at the last step before the
   // wire, whatever the caller did: a typed address or name can never add a
   // header or a second recipient.
@@ -126,4 +140,4 @@ function shopNotifyAddress() {
   return parts.length > 1 ? parts : (parts[0] || brand.email);
 }
 
-module.exports = { send, configured, shopNotifyAddress, rfqNotifyAddress: shopNotifyAddress, cleanAddress, cleanSubject };
+module.exports = { send, configured, shopNotifyAddress, rfqNotifyAddress: shopNotifyAddress, cleanAddress, cleanSubject, capCounters: mailCaps.counters };

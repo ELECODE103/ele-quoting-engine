@@ -34,6 +34,7 @@ const DAY = 24 * HOUR;
 
 const CALL_US = `Call ${brand.phone} or email ${brand.email} and we'll take it from there.`;
 const MESSAGES = {
+  requestsPaused: `We're getting more requests than we can read right now, so the form is paused for a little while. ${CALL_US}`,
   humanRequired: "We couldn't confirm you're not a robot. Complete the check and try again.",
   humanUnavailable: `The check that keeps robots out isn't answering right now. Try again in a minute. ${CALL_US}`,
   tooFast: "That was sent faster than a person fills in a form. Wait a few seconds and send it again.",
@@ -55,6 +56,33 @@ const limits = {
   humanVerifyPerIp: createThrottle({ windowMs: HOUR, max: 30 }),
   formTokenPerIp: createThrottle({ windowMs: HOUR, max: 120 }),
 };
+
+// ─── Verified-human token: one client, a bounded number of uses ─
+// The token used to carry no claims at all: one solved challenge from one
+// address opened upload and pricing to every address for an hour (independent
+// review 2026-11-11, M1). It now names the client key it was issued to (as a
+// keyed hash) and is counted: past HUMAN_TOKEN_MAX_USES it stops working and
+// the browser is asked to pass the check again.
+const humanTokenUses = createTtlStore({ ttlMs: tokens.KINDS.human.ttl * 1000 });
+const clientBinding = (key) => require("./keys").mac("human-token-client-v1", String(key || "")).slice(0, 32);
+
+/** A verified-human token for one client key (what POST /api/human/verify hands out after a passed check). */
+function issueHumanToken(key, opts) {
+  return tokens.sign("human", { ck: clientBinding(key) }, opts);
+}
+
+/** Is this verified-human token valid for THIS client, and still inside its use allowance? Counts the use. */
+function humanTokenOk(req, token, now = Date.now()) {
+  const v = tokens.verify("human", token);
+  if (!v.ok) return false;
+  if (typeof v.claims.ck !== "string" || !require("./keys").safeEqual(v.claims.ck, clientBinding(clientKey(req)))) return false;
+  const id = String(v.claims.jti || "");
+  if (!id) return false;
+  const used = humanTokenUses.get(id, now) || 0;
+  if (used >= require("./limits").limits.humanTokenMaxUses) return false;
+  humanTokenUses.set(id, used + 1, now, Math.max(1000, Number(v.claims.exp) * 1000 - now));
+  return true;
+}
 
 const spentFormTokens = createTtlStore({ ttlMs: tokens.KINDS.form.ttl * 1000 });
 // A form token whose request is still being handled (the bot check is a network call):
@@ -107,7 +135,7 @@ async function assess(req, { action, allowAccount = true, allowHumanToken = true
   if (!turnstile.configured()) return { verified: false, method: "off" };
   if (allowHumanToken) {
     const ht = req.headers["x-human-token"];
-    if (typeof ht === "string" && ht && tokens.verify("human", ht).ok) return { verified: true, method: "human-token" };
+    if (typeof ht === "string" && ht && humanTokenOk(req, ht)) return { verified: true, method: "human-token" };
   }
   const result = await turnstile.verify(turnstileTokenFrom(req), { ip: clientIp(req), action });
   if (result.ok) return { verified: true, method: "turnstile" };
@@ -142,7 +170,8 @@ async function humanVerifyHandler(req, res) {
     if (result.reason === "unavailable") return res.status(503).json({ error: MESSAGES.humanUnavailable, code: "human-check-unavailable" });
     return res.status(403).json({ error: MESSAGES.humanRequired, code: "human-check-required" });
   }
-  res.json({ required: true, humanToken: tokens.sign("human", {}), expiresIn: tokens.KINDS.human.ttl });
+  // Bound to the client it was issued to: sent from another address it is not accepted.
+  res.json({ required: true, humanToken: issueHumanToken(ip), expiresIn: tokens.KINDS.human.ttl });
 }
 
 // ─── Form guard ────────────────────────────────────────────────
@@ -244,6 +273,36 @@ function resetForTests() {
   spentFormTokens.clear();
   pendingFormTokens.clear();
   recentSubmissions.clear();
+  humanTokenUses.clear();
+  unverifiedRequests.windowStart = 0;
+  unverifiedRequests.count = 0;
+}
+
+// ─── Site-wide cap on requests from unverified senders ─────────
+// Per-client and per-address limits do not add up to a limit: 100 addresses
+// are 1,000 requests and 1,000 emails to the shop an hour (independent review
+// 2026-11-11, M2). Requests from senders who did NOT pass the robot check (the
+// check is off, or could not be reached) share one hourly allowance for the
+// whole site, RFQ_UNVERIFIED_PER_HOUR_SITE. Verified senders and signed-in
+// customers with a confirmed email are not counted and are never refused here.
+const unverifiedRequests = { windowStart: 0, count: 0, refused: 0 };
+function unverifiedWindow(now) {
+  if (now - unverifiedRequests.windowStart >= HOUR) { unverifiedRequests.windowStart = now; unverifiedRequests.count = 0; }
+  return unverifiedRequests;
+}
+/** Has the site taken its hour's worth of requests from unverified senders? */
+function unverifiedRequestsFull(now = Date.now()) {
+  return unverifiedWindow(now).count >= require("./limits").limits.rfqUnverifiedPerHourSite;
+}
+/** Count one accepted request from an unverified sender. */
+function countUnverifiedRequest(now = Date.now()) {
+  unverifiedWindow(now).count++;
+}
+function noteUnverifiedRefused() { unverifiedRequests.refused++; }
+/** For the status page. */
+function unverifiedRequestStats(now = Date.now()) {
+  const w = unverifiedWindow(now);
+  return { acceptedThisHour: w.count, capPerHour: require("./limits").limits.rfqUnverifiedPerHourSite, refusedSinceStart: unverifiedRequests.refused, windowStartedAt: new Date(w.windowStart).toISOString() };
 }
 
 module.exports = {
@@ -251,5 +310,7 @@ module.exports = {
   checkForm, recordForm, releaseForm, allowConfirmationEmail,
   issueFormToken, checkFormToken, formTokenHandler,
   emailKey, limits, resetForTests,
+  humanTokenOk, issueHumanToken, clientBinding,
+  unverifiedRequestsFull, countUnverifiedRequest, noteUnverifiedRefused, unverifiedRequestStats,
   MIN_FILL_SECONDS, HONEYPOT_FIELD, MESSAGES,
 };
