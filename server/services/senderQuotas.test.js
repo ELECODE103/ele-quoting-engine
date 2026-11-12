@@ -281,7 +281,10 @@ test("RR-08: files pinned by unanswered requests, saved quotes and unpaid orders
     db.run("INSERT INTO quotes (id, user_id, client_tag, status, line_items_json, config_json, part_ids, created_at, updated_at, expires_at) VALUES (?, 'pin-account', 'pin-x', 'draft', '[]', '{}', ?, ?, ?, ?)", [id, p.id, ago(5 * HOUR), ago(1000), new Date(Date.now() + 30 * DAY).toISOString()]);
     savedQuotes.push(id);
   }
-  const unpaid = models.ordersDB.insert({ userId: "pin-account", status: "pending_payment", total: 10 });
+  // An abandoned checkout: its payment page ran out three days ago less two hours. (relaunch merge 2: an unpaid order
+  // with NO payment page is an order the owner took by phone and has yet to mark paid; that one holds its files
+  // outright however old it is, see rowRetention.js unpaidOrderIsPayable and rowRetention.test.js.)
+  const unpaid = models.ordersDB.insert({ userId: "pin-account", status: "pending_payment", total: 10, stripeSessionId: "cs_test_abandoned", sessionExpiresAt: ago(3 * DAY - 2 * HOUR) });
   db.run("UPDATE orders SET created_at = ? WHERE id = ?", [ago(3 * DAY), unpaid.id]);
   for (const p of pinnedByAccount.slice(3)) models.orderItemsDB.insert({ orderId: unpaid.id, partId: p.id, fileName: "a.stl", quantity: 1 });
 
