@@ -30,6 +30,7 @@ const CheckoutPage = lazy(() => import('./pages/CheckoutPage'));
 const OrderTrackingPage = lazy(() => import('./pages/OrderTrackingPage'));
 const JobTravelerPage = lazy(() => import('./pages/JobTravelerPage'));
 const FirmQuotePage = lazy(() => import('./pages/FirmQuotePage'));
+const FirmQuoteReturnPage = lazy(() => import('./pages/FirmQuoteReturnPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
@@ -94,6 +95,8 @@ export default function App() {
       <Route path="/forgot-password" element={<Suspense fallback={<Spinner />}><ForgotPasswordPage /></Suspense>} />
       <Route path="/reset-password" element={<Suspense fallback={<Spinner />}><ResetPasswordPage /></Suspense>} />
       <Route path="/verify-email" element={<Suspense fallback={<Spinner />}><VerifyEmailPage /></Suspense>} />
+      {/* Where the card page sends a firm-quote buyer back to. Its address carries no quote link. */}
+      <Route path="/firm-quote/return" element={<Suspense fallback={<Spinner />}><FirmQuoteReturnPage /></Suspense>} />
       <Route path="/firm-quote/:token" element={<Suspense fallback={<Spinner />}><FirmQuotePage /></Suspense>} />
       <Route path="/quote" element={<AppShell><QuoteBuilder /></AppShell>} />
       <Route path="/admin" element={<AppShell><Protected adminOnly><AdminPanel /></Protected></AppShell>} />
