@@ -215,6 +215,8 @@ export const api = {
   async previewShipping(body) {
     return request('/admin/shipping/preview', { method: 'POST', body: JSON.stringify(body) });
   },
+  /** The last catalogue upgrade: which prices changed by hand were kept, and which could not be. */
+  async getCatalogueUpgrade() { return request('/admin/catalogue-upgrade'); },
   async getPricingHistory(limit = 50) { return request(`/admin/pricing/history?limit=${limit}`); },
   async restorePricing(id) {
     return request(`/admin/pricing/restore/${id}`, { method: 'POST', body: JSON.stringify({}) });

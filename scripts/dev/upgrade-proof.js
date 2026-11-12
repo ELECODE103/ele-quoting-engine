@@ -22,6 +22,11 @@
  *   7. the saved quote is re-priced by today's rules when it is ordered, or honoured inside its
  *      price hold: which one happened is printed
  *   8. the quoted firm quote still opens from the link origin/master issued
+ *   9. prices the owner changed by hand are carried over the catalogue upgrade: before the first
+ *      start, three prices in the copy are changed the way Admin changes them (a material, a finish,
+ *      and a material the new catalogue no longer has). The first two are kept on the new catalogue,
+ *      the third is reported as not kept, every other price is the new catalogue's, and the start-up
+ *      log, the admin change log and the admin pricing page all carry the same list
  *
  * Exit 0 when every check holds, 1 otherwise. The in-process twin of this, with more of the order
  * behaviour, is server/models/orderLifecycleMigration.test.js.
@@ -99,7 +104,8 @@ function differences(a, b) {
 const startupProblems = (log) => log.split("\n").filter((l) => /^\s*(\w*Error\b|Uncaught|Unhandled|FATAL)|^\s+at .+:\d+:\d+\)?$|SQLITE_|no such (table|column)|seed failed|migration failed|error:/i.test(l));
 // The default catalogue is versioned (server/config/defaults.js SEED_VERSION): when the version in the database is older,
 // server/config/seed.js replaces these three tables with the current defaults. That is by design and predates this branch;
-// it is reported here, slug by slug, rather than held to "unchanged".
+// it is reported here, slug by slug, rather than held to "unchanged". What IS held (check 9): a price the owner changed
+// by hand is carried over to the new catalogue (server/config/seedCarry.js).
 const CATALOGUE = ["materials", "finishes", "processes"];
 const without = (dump, names) => Object.fromEntries(Object.entries(dump).filter(([t]) => !names.includes(t)));
 
@@ -109,10 +115,31 @@ const without = (dump, names) => Object.fromEntries(Object.entries(dump).filter(
   const dbFile = path.join(tmp, "data", "quoting.db");
   // Stripe, Turnstile and the mail provider are answered locally (scripts/e2e/stub-network.cjs): nothing leaves the machine.
   const env = { JWT_SECRET: OLD_SECRET, CHECKOUT_PER_ACCOUNT_15MIN: "1000", E2E_STUBS: "1", NODE_OPTIONS: `--require ${path.join(ROOT, "scripts", "e2e", "stub-network.cjs")}` };
-  const before = await dump(DB);
+  // The owner's own prices, written into a copy of the old database before anything starts on it: the
+  // same columns Admin → Materials and Finishes write. EDITED.carry are in the new catalogue; EDITED.gone is not.
+  const EDITED = {
+    carry: [
+      { table: "materials", slug: "cnc-delrin", column: "price_per_kg", field: "pricePerKg", yours: 12.75 },
+      { table: "finishes", slug: "deburr", column: "price_per_part", field: "pricePerPart", yours: 3.25 },
+    ],
+    gone: [{ table: "materials", slug: "sla-tough", column: "price_per_cm3", field: "pricePerCm3", yours: 0.61 }],
+  };
+  const edited = path.join(tmp, "origin-master-with-edited-prices.db");
+  {
+    const SQL = await require("sql.js")();
+    const db = new SQL.Database(fs.readFileSync(DB));
+    for (const e of [...EDITED.carry, ...EDITED.gone]) {
+      db.run(`UPDATE ${e.table} SET ${e.column} = ? WHERE slug = ?`, [e.yours, e.slug]);
+      if (db.getRowsModified() !== 1) throw new Error(`the old database has no ${e.table} row ${e.slug}`);
+    }
+    fs.writeFileSync(edited, Buffer.from(db.export()));
+    db.close();
+  }
+  const untouched = await dump(DB);
+  const before = await dump(edited);
 
   // ── 1–2: first start, no request made ──
-  let s = await live.start({ env, tmpDir: tmp, prepare: (dataDir) => fs.copyFileSync(DB, path.join(dataDir, "quoting.db")) });
+  let s = await live.start({ env, tmpDir: tmp, prepare: (dataDir) => fs.copyFileSync(edited, path.join(dataDir, "quoting.db")) });
   const log1 = s.log();
   await s.stop({ keep: true });
   const after1 = await dump(dbFile);
@@ -139,6 +166,42 @@ const without = (dump, names) => Object.fromEntries(Object.entries(dump).filter(
     console.log(`  note ${t}: ${replaced ? "replaced by the catalogue upgrade (by design, server/config/seed.js)" : "kept"} — ${before[t].rows.length} rows before, ${after1[t].rows.length} after; dropped: ${dropped.join(", ") || "none"}; added: ${added.join(", ") || "none"}; values that differ on rows kept: ${Object.entries(changed).map(([c, ks]) => `${c} (${ks.length})`).join(", ") || "none"}`);
     catalogue[t] = { before: before[t].rows.length, after: after1[t].rows.length, dropped, added, changed };
   }
+  // ── 9: the owner's prices over the catalogue upgrade ──
+  {
+    const seedHistory = require(path.join(ROOT, "server", "config", "seedHistory"));
+    const defaults = require(path.join(ROOT, "server", "config", "defaults"));
+    const from = oldRules.seedVersion || 1;
+    const record = seedHistory.pricesOf(from);
+    const COLS = { materials: { pricePerKg: "price_per_kg", pricePerCm3: "price_per_cm3" }, finishes: { pricePerPart: "price_per_part", pricePerSqIn: "price_per_sq_in" } };
+    const num = (v) => (v === null || v === undefined ? null : Number(v));
+    // The old database really was seeded with the prices on record for its version (so "differs from the record" means "edited").
+    const offRecord = [];
+    for (const [t, key] of [["materials", "materials"], ["finishes", "finishes"]]) {
+      for (const row of untouched[t].rows) for (const [field, col] of Object.entries(COLS[t])) if (num(row[col]) !== num(record && record[key][row.slug] ? record[key][row.slug][field] : null)) offRecord.push(`${t}/${row.slug}.${col}`);
+    }
+    check(`the old database is on catalogue v${from}, and every price in it is that version's default as recorded in server/config/seedHistory.js`, Boolean(record) && offRecord.length === 0, offRecord.length ? offRecord.slice(0, 5).join(", ") : `${untouched.materials.rows.length} materials and ${untouched.finishes.rows.length} finishes compared`);
+    const now = (t, slug) => after1[t].rows.find((r) => r.slug === slug) || null;
+    const keptOk = EDITED.carry.every((e) => now(e.table, e.slug) && num(now(e.table, e.slug)[e.column]) === e.yours);
+    check("a price the owner had changed is kept on the new catalogue: one material, one finish", keptOk, EDITED.carry.map((e) => `${e.slug} ${e.column} = ${now(e.table, e.slug) ? now(e.table, e.slug)[e.column] : "(row gone)"} (set to ${e.yours}; catalogue default ${num(defaults[e.table === "materials" ? "DEFAULT_MATERIALS" : "DEFAULT_FINISHES"].find((x) => x.slug === e.slug)[e.field])})`).join("; "));
+    check("a material that is no longer in the catalogue is not brought back, edited price or not", EDITED.gone.every((e) => !now(e.table, e.slug)), EDITED.gone.map((e) => e.slug).join(", "));
+    // Everything else: the new catalogue, price for price.
+    const wrong = [];
+    for (const [t, list] of [["materials", defaults.DEFAULT_MATERIALS], ["finishes", defaults.DEFAULT_FINISHES]]) {
+      if (after1[t].rows.length !== list.length) wrong.push(`${t}: ${after1[t].rows.length} rows, the catalogue has ${list.length}`);
+      for (const d of list) for (const [field, col] of Object.entries(COLS[t])) {
+        if (EDITED.carry.some((e) => e.table === t && e.slug === d.slug && e.column === col)) continue;
+        const row = now(t, d.slug);
+        if (!row || num(row[col]) !== num(d[field])) wrong.push(`${t}/${d.slug}.${col}`);
+      }
+    }
+    check("every other material and finish price is the new catalogue's", wrong.length === 0, wrong.length ? wrong.slice(0, 6).join(", ") : `${defaults.DEFAULT_MATERIALS.length} materials, ${defaults.DEFAULT_FINISHES.length} finishes`);
+    const keptLines = log1.split("\n").filter((l) => /Catalogue: kept your/.test(l));
+    const notKeptLines = log1.split("\n").filter((l) => /Catalogue: could NOT keep your/.test(l));
+    check("the start-up log has one line per price kept and one per price that could not be", keptLines.length === EDITED.carry.length && notKeptLines.length === EDITED.gone.length && EDITED.carry.every((e) => keptLines.some((l) => l.includes(`(${e.slug})`))) && EDITED.gone.every((e) => notKeptLines.some((l) => l.includes(`(${e.slug})`))), [...keptLines, ...notKeptLines].map((l) => l.trim()).join(" | "));
+    const logged = (after1.admin_audit ? after1.admin_audit.rows : []).filter((r) => r.area === "catalogue");
+    check("and the admin change log has the same, one row each", logged.length === EDITED.carry.length + EDITED.gone.length && logged.filter((r) => r.action === "price-kept").length === EDITED.carry.length, logged.map((r) => `${r.action} ${r.target}`).join("; "));
+  }
+
   const addedTables = Object.keys(after1).filter((t) => !before[t]);
   const addedColumns = Object.entries(after1).filter(([t]) => before[t]).flatMap(([t, d]) => d.columns.filter((c) => !before[t].columns.includes(c)).map((c) => `${t}.${c}`));
   const addedRows = Object.entries(after1).filter(([t]) => before[t]).map(([t, d]) => [t, d.rows.length - before[t].rows.length]).filter(([, n]) => n > 0);
@@ -183,6 +246,10 @@ const without = (dump, names) => Object.fromEntries(Object.entries(dump).filter(
     const paid = await s.get(`/api/orders/${made.paidOrder}`, B);
     const cents = Object.values(made.sessions).find((x) => x.orderId === made.paidOrder)?.amount_total;
     check("the paid order shows as paid at the amount that was charged", paid.status === 200 && paid.body.status === "paid" && Math.round(paid.body.total * 100) === cents, `total ${paid.body?.total} vs charged ${cents} cents`);
+
+    const carriedList = await s.get("/api/admin/catalogue-upgrade", A);
+    const up = carriedList.body?.upgrade;
+    check("the admin pricing page is given the same list of prices kept and not kept", carriedList.status === 200 && Boolean(up) && up.kept.length === EDITED.carry.length && up.notKept.length === EDITED.gone.length && EDITED.carry.every((e) => up.kept.some((k) => k.slug === e.slug && k.yours === e.yours)) && EDITED.gone.every((e) => up.notKept.some((k) => k.slug === e.slug && k.yours === e.yours)), up ? `v${up.from} to v${up.to}: kept ${up.kept.map((k) => `${k.slug} ${k.fieldLabel} ${k.yours} (default ${k.newDefault})`).join(", ")}; not kept ${up.notKept.map((k) => `${k.slug} ${k.yours}: ${k.reason}`).join(", ")}` : `HTTP ${carriedList.status}`);
 
     const adminList = await s.get("/api/orders", A);
     const listed = Array.isArray(adminList.body) ? adminList.body : adminList.body?.orders || [];

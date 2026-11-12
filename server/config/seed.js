@@ -18,6 +18,7 @@ const {
   DEFAULT_PRICING_RULES,
   MANUFACTURING_PROCESSES,
 } = require("./defaults");
+const seedCarry = require("./seedCarry");
 
 // Seeding is hundreds of small writes; held in one batch it is a single save
 // (on the production volume each save used to take about a second).
@@ -52,10 +53,17 @@ function seedDatabaseNow() {
     // Seed-version upgrade: when the default catalogs change (SEED_VERSION bump),
     // replace materials/finishes/processes on an existing database. Quotes,
     // orders, parts and users are untouched; pricing rules are merged below.
+    // A PRICE THE OWNER CHANGED BY HAND IS KEPT: every material and finish price that is not the
+    // default of the version this database was on is read here, before the rows go, and put back on
+    // the row with the same slug once the new catalogue is in (./seedCarry.js; the old defaults are in
+    // ./seedHistory.js). A price that was simply the old default takes the new default. A material or
+    // finish that is no longer in the catalogue is not brought back; its edited price is reported.
     const existingRules = pricingDB.getAll()[0];
     const dbSeedVersion = existingRules?.rules?.seedVersion || 1;
+    let carried = null;
     if (materialsDB.getAll().length > 0 && dbSeedVersion < SEED_VERSION) {
       console.log(`  Upgrading catalogs: seed v${dbSeedVersion} → v${SEED_VERSION} (materials, finishes, processes)...`);
+      carried = seedCarry.collect({ fromVersion: dbSeedVersion, materials: materialsDB.getAll(), finishes: finishesDB.getAll() });
       for (const m of materialsDB.getAll()) materialsDB.delete(m.id);
       for (const f of finishesDB.getAll()) finishesDB.delete(f.id);
       for (const proc of processesDB.getAll()) processesDB.delete(proc.id);
@@ -75,6 +83,9 @@ function seedDatabaseNow() {
         finishesDB.insert(fin);
       }
     }
+
+    // The new catalogue is in: put the owner's own prices back on it, and say which could not be.
+    if (carried) seedCarry.apply(carried, { materialsDB, finishesDB, toVersion: SEED_VERSION });
 
     // Detect missing lead time days: re-seed if days field is null
     const existingLTs = leadTimesDB.getAll();

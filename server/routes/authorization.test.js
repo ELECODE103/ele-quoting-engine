@@ -58,6 +58,7 @@ const INVENTORY = {
   "PUT /api/admin/pricing": "admin",
   "POST /api/admin/pricing/preview": "admin",
   "POST /api/admin/shipping/preview": "admin",
+  "GET /api/admin/catalogue-upgrade": "admin", // which hand-edited prices a catalogue upgrade kept: config/seedCarry.test.js
   "GET /api/admin/pricing/history": "admin",
   "POST /api/admin/pricing/restore/:id": "admin",
   "POST /api/admin/pricing/reset": "admin",

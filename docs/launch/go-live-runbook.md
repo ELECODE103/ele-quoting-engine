@@ -144,10 +144,14 @@ Take a copy before anything changes.
 5. **If you have ever changed a material or finish in Admin on the live site** (a price, a
    thickness, switched one on or off): open Admin → Materials and Admin → Finishes now and write
    down what you changed. The new version carries a newer default catalogue, and on its first
-   start it replaces the materials, finishes and processes lists with those defaults (four SLA
-   resins go, eight arrive). Your pricing rules (rates, markups, minimums) are kept as you set
-   them. After step 5, re-enter anything you wrote down.
-   *If you never touched those two tabs:* nothing to do.
+   start it replaces the materials, finishes and processes lists with it (four SLA resins go,
+   eight arrive). **A price you changed is kept**: the site knows what the old default was, so a
+   price that differs from it is yours and is put back on the new list. What is not kept: a price
+   on one of the four SLA resins that are gone, a material you added yourself, and anything you
+   changed other than a price (a name, a thickness, switched off). Your pricing rules (rates,
+   markups, minimums) are kept as you set them. After step 5, Admin → Pricing shows a box listing
+   every price that was kept and every one that could not be; re-enter the rest from your notes.
+   *If you never touched those two tabs:* nothing to do, and no box appears.
 
 ---
 
@@ -354,7 +358,9 @@ The next step puts the site back on the public internet. Before you press the bu
 - `entrypoint: making /app/data writable by node (volume mounted as root)` — the first time only
 - `Upgrading catalogs: seed v3 → v4 (materials, finishes, processes)...` — the first time only:
   the default catalogue being brought up to date (step 1, item 5), followed by `Seeding materials...` and the
-  like, and `Pricing rules: added 2 new key(s), seed v4.`
+  like; then either `Catalogue: no price had been changed by hand, so there was nothing to carry over.` or one
+  line per price, `Catalogue: kept your … price …` / `Catalogue: could NOT keep your … price …`, and a count;
+  and `Pricing rules: added … new key(s), seed v4.` (the new settings, each at its default)
 - `Admin account <your address>: present.` — your existing admin account was found and left as
   it is. (If you see `NOTICE: there is no admin account yet` or `WARNING: an ordinary account …
   already uses the ADMIN_EMAIL address` instead, go to step 6's table: "No admin account".)

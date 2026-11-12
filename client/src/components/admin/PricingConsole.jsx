@@ -101,6 +101,9 @@ export default function PricingConsole({ initialChanges = null, onConsumedInitia
   const [preview, setPreview] = useState(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const previewSeq = useRef(0);
+  // The last catalogue upgrade: which prices changed by hand were kept, and which could not be.
+  const [catalogueUpgrade, setCatalogueUpgrade] = useState(null);
+  useEffect(() => { api.getCatalogueUpgrade().then((r) => setCatalogueUpgrade(r.upgrade || null)).catch(() => { /* the notice is extra: the console works without it */ }); }, []);
 
   // ─── load ───
   const load = useCallback(async () => {
@@ -218,6 +221,8 @@ export default function PricingConsole({ initialChanges = null, onConsumedInitia
           <button className="btn btn-ghost" onClick={resetAll} disabled={saving}>Reset to defaults</button>
         </div>
       </div>
+
+      <CatalogueUpgradeNotice upgrade={catalogueUpgrade} />
 
       <div className={`pc ${view === 'simple' ? 'pc-simple' : ''}`}>
         {view === 'everything' && (
@@ -621,5 +626,38 @@ function HistoryDrawer({ byKey, onClose, onRestore, busy }) {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * After a catalogue upgrade: the material and finish prices the owner had changed by hand, which of
+ * them were kept on the new catalogue and which could not be (server/config/seedCarry.js). The same
+ * list the start-up log printed. Nothing is shown when no price had been changed.
+ */
+function CatalogueUpgradeNotice({ upgrade }) {
+  if (!upgrade || (upgrade.kept.length === 0 && upgrade.notKept.length === 0)) return null;
+  const price = (n) => (n === null || n === undefined ? 'none' : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`);
+  const kind = (k) => (k === 'finish' ? 'Finish' : 'Material');
+  return (
+    <div className={upgrade.notKept.length ? 'gate-box' : 'card'} style={{ margin: '0 0 16px', padding: '12px 14px', fontSize: 13, lineHeight: 1.6 }} data-testid="catalogue-upgrade">
+      <b>The material and finish lists were updated{upgrade.at ? ` on ${formatDateTime(upgrade.at)}` : ''} (catalogue version {upgrade.from} to {upgrade.to}).</b>{' '}
+      Prices you had changed by hand: {upgrade.kept.length} kept{upgrade.notKept.length ? `, ${upgrade.notKept.length} not kept` : ''}. Every other price is the new list's.
+      {upgrade.notKept.length > 0 && (
+        <>
+          <div style={{ marginTop: 8, fontWeight: 600 }}>Not kept: set these again under Materials or Finishes if you still need them</div>
+          <ul style={{ margin: '4px 0 0 18px' }} data-testid="catalogue-not-kept">
+            {upgrade.notKept.map((e) => <li key={`${e.kind}:${e.slug}:${e.field}`}>{kind(e.kind)} {e.name} ({e.slug}), {e.fieldLabel}: yours was {price(e.yours)}. {e.reason ? `${e.reason.charAt(0).toUpperCase()}${e.reason.slice(1)}.` : ''}</li>)}
+          </ul>
+        </>
+      )}
+      {upgrade.kept.length > 0 && (
+        <details style={{ marginTop: 8 }}>
+          <summary style={{ cursor: 'pointer' }}>Kept ({upgrade.kept.length})</summary>
+          <ul style={{ margin: '4px 0 0 18px' }} data-testid="catalogue-kept">
+            {upgrade.kept.map((e) => <li key={`${e.kind}:${e.slug}:${e.field}`}>{kind(e.kind)} {e.name} ({e.slug}), {e.fieldLabel}: {price(e.yours)} (the new list's default is {price(e.newDefault)})</li>)}
+          </ul>
+        </details>
+      )}
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import { api } from '../../utils/api';
 const AREAS = {
   material: 'Material', finish: 'Finish', 'lead-time': 'Lead time', 'rate-card': 'Pricing rules',
   order: 'Order', quotes: 'Quotes', 'admin-account': 'Admin account',
+  catalogue: 'Catalogue upgrade',
 };
 const ACTIONS = {
   update: 'changed', create: 'added', delete: 'removed', duplicate: 'copied', save: 'saved', restore: 'restored',
@@ -11,6 +12,8 @@ const ACTIONS = {
   // Order moves made by hand (the order state machine's own names; services/orderLifecycle.js)
   'order.status': 'status changed', 'order.mark-paid': 'marked paid by hand', 'order.cancel': 'cancelled',
   'order.tracking': 'shipping details changed', 'order.attention-resolved': 'flag cleared',
+  // A catalogue upgrade and the prices that had been changed by hand (server/config/seedCarry.js)
+  'price-kept': 'your price kept', 'price-not-kept': 'your price NOT kept',
 };
 const FIELDS = { paidVia: 'paid by', attention: 'flag', tracking: 'tracking number', voided: 'quotes' };
 const show = (v) => (v === null || v === undefined || v === '' ? 'nothing' : String(v));

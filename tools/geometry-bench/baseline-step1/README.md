@@ -20,3 +20,23 @@ case it lists as unfinished, compare against this folder instead:
     GEOMETRY_BENCH_BASELINE=tools/geometry-bench/baseline-step1 node tools/geometry-bench/compare.js --size large
 
 Only result hashes are kept here (`index.json`).
+
+## 2026-11-12: `baseline/` was recorded again on the merged code
+
+`baseline/` is no longer the output of the untouched code alone. It was recorded again, all 226
+cases that finish, on the relaunch branch after the availability, geometry-speed and tax-shipping
+merges (Node 20.20.0), for two reasons:
+
+1. **Refusals on purpose.** 21 cases are now refused where the untouched code measured them or ran
+   out of memory or time: a sealed hollow, no solid volume, a size that is not a real part, a damaged
+   ASCII file, a drawing over 5,000 contours or over 10 m. Those answers are the baseline now.
+2. **Prices.** The shipping and tax merge added settings to the rate card, so the comparer stopped
+   comparing prices ("pricing rules changed since the baseline was recorded"), and every quote gained a
+   `shipping` block. Before recording again, each of the 196 small and medium cases was run and its
+   price section compared with the untouched code's, ignoring only that block: 3,435 priced quotes,
+   all identical.
+
+What was checked when recording: of the 221 cases that had an answer before, the geometry and DFM
+hashes of all 221 are unchanged; the 15 large cases in this folder (`baseline-step1`) have the same
+geometry and DFM hashes in the new `baseline/`. `soup-wide-100k` and `soup-wide-500k` stay recorded as
+unfinished: they run past the 60 seconds the live server allows a file.

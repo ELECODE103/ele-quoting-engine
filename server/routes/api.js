@@ -1430,6 +1430,13 @@ router.post("/admin/shipping/preview", authenticate, requireAdmin, (req, res) =>
   });
 });
 
+// The last catalogue upgrade: which prices the owner had changed by hand were kept on the new
+// catalogue and which could not be (config/seedCarry.js). The same list the start-up log printed.
+router.get("/admin/catalogue-upgrade", authenticate, requireAdmin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ upgrade: require("../config/seedCarry").latest() });
+});
+
 router.get("/admin/pricing/history", authenticate, requireAdmin, (req, res) => {
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
   res.json(pricingAdmin.history({ limit }));

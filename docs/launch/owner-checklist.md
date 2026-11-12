@@ -17,7 +17,7 @@ where to click, what you should see, and what to do if you do not. **R** = requi
 - [ ] **R** Volume mount path reads `/app/data`
 - [ ] **R** Manual backup `before-go-live` is in the list
 - [ ] **R** Daily and Weekly backup schedules are on
-- [ ] **R** Any material or finish you changed in Admin on the live site is written down (the first start replaces those lists with the new defaults; pricing rules are kept)
+- [ ] **R** Any material or finish you changed in Admin on the live site is written down. The first start brings those lists up to the new catalogue: a **price** you changed is kept, and Admin → Pricing lists which were kept and which could not be. Anything else you changed on a material or finish (its name, switched off) goes back to the default; pricing rules are kept
 
 ## 2. Variables (Railway → service → Variables)
 
