@@ -185,7 +185,7 @@ export default function SecurityTab({ onChanged, enrolment = false, onCodesSaved
                   <li>Enter the 6-digit code the app now shows for {brand.name}.</li>
                 </ol>
                 <div className="field-label">Setup key</div>
-                <div className="setup-key" data-testid="setup-key">{(setup.setupKey || '').replace(/(.{4})/g, '$1 ').trim()}</div>
+                <div className="setup-key" data-testid="setup-key">{(setup.setupKey || '').replace(/\s+/g, '').replace(/(.{4})/g, '$1 ').trim()}</div>
                 <div className="notice-actions" style={{ marginTop: 6 }}>
                   <button type="button" className="btn btn-ghost" onClick={() => navigator.clipboard?.writeText(setup.setupKey).then(() => setKeyCopied(true), () => setKeyCopied(false))}>{keyCopied ? 'Copied' : 'Copy the key'}</button>
                   <span className="field-hint" style={{ margin: 0 }} role="status">{keyCopied ? 'Paste it into the app as the secret key.' : 'Shown once. The spaces are only there to make it easier to read.'}</span>

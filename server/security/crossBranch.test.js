@@ -368,7 +368,13 @@ test("…and it cannot inject into an email: every value is escaped in the HTML 
     const label = m.template;
     // No element or attribute can have come from typed text: every tag in the HTML is one of the layout's own.
     const tags = [...m.html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)].map((x) => x[1].toLowerCase());
-    for (const t of tags) assert.ok(["html", "head", "meta", "title", "body", "div", "span", "table", "tr", "td", "th", "tbody", "thead", "p", "a", "b", "strong", "br", "h1", "h2", "h3", "ul", "li", "hr", "em", "small"].includes(t), `${label}: unexpected <${t}> in the HTML`);
+    // (Journey pass, 2026-11-11: the layout gained one <style> element for dark mode and phone widths.
+    // It is allowed only as the layout's own constant: exactly one, in the head, byte for byte the
+    // same in every message, so nothing typed can be in it.)
+    for (const t of tags) assert.ok(["html", "head", "meta", "title", "style", "body", "div", "span", "table", "tr", "td", "th", "tbody", "thead", "p", "a", "b", "strong", "br", "h1", "h2", "h3", "ul", "li", "hr", "em", "small"].includes(t), `${label}: unexpected <${t}> in the HTML`);
+    const styles = m.html.match(/<style[\s\S]*?<\/style>/gi) || [];
+    assert.ok(styles.length === 1 && styles[0] === require("../emails/templates").LAYOUT_STYLE, `${label}: the only <style> is the layout's constant`);
+    assert.ok(m.html.indexOf("<style") < m.html.indexOf("</head>") && !/tone = 5|alert|onerror/.test(styles[0]), `${label}: the <style> is in the head and carries nothing typed`);
     assert.ok(!/<script|<img|onerror\s*=\s*alert|onclick\s*=\s*alert/i.test(m.html.replace(/&lt;[\s\S]*?&gt;/g, "")), `${label}: live markup from a note`);
     for (const href of m.html.matchAll(/href="([^"]*)"/g)) assert.ok(/^(https?:\/\/|mailto:|tel:|#)/.test(href[1]), `${label}: href ${href[1].slice(0, 40)}`);
     assert.ok(!/[\r\n]/.test(m.subject) && !/[<>]|alert|tone = 5/.test(m.subject), `${label}: typed text in the subject: ${m.subject}`);

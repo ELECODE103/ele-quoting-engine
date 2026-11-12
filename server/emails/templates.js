@@ -34,6 +34,28 @@ const MUTED = "#5B6477";   // ink, lightened for secondary text
 const RULE = "#E4DFD3";    // bone, darkened for table rules
 const FONT = "-apple-system,'Segoe UI',Helvetica,Arial,sans-serif";
 
+// The one <style> element of every message: phone widths and dark mode. It is a constant, the
+// same bytes in every email, with nothing from a message in it (crossBranch.test.js holds it to
+// that). Everything else is styled inline, because many mail clients drop <style>.
+const LAYOUT_STYLE = `<style>
+  :root { color-scheme: light dark; }
+  @media (max-width: 480px) {
+    .pd { padding-left: 20px !important; padding-right: 20px !important; }
+    .bt-a { display: block !important; text-align: center !important; }
+    .bt-t { width: 100% !important; }
+  }
+  @media (prefers-color-scheme: dark) {
+    .pg { background: #0B1220 !important; }
+    .cd { background: #16213A !important; }
+    .tx { color: #F4F1EA !important; }
+    .mt { color: #B8C0CE !important; }
+    .rl { border-color: #2D3A55 !important; }
+    .bt { background: #F4F1EA !important; }
+    .bt-a { color: #101C33 !important; }
+    .ft, .ft a, .ft strong { color: #B8C0CE !important; }
+  }
+</style>`;
+
 const PROCESS_LABELS = { cnc: "CNC machining", routing: "CNC routing", "3d-printing": "3D printing", sheetmetal: "Sheet metal" };
 
 function esc(v) {
@@ -142,24 +164,7 @@ function layout(m) {
 <meta name="color-scheme" content="light dark">
 <meta name="supported-color-schemes" content="light dark">
 <title>${esc(m.subject)}</title>
-<style>
-  :root { color-scheme: light dark; }
-  @media (max-width: 480px) {
-    .pd { padding-left: 20px !important; padding-right: 20px !important; }
-    .bt-a { display: block !important; text-align: center !important; }
-    .bt-t { width: 100% !important; }
-  }
-  @media (prefers-color-scheme: dark) {
-    .pg { background: #0B1220 !important; }
-    .cd { background: #16213A !important; }
-    .tx { color: #F4F1EA !important; }
-    .mt { color: #B8C0CE !important; }
-    .rl { border-color: #2D3A55 !important; }
-    .bt { background: #F4F1EA !important; }
-    .bt-a { color: #101C33 !important; }
-    .ft, .ft a, .ft strong { color: #B8C0CE !important; }
-  }
-</style>
+${LAYOUT_STYLE}
 </head>
 <body class="pg" style="margin:0;padding:0;background:${BONE};">
 <div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px;color:${BONE};mso-hide:all;">${esc(m.preheader || "")}${previewPad}</div>
@@ -675,7 +680,7 @@ for (const [name, build] of Object.entries(MESSAGES)) {
 
 module.exports = {
   ...named,
-  esc, safeHref, greeting,
+  esc, safeHref, greeting, LAYOUT_STYLE,
   layout, trackingUrl, shortId, money, DRAWING_NOTE,
   PAPERWORK_LABEL, PAPERWORK_SHORT, PAPERWORK_INCLUDED, PAPERWORK_NOT_INCLUDED, RETURN_INCLUDED, RETURN_NOT_INCLUDED, RETURN_REMINDER, PAPERWORK_REMINDER,
   chargeRows, quoteCovers, isPartRequest,

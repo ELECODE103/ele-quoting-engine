@@ -275,10 +275,10 @@ async function phaseWithKeys() {
     check('"Send the link again" sends a second email', Boolean(second));
     // Journey pass: after a send the button counts down the minute the server makes everyone wait, so the
     // second press cannot be made by accident. The server's refusal is still there for anything that asks anyway.
-    const again = buyer.getByRole('button', { name: /Send again in \d+ s/ });
-    await again.waitFor();
+    const waitButton = buyer.getByRole('button', { name: /Send again in \d+ s/ });
+    await waitButton.waitFor();
     const refused = await apiFrom(buyer, 'POST', '/api/auth/verify-email/resend');
-    check('a second resend inside a minute: the button waits out the minute, and the server refuses politely if asked anyway', await again.isDisabled() && refused.status === 429 && /We just sent one/.test(refused.text), `${refused.status} ${refused.text}`);
+    check('a second resend inside a minute: the button waits out the minute, and the server refuses politely if asked anyway', await waitButton.isDisabled() && refused.status === 429 && /We just sent one/.test(refused.text), `${refused.status} ${refused.text}`);
 
     // The link opened where nobody is signed in: a button, no automatic confirmation.
     const strangerCtx = await newContext();
