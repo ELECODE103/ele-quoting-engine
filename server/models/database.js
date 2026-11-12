@@ -441,6 +441,13 @@ function pending() {
 }
 
 /** Give back the space of deleted rows (the file only shrinks after this). */
+/** The first half of a compaction by itself: rebuild the database in memory. The file is written by the next save (flush()). */
+function vacuum() {
+  if (!dbInstance) return;
+  dbInstance.run("VACUUM");
+  dirty = true;
+}
+
 function compact() {
   if (!dbInstance) return;
   dbInstance.run("VACUUM");
@@ -498,4 +505,4 @@ process.on("SIGTERM", () => onStop("SIGTERM"));
 process.on("SIGINT", () => onStop("SIGINT"));
 process.once("beforeExit", () => { try { flush(); } catch { /* nothing more to do */ } });
 
-module.exports = { getDatabase, saveToDisk, batch, deferred, flush, pending, compact, fileSize, liveSize, usedSize, ready, DB_PATH, payloadMigration: () => payloadMigration };
+module.exports = { getDatabase, saveToDisk, batch, deferred, flush, pending, compact, vacuum, fileSize, liveSize, usedSize, ready, DB_PATH, payloadMigration: () => payloadMigration };

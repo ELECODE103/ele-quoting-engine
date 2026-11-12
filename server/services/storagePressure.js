@@ -284,9 +284,18 @@ async function relieveDatabase(models, opt = {}) {
   // The file only gets smaller when it is compacted; that and the save are one piece each.
   if (!opt.sync) await turn();
   const t1 = Date.now();
-  if (database.compact) database.compact(); else if (database.flush) database.flush();
-  const compactMs = Date.now() - t1;
-  longest = Math.max(longest, compactMs);
+  // Two pieces where the database allows it: the rebuild in memory, then the write of the file.
+  if (database.vacuum && database.flush && !opt.sync) {
+    database.vacuum();
+    longest = Math.max(longest, Date.now() - t1);
+    await turn();
+    const t2 = Date.now();
+    database.flush();
+    longest = Math.max(longest, Date.now() - t2);
+  } else {
+    if (database.compact) database.compact(); else if (database.flush) database.flush();
+    longest = Math.max(longest, Date.now() - t1);
+  }
   if (removedParts) guards().storage.invalidate();
   const bytesAfter = size();
   const result = { removedDrafts, removedParts, bytesBefore, bytesAfter, longestPieceMs: longest };
