@@ -51,6 +51,32 @@ function chunkedUpload(port, url, ip, files, { fields = {}, headers = {} } = {})
   });
 }
 
+/** POST a multipart body WITH a Content-Length: the answer may come while the body is still being sent. */
+function declaredUpload(port, url, ip, file) {
+  return new Promise((resolve) => {
+    const boundary = `----sl${crypto.randomBytes(8).toString("hex")}`;
+    const head = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="${file.name}"\r\nContent-Type: application/octet-stream\r\n\r\n`);
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+    const req = http.request({ host: "127.0.0.1", port, method: "POST", path: url, agent: false, headers: { "Content-Type": `multipart/form-data; boundary=${boundary}`, "Content-Length": String(head.length + file.data.length + tail.length), "X-Forwarded-For": ip } }, (res) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => { let body = null; try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { /* not JSON */ } resolve({ status: res.statusCode, body }); });
+      res.on("error", () => resolve({ status: res.statusCode, body: null }));
+    });
+    let answered = false;
+    req.on("response", () => { answered = true; });
+    req.on("error", () => { setTimeout(() => { if (!answered) resolve({ status: 0, body: { code: "connection-closed" } }); }, 300); });
+    // as fast as the connection takes it, the way a browser on a good line does
+    (async () => {
+      for (const piece of [head, file.data, tail]) {
+        if (req.destroyed) return;
+        if (!req.write(piece)) await new Promise((r) => { req.once("drain", r); req.once("error", r); req.once("close", r); });
+      }
+      req.end();
+    })().catch(() => {});
+  });
+}
+
 // ─── M1: the verified-human token (bot check on) ─────────────
 let h;
 test("M1: a verified-human token works only from the client it was issued to", async () => {
@@ -164,6 +190,18 @@ test("L1: an over-size file is charged to the sender's daily budget even though 
   assert.strictEqual(after.body.code, "daily-upload-limit");
   assert.strictEqual((await s.upload([{ name: "cube.stl", data: cube }], { ip: "203.0.113.7" })).status, 200, "another client is unaffected");
   assert.strictEqual(s.files("uploads").filter((f) => !/^[0-9a-f-]{36}\.stl$/.test(f)).length, 0);
+});
+
+test("a refusal at the door reaches a sender who is still sending: they read our message, not a dropped connection", async () => {
+  // 203.0.113.6 has spent its budget (above). A browser keeps sending the file while the answer comes back;
+  // closing the connection under it used to turn the answer into a network error about one time in four.
+  const before = new Set(s.files("uploads"));
+  const seen = [];
+  const big = Buffer.concat([cube, Buffer.alloc(12 * MB, 0x20)]);
+  for (let i = 0; i < 12; i++) { const r = await declaredUpload(s.port, "/api/upload", "203.0.113.6", { name: "part.stl", data: big }); seen.push(`${r.status}:${r.body && r.body.code}`); }
+  assert.deepStrictEqual(seen, Array(12).fill(seen[0]), seen.join(" "));
+  assert.ok(/^4(13|29):/.test(seen[0]) && !/undefined|null/.test(seen[0]), seen[0]);
+  assert.deepStrictEqual(s.files("uploads").filter((f) => !before.has(f)), [], "nothing of a refused upload is kept");
 });
 
 test("L1: a body sent without a Content-Length is counted as it arrives and cut off at the budget", async () => {

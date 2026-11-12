@@ -253,6 +253,43 @@ const dailyLimitMessage = () => `You've reached today's upload limit from this n
  * it arrives and cut off when it passes the route's maximum or what is left of
  * the client's budget.
  */
+const DISCARD_MS = 5000;
+const DISCARD_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Close the connection of a refused upload without cutting the answer off.
+ *
+ * The answer says "Connection: close". Closing at once while the client is
+ * still sending makes the network reset the connection, and a browser then
+ * shows a network error instead of our message. So: our side is finished (the
+ * client sees the answer and the end of our half), what is still arriving is
+ * read and thrown away for at most DISCARD_MS and DISCARD_BYTES, and then the
+ * connection is closed for good. Nothing is written to disk and nothing is
+ * parsed. If this runtime closes the connection some other way, the old
+ * behaviour (an immediate close) is what happens.
+ */
+function lingerThenClose(req) {
+  const socket = req && req.socket;
+  if (!socket || typeof req.on !== "function" || typeof req.resume !== "function" || typeof socket.destroySoon !== "function") return;
+  let seen = 0;
+  let timer = null;
+  const close = () => {
+    clearTimeout(timer);
+    try { if (!socket.destroyed) socket.destroy(); } catch { /* already gone */ }
+  };
+  // The server ends a "Connection: close" answer with socket.destroySoon(): finish our half only.
+  socket.destroySoon = function finishOurHalf() { try { this.end(); } catch { close(); } };
+  timer = setTimeout(close, DISCARD_MS);
+  if (timer.unref) timer.unref();
+  req.on("data", (chunk) => { seen += chunk.length; if (seen > DISCARD_BYTES) close(); });
+  // The whole body has come: the answer is on its way out and our half is being finished. Give the
+  // client a moment to finish its own, then close whatever is left.
+  req.on("end", () => { clearTimeout(timer); timer = setTimeout(close, 1000); if (timer.unref) timer.unref(); });
+  req.on("error", close);
+  req.on("close", () => clearTimeout(timer));
+  req.resume();
+}
+
 function admit(opt = {}) {
   return (req, res, next) => {
     const declared = Number(req.headers["content-length"]);
@@ -260,9 +297,10 @@ function admit(opt = {}) {
     const incoming = hasLength && declared > 0 ? declared : 0;
 
     const refuse = (status, body, headers = {}) => {
-      // Answer and close: the body is not read.
+      // Answer and close: nothing of the body is kept (see lingerThenClose for how the close is done).
       res.set("Connection", "close");
       for (const [k, v] of Object.entries(headers)) res.set(k, v);
+      lingerThenClose(req);
       return res.status(status).json(body);
     };
 
@@ -386,4 +424,4 @@ function safeFileName(name, fallback = "file") {
   return clean || fallback;
 }
 
-module.exports = { storage, database, budget, admit, account, safeFileName, clientTag, storedBytesFor, isConfirmedCustomer, STORAGE_DIRS, DRAWING_DIRS, PART_PAYLOAD_DIR, DATA_DIR, FULL_MESSAGE, FULL_ANONYMOUS_MESSAGE, NOT_READ_MESSAGE };
+module.exports = { storage, database, budget, admit, account, lingerThenClose, safeFileName, clientTag, storedBytesFor, isConfirmedCustomer, STORAGE_DIRS, DRAWING_DIRS, PART_PAYLOAD_DIR, DATA_DIR, FULL_MESSAGE, FULL_ANONYMOUS_MESSAGE, NOT_READ_MESSAGE };
