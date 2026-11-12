@@ -1,11 +1,25 @@
+# Railway reads this file only until 2026-12-01. On that date "Config as Code"
+# (railway.toml / railway.json) stops being read for every service
+# (https://docs.railway.com/config-as-code — "hard cutoff"), and the service
+# runs on the settings entered in the Railway dashboard instead.
+#
+# So this file says the same thing as the dashboard settings listed in
+# docs/launch/go-live-runbook.md, step "Railway build settings", and nothing
+# more: until the cutoff the two agree, and on the day nothing changes.
+# After 2026-12-01 this file can be deleted.
+#
+# Build: the Dockerfile at the root of the repository (Nixpacks is no longer a
+# builder Railway offers; the only values are RAILPACK and DOCKERFILE).
+# Start: nothing here on purpose — the image's own ENTRYPOINT and CMD start the
+# server. Do not set a start command in the dashboard either.
+
 [build]
-builder = "NIXPACKS"
-installCommand = "npm install"
-buildCommand = "rm -rf client/dist client/node_modules/.vite && npm run build"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "npm start"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
+drainingSeconds = 15

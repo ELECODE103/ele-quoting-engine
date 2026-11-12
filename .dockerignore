@@ -1,0 +1,54 @@
+# Keeps the build context small and — more important — keeps secrets and
+# customer data out of the image. Anything not needed by the Dockerfile's COPY
+# lines is listed here.
+
+# Customer data and the database: never in an image
+data/
+uploads/
+*.db
+*.db.tmp
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output are produced inside the build
+node_modules/
+client/node_modules/
+client/dist/
+client/dist-new/
+client/dist-ssr/
+dist/
+dist-new/
+
+# Version control, editors, agents
+.git/
+.github/
+.claude/
+.vscode/
+.idea/
+
+# Not part of the running site
+docs/
+tools/security/
+tools/vet-quotes/*
+!tools/vet-quotes/parts
+scripts/brand/
+scripts/e2e/
+*.md
+start.bat
+start-windows.bat
+Procfile
+
+# Tests and their fixtures (the image runs the server, not the suites)
+**/*.test.js
+server/testSupport/
+server/security/fixtures/
+server/geometry/fixtures/
+
+# Junk
+**/*.timestamp-*.mjs
+**/*.log
+**/.DS_Store
+**/__pycache__/
