@@ -67,13 +67,28 @@ async function cpuMs(id) {
       if (c.ext !== ".dxf" || c.size !== "small") continue;
       const doc = readDxf(c.build());
       const units = resolveUnits(doc.header, c.options && c.options.units);
-      const curves = () => normalise(doc, units.scale).curves;
-      const exhaustive = lib.canonical(analyseCurves(curves(), { exhaustive: true }));
-      assert.strictEqual(lib.canonical(analyseCurves(curves(), {})), exhaustive, `${c.id}: default differs from exhaustive`);
-      assert.strictEqual(lib.canonical(analyseCurves(curves(), { rayIndex: "always" })), exhaustive, `${c.id}: forced ray index differs from exhaustive`);
+      // the profile, or the error raised (a drawing too wide for the indexes takes the exhaustive
+      // path either way, including where that path fails)
+      const run = (opts) => { try { return lib.canonical(analyseCurves(normalise(doc, units.scale).curves, opts)); } catch (err) { return `throws ${err.name}: ${err.message}`; } };
+      const exhaustive = run({ exhaustive: true });
+      assert.strictEqual(run({}), exhaustive, `${c.id}: default differs from exhaustive`);
+      assert.strictEqual(run({ rayIndex: "always" }), exhaustive, `${c.id}: forced ray index differs from exhaustive`);
       n++;
     }
     assert.ok(n >= 35, `only ${n} drawings compared`);
+  });
+
+  await test("preview mesh is still a plain array of numbers (it is stored and sent as JSON), whole or down-sampled", async () => {
+    for (const id of ["box", "plate-10k", "sphere-1k-ascii", "sphere-1k-3mf"]) {
+      const c = byId(id);
+      const g = (await parseFile("case" + c.ext, { ext: c.ext, buffer: c.build() })).geometry;
+      assert.ok(Array.isArray(g.meshData.positions), `${id}: positions is ${Object.prototype.toString.call(g.meshData.positions)}`);
+      assert.strictEqual(g.meshData.positions.length, g.triangleCount * 9, id);
+      assert.ok(g.meshData.positions.every((x) => typeof x === "number"), id);
+    }
+    const big = byId("sphere-100k"); // more than 50,000 triangles: every Nth is kept
+    const g = (await parseFile("case.stl", { ext: ".stl", buffer: big.build() })).geometry;
+    assert.ok(Array.isArray(g.meshData.positions) && g.meshData.positions.length === 50000 * 9 && g.meshData.triangleCount === 50000);
   });
 
   if (process.env.GEOMETRY_SKIP_PERF !== "1") {

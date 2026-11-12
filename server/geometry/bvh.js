@@ -60,7 +60,13 @@ function buildBVH(mesh) {
     left[node] = l; right[node] = r; start[node] = lo; count[node] = cnt; splitAxis[node] = axis;
     stack.push([l, lo, mid], [r, mid, hi]);
   }
-  return { mesh, order, nmin, nmax, left, right, start, count, splitAxis, nodeCount };
+  // The node arrays were sized for the worst case (a leaf per triangle); keep only what was used.
+  return {
+    mesh, order, nodeCount,
+    nmin: nmin.slice(0, nodeCount * 3), nmax: nmax.slice(0, nodeCount * 3),
+    left: left.slice(0, nodeCount), right: right.slice(0, nodeCount),
+    start: start.slice(0, nodeCount), count: count.slice(0, nodeCount), splitAxis: splitAxis.slice(0, nodeCount),
+  };
 }
 
 function quickSelect(order, lo, hi, k, cen, axis) {
