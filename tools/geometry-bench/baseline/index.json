@@ -1583,6 +1583,38 @@
    },
    "stages": null
   },
+  "dxf-open-inside-1k": {
+   "size": "medium",
+   "family": "dxf-open-inside",
+   "ext": ".dxf",
+   "n": 3000,
+   "input": {
+    "bytes": 185610,
+    "sha256": "7e7885d42118d6585d5f98b597371c17a54679b5812e07b053b906fa61007748"
+   },
+   "hash": {
+    "geometry": "be117e34943ff78414b25239585b4abd84d00b3d04cb6b52be8571bd094a732c",
+    "dfm": "5b138e5c81661d4bef50dd7a0a80bb3eadf29688450df53a37b7da024d5cd509",
+    "price": "cecb301b5ba31347b51b1bc8f4faaf5af8235f3ee378854ecc0a2c3c54e2e0f7"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 1666,
+    "holes": 0,
+    "problems": 2124
+   },
+   "timing": {
+    "wallMs": 421,
+    "cpuMs": 311,
+    "peakHeapMb": 34.7,
+    "peakRssMb": 120.1,
+    "baseRssMb": 75,
+    "afterParseMs": 77,
+    "load": 5.7
+   },
+   "stages": null
+  },
   "dxf-open-inside-20": {
    "size": "small",
    "family": "dxf-open-inside",
@@ -1868,6 +1900,37 @@
    },
    "stages": null
   },
+  "dxf-scattered-rects-20k": {
+   "size": "medium",
+   "family": "dxf-scattered-rects",
+   "ext": ".dxf",
+   "n": 20000,
+   "input": {
+    "bytes": 3973648,
+    "sha256": "d08dc0b57b9c70e4845ea2bf99e44eb5c43af1b0327cbc2efd255a2c62a89b0a"
+   },
+   "hash": {
+    "geometry": "6a46988cea33b5492af3d1211f6b26ad34f0651150a28b91dc8f1e56d63e982b",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 20,001 contours — more than the instant quote reads (5,000). Perforated panel"
+   },
+   "timing": {
+    "wallMs": 1339015,
+    "cpuMs": 431493,
+    "peakHeapMb": 195.9,
+    "peakRssMb": 301.1,
+    "baseRssMb": 78.4,
+    "afterParseMs": 0,
+    "load": 10.9
+   },
+   "stages": null
+  },
   "dxf-scattered-rects-50": {
    "size": "small",
    "family": "dxf-scattered-rects",
@@ -1962,6 +2025,38 @@
    },
    "stages": null
   },
+  "dxf-separate-parts-2000": {
+   "size": "medium",
+   "family": "dxf-separate-parts",
+   "ext": ".dxf",
+   "n": 4000,
+   "input": {
+    "bytes": 236862,
+    "sha256": "c15a6871c1e11a01054280ebba23440ee9928dc97ecaff990982a1d056d2f9ed"
+   },
+   "hash": {
+    "geometry": "56ac7fdeb68d7262085d2178ec6b63550bfde7f470aca7614520be8eca3c7c32",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF contains 2000 separate parts (outlines that are not inside one another). Upload o",
+    "fullMessage": "This DXF contains 2000 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation "
+   },
+   "timing": {
+    "wallMs": 8912,
+    "cpuMs": 4138,
+    "peakHeapMb": 253.9,
+    "peakRssMb": 344.2,
+    "baseRssMb": 75.2,
+    "afterParseMs": 1,
+    "load": 5.7
+   },
+   "stages": null
+  },
   "dxf-separate-parts-3": {
    "size": "small",
    "family": "dxf-separate-parts",
@@ -1990,6 +2085,70 @@
     "baseRssMb": 75.2,
     "afterParseMs": 0,
     "load": 7.3
+   },
+   "stages": null
+  },
+  "dxf-splines-3k": {
+   "size": "medium",
+   "family": "dxf-splines",
+   "ext": ".dxf",
+   "n": 25000,
+   "input": {
+    "bytes": 1454722,
+    "sha256": "87227034612342c9707100ad206e064ac3053f417286c05910ce2568573a670b"
+   },
+   "hash": {
+    "geometry": "97bcbbfb708b5fa2f6a670206bad399a7c21ac8bfc5b4686dcdfe8bc6d87f4dc",
+    "dfm": "d570f45fdee5fecb16dd39c9019279bcce357dcbfe00b45ec9cde0e699de430e",
+    "price": "ce60681676c90851c15c13f4b2efc06d836a531af9c2aef7709dcf28f869f036"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "ok",
+    "loops": 2501,
+    "holes": 0,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 4199,
+    "cpuMs": 2628,
+    "peakHeapMb": 300.8,
+    "peakRssMb": 450.4,
+    "baseRssMb": 76.2,
+    "afterParseMs": 476,
+    "load": 6.1
+   },
+   "stages": null
+  },
+  "dxf-splines-400": {
+   "size": "medium",
+   "family": "dxf-splines",
+   "ext": ".dxf",
+   "n": 4000,
+   "input": {
+    "bytes": 223877,
+    "sha256": "ac37e0dbd7a458959019b286abf1496b91ff111669e38fa820eac5aa8823ffb3"
+   },
+   "hash": {
+    "geometry": "56b54ee25d6587c27100e900230ce77de5cbc2b51a6de6773641a5d073895ea0",
+    "dfm": "227462dc6dc02697827181e84893f60c34a54f74b70b90e387900b90b8d65e56",
+    "price": "11acc7b8d7cb1d775e7527d59647cbfec24d3c6b1c988e0c6ef43d062be737a8"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "loops": 401,
+    "holes": 0,
+    "problems": 0
+   },
+   "timing": {
+    "wallMs": 989,
+    "cpuMs": 661,
+    "peakHeapMb": 108,
+    "peakRssMb": 194.3,
+    "baseRssMb": 75.5,
+    "afterParseMs": 86,
+    "load": 6.1
    },
    "stages": null
   },
@@ -3033,6 +3192,51 @@
     "overhang": 1,
     "selfIntersect": 29,
     "total": 177
+   }
+  },
+  "fixture-plate_400_holes-step": {
+   "size": "medium",
+   "family": "fixture",
+   "ext": ".step",
+   "n": null,
+   "input": {
+    "bytes": 2044032,
+    "sha256": "37be4d839e3b7320d2726ac2607092e846728398741361f17b21c95c2f0b79a2"
+   },
+   "hash": {
+    "geometry": "a22010d13f4a4dbeb7bede0553508d5940f8cc835af32b51ddfc4adaa91470ab",
+    "dfm": "5bf2823d90a45858206e0dacccd14426f70897e9b271fa89f68332647be1b3c1",
+    "price": "88eb8845d4a0c7e1a11112b664e572859de5a471a6d95a1c71baf37a6b2534aa"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "ok",
+    "triangles": 43212,
+    "holes": 400,
+    "kind": "flat",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 10397,
+    "cpuMs": 5925,
+    "peakHeapMb": 244.8,
+    "peakRssMb": 528.2,
+    "baseRssMb": 76.6,
+    "afterParseMs": 108,
+    "load": 5.7
+   },
+   "stages": {
+    "mesh": 55,
+    "segment": 241,
+    "bvh": 92,
+    "shape": 131,
+    "outline": 119,
+    "features": 80,
+    "thickness": 253,
+    "access": 416,
+    "overhang": 9,
+    "selfIntersect": 277,
+    "total": 1675
    }
   },
   "fixture-plate_hole_pattern-stl": {
