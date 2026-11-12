@@ -6,7 +6,8 @@
  *   const h = await require("../testSupport/harness").start();
  *   const r = await h.post("/api/quote", { parts: [...] }, token);
  *   h.sent      → emails captured: [{ to, subject, text, html, replyTo }]
- *   h.stripe    → { created: [...sessions.create args], sessions: { id: session }, failNext }
+ *   h.stripe    → { created: [...sessions.create args], sessions: { id: session }, failNext,
+ *                   customers: [...customers.create args], taxRate (for sessions with automatic_tax), failCustomer }
  *   await h.stop();
  *
  * Bot check: Cloudflare Turnstile is switched on with throwaway keys made at
@@ -84,8 +85,20 @@ async function start(opts = {}) {
   mailer.send = async (m) => { sent.push(m); return false; };
 
   // Stripe stub: records what would be sent to Stripe, hands back a fake session.
-  const stripe = { created: [], sessions: {}, failNext: false };
+  // Stripe Tax, as far as this code can tell: a session created with automatic_tax gets tax at
+  // stripe.taxRate (7% unless a test sets another) on every line that is not sent as nontaxable,
+  // and none for a Customer marked exempt. stripe.customers holds the Customers "created";
+  // stripe.failCustomer makes the next one fail the way Stripe refuses an address it cannot place.
+  const stripe = { created: [], sessions: {}, failNext: false, customers: [], taxRate: 0.07, failCustomer: false };
   require("../services/stripeClient").setForTests({
+    customers: {
+      create: async (args) => {
+        if (stripe.failCustomer) { stripe.failCustomer = false; throw Object.assign(new Error("customer location invalid"), { code: "customer_tax_location_invalid" }); }
+        const customer = { id: `cus_test_${stripe.customers.length + 1}`, ...args };
+        stripe.customers.push(customer);
+        return customer;
+      },
+    },
     checkout: {
       sessions: {
         create: async (args) => {
@@ -95,6 +108,12 @@ async function start(opts = {}) {
           // What Stripe would charge: every line (the order, plus the inspection paperwork when it was ordered).
           const amount = args.line_items.reduce((sum, li) => sum + li.price_data.unit_amount * (li.quantity || 1), 0);
           stripe.sessions[id] = { id, url: `https://checkout.stripe.test/${id}`, payment_status: "unpaid", amount_total: amount, amount_subtotal: amount, metadata: args.metadata };
+          if (args.automatic_tax && args.automatic_tax.enabled) {
+            const customer = stripe.customers.find((c) => c.id === args.customer);
+            const taxable = args.line_items.filter((li) => li.price_data.product_data.tax_code !== "txcd_00000000").reduce((sum, li) => sum + li.price_data.unit_amount * (li.quantity || 1), 0);
+            const tax = customer && customer.tax_exempt === "exempt" ? 0 : Math.round(taxable * stripe.taxRate);
+            Object.assign(stripe.sessions[id], { amount_total: amount + tax, customer: args.customer, total_details: { amount_tax: tax, amount_discount: 0, amount_shipping: 0 } });
+          }
           return stripe.sessions[id];
         },
         retrieve: async (id) => stripe.sessions[id],

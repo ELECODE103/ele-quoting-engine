@@ -14,6 +14,7 @@ const shipBy = require("./shipBy");
 const rfqToken = require("./rfqToken");
 const stripeClient = require("./stripeClient");
 const { accountLinkBase } = require("../security/links");
+const tax = require("./tax");
 
 const ORDER_LINK_DAYS = 180; // how long an emailed order link for an account-less (RFQ) buyer keeps working
 
@@ -52,34 +53,60 @@ function orderUrl(order, base) {
 // ─── Stripe boundary ───────────────────────────────────────────
 
 /**
- * What the buyer sees on Stripe's page: the order, and the inspection paperwork
- * as its own line when it was ordered with a fee. The lines always sum to
- * order.total in cents, which is what settleFromSession checks the payment against.
+ * What the buyer sees on Stripe's page, as [{ kind, line }]: the order, the inspection paperwork
+ * as its own line when it was ordered with a fee, and shipping as its own line when it is
+ * charged by a method other than the original weight formula (or whenever Stripe Tax is on, so
+ * the shipping line can carry its own tax treatment). With every switch at its default this is
+ * the one or two lines it always was. The lines always sum, in cents, to the order's total
+ * before tax, which is what settleFromSession checks the payment against.
  */
-function stripeLineItems(order, { itemCount, description }) {
-  const totalCents = Math.round((order.total || 0) * 100);
+function orderLines(order, { itemCount, description }) {
+  const totalCents = Math.round(((order.total || 0) - (Number(order.tax) || 0)) * 100);
   const feeCents = order.paperwork ? Math.min(totalCents, Math.max(0, Math.round((Number(order.paperworkFee) || 0) * 100))) : 0;
+  const ownShippingLine = (order.shippingMode && order.shippingMode !== "formula") || order.taxMode === "stripe";
+  const shipCents = ownShippingLine ? Math.min(totalCents - feeCents, Math.max(0, Math.round((Number(order.shippingCost) || 0) * 100))) : 0;
   const line = (name, text, cents) => ({
     price_data: { currency: "usd", product_data: { name, description: text }, unit_amount: cents }, // Stripe uses cents
     quantity: 1,
   });
-  const lines = [line(`${brand.name} Order — ${itemCount} part${itemCount !== 1 ? "s" : ""}`, description || "Custom machined and printed parts", totalCents - feeCents)];
-  if (feeCents > 0) lines.push(line(templates.PAPERWORK_LABEL, "Ships with the parts", feeCents));
+  const lines = [{ kind: "goods", line: line(`${brand.name} Order — ${itemCount} part${itemCount !== 1 ? "s" : ""}`, description || "Custom machined and printed parts", totalCents - feeCents - shipCents) }];
+  if (feeCents > 0) lines.push({ kind: "paperwork", line: line(templates.PAPERWORK_LABEL, "Ships with the parts", feeCents) });
+  if (shipCents > 0) lines.push({ kind: "shipping", line: line("Shipping", order.packedWeightLb ? `Ground, about ${Math.ceil(order.packedWeightLb)} lb packed` : "Ground", shipCents) });
   return lines;
+}
+function stripeLineItems(order, opts) {
+  return orderLines(order, opts).map((l) => l.line);
 }
 
 /**
  * Create a Stripe Checkout session for an order's total and remember its id.
  * Throws if Stripe isn't configured or the API call fails.
+ *
+ * An order checked out with Stripe Tax on (order.taxMode "stripe") gets `automatic_tax`, a
+ * Stripe Customer carrying the address it is taxed at, and tax-exclusive lines
+ * (services/tax.js). Any other order is sent exactly as before.
  */
 async function createCheckoutSession(order, { itemCount, description, successUrl, cancelUrl, metadata = {} }) {
   const stripe = stripeClient.get();
   if (!stripe) throw Object.assign(new Error("Payment processing is not configured"), { status: 503 });
+  let taxed = null;
+  if (order.taxMode === "stripe") {
+    try {
+      taxed = await tax.stripeParams(stripe, order, customerEmail(order), require("./checkout").currentRules());
+    } catch (err) {
+      // Stripe refuses an address it cannot place. Nothing about the address is logged.
+      if (err && (err.code === "customer_tax_location_invalid" || /tax_location|address/i.test(String(err.code || "")))) {
+        throw Object.assign(new Error("We couldn't work out sales tax for that address. Check the street, city, state and ZIP code and try again."), { code: "tax-address", status: 400 });
+      }
+      throw err;
+    }
+  }
+  const lines = orderLines(order, { itemCount, description }).map(({ kind, line }) => (taxed ? taxed.decorate(line, kind) : line));
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     mode: "payment",
-    customer_email: customerEmail(order) || undefined,
-    line_items: stripeLineItems(order, { itemCount, description }),
+    ...(taxed ? taxed.session : { customer_email: customerEmail(order) || undefined }),
+    line_items: lines,
     metadata: { orderId: order.id, ...metadata },
     success_url: successUrl,
     cancel_url: cancelUrl,
@@ -96,9 +123,17 @@ async function createCheckoutSession(order, { itemCount, description, successUrl
  * send the confirmation + shop notification. Idempotent: an order that isn't
  * pending is returned untouched and nothing is re-sent.
  */
-async function markPaid(order, { base, warning } = {}) {
+async function markPaid(order, { base, warning, taxCents = 0, taxIds = "" } = {}) {
   if (order.status !== "pending_payment") return { order, changed: false };
   const updates = { status: warning ? "paid_amount_mismatch" : "paid", paidAt: new Date().toISOString() };
+  // Sales tax Stripe added on its page: stored on the order and added to its total, so the
+  // order's lines (parts, fees, shipping, tax) still add up to what was paid.
+  if (taxCents > 0) {
+    const preTax = (order.total || 0) - (Number(order.tax) || 0);
+    updates.tax = taxCents / 100;
+    updates.total = Math.round((preTax + taxCents / 100) * 100) / 100;
+  }
+  if (taxIds) updates.customerTaxIds = taxIds;
   if (order.leadDays !== null && order.leadDays !== undefined) updates.shipBy = shipBy.shipByDate(Number(order.leadDays));
   const paid = ordersDB.update(order.id, updates);
   const items = itemsFor(paid);
@@ -116,19 +151,24 @@ async function markPaid(order, { base, warning } = {}) {
 
 /**
  * Settle an order from a Stripe Checkout session (webhook or return-page
- * confirmation). The pre-discount amount must match the order total; a promo
- * code lowers amount_total but not amount_subtotal.
+ * confirmation). What the lines came to BEFORE discounts and BEFORE tax must
+ * match the order's total before tax: a promo code lowers amount_total but not
+ * amount_subtotal, and sales tax raises amount_total but not amount_subtotal
+ * (our prices are tax-exclusive). So a taxed order is not a mismatch; the tax
+ * Stripe reports is stored on the order.
  */
 async function settleFromSession(order, session, { base } = {}) {
   if (session.payment_status && session.payment_status !== "paid") return { order, changed: false };
-  const expected = Math.round((order.total || 0) * 100);
-  const charged = session.amount_subtotal ?? session.amount_total;
+  const expected = Math.round(((order.total || 0) - (Number(order.tax) || 0)) * 100);
+  const read = tax.readSession(session);
+  const charged = read.preTaxCents;
+  const paid = { base, taxCents: read.taxCents, taxIds: read.taxIds };
   if (charged && expected > 0 && Math.abs(charged - expected) > 1) {
     console.error(`Payment amount mismatch for order ${order.id}: session ${charged} cents, expected ${expected} cents`);
-    const r = await markPaid(order, { base, warning: `Needs review: Stripe charged ${templates.money(charged / 100)} before discounts but the order total is ${templates.money(order.total)}.` });
+    const r = await markPaid(order, { ...paid, warning: `Needs review: Stripe charged ${templates.money(charged / 100)} before discounts${read.taxCents ? " and tax" : ""} but the order total is ${templates.money(expected / 100)}.` });
     return { ...r, warning: "amount_mismatch" };
   }
-  return markPaid(order, { base });
+  return markPaid(order, paid);
 }
 
 /** Ask Stripe whether a pending order's checkout session was paid, and settle it if so. */
@@ -158,4 +198,4 @@ async function notifyStatusChange(before, after, { base } = {}) {
   return true;
 }
 
-module.exports = { baseUrl, itemsFor, customerEmail, orderUrl, stripeLineItems, createCheckoutSession, markPaid, settleFromSession, confirmPayment, notifyStatusChange };
+module.exports = { baseUrl, itemsFor, customerEmail, orderUrl, stripeLineItems, orderLines, createCheckoutSession, markPaid, settleFromSession, confirmPayment, notifyStatusChange };

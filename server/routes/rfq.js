@@ -28,7 +28,12 @@
  *                                          Marking it "quoted" emails the customer the firm
  *                                          quote with a signed accept link.
  *   GET  /api/rfq/quote/:token             customer: the firm quote behind an emailed link
- *   POST /api/rfq/quote/:token/accept      customer: accept → card checkout, or PO number
+ *   POST /api/rfq/quote/:token/accept      customer: accept → card checkout, or PO number.
+ *                                          shippingOption ("ship" | "carrier-account" | "pickup") is honoured
+ *                                          only when the admin has switched that choice on; the quoted
+ *                                          total never changes with it. A purchase order's tax is per invoice.
+ *   POST|DELETE /api/rfq/quote/:token/tax-certificate   customer: attach / remove an exemption certificate
+ *                                          before accepting (same guards as a drawing)
  *   POST /api/rfq/quote/:token/confirm-payment   customer: settle on return from Stripe
  */
 const express = require("express");
@@ -50,6 +55,9 @@ const shopFacts = require("../shopFacts");
 const crypto = require("crypto");
 const botGuard = require("../security/botGuard");
 const turnstile = require("../security/turnstile");
+const checkout = require("../services/checkout");           // delivery choices and tax settings
+const shippingService = require("../services/shipping");
+const taxCertificates = require("../services/taxCertificates");
 // Where a buyer ships a worn part. Server-side only: it is given out after a
 // request is sent by someone who passed the bot check (response + email),
 // never on a public page and never to an unverified sender.
@@ -342,7 +350,7 @@ function acceptUrl(rfq, base) {
 
 /** What the admin queue shows: the RFQ, its live accept link while open, and its order once accepted. */
 function adminView(rfq, base) {
-  const { drawingPath, ...safe } = rfq;
+  const { drawingPath, taxCertPath, ...safe } = rfq;
   const order = rfq.orderId ? ordersDB.getById(rfq.orderId) : null;
   return {
     ...safe,
@@ -477,10 +485,15 @@ function customerView(rfq) {
     acceptedAt: rfq.acceptedAt || null,
     acceptedVia: rfq.acceptedVia || null,
     poNumber: rfq.poNumber || "",
+    // While the quote is open: the delivery choices the shop offers and what it says about tax.
+    checkout: rfq.status === "quoted" ? checkout.firmView() : null,
+    taxCertFileName: rfq.taxCertFileName || "",
     order: order ? {
       reference: templates.shortId(order.id),
       status: order.status,
       total: order.total,
+      // How it is delivered (carrier account masked), the tax line, and for a paid pickup order the address.
+      ...(({ shippingMethod, deliveryLine, taxLine, pickupAddress, tax, taxExempt, taxExemptStatus }) => ({ shippingMethod: shippingMethod || "standard", deliveryLine, taxLine, pickupAddress: pickupAddress || null, tax: tax || 0, taxExempt: Boolean(taxExempt), taxExemptStatus: taxExemptStatus || "" }))(checkout.orderView(order)),
       shipBy: order.shipBy || null,
       carrier: order.carrier || "",
       trackingNumber: order.trackingNumber || "",
@@ -551,15 +564,12 @@ router.post("/quote/:token/accept", async (req, res) => {
       return res.status(409).json({ error: `This quote is no longer open. Call ${brand.phone} and we'll sort it out.`, code: "not-open" });
     }
 
-    const shipping = {
-      shippingName: sanitizeString(b.shippingName || "", 200),
-      shippingAddress: sanitizeString(b.shippingAddress || "", 500),
-      shippingCity: sanitizeString(b.shippingCity || "", 100),
-      shippingState: sanitizeString(b.shippingState || "", 100),
-      shippingZip: sanitizeString(b.shippingZip || "", 20),
-      shippingCountry: sanitizeString(b.shippingCountry || "US", 5),
-    };
-    if (!shipping.shippingName || !shipping.shippingAddress || !shipping.shippingCity || !shipping.shippingState || !shipping.shippingZip) {
+    // How the order is delivered, and whether an exemption is declared. The choice is honoured
+    // only if the admin has switched it on; the quoted total is the total whatever is chosen.
+    const firm = checkout.resolveFirm(b, { certificate: rfq.taxCertPath ? { fileName: rfq.taxCertFileName || "certificate", path: rfq.taxCertPath } : null });
+    if (!firm.ok) return res.status(firm.status).json({ error: firm.error, code: firm.code });
+    const shipping = firm.address;
+    if (firm.method !== "pickup" && (!shipping.shippingName || !shipping.shippingAddress || !shipping.shippingCity || !shipping.shippingState || !shipping.shippingZip)) {
       return res.status(400).json({ error: "Add the full ship-to address" });
     }
     const poNumber = sanitizeString(b.poNumber || "", 60);
@@ -567,13 +577,13 @@ router.post("/quote/:token/accept", async (req, res) => {
     if (method === "card" && !stripeClient.get()) return res.status(503).json({ error: `Card payment isn't available right now. Call ${brand.phone}.` });
 
     const days = rfq.quotedLeadDays;
-    const order = ordersDB.insert({
+    let order = ordersDB.insert({
       userId: rfq.userId || null,
       quoteId: rfq.quoteId || null,
       rfqId: rfq.id,
       status: method === "po" ? "pending_po" : "pending_payment",
-      ...shipping,
-      shippingMethod: "standard",
+      // Ship-to, delivery choice ("standard" = we ship it), carrier account (masked), tax mode, exemption.
+      ...checkout.orderFields(firm),
       shippingCost: 0,
       subtotal: rfq.quotedTotal,
       // Asked for on the request and priced into the firm quote: flagged on the order so the
@@ -595,6 +605,8 @@ router.post("/quote/:token/accept", async (req, res) => {
       drawingFileName: rfq.drawingFileName || "",
       drawingPath: rfq.drawingPath || "",
     });
+    // The carrier account number is sealed to this order's id, so it is stored once the id exists.
+    if (firm.carrier) order = ordersDB.update(order.id, { shipAccountEnc: shippingService.sealAccount(firm.carrier.account, order.id) });
     const items = orderItemsFor(rfq).map((it) => orderItemsDB.insert({ orderId: order.id, ...it }));
 
     let session = null;
@@ -605,6 +617,7 @@ router.post("/quote/:token/accept", async (req, res) => {
         // No session, no order: leave the quote open so the buyer can try again.
         for (const it of items) orderItemsDB.delete(it.id);
         ordersDB.delete(order.id);
+        if (err.code === "tax-address") return res.status(400).json({ error: err.message, code: "tax-address" });
         console.error("RFQ accept: checkout session failed:", err.message);
         return res.status(502).json({ error: `We couldn't start the card payment. Try again, or call ${brand.phone}.` });
       }
@@ -633,6 +646,30 @@ router.post("/quote/:token/accept", async (req, res) => {
   }
 });
 
+// A tax-exemption certificate, attached on the quote page before the quote is accepted.
+// The link is the credential (as for accepting); only an open quote can be changed.
+function openQuoteFromToken(req, res, next) {
+  const rfq = rfqFromToken(req, res);
+  if (!rfq) return;
+  if (rfq.status !== "quoted") return res.status(409).json({ error: "This quote can no longer be changed", code: "not-open" });
+  req.rfq = rfq;
+  next();
+}
+router.post("/quote/:token/tax-certificate", openQuoteFromToken, taxCertificates.admit(), async (req, res) => {
+  const stored = await taxCertificates.receive(req, res);
+  if (!stored) return;
+  const previous = req.rfq.taxCertPath;
+  const updated = rfqsDB.update(req.rfq.id, { taxCertFileName: stored.fileName, taxCertPath: stored.path });
+  await taxCertificates.discardIfUnused(previous, require("../models"), { rfqId: req.rfq.id });
+  res.json({ taxCertFileName: updated.taxCertFileName });
+});
+router.delete("/quote/:token/tax-certificate", openQuoteFromToken, async (req, res) => {
+  const previous = req.rfq.taxCertPath;
+  rfqsDB.update(req.rfq.id, { taxCertFileName: "", taxCertPath: "" });
+  await taxCertificates.discardIfUnused(previous, require("../models"), { rfqId: req.rfq.id });
+  res.json({ taxCertFileName: "" });
+});
+
 router.post("/quote/:token/confirm-payment", async (req, res) => {
   try {
     const rfq = rfqFromToken(req, res);
@@ -656,7 +693,7 @@ router.get("/:id", optionalAuth, (req, res) => {
   const admin = req.user && req.user.role === "admin";
   const owner = req.user && rfq.userId && req.user.userId === rfq.userId;
   if (admin || owner) {
-    const { drawingPath, senderCheck, buyerEmailed, ...safe } = rfq;
+    const { drawingPath, taxCertPath, senderCheck, buyerEmailed, ...safe } = rfq;
     return res.json(admin ? { ...safe, senderCheck, buyerEmailed } : safe);
   }
   if (rfq.userId) return res.status(404).json({ error: "RFQ not found" });

@@ -25,6 +25,8 @@ const { clientKey } = require("../security/clientKey");
 const brand = require("../../shared/brand.json");
 
 const shopFacts = require("../shopFacts");
+const checkout = require("../services/checkout");           // shipping choices, totals and the tax note for a quote
+const taxCertificates = require("../services/taxCertificates");
 const { offeredLayerHeight } = require("../services/layerHeight"); // hides catalog options the owner has not confirmed
 const router = express.Router();
 
@@ -593,7 +595,9 @@ function priceQuote(partConfigs, leadTimeSlug = "standard", { paperwork = false 
   });
 
   // Instant checkout or RFQ? Stored with the quote so checkout can enforce it.
-  const gate = quoteGate.evaluate(quote.lineItems, dfmByPartId, pricingEngine.rules);
+  // An order that cannot be given a shipping price (oversize, overweight, weight unknown) and has
+  // no other way to be delivered goes to a firm quote too.
+  const gate = checkout.gateWithShipping(quoteGate.evaluate(quote.lineItems, dfmByPartId, pricingEngine.rules), quote.shipping, pricingEngine.rules);
 
   return { quote, gate, dfmByPartId, leadTime, leadTimeMultiplier };
 }
@@ -685,6 +689,8 @@ router.post("/quote", optionalAuth, (req, res) => {
       expiresAt: saved.expiresAt,
       notes: saved.notes || "",
       drawingFileName: saved.drawingFileName || "",
+      // What the summary says about shipping and tax under the current settings.
+      checkout: checkout.viewFor(saved, pricingEngine.rules),
       shipBy: shipBy.shipByDate(leadTime),
       leadTimeOptions: leadTimeOptions(quote.subtotal, (req.body.parts || []).map((c) => c && c.finishSlug)),
       dfmByPartId: Object.fromEntries(
@@ -700,10 +706,13 @@ router.post("/quote", optionalAuth, (req, res) => {
 
 /** A stored quote as the customer may see it: no server paths, plus the live ship-by date. */
 function quoteView(quote) {
-  const { drawingPath, ...safe } = quote;
+  const { drawingPath, taxCertPath, ...safe } = quote;
   const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === quote.leadTimeSlug);
   return {
     ...safe,
+    // Delivery choices with their totals, and the tax note, worked out here: the page shows them, it does not compute them.
+    checkout: checkout.viewFor(quote, pricingEngine.rules),
+    taxCertFileName: quote.taxCertFileName || "",
     // Quotes saved before the paperwork option existed have neither column.
     paperwork: Boolean(quote.paperwork),
     paperworkFee: Number(quote.paperworkFee) || 0,
@@ -855,6 +864,41 @@ router.delete("/quote/:id/drawing", optionalAuth, async (req, res) => {
   // Removed means removed: the file goes too, unless something else still points at it.
   if (previous && path.dirname(path.resolve(previous)) === path.resolve(quoteDrawingDir) && !drawingInUseElsewhere(previous, quote.id)) await discard(previous);
   res.json({ drawingFileName: "" });
+});
+
+// ─── Tax-exemption certificate on a quote ────────────────────
+// A buyer who declares an order tax-exempt attaches the certificate before paying. It rides to
+// the order for the owner to read; it never changes a price by itself (services/tax.js decides
+// what a declaration does, from the admin's settings).
+router.post(
+  "/quote/:id/tax-certificate",
+  optionalAuth,
+  (req, res, next) => {
+    const quote = readableQuote(req, res);
+    if (!quote) return;
+    if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed" });
+    req.quote = quote;
+    next();
+  },
+  taxCertificates.admit(),
+  async (req, res) => {
+    const stored = await taxCertificates.receive(req, res);
+    if (!stored) return;
+    const previous = req.quote.taxCertPath;
+    const updated = quotesDB.update(req.quote.id, { taxCertFileName: stored.fileName, taxCertPath: stored.path });
+    await taxCertificates.discardIfUnused(previous, require("../models"), { quoteId: req.quote.id });
+    res.json({ taxCertFileName: updated.taxCertFileName });
+  }
+);
+
+router.delete("/quote/:id/tax-certificate", optionalAuth, async (req, res) => {
+  const quote = readableQuote(req, res);
+  if (!quote) return;
+  if (!quoteEditableBy(quote, req.user)) return res.status(409).json({ error: "This quote can no longer be changed" });
+  const previous = quote.taxCertPath;
+  quotesDB.update(quote.id, { taxCertFileName: "", taxCertPath: "" });
+  await taxCertificates.discardIfUnused(previous, require("../models"), { quoteId: quote.id });
+  res.json({ taxCertFileName: "" });
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1057,6 +1101,22 @@ router.post("/admin/pricing/preview", authenticate, requireAdmin, (req, res) => 
     console.error("Pricing preview error:", err);
     res.status(500).json({ error: "Preview failed" });
   }
+});
+
+// "A 3 lb order to Ohio would be charged $X shipping", under the rules on screen (saved or not).
+// Body: { rules: {candidate changes}, weightLb, longestIn, subtotal, state }.
+router.post("/admin/shipping/preview", authenticate, requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const candidate = b.rules && typeof b.rules === "object" ? ruleSchema.validateRules(b.rules, { partial: true }) : { ok: true, values: {} };
+  if (!candidate.ok) return res.status(400).json({ error: candidate.errors[0].message, errors: candidate.errors });
+  const rules = { ...pricingAdmin.currentRules(), ...candidate.values };
+  const n = (v, lo, hi, d) => { const x = Number(v); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
+  const shipping = require("../services/shipping");
+  const tax = require("../services/tax");
+  res.json({
+    ...shipping.preview(rules, { weightLb: n(b.weightLb, 0, 5000, 3), longestIn: n(b.longestIn, 0, 1000, 12), subtotal: n(b.subtotal, 0, 1e7, 150), state: sanitizeString(String(b.state || "OH"), 30) }),
+    tax: tax.publicInfo(rules),
+  });
 });
 
 router.get("/admin/pricing/history", authenticate, requireAdmin, (req, res) => {
