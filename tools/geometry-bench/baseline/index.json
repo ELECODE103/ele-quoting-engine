@@ -823,27 +823,18 @@
     "bytes": 1912813,
     "sha256": "5352ed277ea7aad1c2f11ddfc4a54379abd5e9fde20211446543271df708fc44"
    },
-   "hash": {
-    "geometry": "fb24289151d255e8caaae3747beb0e1b74c432638101d47d6c1a5e6a2a7a5ef3",
-    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
-   },
-   "snapshot": true,
-   "summary": {
-    "status": "refused",
-    "code": null,
-    "message": "Set maximum size exceeded"
-   },
+   "unfinished": "resource",
+   "note": "Set maximum size exceeded",
    "timing": {
-    "wallMs": 430750,
-    "cpuMs": 168457,
-    "peakHeapMb": 715.8,
-    "peakRssMb": 843.1,
-    "baseRssMb": 76.7,
-    "afterParseMs": 0,
-    "load": 2.6
-   },
-   "stages": null
+    "wallMs": 492589,
+    "cpuMs": 200823,
+    "peakHeapMb": 714.8,
+    "peakV8HeapMb": 710.2,
+    "peakRssMb": 824.6,
+    "baseRssMb": 76.2,
+    "afterParseMs": 1,
+    "load": 4.6
+   }
   },
   "dxf-crossing-2k": {
    "size": "small",
@@ -1123,6 +1114,39 @@
    },
    "stages": null
   },
+  "dxf-duplicates-40k": {
+   "size": "large",
+   "family": "dxf-duplicates",
+   "ext": ".dxf",
+   "n": 80000,
+   "input": {
+    "bytes": 8083930,
+    "sha256": "d395c21fef6956507b69272edc5a40c7b7b09544f8aaeda341eff731a28609b7"
+   },
+   "hash": {
+    "geometry": "b4551234347d9d28b31c90aaa958c0b0b00a85c283e4ad4e517bc84442330e22",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 43,040 contours — more than the instant quote reads (5,000). Perforated panel",
+    "fullMessage": "This DXF has 43,040 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
+   },
+   "timing": {
+    "wallMs": 314258,
+    "cpuMs": 176926,
+    "peakHeapMb": 669,
+    "peakV8HeapMb": 658.6,
+    "peakRssMb": 786.8,
+    "baseRssMb": 82.4,
+    "afterParseMs": 1,
+    "load": 7.6
+   },
+   "stages": null
+  },
   "dxf-duplicates-5k": {
    "size": "medium",
    "family": "dxf-duplicates",
@@ -1374,6 +1398,14 @@
     "load": 13.2
    },
    "stages": null
+  },
+  "dxf-line-grid-223": {
+   "size": "large",
+   "family": "dxf-line-grid",
+   "ext": ".dxf",
+   "n": 99904,
+   "unfinished": "time",
+   "note": "not finished after 45 minutes"
   },
   "dxf-line-grid-50": {
    "size": "medium",
@@ -1937,6 +1969,39 @@
     "baseRssMb": 80.3,
     "afterParseMs": 1,
     "load": 4.7
+   },
+   "stages": null
+  },
+  "dxf-open-inside-10k": {
+   "size": "large",
+   "family": "dxf-open-inside",
+   "ext": ".dxf",
+   "n": 30000,
+   "input": {
+    "bytes": 1850801,
+    "sha256": "24ef2ac415818012d9124cef2dd662a3861d803a8a7d2d087c70c76ed96abfbb"
+   },
+   "hash": {
+    "geometry": "bdef59aa2dfb6c931da26089a4c79413621e16f78e1735095d2f642a0f0f7f2f",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "refused",
+    "code": null,
+    "message": "This DXF has 16,336 contours — more than the instant quote reads (5,000). Perforated panel",
+    "fullMessage": "This DXF has 16,336 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
+   },
+   "timing": {
+    "wallMs": 43102,
+    "cpuMs": 33580,
+    "peakHeapMb": 171.1,
+    "peakV8HeapMb": 166.6,
+    "peakRssMb": 270.5,
+    "baseRssMb": 76.6,
+    "afterParseMs": 1,
+    "load": 5.1
    },
    "stages": null
   },
@@ -7711,8 +7776,46 @@
    "family": "sphere",
    "ext": ".stl",
    "n": 500000,
-   "unfinished": "time",
-   "note": "not finished after 45 minutes"
+   "input": {
+    "bytes": 23874084,
+    "sha256": "8743ae61acfa7ea1ad8c6629fbc5dcbc90248d826c531d8131d34227fa7865f8"
+   },
+   "hash": {
+    "geometry": "dbe7bbe972a9f0ed4e86294b9976732e4fd9e4c5dab633de22a5f77bef25863b",
+    "dfm": "10cbf7f320e5344a4f2166e3a449d9a743bbf456ddfe709932cb418efa6aad95",
+    "price": "06ca266fb8b59481dad5d7c016b75f130d5797cee4061a432194c81748cdc44f"
+   },
+   "snapshot": false,
+   "summary": {
+    "status": "ok",
+    "triangles": 477480,
+    "holes": 0,
+    "kind": "revolved",
+    "recognised": true
+   },
+   "timing": {
+    "wallMs": 4096040,
+    "cpuMs": 2083146,
+    "peakHeapMb": 575.4,
+    "peakV8HeapMb": 469.2,
+    "peakRssMb": 770,
+    "baseRssMb": 96.4,
+    "afterParseMs": 160,
+    "load": 7
+   },
+   "stages": {
+    "mesh": 2576,
+    "segment": 4085780,
+    "bvh": 1408,
+    "shape": 450,
+    "outline": 341,
+    "features": 88,
+    "thickness": 261,
+    "access": 385,
+    "overhang": 62,
+    "selfIntersect": 0,
+    "total": 4091351
+   }
   },
   "sphere-inch-3mf": {
    "size": "small",
@@ -8717,6 +8820,22 @@
     "selfIntersect": 0,
     "total": 1
    }
+  },
+  "soup-wide-100k": {
+   "size": "medium",
+   "family": "soup-wide",
+   "ext": ".stl",
+   "n": 100000,
+   "unfinished": "resource",
+   "note": "stopped by the machine (SIGKILL) — out of memory at 4.8 GB resident, heap limit lifted to 4096 MB"
+  },
+  "soup-wide-500k": {
+   "size": "large",
+   "family": "soup-wide",
+   "ext": ".stl",
+   "n": 500000,
+   "unfinished": "resource",
+   "note": "stopped by the machine (SIGKILL) — out of memory at 4.7 GB resident, heap limit lifted to 4096 MB"
   }
  },
  "node": "v22.23.4",

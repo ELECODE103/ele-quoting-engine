@@ -65,6 +65,11 @@ const MAX_COMMITTED_SNAPSHOT = 400 * 1024; // gzip bytes; a bigger result is kep
         console.log(`[${done}/${list.length}] ${c.id.padEnd(38)} UNFINISHED: ${err.message}`);
         return;
       }
+      if (err && err.code === "KILLED") {
+        save(c.id, { size: c.size, family: c.family, ext: c.ext, n: c.n, unfinished: "resource", note: err.message });
+        console.log(`[${done}/${list.length}] ${c.id.padEnd(38)} UNFINISHED: ${err.message}`);
+        return;
+      }
       if (err) { failed++; console.error(`✗ ${c.id}: ${err.message}`); return; }
       const resource = lib.resourceFailure(r.summary);
       if (resource) {

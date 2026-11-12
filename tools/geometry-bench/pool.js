@@ -11,7 +11,8 @@ const lib = require("./lib");
 /**
  * @param {object[]} list cases
  * @param {{jobs?:number, heap?:number, capMs?:number, onResult:(c, result|null, fullText|null, error|null)=>void}} o
- *        capMs: stop a case that runs longer than this (the error passed to onResult has code "CAP")
+ *        capMs: stop a case that runs longer than this (the error passed to onResult has code "CAP");
+ *        a case whose process the operating system kills (out of memory) gets code "KILLED"
  */
 async function runMany(list, o) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "geometry-bench-"));
@@ -30,9 +31,10 @@ async function runMany(list, o) {
     let err = "", timedOut = false;
     child.stderr.on("data", (d) => { err += d; });
     const cap = o.capMs ? setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, o.capMs) : null;
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       if (cap) clearTimeout(cap);
-      if (timedOut) o.onResult(c, null, null, Object.assign(new Error(`not finished after ${Math.round(o.capMs / 60000)} minutes`), { code: "CAP" }));
+      if (!timedOut && code === null) o.onResult(c, null, null, Object.assign(new Error(`stopped by the machine (${signal}) — out of memory`), { code: "KILLED" }));
+      else if (timedOut) o.onResult(c, null, null, Object.assign(new Error(`not finished after ${Math.round(o.capMs / 60000)} minutes`), { code: "CAP" }));
       else if (code !== 0 || !fs.existsSync(out)) o.onResult(c, null, null, new Error(`run-case exited ${code}: ${err.trim().split("\n").slice(-3).join(" | ")}`));
       else {
         const result = JSON.parse(fs.readFileSync(out, "utf8"));
