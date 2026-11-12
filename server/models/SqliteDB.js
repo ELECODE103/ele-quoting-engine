@@ -4,6 +4,7 @@
  */
 const { getDatabase, saveToDisk } = require("./database");
 const { randomUUID: uuidv4 } = require("crypto"); // RFC 4122 v4, same format the uuid package produced
+const orderLifecycle = require("./orderLifecycleMigration"); // order lifecycle (2026-11-11): tables, columns and their names in one place
 
 // Mapping of JS field names → SQLite JSON column names per table
 const JSON_COLUMNS = {
@@ -20,6 +21,7 @@ const JSON_COLUMNS = {
   processes: { subProcesses: "sub_processes_json" },
   rfqs: { reasons: "reasons_json", parts: "parts_json" },
   pricing_audit: { diff: "diff_json", rules: "rules_json" },
+  ...orderLifecycle.JSON_FIELDS, // payment_sessions, payment_events, admin_audit
 };
 
 // Map camelCase JS names → snake_case SQL column names
@@ -121,10 +123,13 @@ const FIELD_TO_COLUMN = {
   // Part payloads kept in files (2026-11-11): bytes of preview mesh / geometry detail under data/part-payloads
   meshBytes: "mesh_bytes",
   detailBytes: "detail_bytes",
+  // Order lifecycle (2026-11-11): payment state, refunds, disputes, expiry, audit
+  ...orderLifecycle.FIELD_MAP,
 };
 
 // 0/1 columns that read back as booleans (SQLite has no boolean type).
 const BOOLEAN_COLUMNS = new Set(["active", "paperwork", "return_part", "buyer_emailed"]);
+for (const column of orderLifecycle.BOOLEAN_COLUMNS) BOOLEAN_COLUMNS.add(column);
 
 // Reverse mapping for deserialization
 const COLUMN_TO_FIELD = {};

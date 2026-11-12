@@ -328,6 +328,8 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
 
     // Account hardening (2026-11-11). Additive columns; see ./accountMigration.js.
     require("./accountMigration").apply(dbInstance);
+    // Order lifecycle (2026-11-11): payment sessions and events, refunds, disputes, expiry, the admin audit table. Additive; see ./orderLifecycleMigration.js.
+    require("./orderLifecycleMigration").apply(dbInstance);
 
     // Part payloads (2026-11-11): preview meshes and large geometry detail move out of the rows into
     // files under data/part-payloads. One batch in memory, VACUUM, then the single save below.
