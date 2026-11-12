@@ -21,12 +21,20 @@ const age = (dir, days) => { for (const f of fs.readdirSync(dir)) { const t = ne
 const pdf = Buffer.from("%PDF-1.4\n% review drawing\n%%EOF\n");
 const ship = { shippingName: "B", shippingAddress: "1 Test St", shippingCity: "T", shippingState: "IL", shippingZip: "60000" };
 
+// Adapted 2026-11-12 (second integration pass): a part uploaded without an account can only be used
+// with the edit key its upload answer gave the browser (security/partAccess.js, review finding F5).
+// The test helper remembers those keys the way a browser does, but each restart here makes a new
+// helper, so after a restart the script was pricing its own part without the key and was refused
+// ("part-not-found") for a reason that has nothing to do with file encryption. The keys are now
+// carried over a restart, as a visitor's browser carries them over a redeploy. Nothing else changed.
+const keepKeys = (from, to) => { to.editKeys = { ...(from.editKeys || {}), ...(to.editKeys || {}) }; return to; };
+
 async function restart(s, opts = {}) {
   const tmp = s.tmp;
   await s.stop({ keep: true });
   if (opts.whileStopped) await opts.whileStopped();
   delete opts.whileStopped;
-  return startServer({ stubs: true, tmpDir: tmp, ...opts });
+  return keepKeys(s, await startServer({ stubs: true, tmpDir: tmp, ...opts }));
 }
 
 /**
@@ -150,7 +158,7 @@ async function encryption() {
     say("INFO", "while a file is being read it sits on the volume unencrypted", `${during.length} plain file(s) in data/uploads for up to the parse time (60 s) plus the wait for a worker (30 s)`);
     process.kill(s.pid, "SIGKILL");
     await sleep(500);
-    s = await startServer({ stubs: true, tmpDir: s.tmp, env: { NORD_FILE_ENC_KEY: key } });
+    s = keepKeys(s, await startServer({ stubs: true, tmpDir: s.tmp, env: { NORD_FILE_ENC_KEY: key } }));
     const left = ls(s, "uploads").filter((f) => !f.endsWith(".enc"));
     say(left.length ? "FINDING" : "PASS", "a crash during that window leaves no plain file behind", `${left.length} unencrypted CAD file(s) still in data/uploads after the restart (kept up to 7 days)`);
 

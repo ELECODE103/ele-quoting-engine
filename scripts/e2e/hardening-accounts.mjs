@@ -633,8 +633,13 @@ async function phaseWithKeys() {
 
     // Sign out (server-side), then in again with a code.
     const cookieBefore = (await ctx.cookies(BASE)).find((c) => c.name.endsWith('se_session')).value;
+    // The page goes home at once and sends the sign-out request beside it, so the address changing does
+    // not mean the server has answered. Wait for that answer before replaying the old token: without
+    // this the first replay could race the sign-out and be answered 200 (seen once, 2026-11-12).
+    const signedOut = page.waitForResponse((r) => r.url().endsWith('/api/auth/logout') && r.request().method() === 'POST', { timeout: 15000 });
     await page.getByRole('button', { name: 'Sign out' }).first().click();
     await page.waitForURL(`${BASE}/`);
+    await signedOut;
     const replay = await fetch(`${BASE}/api/admin/stats`, { headers: { Cookie: `__Host-se_session=${cookieBefore}` } });
     const replayBearer = await fetch(`${BASE}/api/admin/stats`, { headers: { Authorization: `Bearer ${cookieBefore}` } });
     check('after Sign out the old session token is dead on the server, not just gone from the browser', replay.status === 401 && replayBearer.status === 401, `${replay.status}/${replayBearer.status}`);
