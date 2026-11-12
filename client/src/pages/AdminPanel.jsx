@@ -20,13 +20,13 @@ function EnrolmentGate({ onDone }) {
   const { user, logout } = useAuth();
   const enrolled = Boolean(user?.twoFactorEnabled);
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 32px 48px' }} data-testid="enrolment-gate">
+    <div className="admin-page" style={{ maxWidth: 760 }} data-testid="enrolment-gate">
       {!enrolled && (
-        <div className="admin-banner" role="alert" data-testid="twofactor-banner">
+        <div className="verify-box admin-gate-banner" role="region" aria-label="Two-step sign-in is required" data-testid="twofactor-banner">
           <span>
             <b>Set up two-step sign-in to open the admin pages.</b>{' '}
-            The admin account can change prices, see every customer's files and download the database, so it takes a password
-            and a code from your phone. Nothing else in the admin area opens until this is done. It takes two minutes.
+            The admin account can change prices, see every customer's files and download the database, so signing in to it takes a password
+            and a code from your phone. Nothing else in the admin area opens until this is done. It takes about two minutes, once.
           </span>
           <button type="button" className="btn btn-ghost" onClick={logout}>Sign out</button>
         </div>
@@ -129,7 +129,7 @@ function AdminConsole() {
   ];
 
   return (
-    <div style={{ maxWidth: 1320, margin: '0 auto', padding: '28px 32px 48px' }}>
+    <div className="admin-page" style={{ maxWidth: 1320 }}>
       {/* Stats bar */}
       <div className="grid-4" style={{ marginBottom: 32 }}>
         {[
@@ -150,10 +150,12 @@ function AdminConsole() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24 }}>
+      <div className="admin-tabs" role="group" aria-label="Admin sections">
         {tabs.map((t) => (
           <button
             key={t.key}
+            type="button"
+            aria-pressed={tab === t.key}
             className={`btn ${tab === t.key ? 'btn-ghost active' : 'btn-ghost'}`}
             onClick={() => setTab(t.key)}
           >

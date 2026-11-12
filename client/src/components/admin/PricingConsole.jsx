@@ -260,7 +260,7 @@ export default function PricingConsole({ initialChanges = null, onConsumedInitia
           ))}
         </div>
 
-        <aside className="pc-preview">
+        <aside className="pc-preview" tabIndex={0} aria-label="Price preview">
           <PreviewPanel preview={preview} busy={previewBusy} dirty={dirtyKeys.length > 0} />
         </aside>
       </div>
