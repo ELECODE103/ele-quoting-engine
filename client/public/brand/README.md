@@ -6,7 +6,8 @@ Straightedge Manufacturing LLC · Wauconda, Illinois · an Erik Lutz Enterprise 
 (ink `#101C33`, brass `#A8834E` for the mark and hairlines only, bone `#F4F1EA`), the name in
 Archivo Bold outlined, Inter for everything else. The reasoning is in `RATIONALE.md` (round 3);
 the rules on one page are in **`brand-guide.pdf`**; everything made for launch is on
-**`kit-sheet.png`**.
+**`kit-sheet.png`**, which is kept in `docs/brand/` in the repository (it shows the sample documents, so
+it is not published with the site).
 
 ## Launch kit
 
@@ -17,7 +18,7 @@ PNGs and the PDF; `pdftoppm` makes the document previews for the sheet; nothing 
 |---|---|
 | Link-preview images, 1200 × 630 | `og-default.png` (wired into `client/index.html`), `og/machining.png`, `og/routing.png`, `og/3d-printing.png`, `og/materials.png`, `og/quality.png`, `og/about.png` for per-route `og:image` |
 | Favicons and app icons | `/favicon.ico` (16/32/48), `/favicon.svg`, `/apple-touch-icon.png` (180), `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `/site.webmanifest`; the three favicon sizes as PNG in `icons/` |
-| Customer documents | made by the server — `server/services/documents.js`, routes under `/api/pdf/…` (admin). Samples with invented data: `documents/sample-*.pdf`, rebuilt by `node scripts/preview-documents.js` |
+| Customer documents | made by the server — `server/services/documents.js`, routes under `/api/pdf/…` (admin). Samples with invented data: `docs/brand/samples/sample-*.pdf` in the repository — **not** in this folder, because the documents print the shop's ship-from address and everything in `client/public` is published with the site. Rebuilt by `node scripts/preview-documents.js` |
 | Social and listings | `social/` — LinkedIn logo 400 and banner 1128 × 191, LinkedIn personal banner 1584 × 396, Google Business Profile logo 720 and cover 1024 × 576, Thomasnet logos (square 600 and 1000 × 250), each as PNG + SVG |
 | Part-photo posts | `social/post-template-square.svg`, `social/post-template-4x5.svg`; composite a photo with `node scripts/brand/post.js <photo> --title "…" [--detail "…"] [--ratio 4x5] [--position "50% 40%"]` |
 | Stripe | `stripe/README.md` (fields, colours, descriptor), `stripe/icon-128.png`, `stripe/logo.png` |

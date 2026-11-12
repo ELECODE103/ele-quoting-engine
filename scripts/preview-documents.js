@@ -2,15 +2,18 @@
 /**
  * Writes one sample of every customer document to a folder so the layouts can be checked on
  * paper without a database:   node scripts/preview-documents.js [outDir]
- * (default outDir: client/public/brand/documents). All names and numbers below are invented
- * sample data — nothing here is a real customer or order.
+ * (default outDir: docs/brand/samples). All names and numbers below are invented sample data —
+ * nothing here is a real customer or order. The documents print the shop's ship-from address,
+ * so the samples are kept OUT of client/public: everything there is copied into the site's build
+ * and published (scripts/dist-address-check.js fails the build check if one gets back in).
  */
 const fs = require("fs");
 const path = require("path");
 const docs = require("../server/services/documents");
 const { generateJobTraveler } = require("../server/services/pdfGenerator");
 
-const outDir = path.resolve(process.argv[2] || path.join(__dirname, "..", "client", "public", "brand", "documents"));
+const outDir = path.resolve(process.argv[2] || path.join(__dirname, "..", "docs", "brand", "samples"));
+if (/[\\/]client[\\/](public|dist)([\\/]|$)/.test(outDir)) { console.error("Refusing to write document samples under client/public or client/dist: they carry the shop's street address and that folder is published."); process.exit(2); }
 const DATE = "2026-11-09T15:00:00Z";
 
 const customer = { name: "Sample Buyer", company: "Sample OEM, Inc.", email: "buyer@example.com", phone: "555-0100" };

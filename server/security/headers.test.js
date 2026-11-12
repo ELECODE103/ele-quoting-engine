@@ -164,7 +164,13 @@ test("internal brand pages and sample documents answer 404; the brand assets pag
     assert.ok(!/<html|%PDF|STRAIGHTEDGE BRAND|# /.test(r.text.slice(0, 400)) || r.status === 301, `${url} returned content: ${r.text.slice(0, 60)}`);
   }
   for (const f of fs.readdirSync(path.join(dist, "brand")).filter((n) => /\.html$/.test(n))) assert.strictEqual((await s.get(`/brand/${f}`)).status, 404, `/brand/${f}`);
-  for (const f of fs.readdirSync(path.join(dist, "brand", "documents"))) assert.strictEqual((await s.get(`/brand/documents/${f}`)).status, 404, `/brand/documents/${f}`);
+  // (2026-11-12) The sample documents and the contact sheet that shows them are no longer in the build at all: they
+  // print the shop's ship-from address, so they live in docs/brand/ (scripts/dist-address-check.js keeps them out).
+  // Their old addresses still answer 404, as asserted above; this was a listing of dist/brand/documents.
+  assert.ok(!fs.existsSync(path.join(dist, "brand", "documents")), "client/dist has no brand/documents folder");
+  assert.ok(!fs.existsSync(path.join(live.ROOT, "client", "public", "brand", "documents")), "client/public has no brand/documents folder");
+  for (const f of ["kit-sheet.html", "kit-sheet.png"]) assert.ok(!fs.existsSync(path.join(dist, "brand", f)), `${f} is not in the build`);
+  for (const f of fs.readdirSync(path.join(live.ROOT, "docs", "brand", "samples"))) assert.strictEqual((await s.get(`/brand/documents/${f}`)).status, 404, `/brand/documents/${f}`);
   // Assets the pages themselves use stay public.
   const manifest = JSON.parse(fs.readFileSync(path.join(dist, "site.webmanifest"), "utf8"));
   const assets = ["/brand/og-default.png", ...manifest.icons.map((i) => i.src), ...fs.readdirSync(path.join(dist, "brand", "og")).slice(0, 3).map((f) => `/brand/og/${f}`),

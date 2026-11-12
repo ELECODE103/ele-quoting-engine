@@ -22,7 +22,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const DIR = path.join(__dirname, "..", "client", "dist", "_prerender");
+// `--dist <folder>` checks another copy of the build (the tests use it); the default is client/dist.
+const DIST = process.argv.includes("--dist") ? path.resolve(process.argv[process.argv.indexOf("--dist") + 1] || "") : path.join(__dirname, "..", "client", "dist");
+const DIR = path.join(DIST, "_prerender");
 const facts = require("../shared/shop-facts.json").facts;
 
 const TRIGGERS = [
@@ -164,4 +166,17 @@ if (bannedUnique.length) {
 } else if (!process.argv.includes("--all")) {
   console.log("Owner decisions 2026-11-11: no ISO, CMM, shop-size, send-a-photo or paperwork-with-every-order wording, and no confirmation email or on-screen ship-to address promised before a request is sent, on any page, title, meta description or JSON-LD block.");
 }
-if (bad.length || bannedUnique.length) process.exit(1);
+// The shop's street address is printed on customer documents and is not part of the public site: no file of the
+// build may carry it, text or binary (scripts/dist-address-check.js; the address itself is never printed).
+let addressClean = true;
+if (!process.argv.includes("--all")) {
+  const addressCheck = require("./dist-address-check");
+  try {
+    // The whole build, not only the prerendered pages: everything in client/public is copied into it.
+    addressClean = addressCheck.report(addressCheck.scanDir(DIST), path.relative(path.join(__dirname, ".."), DIST) || DIST);
+  } catch (err) {
+    console.error(`Street address check could not run: ${err.code || err.name || "Error"}`);
+    addressClean = false;
+  }
+}
+if (bad.length || bannedUnique.length || !addressClean) process.exit(1);

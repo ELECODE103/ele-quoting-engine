@@ -193,8 +193,12 @@ const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#toke
   // them. The brand assets the pages use (logos, icons, Open Graph images) are still served.
   const dist = path.join(ROOT, "client", "dist");
   await step("internal brand pages and sample documents are not served; brand assets are", async (s) => {
+    // (2026-11-12) The sample documents are no longer in the build (they print the shop's street address; they live in
+    // docs/brand/samples). Their old addresses are still asked for, by the names of the files in that folder.
+    if (fs.existsSync(path.join(dist, "brand", "documents"))) throw new Error("client/dist has a brand/documents folder again");
+    const samples = path.join(ROOT, "docs", "brand", "samples");
     const internal = [...fs.readdirSync(path.join(dist, "brand")).filter((f) => /\.(html|md|pdf)$/.test(f)).map((f) => `/brand/${f}`),
-      ...fs.readdirSync(path.join(dist, "brand", "documents")).map((f) => `/brand/documents/${f}`)];
+      ...(fs.existsSync(samples) ? fs.readdirSync(samples) : ["sample-quote.pdf"]).map((f) => `/brand/documents/${f}`), "/brand/kit-sheet.html", "/brand/kit-sheet.png"];
     for (const url of internal) {
       const r = await page.request.get(BASE + url);
       if (r.status() !== 404) throw new Error(`${url} answered ${r.status()}`);

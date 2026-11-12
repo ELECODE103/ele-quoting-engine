@@ -450,9 +450,15 @@ write(path.join(B, 'brand-guide.html'), guideHtml());
 
 // ─── 7 · Render ─────────────────────────────────────────────────────────────
 const fileUrl = (p) => 'file://' + p.split(path.sep).map(encodeURIComponent).join('/');
+// The sample documents print the shop's ship-from address, and so does the contact sheet that shows them. Neither
+// belongs in client/public (everything there is copied into the site's build and published): they are written to
+// docs/brand/ instead. scripts/dist-address-check.js fails the build check if one finds its way back.
+const SHEET_DIR = path.join(ROOT, 'docs', 'brand');
+const SAMPLES_DIR = path.join(SHEET_DIR, 'samples');
 function pdfPreviews() {
   // sample PDFs from the server generator, then first-page PNGs for the contact sheet
-  const dir = path.join(B, 'documents');
+  const dir = SAMPLES_DIR;
+  fs.mkdirSync(dir, { recursive: true });
   execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'preview-documents.js'), dir], { stdio: 'inherit' });
   const made = [];
   for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.pdf')).sort()) {
@@ -468,7 +474,11 @@ function pdfPreviews() {
 function sheetHtml(docPngs) {
   const img = (src, w, cap, style = '') => `<figure><img src="${src}" width="${w}" style="${style}"><figcaption>${cap}</figcaption></figure>`;
   const outline = (kind) => `<svg viewBox="-2 -2 104 104" width="150" height="150">${MARK[kind].polys.map((p) => `<path fill="none" stroke="${INK}" stroke-width="0.8" d="${L.poly(p)}"/>`).join('')}</svg>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Straightedge — launch kit</title><style>
+  // The sheet lives in docs/brand/; the brand assets it shows are in client/public/brand/ (the <base>), and the
+  // document previews beside it in docs/brand/samples/.
+  const base = `${path.relative(SHEET_DIR, B).split(path.sep).join('/')}/`;
+  const samples = `${path.relative(B, SAMPLES_DIR).split(path.sep).join('/')}/`;
+  return `<!doctype html><html><head><meta charset="utf-8"><base href="${base}"><title>Straightedge — launch kit</title><style>
 ${L.fontFaceCss()}
 body { margin: 0; padding: 48px 56px 56px; width: 2400px; box-sizing: border-box; background: #fff; color: ${INK}; font: 400 17px/1.45 Inter, sans-serif; }
 h1 { font: 700 34px Archivo; margin: 0 0 6px; } h1 + p { margin: 0 0 26px; color: ${GRAY}; max-width: 1500px; }
@@ -497,8 +507,8 @@ code { font: 500 13px ui-monospace, monospace; }
   ${img('icon-maskable-512.png', 256, 'icon-maskable-512.png, as Android crops it', 'border-radius:50%')}
 </div>
 
-<h2>3 · Documents <small>server/services/documents.js → letter PDFs, one colour, black-laser friendly · samples in brand/documents/ · sample data only</small></h2>
-<div class="row b">${docPngs.map((p) => img(`documents/${p}`, 354, p.replace('.png', '.pdf'))).join('')}</div>
+<h2>3 · Documents <small>server/services/documents.js → letter PDFs, one colour, black-laser friendly · samples in docs/brand/samples/ (not in the site build) · sample data only</small></h2>
+<div class="row b">${docPngs.map((p) => img(`${samples}${p}`, 354, p.replace('.png', '.pdf'))).join('')}</div>
 
 <h2>4 · Social and listings <small>brand/social/ · PNG + source SVG</small></h2>
 <div class="row">
@@ -557,13 +567,13 @@ async function main() {
     await page.close();
     // documents + contact sheet
     const docPngs = pdfPreviews();
-    write(path.join(B, 'kit-sheet.html'), sheetHtml(docPngs));
+    write(path.join(SHEET_DIR, 'kit-sheet.html'), sheetHtml(docPngs));
     const sheet = await browser.newPage({ viewport: { width: 2400, height: 1200 } });
-    await sheet.goto(fileUrl(path.join(B, 'kit-sheet.html')));
+    await sheet.goto(fileUrl(path.join(SHEET_DIR, 'kit-sheet.html')));
     await sheet.evaluate(() => document.fonts.ready);
     const height = await sheet.evaluate(() => document.documentElement.scrollHeight);
     if (height > 8000) console.warn(`kit-sheet is ${height}px tall — over the 8000px limit`);
-    await sheet.screenshot({ path: path.join(B, 'kit-sheet.png'), fullPage: true });
+    await sheet.screenshot({ path: path.join(SHEET_DIR, 'kit-sheet.png'), fullPage: true });
     await sheet.close();
     console.log(`kit: ${jobs.length} images, favicon.ico, brand-guide.pdf, ${docPngs.length} document previews, kit-sheet.png (2400 × ${height})`);
   });
