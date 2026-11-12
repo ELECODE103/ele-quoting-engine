@@ -184,7 +184,7 @@ export default function RfqPage() {
                   address to ship the part to. Do not send anything yet.
                 </p>
               )}
-              <VerifyEmailNotice reason="to get our emails about this request" />
+              <VerifyEmailNotice reason="to get our emails about this request" why="Your request is in either way. We only send automatic emails to an address its owner has confirmed." />
               <div className="plain-box" style={{ marginBottom: 20 }}>
                 <dl className="ship-part">
                   <div>
@@ -231,7 +231,7 @@ export default function RfqPage() {
               The engineer who will run the job reads it and replies to <b>{form.email}</b>{within}. If the print needs
               a conversation first, that is the reply you will get.
             </p>
-            <VerifyEmailNotice reason="to get our emails about this request" />
+            <VerifyEmailNotice reason="to get our emails about this request" why="Your request is in either way. We only send automatic emails to an address its owner has confirmed." />
             <p className="body-copy" style={{ marginBottom: 20 }}>
               {paperwork ? 'You asked for a first-article inspection report and a certificate of conformance: the price we quote will include them, and the quote will say so. ' : ''}
               {emailed

@@ -1040,9 +1040,12 @@ async function journeyUploadLimits() {
   await step('u: file too large', async () => { const { c } = await uploadRefusal('u02-upload-file-too-large', stl('big-scan.stl', 30000)); await c.close(); });
   await step('u: model too dense', async () => { const { c } = await uploadRefusal('u03-upload-model-too-dense', stl('dense-scan.stl', 4000)); await c.close(); });
   await step('u: daily limit', async () => {
-    const { c, p } = await uploadRefusal('u03b-upload-dense-again', stl('dense-a.stl', 12000));
-    await fileInput(p).setInputFiles(stl('dense-b.stl', 12000));
-    await p.waitForTimeout(2500);
+    // Three megabytes a day on this server: four uploads of 0.9 MB, and the fourth is over (refused bytes count too).
+    const { c, p } = await uploadRefusal('u03b-upload-dense-again', stl('dense-a.stl', 18000));
+    for (const name of ['dense-b.stl', 'dense-c.stl', 'dense-d.stl']) {
+      await fileInput(p).setInputFiles(stl(name, 18000));
+      await p.waitForTimeout(2500);
+    }
     await shot(p, 'u04-upload-daily-limit', { fullPage: false });
     await c.close();
   });
@@ -1104,7 +1107,7 @@ const want = (k) => !ONLY || ONLY.has(k);
       }
       if (want('d')) { await startServer({ turnstile: false }); await journeyNoKeys(); }
       if (want('u')) {
-        await startServer({ turnstile: false, env: { UPLOAD_MAX_FILE_MB: '1', UPLOAD_MAX_FILES: '2', MESH_MAX_TRIANGLES: '1000', UPLOAD_DAILY_MB_PER_IP: '1' } });
+        await startServer({ turnstile: false, env: { UPLOAD_MAX_FILE_MB: '1', UPLOAD_MAX_FILES: '2', MESH_MAX_TRIANGLES: '1000', UPLOAD_DAILY_MB_PER_IP: '3' } });
         await journeyUploadLimits();
         await startServer({ turnstile: false, env: { PARSE_CONCURRENCY: '1', PARSE_QUEUE_MAX: '0', PARSE_TIMEOUT_MS: '3500', UPLOAD_DIR_MAX_MB: '10' } });
         await journeyUploadBusy();
