@@ -284,9 +284,11 @@ test("3MF XML bombs: entity expansion is off and nesting is capped", async () =>
 
 test("a slow file is cut off at PARSE_TIMEOUT_MS; the site answers throughout; a second sender is told 'busy' (503)", async () => {
   const s = await server({ env: { PARSE_TIMEOUT_MS: "2500", PARSE_CONCURRENCY: "1", PARSE_QUEUE_MAX: "0" } });
-  const slow = Buffer.from(crossingLinesDxf(5000)); // ~480 kB, tens of seconds of contour building
+  // The 2 MB STEP plate: several seconds of OpenCascade. (The 5,000-crossing-line DXF that stood
+  // here took tens of seconds until the contour analysis was reworked; it now reads in well under one.)
+  const slow = bigStep;
   const t0 = Date.now();
-  const first = s.upload([{ name: "slow.dxf", data: slow }], { ip: "203.0.113.1", fields: { process: "routing" } });
+  const first = s.upload([{ name: "slow.step", data: slow }], { ip: "203.0.113.1" });
   await new Promise((r) => setTimeout(r, 300));
 
   // While the worker grinds: the health check and the catalog answer at once…

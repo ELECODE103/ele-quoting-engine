@@ -22,7 +22,7 @@ const write = (name, data) => { const p = path.join(tmp, name); fs.writeFileSync
 const bigStep = write("plate_400_holes.step", zlib.gunzipSync(fs.readFileSync(path.join(__dirname, "..", "security", "fixtures", "plate_400_holes.step.gz"))));
 const cube = path.join(root, "tools", "vet-quotes", "parts", "cube_20mm.stl");
 
-/** A DXF of `n` random crossing lines: half a megabyte of it keeps the contour builder busy for tens of seconds. */
+/** A DXF of `n` random crossing lines: half a megabyte of it used to keep the contour builder busy for tens of seconds. */
 function crossingLinesDxf(n) {
   let seed = 1;
   const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 1000;
@@ -129,16 +129,26 @@ test("wall-clock timeout: the worker is terminated and the caller gets a firm-qu
   assert.deepStrictEqual([pool.stats().running, pool.stats().idleWorkers, pool.stats().timedOut], [0, 0, 1], "the stuck worker is gone, not parked");
 });
 
-test("timeout against a real pathological file: 5,000 crossing lines (a 480 kB DXF) are stopped mid-parse", async () => {
+test("timeout against a real slow file: the 2 MB STEP plate (seconds of OpenCascade) is stopped mid-parse", async () => {
   const pool = make({ parseConcurrency: 1, parseTimeoutMs: 1200 });
-  const dxf = write("crossing.dxf", crossingLinesDxf(5000));
-  assert.ok(fs.statSync(dxf).size < 600 * 1024, "the file is small — size limits alone would not catch it");
+  assert.ok(fs.statSync(bigStep).size < 3 * 1024 * 1024, "the file is small — size limits alone would not catch it");
   const t0 = Date.now();
-  const r = await settle(pool.run({ filePath: dxf }));
+  const r = await settle(pool.run({ filePath: bigStep }));
   assert.strictEqual(r.error.code, "parse-timeout");
   assert.ok(Date.now() - t0 < 3000, `stopped in ${Date.now() - t0} ms`);
   // the slot is free again and a good file parses
   assert.ok(Math.abs((await pool.run({ filePath: cube })).geometry.volume - 8000) < 1, "a good file still parses");
+});
+
+test("5,000 crossing lines (a 480 kB DXF that used to take tens of seconds) are read well inside the time limit", async () => {
+  const pool = make({ parseConcurrency: 1, parseTimeoutMs: 10000 });
+  const dxf = write("crossing.dxf", crossingLinesDxf(5000));
+  const t0 = Date.now();
+  const parsed = await pool.run({ filePath: dxf });
+  const took = Date.now() - t0;
+  assert.strictEqual(parsed.geometry.profile2d.openCount, 5000, "every line is reported as an open contour");
+  assert.ok(parsed.geometry.profile2d.problems.some((p) => p.code === "crossing"), "crossings are reported");
+  assert.ok(took < 8000, `read in ${took} ms`);
 });
 
 test("memory ceiling: a worker that outgrows its heap limit is stopped; the server process is untouched", async () => {
