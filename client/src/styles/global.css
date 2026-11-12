@@ -11,8 +11,10 @@
   --border-focus: #101C33;
   --text-primary: #101C33;
   --text-secondary: #334155;
-  --text-muted: #64748B;
-  --text-dim: #64748B; /* was #94A3B8 (2.56:1 on white); small informational text needs 4.5:1 */
+  /* Secondary text. #5B6779 is 5.7:1 on white, 5.1:1 on Bone and on the selected-row tint
+     (#64748B was 4.2:1 on Bone, under the 4.5:1 that small text needs). */
+  --text-muted: #5B6779;
+  --text-dim: #5B6779;
   --text-ghost: #CBD5E1;
   --accent: #101C33;
   --accent-dark: #0A1224;
@@ -25,13 +27,13 @@
   --bone: #F4F1EA;
   --success: #059669;
   --success-bg: #ECFDF5;
-  --success-text: #059669;
+  --success-text: #047857; /* 5.5:1 on white, 5.2:1 on --success-bg (#059669 was 3.8:1) */
   --warn: #D97706;
   --warn-bg: #FFFBEB;
-  --warn-text: #B45309;
+  --warn-text: #9A4A07; /* 6.4:1 on --warn-bg, 5.6:1 on Bone (#B45309 was 4.4:1 on Bone) */
   --error: #DC2626;
   --error-bg: #FEF2F2;
-  --error-text: #DC2626;
+  --error-text: #B91C1C; /* 5.9:1 on --error-bg, 6.5:1 on white (#DC2626 was 4.4:1 on --error-bg) */
   --font-body: 'Inter Variable', 'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif;
   --font-display: 'Archivo Variable', 'Archivo', 'Inter Variable', 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
@@ -658,3 +660,187 @@ h2.display.h3-like { font-size: 20px; letter-spacing: -0.3px; margin-bottom: 14p
 .recovery-codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; font-family: var(--font-mono); font-size: 15px; background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-md); padding: 16px 20px; margin: 12px 0; list-style: none; }
 .human-gate-backdrop { position: fixed; inset: 0; background: rgba(16, 28, 51, 0.45); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 16px; }
 .human-gate { background: #fff; border-radius: 12px; padding: 24px; max-width: 420px; width: 100%; box-shadow: var(--shadow-xl); }
+
+/* ─── Journey pass (2026-11-11): one look for every account, form and refusal screen ─── */
+
+/* Focus. Ink does the work (16.9:1 on white, 15:1 on Bone); the Brass halo is the brand's accent
+   around it (Brass alone is 3.5:1 on white and 3.1:1 on Bone, so it is never the only indicator). */
+:where(a, button, select, summary, [role="button"], [role="tab"], [role="radio"], [tabindex]:not([tabindex="-1"]), input[type="checkbox"], input[type="radio"], input[type="range"], input[type="file"]):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px rgba(168, 131, 78, 0.45);
+}
+.input:focus, .input:focus-visible { outline: 2px solid var(--ink); outline-offset: 0; border-color: var(--ink); box-shadow: 0 0 0 4px rgba(168, 131, 78, 0.38); }
+.btn-primary:focus-visible { outline-color: var(--ink); box-shadow: 0 0 0 2px #fff, 0 0 0 6px rgba(168, 131, 78, 0.6); }
+.section-dark :focus-visible, .btn-on-dark:focus-visible, .btn-dark-outline:focus-visible { outline-color: var(--bone); }
+/* A message that takes the focus (an error summary, a result) shows it without looking like a field. */
+.notice:focus, .notice:focus-visible, h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus, .upload-problems:focus { outline: 2px solid var(--ink); outline-offset: 3px; box-shadow: none; }
+h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
+.lead-option:focus-within, .check-row:focus-within { box-shadow: 0 0 0 2px var(--ink), 0 0 0 6px rgba(168, 131, 78, 0.45); }
+.lead-dot { border-color: #64748B; } /* 4.8:1 against white: the unselected radio can be seen */
+
+/* Motion: nothing essential moves. With "reduce motion" on, nothing moves at all but the spinner, slowly. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  .spinner { animation: spin 2.4s linear infinite !important; }
+  .btn-primary:hover { transform: none; }
+}
+
+/* Fields */
+.field { margin-bottom: 16px; }
+.field-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.field-toggle { background: none; border: none; padding: 4px 0 4px 8px; margin: -4px 0; font: 600 12px/1.4 var(--font-body); color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; min-height: 24px; }
+.field-label .optional, .optional { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-muted); }
+.input[aria-invalid="true"] { border-color: var(--error-text); box-shadow: inset 3px 0 0 var(--error-text); }
+.field-row { display: grid; gap: 12px; }
+.field-row-2-1 { grid-template-columns: 2fr 1fr; }
+.field-row-1-1 { grid-template-columns: 1fr 1fr; }
+.plain-fieldset { border: none; padding: 0; margin: 0; min-width: 0; }
+.code-input { font-family: var(--font-mono); letter-spacing: 2px; font-size: 16px; }
+.pw-rules { margin-top: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.pw-rules ul { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; margin-bottom: 4px; }
+.pw-rules li { display: flex; gap: 6px; align-items: baseline; }
+.pw-rules li.met { color: var(--success-text); font-weight: 600; }
+.pw-mark { display: inline-block; width: 12px; text-align: center; font-weight: 700; }
+.btn-block { width: 100%; justify-content: center; }
+.btn[disabled], .btn:disabled { opacity: 0.55; }
+
+/* Messages */
+.notice { text-align: left; }
+.notice a { color: inherit; font-weight: 600; }
+.notice-actions { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 10px; }
+.auth-error .btn-outline { border-color: var(--error-text); color: var(--error-text); border-width: 1px; background: #fff; }
+.auth-error .btn-outline:hover { background: var(--error-text); color: #fff; }
+.auth-error .btn-ghost { background: #fff; color: var(--text-secondary); }
+.human-check-problem { color: var(--error-text); }
+.human-check-problem a { color: inherit; font-weight: 600; }
+.verify-box p { margin: 0; }
+.verify-box .verify-help { font-size: 12px; margin-top: 8px; }
+.verify-box .verify-help a { color: inherit; font-weight: 600; }
+.verify-box .verify-note { margin-top: 8px; padding-top: 8px; border-top: 1px solid #FDE68A; font-weight: 600; }
+.verify-box .btn-outline { background: #fff; }
+.verify-box .btn-ghost { background: #fff; color: var(--text-secondary); }
+.pay-note { text-align: center; margin-top: 10px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.pay-note.warn { color: var(--warn-text); }
+
+/* Account pages */
+.auth-shell { min-height: 100vh; min-height: 100dvh; padding: 32px 20px; }
+.auth-mark { margin-bottom: 24px; }
+.auth-head h1.display { font-size: 28px; margin-bottom: 8px; letter-spacing: -0.6px; }
+.auth-aside { text-align: right; margin-bottom: 20px; font-size: 13px; }
+.auth-aside a, .auth-foot a { color: var(--accent); display: inline-block; padding: 4px 0; min-height: 24px; }
+.auth-foot a.quiet { color: var(--text-muted); }
+.auth-foot { line-height: 1.6; font-size: 13px; }
+.auth-who { font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.6; }
+.auth-note { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px; }
+.auth-lede { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px; text-align: center; }
+.auth-wait { text-align: center; color: var(--text-muted); font-size: 13px; }
+.auth-actions { display: grid; gap: 8px; }
+.auth-actions .btn { justify-content: center; }
+.auth-card form .btn-block { margin-bottom: 4px; }
+.auth-mark a, .pub-nav > a { display: inline-block; padding: 4px 0; }
+
+/* App pages (checkout, orders): the public pages' gutters, not a fixed 32 px */
+.app-page { min-height: 100vh; background: var(--bg-primary); padding: 32px 24px 64px; }
+.app-h1 { font-family: var(--font-display); font-size: 28px; font-weight: 700; letter-spacing: -0.6px; color: var(--text-primary); margin-bottom: 8px; line-height: 1.2; }
+.app-lede { color: var(--text-muted); margin-bottom: 28px; max-width: 46ch; }
+@media (min-width: 769px) { .checkout-summary { position: sticky; top: 132px; } }
+
+/* Upload refusals */
+.upload-problems { padding: 16px 18px; margin-bottom: 16px; border-color: var(--error); background: var(--error-bg); max-width: 720px; width: 100%; color: var(--error-text); font-size: 13px; line-height: 1.55; }
+.upload-problems-head { font-family: var(--font-display); font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+.upload-problems ul { list-style: none; display: grid; gap: 8px; }
+.upload-problems li b { display: block; overflow-wrap: anywhere; }
+.upload-problems .btn-outline { border-width: 1px; border-color: var(--error-text); color: var(--error-text); background: #fff; }
+.upload-problems .btn-ghost { background: #fff; color: var(--text-secondary); }
+.upload-problems-reach { font-size: 12px; }
+.upload-problems-reach a { color: inherit; font-weight: 600; }
+
+/* 3D preview */
+.viewer-meta { pointer-events: none; color: #CBD5E1; }
+.viewer-canvas:focus-visible { outline: 2px solid var(--bone); outline-offset: -3px; box-shadow: none; }
+.viewer-zoom { position: absolute; top: 10px; right: 10px; display: grid; gap: 4px; }
+.viewer-zoom button { width: 32px; height: 32px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(8, 12, 20, 0.6); color: #fff; font: 600 18px/1 var(--font-body); cursor: pointer; }
+.viewer-zoom button:hover { background: rgba(8, 12, 20, 0.85); }
+.viewer-zoom button:focus-visible { outline-color: var(--bone); }
+
+/* Spam-check dialog */
+.human-gate { max-height: calc(100dvh - 32px); overflow-y: auto; }
+.human-gate-text { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+.human-gate-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 16px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+.human-gate-foot a { color: var(--accent); }
+
+/* Quote tool on a phone or tablet (one column): the total and the button stay within reach of the thumb */
+.qb-bar { display: none; }
+@media (max-width: 1024px) {
+  .qb-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: #fff; border-top: 1px solid var(--border-primary); box-shadow: 0 -6px 16px rgba(16, 28, 51, 0.08);
+  }
+  .qb-bar-total { display: grid; text-decoration: none; color: var(--text-primary); min-width: 0; padding: 2px 0; }
+  .qb-bar-total b { font-family: var(--font-display); font-size: 20px; line-height: 1.15; }
+  .qb-bar-sub { font-size: 11px; color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
+  .qb-bar .btn-lg { padding: 12px 20px; flex-shrink: 0; }
+  .qb-grid { padding-bottom: 84px; }
+  .order-summary { scroll-margin-top: 120px; border-left: none !important; border-top: 1px solid var(--border-primary); }
+}
+
+/* Phones */
+@media (max-width: 768px) {
+  /* 16 px stops iOS zooming the page when a field takes the focus; 44 px is a comfortable thumb target. */
+  .input { font-size: 16px; min-height: 44px; }
+  textarea.input { min-height: 0; }
+  .btn-lg { min-height: 48px; }
+  .btn { min-height: 40px; }
+  .app-page { padding: 20px 16px 56px; }
+  .auth-shell { align-items: flex-start; padding: 24px 16px 40px; }
+  .rfq-form { padding: 18px !important; }
+  .pw-rules ul { grid-template-columns: 1fr; }
+  .crumbs a { display: inline-block; padding: 3px 0; }
+  .human-gate { padding: 20px; }
+}
+@media (max-width: 420px) {
+  .field-row-2-1 { grid-template-columns: 1fr 96px; }
+  .qb-bar .btn-lg { padding: 12px 16px; font-size: 14px; }
+}
+.rfq-form { padding: 24px; }
+
+/* Admin: two-step sign-in */
+.admin-page { margin: 0 auto; padding: 28px 32px 48px; }
+.admin-copy { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 10px; }
+.admin-gate-banner { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.admin-gate-banner .btn-ghost { background: #fff; color: var(--text-secondary); }
+.admin-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 24px; }
+.tf-setup { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 8px; }
+.tf-steps { margin: 0 0 12px 18px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+@media (max-width: 1100px) {
+  .admin-page .card { overflow-x: auto !important; }
+}
+@media (max-width: 768px) {
+  .admin-page { padding: 20px 16px 40px; }
+  .tf-setup { grid-template-columns: 1fr; gap: 16px; }
+  .tf-setup svg { margin: 0 auto; }
+  .recovery-codes { grid-template-columns: 1fr; font-size: 16px; }
+  .setup-key { font-size: 15px; }
+}
+
+/* Recovery codes on paper: the card and nothing else. */
+@media print {
+  body * { visibility: hidden !important; }
+  .print-area, .print-area * { visibility: visible !important; }
+  .print-area { position: absolute; left: 0; top: 0; border: none !important; box-shadow: none !important; }
+  .no-print { display: none !important; }
+}
+
+/* Job traveler on screen (admin): the two things that change what goes in the box */
+.traveler-flag { border: 2px solid var(--ink); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 12px; background: #fff; display: grid; gap: 4px; }
+.traveler-flag b { font-family: var(--font-display); font-size: 15px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-primary); }
+.traveler-flag span { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
+.traveler-flag-stop { border-color: var(--error-text); background: var(--error-bg); }
+.traveler-flag-stop b { color: var(--error-text); }
+.traveler-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; font-size: 13px; }
+.traveler-facts dt { color: var(--text-muted); font-weight: 600; }
+.traveler-facts dd { margin: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+@media (max-width: 600px) { .traveler-facts { grid-template-columns: 1fr; gap: 2px; } .traveler-facts dd { margin-bottom: 8px; } }
