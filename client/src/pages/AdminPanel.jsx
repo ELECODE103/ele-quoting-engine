@@ -7,6 +7,7 @@ import PricingConsole from '../components/admin/PricingConsole';
 import MaterialsEditor from '../components/admin/MaterialsEditor';
 import CalibrationTab from '../components/admin/CalibrationTab';
 import SecurityTab from '../components/admin/SecurityTab';
+import SystemTab from '../components/admin/SystemTab';
 import { useAuth } from '../utils/authContext';
 import '../styles/admin.css';
 
@@ -126,6 +127,7 @@ function AdminConsole() {
     { key: 'calibration', label: 'Calibration' },
     { key: 'quotes', label: 'Quotes' },
     { key: 'security', label: 'Security' },
+    { key: 'system', label: 'System' },
   ];
 
   return (
@@ -453,6 +455,9 @@ function AdminConsole() {
 
       {/* ─── SECURITY TAB ─── */}
       {tab === 'security' && <SecurityTab onChanged={refresh} />}
+
+      {/* ─── SYSTEM TAB ─── */}
+      {tab === 'system' && <SystemTab />}
 
       {/* ─── QUOTES TAB ─── */}
       {tab === 'quotes' && (

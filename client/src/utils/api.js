@@ -180,6 +180,10 @@ export const api = {
   async getAdminQuotes() { return request('/admin/quotes'); },
   async getAdminStats() { return request('/admin/stats'); },
   async getAdminParts() { return request('/admin/parts'); },
+  // Admin → System (server/ops)
+  async getSystemStatus() { return request('/admin/system/status'); },
+  async sendSystemEmailTest() { return request('/admin/system/email-test', { method: 'POST', body: '{}' }); },
+  async sendSystemDigest() { return request('/admin/system/digest', { method: 'POST', body: '{}' }); },
 
   // Auth. `guard` = the form-token and bot-check headers from useFormGuard.
   async login(email, password, extra = {}, guard = {}) {
