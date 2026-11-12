@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import { formatCurrency, formatShipDate, formatDate, orderStatusLabel } from '../utils/format';
-import { storeQuoteId } from '../utils/returnTo';
+import { storeQuoteId, notePendingCheckout, clearCheckoutDraft } from '../utils/returnTo';
 import brand, { PROCESS_LABELS } from '../brand';
 import { PAPERWORK_LABEL } from '../facts';
 
@@ -39,6 +39,8 @@ export default function OrderTrackingPage() {
         let o = await load();
         if (justPaid) {
           storeQuoteId(null); // that quote is an order now; the builder starts fresh
+          notePendingCheckout(null);
+          clearCheckoutDraft();
           // Stripe's confirmation can trail the redirect by a few seconds.
           for (let attempt = 0; attempt < 5 && !cancelled && o.status === 'pending_payment'; attempt++) {
             await api.confirmOrderPayment(orderId).catch(() => null);
@@ -47,7 +49,7 @@ export default function OrderTrackingPage() {
           }
         }
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Failed to load order');
+        if (!cancelled) setError(err.message);
       } finally {
         if (!cancelled) { setLoading(false); setConfirming(false); }
       }
@@ -62,7 +64,7 @@ export default function OrderTrackingPage() {
       const r = await api.reorder(orderId);
       navigate(`/quote?quote=${r.quoteId}`);
     } catch (err) {
-      setReorderError(err.message || 'Could not rebuild the quote.');
+      setReorderError(err.message);
       setReordering(false);
     }
   }
@@ -72,9 +74,9 @@ export default function OrderTrackingPage() {
   const paid = order && !['pending_payment', 'pending_po', 'cancelled'].includes(order.status);
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '32px' }}>
+    <div className="app-page">
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
-        <button className="btn btn-ghost" onClick={() => navigate('/dashboard')} style={{ marginBottom: 24 }}>
+        <button type="button" className="btn btn-ghost" onClick={() => navigate('/dashboard')} style={{ marginBottom: 24 }}>
           ← Your orders
         </button>
 
@@ -94,7 +96,7 @@ export default function OrderTrackingPage() {
         {!loading && order && (
           <>
             {justPaid && paid && (
-              <div role="status" style={{ background: 'var(--success-bg, #ECFDF5)', border: '1px solid var(--success, #10B981)', borderRadius: 'var(--radius-md)', padding: 16, marginBottom: 24, color: 'var(--success-text)', fontSize: 14 }}>
+              <div role="status" className="auth-ok" style={{ padding: 16, marginBottom: 24, fontSize: 14 }}>
                 <b>Payment received. Thank you.</b>{' '}
                 {order.shipBy ? `Your parts ship by ${formatShipDate(order.shipBy, { year: true })}.` : ''}{' '}
                 {order.customerEmail ? `A confirmation is on its way to ${order.customerEmail}.` : ''}
@@ -109,7 +111,7 @@ export default function OrderTrackingPage() {
 
             <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div>
-                <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Order {String(order.id).slice(0, 8).toUpperCase()}</h1>
+                <h1 className="app-h1">Order {String(order.id).slice(0, 8).toUpperCase()}</h1>
                 <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
                   Placed {new Date(order.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
                 </p>

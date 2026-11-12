@@ -15,7 +15,7 @@ export default function CustomerDashboard() {
         const data = await api.getOrders();
         setOrders(Array.isArray(data) ? data : (data.orders || []));
       } catch (err) {
-        setError(err.message || 'Failed to load orders');
+        setError(err.message);
       } finally {
         setLoading(false);
       }
@@ -44,9 +44,9 @@ export default function CustomerDashboard() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)', padding: '32px 16px' }}>
+    <div className="app-page">
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Your orders</h1>
+        <h1 className="app-h1">Your orders</h1>
         <p style={{ color: 'var(--text-muted)', marginBottom: 32 }}>Open an order to see where it stands, or to reorder it.</p>
 
         {loading && (
@@ -56,7 +56,7 @@ export default function CustomerDashboard() {
         )}
 
         {error && (
-          <div style={{ background: 'var(--error-bg)', border: '1px solid var(--error)', borderRadius: 'var(--radius-md)', padding: 16, marginBottom: 24, color: 'var(--error-text)' }}>
+          <div role="alert" className="auth-error" style={{ padding: 16, marginBottom: 24 }}>
             {error}
           </div>
         )}
