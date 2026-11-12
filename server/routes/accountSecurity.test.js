@@ -338,7 +338,8 @@ const alignToStep = () => { clockOffset += (32_000 - (Date.now() % 30_000)) % 30
     assert.deepStrictEqual(unknown.map((r) => [r.status, r.body]), known.map((r) => [r.status, r.body]), "identical answers for an address with no account");
     // The guessing connection now has to wait before its next try at that address — right password or not.
     const sixth = await login("dana@buyer.test", danaPw, {}, { ip, headers: { "X-Turnstile-Token": "pass-login" } });
-    assert.deepStrictEqual([sixth.status, sixth.body.code, sixth.body.retryAfterSeconds], [429, "try-later", 60]);
+    assert.deepStrictEqual([sixth.status, sixth.body.code], [429, "try-later"]);
+    assert.ok(sixth.body.retryAfterSeconds > 50 && sixth.body.retryAfterSeconds <= 60, `a minute, less however long the five guesses took: ${sixth.body.retryAfterSeconds}`);
     const ghost = await login("ghost@nowhere.test", "anything-At-all-1", {}, { ip: "198.51.100.78", headers: { "X-Turnstile-Token": "pass-login" } });
     assert.deepStrictEqual([ghost.status, ghost.body.code, ghost.body.error], [sixth.status, sixth.body.code, sixth.body.error], "no way to tell which address has an account");
     // The account's owner, on another connection, signs in (with the bot check, which the failures switched on).

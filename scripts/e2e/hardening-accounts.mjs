@@ -55,6 +55,9 @@ const OUTBOX = path.join(SCRATCH, 'outbox');
 const OWNER = 'owner@straightedge.test';
 const CUBE = path.join(ROOT, 'tools', 'vet-quotes', 'parts', 'cube_20mm.stl');
 const newPassword = () => `Qz8-${crypto.randomBytes(9).toString('base64url')}`;
+// The admin account is made by the one-time setup, with a code the owner sets himself. A throwaway one, made here.
+const SETUP_CODE = `setup-${crypto.randomBytes(18).toString('base64url')}`;
+const PLATE = path.join(ROOT, 'tools', 'vet-quotes', 'parts', 'plate_hole_pattern.stl');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -74,12 +77,13 @@ async function step(title, fn) {
 
 // ─── Server ───────────────────────────────────────────────────
 let server = null;
-async function startServer({ turnstile }) {
+async function startServer({ turnstile, prepare }) {
   fs.rmSync(path.join(ROOT, 'data'), { recursive: true, force: true });
   fs.rmSync(OUTBOX, { recursive: true, force: true });
   const env = {
     ...process.env,
     ADMIN_EMAIL: OWNER,
+    ADMIN_SETUP_CODE: SETUP_CODE,
     EMAIL_OUTBOX_DIR: OUTBOX,
     EMAIL_API_KEY: 'test-not-a-key',
     EMAIL_FROM: 'Straightedge <quotes@straightedge.test>',
@@ -98,7 +102,9 @@ async function startServer({ turnstile }) {
     env.TURNSTILE_SITE_KEY = `e2e-site-${crypto.randomBytes(6).toString('hex')}`;
     env.TURNSTILE_SECRET_KEY = `e2e-secret-${crypto.randomBytes(12).toString('hex')}`;
   }
-  const logFile = path.join(SCRATCH, `server-${turnstile ? 'keys' : 'nokeys'}.log`);
+  // `prepare(env)`: put something in the database before the server starts (a script run with the server's own environment).
+  if (prepare) await prepare(env);
+  const logFile = path.join(SCRATCH, `server-${prepare ? 'prepared' : turnstile ? 'keys' : 'nokeys'}.log`);
   const log = fs.createWriteStream(logFile);
   const child = spawn(process.execPath, ['-r', path.join(ROOT, 'scripts', 'e2e', 'stub-network.cjs'), path.join(ROOT, 'server', 'index.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.pipe(log); child.stderr.pipe(log);
@@ -451,7 +457,7 @@ async function phaseWithKeys() {
   });
 
   // ─── E ───────────────────────────────────────────────────────
-  await step('E. Sign-in pause after five wrong passwords, and unlocking', async () => {
+  await step('E. Five wrong passwords: the guessing browser waits, the account is not paused, and a reset always gets the owner in', async () => {
     const ctx = await newContext();
     const page = await ctx.newPage();
     await page.goto(`${BASE}/login`);
@@ -475,15 +481,28 @@ async function phaseWithKeys() {
     check('after the third wrong password the spam check appears on the sign-in page', requested.length > 0);
     await shot(page, 'login-challenge', { fullPage: false });
     await attempt(); await attempt();
-    // Sixth try, with the right password: paused.
+    // Sixth try, with the right password: THIS BROWSER has to wait a minute. The account is not paused
+    // (it used to be, for fifteen minutes and for everyone: review finding F4).
     await page.getByLabel('Password').fill(buyerPw);
     await page.getByRole('group', { name: 'Spam check' }).getByText('Check passed.').waitFor();
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await page.getByRole('alert').filter({ hasText: 'paused for 15 minutes' }).waitFor({ timeout: 10000 });
-    check('after five wrong passwords even the right one is refused, with the wait and the way out stated', true);
+    await page.getByRole('alert').filter({ hasText: 'Try again in 1 minute' }).waitFor({ timeout: 10000 });
+    check('after five wrong passwords the guessing browser has to wait, with the wait and the way out stated', /reset your password/.test(await page.getByRole('alert').filter({ hasText: 'Try again in 1 minute' }).textContent()));
     await shot(page, 'login-paused', { fullPage: false });
-    const lockMail = await waitMail(buyerEmail, /sign-in paused/);
-    check('the account owner is emailed about the pause', /Nobody got in/.test(lockMail.text) && lockMail.text.includes(`${BASE}/forgot-password`));
+    // Meanwhile the account's owner signs in from another browser: the spam check, then in.
+    const elsewhere = await newContext();
+    const other = await elsewhere.newPage();
+    await signIn(other, buyerEmail, buyerPw);
+    await other.getByRole('status').filter({ hasText: 'One quick check first' }).waitFor({ timeout: 10000 });
+    await other.getByRole('group', { name: 'Spam check' }).getByText('Check passed.').waitFor();
+    await other.getByRole('button', { name: 'Sign in' }).click();
+    await other.waitForURL(/\/quote/, { timeout: 15000 });
+    check('the account itself is not paused: its owner signs in from another browser straight away', true);
+    const device = (await elsewhere.cookies(BASE)).find((c) => c.name.endsWith('se_device'));
+    check('a successful sign-in leaves a "known device" proof: httpOnly, Secure, SameSite=Strict, host-locked, long-lived', Boolean(device && device.httpOnly && device.secure && device.sameSite === 'Strict' && device.name === '__Host-se_device' && device.expires - Date.now() / 1000 > 170 * 86400));
+    await elsewhere.close();
+    await sleep(400);
+    check('five wrong passwords are not worth an email to the account owner', mailsTo(buyerEmail, /sign-in paused|wrong passwords tried/).length === 0);
 
     // An address with no account behaves the same.
     const ghost = await newContext();
@@ -493,7 +512,7 @@ async function phaseWithKeys() {
       const r = await g.request.post(`${BASE}/api/auth/login`, { data: { email: 'ghost@nowhere.test', password: 'Wrong-password-1' }, headers: { 'X-Turnstile-Token': 'e2e-pass-ghost' } });
       answers.push(r.status());
     }
-    check('an address with no account is paused in exactly the same way', answers.join(',') === '401,401,401,401,401,429', answers.join(','));
+    check('an address with no account is answered in exactly the same way', answers.join(',') === '401,401,401,401,401,429', answers.join(','));
     await ghost.close();
 
     // Unlock: the link in the email → reset → sign in at once.
@@ -515,13 +534,11 @@ async function phaseWithKeys() {
     await page.getByLabel('Email').fill(buyerEmail);
     await page.getByLabel('Password').fill(next);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    // This browser made five wrong guesses a moment ago, so the spam check is still part of signing in from it.
-    await page.getByRole('status').filter({ hasText: 'One quick check first' }).waitFor({ timeout: 10000 });
-    await page.getByRole('group', { name: 'Spam check' }).getByText('Check passed.').waitFor();
-    await shot(page, 'login-check-after-reset', { fullPage: false });
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    // Completing the reset in this browser made it a known device for the account, so it signs in at
+    // once — no wait, no spam check — although it is the browser that guessed wrong five times.
     await page.waitForURL(/\/quote/, { timeout: 15000 });
-    check('choosing a new password lifts the pause at once (the spam check still applies to the connection that guessed)', true);
+    await shot(page, 'login-check-after-reset', { fullPage: false });
+    check('choosing a new password gets this browser in at once: the reset made it a known device', true);
     buyerPw = next;
     state.buyerCtx = ctx; state.buyerPage = page;
   });
@@ -531,24 +548,35 @@ async function phaseWithKeys() {
   await step('F. Admin: two-step enrolment, sign-in with a code, sign-in with a recovery code', async () => {
     const ctx = await newContext();
     const page = await ctx.newPage();
+    // The admin address cannot be registered (review finding F3): the form answers as for any address that has an account.
     await registerVia(page, { name: 'Owner', email: OWNER, password: ownerPw });
     await page.getByText('Success! (test stand-in)').waitFor();
     await page.getByRole('button', { name: 'Create account' }).click();
-    await page.waitForURL(/\/quote/, { timeout: 20000 });
-    const asCustomer = await apiFrom(page, 'GET', '/api/admin/stats');
-    check('registering the ADMIN_EMAIL address does not give the admin role', asCustomer.status === 403);
+    await page.getByRole('alert').filter({ hasText: 'already exists' }).waitFor({ timeout: 15000 });
+    await sleep(300);
+    check('the ADMIN_EMAIL address cannot be registered, and nothing is mailed to the owner', mailsTo(OWNER, /confirm your email/).length === 0 && (await ctx.cookies(BASE)).every((c) => !c.name.endsWith('se_session')));
     await page.goto(`${BASE}/admin`);
-    await page.waitForURL(/\/dashboard/);
-    check('the unconfirmed owner account is sent to the customer dashboard, not the admin area', true);
-    const mail = await waitMail(OWNER, /confirm your email/);
-    await page.goto(linkIn(mail, 'verify-email'));
-    await page.getByText('is confirmed').waitFor({ timeout: 10000 });
-    await page.goto(`${BASE}/admin`);
+    await page.waitForURL(/\/login/);
+    // The one-time setup: the code the owner put in the host's variables, and a new password.
+    await page.goto(`${BASE}/admin/setup`);
+    await page.getByRole('heading', { name: 'Admin setup' }).waitFor();
+    check('the setup screen is not linked from the public pages', !(await (await fetch(`${BASE}/`)).text()).includes('/admin/setup'));
+    await page.getByLabel('Setup code').fill('not-the-code-000000000000000');
+    await page.getByLabel('New password', { exact: true }).fill(ownerPw);
+    await page.getByLabel('New password again').fill(ownerPw);
+    await page.getByRole('button', { name: 'Set up the admin account' }).click();
+    await page.getByRole('alert').filter({ hasText: "didn't work" }).waitFor({ timeout: 15000 });
+    check('a wrong setup code is refused, and no account is made', (await ctx.cookies(BASE)).every((c) => !c.name.endsWith('se_session')));
+    await page.getByLabel('Setup code').fill(SETUP_CODE);
+    await page.getByRole('button', { name: 'Set up the admin account' }).click();
+    await page.waitForURL(/\/admin$/, { timeout: 20000 });
+    await shot(page, 'admin-setup-done', { fullPage: false });
     const gate = page.getByTestId('enrolment-gate');
     await gate.waitFor({ timeout: 15000 });
     const banner = page.getByTestId('twofactor-banner');
     const session = await page.evaluate(() => fetch('/api/auth/session').then((r) => r.json()));
-    check('once its email is confirmed the account is the admin, and must set up two-step sign-in', session.user.role === 'admin' && session.user.twoFactorRequired === true && /Set up two-step sign-in to open the admin pages/.test(await banner.textContent()));
+    check('the one-time setup makes the admin account and goes straight to forced two-step enrolment', session.user.role === 'admin' && session.user.emailVerified === true && session.user.twoFactorRequired === true && /Set up two-step sign-in to open the admin pages/.test(await banner.textContent()));
+    check('the startup log told the owner setup was open, and the log never shows the code', /one-time admin setup is OPEN at \/admin\/setup/.test(log()) && /Remove ADMIN_SETUP_CODE/.test(log()) && !log().includes(SETUP_CODE));
     // The enrolment screen is the only admin screen: no tabs, no numbers, nothing loaded.
     const gateText = await gate.textContent();
     check('until then the admin page shows the enrolment screen and nothing else', await page.getByRole('button', { name: 'RFQs' }).count() === 0 && await page.getByRole('button', { name: 'Pricing' }).count() === 0 && !/Total Orders|Paid Revenue/.test(gateText) && await page.getByLabel('Your password, to start').count() === 1);
@@ -914,13 +942,12 @@ async function phaseWithoutKeys() {
 
     // The owner's queue shows the mark.
     const ownerPw = newPassword();
-    await registerVia(page, { name: 'Owner', email: OWNER, password: ownerPw });
-    await sleep(3300);
-    await page.getByRole('button', { name: 'Create account' }).click();
-    await page.waitForURL(/\/quote/, { timeout: 20000 });
-    await page.goto(linkIn(await waitMail(OWNER, /confirm your email/), 'verify-email'));
-    await page.getByText('is confirmed').waitFor({ timeout: 10000 });
-    await page.goto(`${BASE}/admin`);
+    await page.goto(`${BASE}/admin/setup`);
+    await page.getByLabel('Setup code').fill(SETUP_CODE);
+    await page.getByLabel('New password', { exact: true }).fill(ownerPw);
+    await page.getByLabel('New password again').fill(ownerPw);
+    await page.getByRole('button', { name: 'Set up the admin account' }).click();
+    await page.waitForURL(/\/admin$/, { timeout: 20000 });
     // Two-step sign-in comes first here too: the queue opens only after enrolment.
     await page.getByTestId('enrolment-gate').waitFor({ timeout: 15000 });
     check('with no keys the owner still has to set up two-step sign-in before the queue opens', await page.getByRole('button', { name: 'RFQs' }).count() === 0);
@@ -942,10 +969,176 @@ async function phaseWithoutKeys() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// Review fixes (2026-11-11): the checkout still works for an honest buyer in every process, a quote
+// whose part changed shows the buyer the new price before anything is charged, and the one-time admin
+// setup takes over an account that had squatted on the admin address.
+async function phaseReviewFixes() {
+  const squatterPw = newPassword();
+  await startServer({
+    turnstile: true,
+    // A database from before the fix: an ordinary, unconfirmed account already holds the admin address.
+    prepare: (env) => new Promise((resolve, reject) => {
+      const script = `
+        const bcrypt = require("bcryptjs");
+        (async () => {
+          const db = require("./server/models/database");
+          await db.ready;
+          const { usersDB } = require("./server/models");
+          usersDB.insert({ email: process.env.ADMIN_EMAIL, passwordHash: await bcrypt.hash(process.env.E2E_SQUATTER_PW, 12), name: "Squatter", role: "customer", emailVerifiedAt: null, emailVerifyNonce: "0123456789abcdef0123456789abcdef", tokenVersion: 0, passwordChangedAt: new Date().toISOString() });
+          db.saveToDisk();
+        })().catch((e) => { console.error(e); process.exit(1); });`;
+      const child = spawn(process.execPath, ['-e', script], { cwd: ROOT, env: { ...env, E2E_SQUATTER_PW: squatterPw }, stdio: 'inherit' });
+      child.once('exit', (code) => (code === 0 ? resolve() : reject(new Error(`prepare exited ${code}`))));
+    }),
+  });
+  const log = () => fs.readFileSync(server.logFile, 'utf8');
+
+  await step('I. Admin setup on a database where someone already registered the admin address', async () => {
+    check('the startup log says an ordinary account holds the admin address and cannot become the admin', /an ordinary account .* already uses the ADMIN_EMAIL address/.test(log()) && /one-time admin setup is OPEN/.test(log()));
+    // The squatter signs in (as the customer they are) and stays signed in.
+    const sqCtx = await newContext();
+    const sq = await sqCtx.newPage();
+    await signIn(sq, OWNER, squatterPw);
+    await sq.waitForURL(/\/quote/, { timeout: 15000 });
+    check('the squatter is an ordinary customer: the admin area is closed to it', (await apiFrom(sq, 'GET', '/api/admin/stats')).status === 403);
+    const resend = await apiFrom(sq, 'POST', '/api/auth/verify-email/resend');
+    await sleep(400);
+    check('asking for a confirmation link sends nothing to the owner\'s inbox', resend.status === 200 && mailsTo(OWNER, /confirm your email/).length === 0);
+    // The owner runs the one-time setup.
+    const ctx = await newContext();
+    const page = await ctx.newPage();
+    const ownerPw = newPassword();
+    await page.goto(`${BASE}/admin/setup`);
+    await page.getByLabel('Setup code').fill(SETUP_CODE);
+    await page.getByLabel('New password', { exact: true }).fill(ownerPw);
+    await page.getByLabel('New password again').fill(ownerPw);
+    await page.getByRole('button', { name: 'Set up the admin account' }).click();
+    await page.waitForURL(/\/admin$/, { timeout: 20000 });
+    await page.getByTestId('enrolment-gate').waitFor({ timeout: 15000 });
+    const session = await page.evaluate(() => fetch('/api/auth/session').then((r) => r.json()));
+    check('setup takes the address over: the owner is the admin and is held at two-step enrolment', session.user.role === 'admin' && session.user.email === OWNER && session.user.twoFactorRequired === true);
+    const dead = await sq.evaluate(() => fetch('/api/auth/session').then((r) => r.json()));
+    check('the squatter\'s live session ended the moment setup ran', dead.authenticated === false);
+    await signIn(sq, OWNER, squatterPw);
+    await sq.getByRole('alert').filter({ hasText: "didn't match" }).waitFor({ timeout: 15000 });
+    check('and the squatter\'s password no longer signs in', true);
+    check('the takeover is on record in the log, and setup is closed', /AUDIT admin-setup: the existing account for ADMIN_EMAIL .* was taken over/.test(log()) && /Admin setup is now CLOSED/.test(log()) && !log().includes(SETUP_CODE) && !log().includes(ownerPw));
+    await page.goto(`${BASE}/admin/setup`);
+    await page.getByLabel('Setup code').fill(SETUP_CODE);
+    await page.getByLabel('New password', { exact: true }).fill(newPassword());
+    await page.getByLabel('New password again').fill('x');
+    await page.getByRole('button', { name: 'Set up the admin account' }).click();
+    await page.getByRole('alert').filter({ hasText: 'not the same' }).waitFor();
+    const again = await page.evaluate(async (code) => { const r = await fetch('/api/auth/admin-setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, password: 'Another-Passw0rd-x9' }) }); return r.status; }, SETUP_CODE);
+    check('the same code does nothing a second time', again === 403);
+    await sqCtx.close(); await ctx.close();
+  });
+
+  // A buyer with a confirmed address, signed in.
+  const ctx = await newContext();
+  const page = await ctx.newPage();
+  const email = 'erin@buyer.test';
+  const pw = newPassword();
+  /** Upload a file and price it from inside the page, as the quote tool does (session cookie, CSRF token, edit key). */
+  const inPage = (fn, arg) => page.evaluate(fn, arg);
+  const uploadIn = (name, base64, process) => inPage(async ({ name, base64, process }) => {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const s = await fetch('/api/auth/session').then((r) => r.json());
+    const fd = new FormData();
+    if (process) fd.append('process', process);
+    fd.append('files', new Blob([bytes]), name);
+    const r = await fetch('/api/upload', { method: 'POST', body: fd, headers: { 'X-CSRF-Token': s.csrfToken } });
+    return (await r.json()).parts[0];
+  }, { name, base64, process });
+  const postIn = (url, body, headers = {}) => inPage(async ({ url, body, headers }) => {
+    const s = await fetch('/api/auth/session').then((r) => r.json());
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': s.csrfToken, ...headers }, body: JSON.stringify(body) });
+    return { status: r.status, body: await r.json().catch(() => ({})) };
+  }, { url, body, headers });
+  const SHIP = { shippingName: 'Erin Buyer', shippingAddress: '5 Mill Rd', shippingCity: 'Elgin', shippingState: 'IL', shippingZip: '60120' };
+
+  await step('J. A legitimate checkout still works in every process', async () => {
+    await registerVia(page, { name: 'Erin Buyer', email, password: pw });
+    await page.getByText('Success! (test stand-in)').waitFor();
+    await page.getByRole('button', { name: 'Create account' }).click();
+    await page.waitForURL(/\/quote/, { timeout: 20000 });
+    await page.goto(linkIn(await waitMail(email, /confirm your email/), 'verify-email'));
+    await page.getByText('is confirmed').waitFor({ timeout: 10000 });
+    const body = (await page.evaluate(() => fetch('/api/auth/session').then((r) => r.text())));
+    check('the browser is never handed its session token in a response body', !/"token"/.test(body) && !/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./.test(body));
+    const cube = fs.readFileSync(CUBE).toString('base64');
+    const plate = fs.readFileSync(PLATE).toString('base64');
+    const dxf = Buffer.from('0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n120\n21\n0\n0\nLINE\n8\n0\n10\n120\n20\n0\n11\n120\n21\n80\n0\nLINE\n8\n0\n10\n120\n20\n80\n11\n0\n21\n80\n0\nLINE\n8\n0\n10\n0\n20\n80\n11\n0\n21\n0\n0\nENDSEC\n0\nEOF\n').toString('base64');
+    const cases = [
+      ['CNC machining', 'cube.stl', cube, undefined, { materialSlug: 'cnc-delrin', process: 'cnc', subProcess: 'milling', quantity: 3 }],
+      ['CNC routing (3D model)', 'plate.stl', plate, 'routing', { materialSlug: 'rt-hdpe', process: 'routing', thicknessMm: 6.35, quantity: 5 }],
+      ['CNC routing (DXF)', 'panel.dxf', dxf, 'routing', { materialSlug: 'rt-hdpe', process: 'routing', thicknessMm: 6.35, quantity: 5 }],
+      ['3D printing (FDM)', 'cube.stl', cube, undefined, { materialSlug: 'fdm-pla', process: '3d-printing', subProcess: 'fdm', layerHeight: 0.2, infill: 0.2, quantity: 2 }],
+      ['3D printing (SLA)', 'cube.stl', cube, undefined, { materialSlug: 'sla-grey', process: '3d-printing', subProcess: 'sla', layerHeight: 0.1, quantity: 2 }],
+    ];
+    for (const [label, name, data, proc, config] of cases) {
+      const part = await uploadIn(name, data, proc);
+      const q = await postIn('/api/quote', { parts: [{ partId: part.partId, editKey: part.editKey, ...config }], leadTimeSlug: 'standard' });
+      const co = q.status === 200 ? await postIn('/api/orders/checkout-session', { quoteId: q.body.quoteId, ...SHIP, confirmedTotal: q.body.orderTotal }) : { status: 0, body: {} };
+      const paid = co.status === 200 ? await postIn(`/api/orders/${co.body.orderId}/confirm-payment`, {}) : { status: 0, body: {} };
+      const order = co.status === 200 ? await page.evaluate((id) => fetch(`/api/orders/${id}`).then((r) => r.json()), co.body.orderId) : {};
+      check(`${label}: priced, checked out and paid at the quoted total`, q.status === 200 && q.body.gate.requiresRfq === false && co.status === 200 && paid.body.status === 'paid' && Math.abs(order.total - q.body.orderTotal) < 0.005 && order.items?.[0]?.config?.priced?.fingerprint,
+        `quote ${q.status} ${JSON.stringify(q.body.error || q.body.gate?.reasons || '')} checkout ${co.status} ${JSON.stringify(co.body).slice(0, 160)} paid ${JSON.stringify(paid.body)}`);
+    }
+    // And what is not on offer is refused with a code the page can act on.
+    const part = await uploadIn('cube.stl', cube);
+    const bad = await postIn('/api/quote', { parts: [{ partId: part.partId, editKey: part.editKey, materialSlug: 'cnc-peek', process: 'sheetmetal', quantity: 5 }] });
+    check('a process that is not on offer is refused, not priced as sheet metal', bad.status === 400 && bad.body.code === 'process-not-offered' && bad.body.orderTotal === undefined);
+  });
+
+  await step('K. A quote whose part changed: the checkout page shows the new price and asks before charging', async () => {
+    const dxf = Buffer.from('0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n10\n21\n0\n0\nLINE\n8\n0\n10\n10\n20\n0\n11\n10\n21\n8\n0\nLINE\n8\n0\n10\n10\n20\n8\n11\n0\n21\n8\n0\nLINE\n8\n0\n10\n0\n20\n8\n11\n0\n21\n0\n0\nENDSEC\n0\nEOF\n').toString('base64');
+    const part = await uploadIn('bracket.dxf', dxf, 'routing');
+    const q = await postIn('/api/quote', { parts: [{ partId: part.partId, editKey: part.editKey, materialSlug: 'rt-polycarbonate', process: 'routing', thicknessMm: 12.7, quantity: 4 }], leadTimeSlug: 'standard' });
+    const money = (n) => `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    // The buyer opens checkout and sees the price of the small part.
+    await page.goto(`${BASE}/checkout/${q.body.quoteId}`);
+    await page.getByText(money(q.body.orderTotal)).first().waitFor({ timeout: 15000 });
+    // The drawing's units are then changed (in another tab, say): the part is 25.4 times bigger.
+    const sw = await postIn(`/api/parts/${part.partId}/units`, { units: 'in' }, { 'X-Part-Key': part.editKey });
+    check('the units change went through and the part is 25.4× bigger', sw.status === 200 && Math.round(sw.body.geometry.boundingBox.width) === 254);
+    await page.getByLabel('Full Name').fill('Erin Buyer');
+    await page.getByLabel('Street Address').fill('5 Mill Rd');
+    await page.getByLabel('City').fill('Elgin');
+    await page.getByLabel('State').fill('IL');
+    await page.getByLabel('ZIP Code').fill('60120');
+    const pay = page.getByRole('button', { name: /Pay & Place Order/ });
+    await pay.click();
+    const notice = page.getByTestId('price-changed');
+    await notice.waitFor({ timeout: 15000 });
+    const stored = await page.evaluate((id) => fetch(`/api/quote/${id}`).then((r) => r.json()), q.body.quoteId);
+    const text = await notice.textContent();
+    check('pressing pay did not charge the old price: the page says the price changed, from what to what, and that nothing was charged', stored.orderTotal > q.body.orderTotal * 1.5 && text.includes(money(q.body.orderTotal)) && text.includes(money(stored.orderTotal)) && /not charged/.test(text) && /\/checkout\//.test(page.url()));
+    check('the order summary now shows the new total', (await page.textContent('body')).split(money(stored.orderTotal)).length > 2);
+    const orders = await page.evaluate(() => fetch('/api/orders').then((r) => r.json()));
+    check('no order was made at the old price', !orders.some((o) => o.quoteId === q.body.quoteId));
+    await shot(page, 'checkout-price-changed', { fullPage: false });
+    // The buyer accepts the new price with the same button.
+    await pay.click();
+    await page.waitForURL(/\/orders\/[0-9a-f-]+\?paid=true/, { timeout: 20000 });
+    const orderId = page.url().match(/\/orders\/([0-9a-f-]+)/)[1];
+    await page.getByRole('heading', { name: /^Order [0-9A-F]{8}$/ }).waitFor();
+    const order = await page.evaluate((id) => fetch(`/api/orders/${id}`).then((r) => r.json()), orderId);
+    check('confirming charges the new price, and the order records the size that was priced', Math.abs(order.total - stored.orderTotal) < 0.005 && Math.round(order.items[0].config.priced.dimsMm.x) === 254 && order.items[0].config.priced.sourceUnit === 'in');
+    // The same quote cannot be bought twice.
+    const twice = await postIn('/api/orders/checkout-session', { quoteId: q.body.quoteId, ...SHIP });
+    check('one quote makes one order', twice.status === 409 && twice.body.code === 'quote-already-ordered');
+  });
+  await ctx.close();
+  await stopServer();
+}
+
+// ══════════════════════════════════════════════════════════════
 try {
   browser = await chromium.launch();
   await phaseWithKeys();
   await phaseWithoutKeys();
+  await phaseReviewFixes();
   check('no page raised a console error or an uncaught exception (hydration included)', consoleProblems.length === 0, consoleProblems.slice(0, 6).join(' | '));
   check('no Content-Security-Policy violation on any page of the run, under the real policy (no bypass)', cspViolations.length === 0, cspViolations.slice(0, 6).map((v) => `${v.page} ${v.directive} ${v.blocked}`).join(' | '));
 } catch (err) {

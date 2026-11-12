@@ -96,7 +96,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     fd.append("files", new Blob([cube]), "cube_20mm.stl");
     return h.raw("POST", "/api/upload", { body: fd, headers, token });
   };
-  let partId, verified, unverified;
+  let partId, partKey, verified, unverified;
   test("anonymous upload and pricing need the verified-human token when the check is on", async () => {
     const before = partsDB.getAll().length;
     const none = await upload();
@@ -114,7 +114,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     assert.strictEqual(again.status, 200);
     assert.strictEqual(h.turnstile.calls.length, beforeCalls, "no new challenge per file: the token is checked locally");
     // Pricing.
-    const config = { parts: [h.cncConfig(partId, 2)], leadTimeSlug: "standard" };
+    // (The request carries the part's edit key, as the page that uploaded it does: review 2026-11-11, F5.)
+    partKey = ok.body.parts[0].editKey;
+    const config = { parts: [{ ...h.cncConfig(partId, 2), editKey: partKey }], leadTimeSlug: "standard" };
     const quotesBefore = quotesDB.getAll().length;
     assert.strictEqual((await h.raw("POST", "/api/quote", { json: config })).status, 403);
     assert.strictEqual(quotesDB.getAll().length, quotesBefore);
@@ -133,8 +135,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     verified = await h.register("vera@buyer.test", "Vera Verified");
     unverified = await h.register("ursula@buyer.test", "Ursula Unconfirmed", { verify: false });
     h.sent.length = 0;
-    assert.strictEqual((await upload({}, verified)).status, 200);
-    assert.strictEqual((await h.raw("POST", "/api/quote", { json: { parts: [h.cncConfig(partId, 1)] }, token: verified })).status, 200);
+    const own = await upload({}, verified);
+    assert.strictEqual((await h.raw("POST", "/api/quote", { json: { parts: [h.cncConfig(own.body.parts[0].partId, 1)] }, token: verified })).status, 200);
     assert.strictEqual((await upload({}, unverified)).status, 403);
     assert.strictEqual((await upload({ "X-Human-Token": h.humanToken }, unverified)).status, 200, "it can still build a quote after the challenge");
   });
@@ -171,7 +173,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     assert.notStrictEqual(JSON.stringify(partsDB.getById(part.partId).geometry.boundingBox), before, "re-read at the chosen scale");
     // The edit key comes back when the uploader reopens their quote.
     const routing = h.models.materialsDB.getAll().find((m) => m.process === "routing" && m.active);
-    const q = await h.raw("POST", "/api/quote", { json: { parts: [{ partId: part.partId, materialSlug: routing.slug, thicknessMm: (routing.thicknesses || [])[0]?.mm || (routing.thicknesses || [])[0] || 6.35, quantity: 2, process: "routing" }], process: "routing" }, headers: human });
+    const q = await h.raw("POST", "/api/quote", { json: { parts: [{ partId: part.partId, editKey: part.editKey, materialSlug: routing.slug, thicknessMm: (routing.thicknesses || [])[0]?.mm || (routing.thicknesses || [])[0] || 6.35, quantity: 2, process: "routing" }], process: "routing" }, headers: human });
     assert.strictEqual(q.status, 200, q.text);
     const s = await h.raw("GET", `/api/quote/${q.body.quoteId}/session`);
     assert.strictEqual(s.body.parts[0].editKey, part.editKey);

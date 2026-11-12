@@ -9,7 +9,16 @@ const crypto = require("crypto");
     const atkPw = "Aa1-" + crypto.randomBytes(9).toString("base64url");
     const reg = await s.post("/api/auth/register", { email: s.adminEmail, password: atkPw, name: "x" }, { ip: atkIp, headers: { "X-Form-Token": s.formToken("register") } });
     const atkTok = reg.body.token;
-    console.log("A attacker registers ADMIN_EMAIL:", reg.status, "role", reg.body.user.role);
+    // (review-fixes: the script used to assume the registration works; it now prints what the server answers and carries on with what it has.)
+    console.log("A attacker registers ADMIN_EMAIL:", reg.status, reg.body.user ? `role ${reg.body.user.role}` : `REFUSED ${JSON.stringify(reg.body)}`);
+    if (!atkTok) {
+      console.log("A confirmation mail sent to the owner's inbox:", s.mail(s.adminEmail, /confirm your email/i).length, "| accounts with that address can only come from the one-time setup now");
+      const sign = await s.post("/api/auth/login", { email: s.adminEmail, password: atkPw }, { ip: atkIp });
+      console.log("A attacker signs in with the password they chose:", sign.status, sign.body.code);
+      const guess = await s.post("/api/auth/admin-setup", { code: "guessed-setup-code-000000000000", password: atkPw }, { ip: atkIp });
+      console.log("A attacker tries the setup route without the owner's code:", guess.status, guess.body.code);
+      throw Object.assign(new Error("skip-A"), { skip: true });
+    }
     // The owner tries to register, is told the account exists, finds a "confirm your email" message from his own shop and opens it.
     const mail = s.mail(s.adminEmail, /confirm your email/i).pop();
     const vtok = (mail.text.match(/#token=(\S+)/) || [])[1];
@@ -25,7 +34,7 @@ const crypto = require("crypto");
     console.log("A attacker downloads the database:", bk.status, bk.headers["content-type"], bk.buffer.length, "bytes");
     const pr = await s.req({ method: "PUT", url: "/api/admin/pricing", json: { rules: { minimumOrderTotal: 1 }, note: "x" }, token: en.body.token, ip: atkIp });
     console.log("A attacker edits pricing:", pr.status);
-  } finally { await s.stop(); }
+  } catch (e) { if (!e.skip) throw e; } finally { await s.stop(); }
 
   // ---- B: host header, no FRONTEND_URL
   s = await c.start({ mailer: true, env: { FRONTEND_URL: "" } });

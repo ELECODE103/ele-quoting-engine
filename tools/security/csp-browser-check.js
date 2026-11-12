@@ -51,6 +51,7 @@ const arg = (name, def) => { const i = argv.indexOf(`--${name}`); return i >= 0 
 const PORT = Number(arg("port", "3092"));
 const BASE = `http://localhost:${PORT}`;
 const ADMIN_EMAIL = "owner@csp-check.test";
+const ADMIN_SETUP_CODE = `setup-${crypto.randomBytes(18).toString("base64url")}`;
 const SHOTS = arg("shots", "");
 const SCRATCH = arg("scratch", "");
 if (!SCRATCH) { console.error("--scratch <dir> is required (database, data folder, outbox, server log)"); process.exit(2); }
@@ -80,6 +81,8 @@ async function startServer() {
     STRIPE_SECRET_KEY: "sk_test_dummy",
     STRIPE_WEBHOOK_SECRET: `whsec_${crypto.randomBytes(16).toString("hex")}`,
     ADMIN_EMAIL,
+    // The admin account is made by the one-time setup with a code the owner sets himself; a throwaway one here.
+    ADMIN_SETUP_CODE,
     FRONTEND_URL: BASE,
     EMAIL_API_KEY: "test-not-a-key",
     EMAIL_FROM: "Straightedge <quotes@csp-check.test>",
@@ -398,17 +401,14 @@ const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#toke
   // ── 7. Admin: enrolment is required, then the panel and the pricing console ──
   const ownerPassword = newPassword();
   let setupKey = "";
-  await step("admin account: registered, email confirmed, and held at the two-step enrolment screen", async (s) => {
-    await visit("/register");
-    await page.getByLabel("Name").fill("Owner");
-    await page.getByLabel("Email").fill(ADMIN_EMAIL);
-    await page.getByLabel("Password").fill(ownerPassword);
-    await checkPassed();
-    await page.getByRole("button", { name: "Create account" }).click();
-    await page.waitForURL(/\/quote/, { timeout: 20000 });
-    await page.goto(linkIn(await mailTo(ADMIN_EMAIL, /confirm your email/i), "verify-email"), { waitUntil: "domcontentloaded" });
-    await page.getByText("is confirmed").waitFor({ timeout: 15000 });
-    await visit("/admin");
+  await step("admin account: made on the one-time setup screen, and held at the two-step enrolment screen", async (s) => {
+    // (The admin address cannot be registered any more; the setup screen is a page like any other and runs under the same policy.)
+    await visit("/admin/setup");
+    await page.getByLabel("Setup code").fill(ADMIN_SETUP_CODE);
+    await page.getByLabel("New password", { exact: true }).fill(ownerPassword);
+    await page.getByLabel("New password again").fill(ownerPassword);
+    await page.getByRole("button", { name: "Set up the admin account" }).click();
+    await page.waitForURL(/\/admin$/, { timeout: 20000 });
     await page.getByTestId("enrolment-gate").waitFor({ timeout: 15000 });
     const tabs = await page.getByRole("button", { name: "RFQs" }).count();
     const stats = await page.evaluate(() => fetch("/api/admin/stats").then(async (r) => ({ status: r.status, body: await r.json() })));

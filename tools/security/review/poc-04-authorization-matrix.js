@@ -61,6 +61,8 @@ const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
     console.log("B quoting A's partId:", qb.status, "session gives editKey:", Boolean(key), key === dxfA.editKey ? "(same key the uploader got)" : "");
     const sw = await s.post(`/api/parts/${dxfA.partId}/units`, { units: "in" }, { ip: ipB, token: B, headers: { "X-Part-Key": key } });
     console.log("B changes units of A's part:", sw.status, sw.body.geometry && sw.body.geometry.boundingBox.width);
-    console.log("B reads A's mesh via own quote: positions", sessB.body.parts[0].meshPreview && sessB.body.parts[0].meshPreview.positions.length, "fileName", sessB.body.parts[0].fileName);
+    // (review-fixes: prints the refusal instead of crashing when B has no quote holding A's part.)
+    const leaked = sessB.body && sessB.body.parts && sessB.body.parts[0];
+    console.log("B reads A's mesh via own quote:", leaked ? `positions ${leaked.meshPreview && leaked.meshPreview.positions.length} fileName ${leaked.fileName}` : `REFUSED (quote ${qb.status} ${JSON.stringify(qb.body)}; session ${sessB.status})`);
   } finally { await s.stop(); }
 })().catch((e) => { console.error(e); process.exit(1); });

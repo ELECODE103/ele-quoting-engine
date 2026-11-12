@@ -251,7 +251,8 @@ test("with a file-encryption key: payloads are encrypted before they touch the d
       assert.deepStrictEqual([p.payloadError, p.meshError], ["wrong-key", "wrong-key"], "neither file opens under another key, and each says why");
       assert.ok(!p.geometry.features && p.geometry.volume === 6000.25, "what is left is the row's summary");
       const mat = h.models.materialsDB.getAll().find((m) => m.process === "cnc" && m.active);
-      const q = await h.post("/api/quote", { parts: [{ partId: part.id, materialSlug: mat.slug, quantity: 1, process: "cnc", subProcess: "milling" }] });
+      // (The part was put in the table directly, so its edit key is worked out here; a part without its key is simply "not found".)
+      const q = await h.post("/api/quote", { parts: [{ partId: part.id, editKey: require("../security/tokens").partEditKey(part.id), materialSlug: mat.slug, quantity: 1, process: "cnc", subProcess: "milling" }] });
       assert.deepStrictEqual([q.status, q.body.code], [409, "part-data-unavailable"]);
       assert.ok(/Upload it again/.test(q.body.error) && !/key|decrypt|payload/i.test(q.body.error), q.body.error);
       // Listing the old key as "previous" brings it back.
@@ -372,10 +373,11 @@ test("reopening a quote brings the 3D preview back from its file; if the file is
   fs.unlinkSync(path.join(payloadDir, `${up.partId}.mesh.json`));
   const quiet = console.error; console.error = () => {};
   let without;
-  try { without = await h.get(`/api/quote/${q.body.quoteId}/session`); } finally { console.error = quiet; }
+  // (As the buyer: the part became theirs when they priced it signed in, a few lines up.)
+  try { without = await h.get(`/api/quote/${q.body.quoteId}/session`, buyer); } finally { console.error = quiet; }
   assert.strictEqual(without.status, 200);
   assert.deepStrictEqual([without.body.parts[0].meshPreview.positions.length, without.body.parts[0].previewUnavailable], [0, true]);
-  assert.strictEqual((await h.post("/api/quote", { parts: [{ partId: up.partId, materialSlug: cnc.slug, quantity: 2, process: "cnc", subProcess: "milling" }], quoteId: q.body.quoteId })).status, 200, "and it still prices: the mesh is display only");
+  assert.strictEqual((await h.post("/api/quote", { parts: [{ partId: up.partId, materialSlug: cnc.slug, quantity: 2, process: "cnc", subProcess: "milling" }], quoteId: q.body.quoteId }, buyer)).status, 200, "and it still prices: the mesh is display only");
 });
 
 test("retention: payload files go with their part row, and the sweep removes whatever has no row", async () => {
