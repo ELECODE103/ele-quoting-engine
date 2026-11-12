@@ -1378,7 +1378,9 @@ router.get("/admin/quotes", authenticate, requireAdmin, (req, res) => {
  * For use after a price change the owner does not want to honour on quotes already saved: ends
  * the price hold on every open (draft) quote now. Nothing is deleted — the buyer's parts and
  * setup stay — but checkout answers "this price has expired" until the quote is reopened and
- * priced at today's rules. Quotes that are already orders or firm-quote requests are not touched.
+ * priced at today's rules. The same goes for a quote whose order was started and never paid: it
+ * can no longer be handed a payment page at the old price. Paid orders and firm-quote requests
+ * are not touched.
  */
 router.post("/admin/quotes/void-open", authenticate, requireAdmin, (req, res) => {
   const note = sanitizeString(String(req.body?.note || ""), 200);
@@ -1386,7 +1388,9 @@ router.post("/admin/quotes/void-open", authenticate, requireAdmin, (req, res) =>
   const ended = new Date(now.getTime() - 1000).toISOString();
   let voided = 0;
   require("../models/database").batch(() => {
-    for (const q of quotesDB.query((x) => x.status === "draft" && !(x.expiresAt && new Date(x.expiresAt) < now))) {
+    const { ordersDB } = require("../models");
+    const unpaid = new Set(ordersDB.query((o) => o.status === "pending_payment" && !o.rfqId && o.quoteId).map((o) => o.quoteId));
+    for (const q of quotesDB.query((x) => (x.status === "draft" || unpaid.has(x.id)) && !(x.expiresAt && new Date(x.expiresAt) < now))) {
       quotesDB.update(q.id, { expiresAt: ended, config: { ...(q.config || {}), integrity: { ...(q.config?.integrity || {}), voidedAt: now.toISOString() } } });
       voided++;
     }

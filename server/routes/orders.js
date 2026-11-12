@@ -140,11 +140,13 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
     // The buyer is charged only when that agrees with the stored total to the cent, or when the
     // quote is inside its price hold and its parts, configuration and gate result are exactly what
     // was priced. Otherwise: 409 `quote-changed` with today's price for the buyer to confirm.
-    // (An order of the buyer's that is already waiting for payment was checked when it was made, and
-    // its parts have been locked since: it is resumed as it is.)
-    const checked = resumable ? null : require("./api").verifyQuoteForOrder(quote, req.user, { confirmedTotal: req.body.confirmedTotal });
-    if (checked && !checked.ok) return res.status(checked.status).json(checked.body);
-    if (checked) quote = checked.quote;
+    // An order of the buyer's that is still waiting for payment gets the same check before it is
+    // handed a payment page again (payments review F-04): its parts have been locked since it was
+    // made, but the rate card, the catalog and the gate have not. If it no longer passes, the quote
+    // has to be reopened (it is not a draft any more, so the builder makes a new one from it).
+    const checked = require("./api").verifyQuoteForOrder(quote, req.user, { confirmedTotal: req.body.confirmedTotal });
+    if (!checked.ok) return res.status(checked.status).json(resumable ? { ...checked.body, reopen: true, orderId: resumable.id } : checked.body);
+    quote = checked.quote;
 
     const leadDays = leadTime ? shipBy.leadDays(leadTime) : null;
     const account = usersDB.getById(req.user.userId);

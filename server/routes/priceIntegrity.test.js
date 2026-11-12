@@ -452,6 +452,29 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
     const reopened = await quote([{ partId: cube.partId, materialSlug: "cnc-delrin", process: "cnc", quantity: 2 }], buyer, { quoteId: open.body.quoteId });
     assert.strictEqual(reopened.body.quoteId, open.body.quoteId);
     assert.strictEqual((await checkout(open.body.quoteId)).status, 200);
+
+    // An order that was started and never paid is checked again each time it is handed a payment page:
+    // the rate card, the catalog and the gate may have moved since it was made.
+    const waiting = ordersDB.getById((await checkout(open.body.quoteId)).body.orderId);
+    assert.strictEqual(waiting.status, "pending_payment");
+    const made = sessionsCreated();
+    assert.strictEqual((await h.put("/api/admin/pricing", { rules: { cncMachineRatePerHour: 400, marginPercent: 0.8 }, note: "test: a large rise" }, owner)).status, 200);
+    const stale = await checkout(open.body.quoteId);
+    assert.deepStrictEqual([stale.status, stale.body.code, stale.body.reopen, stale.body.orderId], [409, "quote-changed", true, waiting.id], stale.text);
+    assert.ok(stale.body.newTotal > stale.body.previousTotal * 2);
+    assert.strictEqual((await h.post("/api/admin/pricing/reset", { note: "test: defaults" }, owner)).status, 200);
+    const delrin = h.models.materialsDB.getAll().find((m) => m.slug === "cnc-delrin");
+    assert.strictEqual((await h.put(`/api/admin/materials/${delrin.id}`, { active: false }, owner)).status, 200);
+    const gone = await checkout(open.body.quoteId);
+    assert.deepStrictEqual([gone.status, gone.body.code, gone.body.orderId], [409, "quote-needs-update", waiting.id], gone.text);
+    assert.strictEqual((await h.put(`/api/admin/materials/${delrin.id}`, { active: true }, owner)).status, 200);
+    assert.strictEqual((await checkout(open.body.quoteId)).status, 200, "back as it was priced: resumed");
+    // ...and "void open quotes" ends its hold too.
+    assert.ok((await h.post("/api/admin/quotes/void-open", { note: "again" }, owner)).body.voided >= 1);
+    const ended = await checkout(open.body.quoteId);
+    assert.deepStrictEqual([ended.status, ended.body.code], [410, "quote-expired"]);
+    assert.strictEqual(sessionsCreated(), made, "no payment page was made for any of the refused attempts, and the resume reused the open one");
+    assert.strictEqual(ordersDB.getById(waiting.id).status, "pending_payment", "the order itself is as it was");
   });
 
   // ═══ F-03 — the gate looks at what is being bought ═══════════════════════
