@@ -182,7 +182,12 @@ test("one customer's records from another's account: not found", async () => {
     assert.strictEqual((await s.req({ url: `/api/quote/${st.aliceQuote}/drawing`, method: "DELETE", ip: ip(), token })).status, 404);
     assert.strictEqual((await s.get(`/api/rfq/${st.aliceRfq}`, { ip: ip(), token })).status, 404);
     // re-pricing "into" Alice's quote id does not touch her quote
-    const hijack = await s.post("/api/quote", { parts: [{ ...st.config, quantity: 999 }], quoteId: st.aliceQuote }, { ip: ip(), token });
+    // (Review fix F5: Alice's part is hers too, so the attempt is made with a part of the caller's own;
+    // with her part it is refused outright, as for a part that does not exist.)
+    const withHers = await s.post("/api/quote", { parts: [{ ...st.config, quantity: 999 }], quoteId: st.aliceQuote }, { ip: ip(), token });
+    assert.deepStrictEqual([withHers.status, withHers.body.code, withHers.body.quoteId], [400, "part-not-found", undefined]);
+    const own = (await s.upload([{ name: "cube.stl", data: cube }], { ip: ip(), token })).body.parts[0].partId;
+    const hijack = await s.post("/api/quote", { parts: [{ ...st.config, partId: own, quantity: 999 }], quoteId: st.aliceQuote }, { ip: ip(), token });
     assert.ok(hijack.status === 200 && hijack.body.quoteId !== st.aliceQuote, "a new quote is made instead");
   }
   const hers = (await s.get(`/api/quote/${st.aliceQuote}`, { ip: ip(), token: alice })).body;

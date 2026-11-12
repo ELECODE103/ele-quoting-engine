@@ -33,7 +33,9 @@ const restart = async (env) => {
   const tmpDir = s.tmp;
   logs.push(s.log());
   await s.stop({ keep: true });
+  const keys = s.editKeys; // the visitor's browser still holds its parts' edit keys after the server restarts
   s = await live.start({ tmpDir, env: { JWT_SECRET: jwtSecret, ...env } });
+  Object.assign(s.editKeys, keys);
 };
 const onDisk = (folder) => s.files(folder).map((f) => ({ name: f, bytes: fs.readFileSync(path.join(s.dir(folder), f)) }));
 const containsAny = (haystack, needles) => needles.some((n) => haystack.indexOf(n) !== -1);
