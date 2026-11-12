@@ -48,7 +48,7 @@ as creating):
 | RR-08 the file ceiling pinned by requests and saved quotes | High | **Fixed** | Six addresses fill and pin the folders to 97 % as before (the script fixes the sizes); after the pass: 71 %, a visitor and a confirmed customer both upload again, nobody deleted anything (before: nothing removed, both refused until the owner deleted the requests by hand) |
 | RR-03 30 requests close the form | High, check off | **Fixed** | After 38 accepted requests from 4 addresses, a visitor's request: 201 (was 429). Production refuses to start without the Turnstile keys unless waived |
 | RR-04 the mail cap used up by one address | High | **Fixed** | After 60 accounts from six addresses, a new customer's confirmation email is sent (it was dropped). One address: 15 emails in five minutes (was 60) |
-| RR-11 the clean-up pass freezes the server; saves grow with the database | Medium | **Pass fixed. Save contained by a 16 MB default, not changed** | A pass above 80 %: the thread held 31 to 110 ms (was 2.2 to 2.4 s). A save at the default ceiling: 10 ms quiet (29 ms on the re-review's loaded machine) |
+| RR-11 the clean-up pass freezes the server; saves grow with the database | Medium | **Pass fixed. Save contained by a 16 MB default, not changed** | A pass above 80 % that removes rows: the thread held 31 to 110 ms in one run and 27 to 81 ms in the next, after the compaction was split in two (was 2.2 to 2.4 s, removing nothing). A save at the default ceiling: 10 ms quiet (29 ms on the re-review's loaded machine) |
 | RR-07 two customers, one refused for memory | Medium | **Fixed for refusals; memory the process keeps is open** | Two customers at once: 6 of 6 served quiet (twice), 20 of 20 in ten rounds, 6 of 6 under load (was 1 of 2 refused in 2 of 4 runs). A customer beside a memory-hungry file: served 3 of 3 and never the one stopped |
 | RR-09 finite but wrong measurements | Medium | **Fixed** | Every hostile row of the script is refused at upload; the honest cube and frame price to the cent as before |
 | RR-06 a refused upload's connection | Low | **Fixed** | Thrown-away bytes are charged (the next upload is `daily-upload-limit`); the second request on the connection is not run |
@@ -56,7 +56,7 @@ as creating):
 | RR-15 accuracy of the round-1 write-up | Info | **Corrected in place** | n/a |
 | RR-10, RR-14 | High, Low | Not in this work (integration) | `geometry-price.js units` and `memo-check.js` read as in the re-review |
 
-The commit this describes is the head of `availability-fixes`; nothing was pushed.
+The code this describes is commit `2f82141` of `availability-fixes` (this write-up is the commit after it). Nothing was pushed by me.
 
 ## 2. Finding by finding
 
@@ -829,3 +829,4 @@ coordinator when a session ran out; its contents were verified and finished in t
 - `211d3f9` Clean-up: the rebuild and the write of a compaction are two pieces; a scenario script for customers arriving after memory-hungry uploads
 - `c9d2a9c` Thin-print refusal says what is true of any part it refuses; the reorder retry caveat beside the exported gate
 - `2f82141` Send it again: the day's attempt is charged as before, except when the site's own cap turned the email away with nothing in line
+- `6238109` Round-2 write-up: findings, worst-case before and after, quota table, judgment calls, merge notes, every run, what is open
