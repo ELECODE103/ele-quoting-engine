@@ -97,7 +97,7 @@ async function cpuMs(id) {
       ["sphere-100k", 10000, "40 s"],
       ["blob-100k", 10000, "135 s"],
       ["plate-100k", 10000, "1.5 s"],
-      ["soup-100k", 20000, "did not finish in 768 MB"],
+      ["soup-100k", 20000, "3.9 s and 458 MB"],
       ["dxf-crossing-5k", 5000, "18 s"],
       ["dxf-perforated-5k", 5000, "3.7 s"],
       ["dxf-windows-5k", 5000, "5 s"],
