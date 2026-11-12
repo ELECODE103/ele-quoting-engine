@@ -728,8 +728,8 @@ router.post("/quote", optionalAuth, pricingGate.admit(), async (req, res) => {
       return res.status(400).json({ error: "No parts configured" });
     }
 
-    const ctx = { clientKey: req.pricingClientKey || clientKey(req) };
-    const { saved, quote, gate, dfmByPartId, leadTime } = await pricingMemo.run(() => saveQuote(req.body, req.user, ctx));
+    const ctx = pricingGate.context(req);
+    const { saved, quote, gate, dfmByPartId, leadTime } = await pricingMemo.run(() => saveQuote(req.body, req.user, ctx), pricingGate.job(req));
 
     res.json({
       quoteId: saved.id,

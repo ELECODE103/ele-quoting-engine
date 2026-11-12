@@ -193,6 +193,20 @@ const limits = {
   /** How long a second pricing request from the same client waits for the first, ms. */
   get quotePriceWaitMs() { return envInt("QUOTE_PRICE_WAIT_MS", 4000, 0, 60000); },
   /** Pricing requests running at once across all clients. */
+  /** Pricing work one address may cause in an hour, seconds (charged per piece; services/pricingMemo.js). */
+  get quotePriceSecondsPerClientHour() { return envInt("QUOTE_PRICE_SECONDS_PER_CLIENT_HOUR", 120, 1, 86400); },
+  /** The same for one account, whatever address it comes from. */
+  get quotePriceSecondsPerAccountHour() { return envInt("QUOTE_PRICE_SECONDS_PER_ACCOUNT_HOUR", 120, 1, 86400); },
+  /** The heavy pricing lane: work it may do in one burst, ms, and its share of the thread once the burst is spent, percent. */
+  get quotePriceHeavyBurstMs() { return envInt("QUOTE_PRICE_HEAVY_BURST_MS", 1000, 0, 600000); },
+  get quotePriceHeavyDutyPercent() { return envInt("QUOTE_PRICE_HEAVY_DUTY_PERCENT", 33, 1, 100); },
+  /** A quote whose distinct parts carry more measured detail than this (kB, summed) is priced in the heavy lane. */
+  get quotePriceLightBytes() { return envInt("QUOTE_PRICE_LIGHT_KB", 256, 0, 1048576) * 1024; },
+  /** A quote in the light lane that has used this much work, ms, goes on in the heavy lane. */
+  get quotePriceLightMs() { return envInt("QUOTE_PRICE_LIGHT_MS", 150, 1, 600000); },
+  /** Quotes that may wait for the pricing runner, whole site; and how long one waits before it is told to retry, ms. */
+  get quotePriceQueueMax() { return envInt("QUOTE_PRICE_QUEUE_MAX", 200, 1, 100000); },
+  get quotePriceQueueWaitMs() { return envInt("QUOTE_PRICE_QUEUE_WAIT_MS", 15000, 100, 600000); },
   get quotePriceMaxInFlight() { return envInt("QUOTE_PRICE_MAX_INFLIGHT", 8, 1, 1000); },
   /** NEW draft-quote rows per client address and per account (security/quoteGuards.js). */
   get quoteNewPerClientHour() { return envInt("QUOTE_NEW_PER_CLIENT_HOUR", 30, 1, 100000); },
