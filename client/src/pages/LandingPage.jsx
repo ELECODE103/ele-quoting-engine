@@ -197,7 +197,9 @@ export default function LandingPage() {
           <div className="grid-4">
             {STEPS.map(([n, t, d]) => (
               <div key={n} className="card" style={{ padding: 24 }}>
-                <div aria-hidden="true" style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 700, color: 'var(--accent)', opacity: 0.35, marginBottom: 8 }}>{n}</div>
+                {/* The step numeral. It was Ink at 35% opacity: 2.2:1 on the white card, a serious contrast failure in the
+                    accessibility scan. Now the secondary-text token at full strength (5.7:1 on white), no opacity. */}
+                <div aria-hidden="true" className="step-numeral" style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>{n}</div>
                 <h3 className="display" style={{ fontSize: 17, marginBottom: 8 }}>{t}</h3>
                 <p style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.65 }}>{d}</p>
               </div>
