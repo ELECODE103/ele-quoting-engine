@@ -44,6 +44,16 @@ for (const [file, label] of TABLES) {
   });
 }
 
+test('the price preview: the focusable aside is the region that scrolls, not the card inside it', () => {
+  // Seen once in three walks of the merged build (390 px, Admin → Pricing): when the preview's table was wider
+  // than the screen, the card inside the aside became a second scrolling region that the keyboard could not reach.
+  assert.ok(/<aside className="pc-preview" tabIndex=\{0\} aria-label="Price preview">/.test(read('components/admin/PricingConsole.jsx')));
+  assert.ok(/\.pc-preview\s*\{[^}]*overflow:\s*auto/.test(read('styles/admin.css')), 'the aside scrolls');
+  const css = read('styles/global.css');
+  const narrow = css.slice(css.indexOf('.admin-page .card, .admin-page .table-scroll { overflow-x: auto !important; }'));
+  assert.ok(/\.admin-page \.pc-preview \.card\s*\{\s*overflow-x:\s*visible\s*!important;\s*\}/.test(narrow.slice(0, 600)), 'the card inside it does not, at the widths where admin cards scroll');
+});
+
 test('the focus ring for those regions is in the stylesheet', () => {
   assert.ok(/\.table-scroll:focus-visible\s*\{[^}]*outline:/.test(read('styles/global.css')));
 });

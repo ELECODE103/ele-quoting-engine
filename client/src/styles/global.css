@@ -819,6 +819,9 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
 .table-scroll:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; box-shadow: none; }
 @media (max-width: 1100px) {
   .admin-page .card, .admin-page .table-scroll { overflow-x: auto !important; }
+  /* The price preview is already one focusable, scrolling region (aside.pc-preview, admin.css): it scrolls,
+     not the card inside it, which nothing could reach from the keyboard. */
+  .admin-page .pc-preview .card { overflow-x: visible !important; }
 }
 @media (max-width: 768px) {
   .admin-page { padding: 20px 16px 40px; }
