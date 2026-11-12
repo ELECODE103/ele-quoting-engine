@@ -107,7 +107,7 @@ async function start(opts = {}) {
           stripe.created.push(args);
           // What Stripe would charge: every line (the order, plus the inspection paperwork when it was ordered).
           const amount = args.line_items.reduce((sum, li) => sum + li.price_data.unit_amount * (li.quantity || 1), 0);
-          stripe.sessions[id] = { id, url: `https://checkout.stripe.test/${id}`, payment_status: "unpaid", amount_total: amount, amount_subtotal: amount, metadata: args.metadata };
+          stripe.sessions[id] = { id, url: `https://checkout.stripe.test/${id}`, payment_status: "unpaid", currency: "usd", amount_total: amount, amount_subtotal: amount, metadata: args.metadata };
           if (args.automatic_tax && args.automatic_tax.enabled) {
             const customer = stripe.customers.find((c) => c.id === args.customer);
             const taxable = args.line_items.filter((li) => li.price_data.product_data.tax_code !== "txcd_00000000").reduce((sum, li) => sum + li.price_data.unit_amount * (li.quantity || 1), 0);

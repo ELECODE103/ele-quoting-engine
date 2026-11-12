@@ -40,7 +40,7 @@ require(path.join(root, "server", "services", "stripeClient")).setForTests({
         const id = `cs_e2e_${++n}`;
         const amount = args.line_items.reduce((sum, li) => sum + li.price_data.unit_amount * (li.quantity || 1), 0);
         // The buyer "pays" at once: the hosted page is the return URL.
-        sessions[id] = { id, url: args.success_url, payment_status: "paid", amount_total: amount, amount_subtotal: amount, metadata: args.metadata };
+        sessions[id] = { id, url: args.success_url, payment_status: "paid", currency: "usd", amount_total: amount, amount_subtotal: amount, metadata: args.metadata };
         if (args.automatic_tax && args.automatic_tax.enabled) {
           const customer = customers[args.customer];
           const taxable = args.line_items.filter((li) => li.price_data.product_data.tax_code !== "txcd_00000000").reduce((sum, li) => sum + li.price_data.unit_amount * (li.quantity || 1), 0);
