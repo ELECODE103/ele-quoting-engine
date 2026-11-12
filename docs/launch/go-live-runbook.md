@@ -104,6 +104,11 @@ has a **Restart verification** button.
 
 ### B. The Turnstile widget in Cloudflare (needed for step 2)
 
+**The site will not start without the two keys this gives you.** From this release they are
+required in the same way as the Stripe keys: if either is missing from Railway's Variables when
+step 5 deploys, the deployment fails with a line naming the missing one, and the site stays
+offline until it is added. So do this part before anything else, and enter both keys in step 2.
+
 1. Cloudflare dashboard → **Turnstile** → **Add widget**. Name: `Straightedge`.
 2. Hostnames: add `straightedgemfg.com`, `www.straightedgemfg.com`, `nordmfg.com`,
    `www.nordmfg.com`, and the Railway host — the name ending `.up.railway.app` shown in Railway →
@@ -166,8 +171,8 @@ together). Generate secrets with your password manager's generator or the comman
 | `EMAIL_API_KEY` | the Resend key from part A | **Required for launch** |
 | `EMAIL_FROM` | `Straightedge <` + your sending address + `>` | **Required for launch.** The address must be on the domain you verified in part A |
 | `RFQ_NOTIFY_TO` | the mailbox where you want orders, requests, alerts and the daily digest | **Required for launch.** One address, or several separated by commas |
-| `TURNSTILE_SITE_KEY` | the Site Key from part B | Both are needed or the bot check stays off |
-| `TURNSTILE_SECRET_KEY` | the Secret Key from part B | |
+| `TURNSTILE_SITE_KEY` | the Site Key from part B | **Required: the site exits at start-up without both.** The bot check is what stops a script from uploading, quoting and sending requests from many addresses at once |
+| `TURNSTILE_SECRET_KEY` | the Secret Key from part B | **Required**, as above |
 | `NORD_FILE_ENC_KEY` | 48 or more random characters | Follow [`../security/file-encryption.md`](../security/file-encryption.md). **Save it before you enter it**: if it is lost, stored customer files cannot be opened. Set it now so no customer file is ever stored unencrypted |
 
 ### Check, and normally leave unset
@@ -181,7 +186,11 @@ together). Generate secrets with your password manager's generator or the comman
 ### Must not exist — delete if present
 
 `RAILWAY_RUN_UID`, `SE_TEST_HOOKS`, `EMAIL_OUTBOX_DIR`, `CSP_REPORT_ONLY`, `ADMIN_RECOVERY`,
-`ADMIN_SETUP_CODE`, and anything starting `NIXPACKS_`.
+`ADMIN_SETUP_CODE`, `ALLOW_LAUNCH_WITHOUT_BOT_CHECK`, and anything starting `NIXPACKS_`.
+
+(`ALLOW_LAUNCH_WITHOUT_BOT_CHECK` lets the site start in production with no bot check. It exists
+for test runs. On the public site it would switch off the protection the per-address limits
+depend on.)
 
 (`ADMIN_SETUP_CODE` and `ADMIN_RECOVERY` are for the two situations in step 6's table and are
 removed again as soon as they have been used. With an admin account already on the volume,
@@ -199,12 +208,16 @@ protection that is off until you do.)
 | `STRIPE_PROMOTION_CODES` | off | `on` shows the promotion-code box on Stripe's page, for every order and firm quote. Leave it off until you have decided to run codes (step 2a, item 3). The startup log and Admin → System say which way it is set |
 | `CHECKOUT_SESSION_MINUTES` | 120 | How long a buyer has to finish paying on Stripe's page (30 to 1440). After that the unpaid order closes as "Not paid, closed" and the quote can be ordered again |
 | `CHECKOUT_PER_ACCOUNT_15MIN` | 12 | How many times one account may press pay in 15 minutes before it is asked to wait a few minutes |
-| `MEMORY_BUDGET_MB` | see step 3 | How much memory the site may use before it turns heavy uploads away. Set it in step 3 to match the service's memory limit. ***Confirm when availability-fixes merges:** that branch adds this setting and is not in this release. The name and the rule for choosing the number are not final; until it merges the variable does nothing* |
+| `MEMORY_BUDGET_MB` | 1024 | The memory limit of the Railway service, in MB. The site sizes its file-reading limits from it. **Set it in step 3** to match the service: the recommended service size is 2 GB with `MEMORY_BUDGET_MB=2048` |
+| `DB_MAX_MB` | 16 | The most the database file may grow to. Past it the site stops saving new quotes and uploads until room is made. **Check it in step 9**: if the database is already more than half of this on the first day, raise it |
+| `QUOTE_DRAFT_KB_PER_CLIENT`, `QUOTE_DRAFT_KB_PER_ACCOUNT` | 512 each | How much unsaved-quote data one visitor, or one account, may have stored at once: roughly 180 one-part quotes, or 23 quotes of 100 parts. Orders, requests and quotes on them are never counted |
 | `OPS_DIGEST_HOUR` | 7 | Hour of the daily digest, Central time |
 | `OPS_DIGEST` | on | `off` stops the scheduled digest (the admin button still works) |
 | `ADMIN_SESSION_HOURS` | 4 | How long an admin sign-in lasts |
 
-The other limits are listed in `.env.example`. A new, empty database also needs the one-time
+Every other setting, with its default, is listed once in `.env.example` at the top of the
+repository. That file is the one list: a test fails if a limit is added to the code and not to it,
+or is shown there with a different default. A new, empty database also needs the one-time
 admin setup code described in step 6 — not your case, because your account is already on the
 volume.
 
@@ -279,19 +292,28 @@ uploads in a row take the site offline until you notice. At 100 there is room fo
 deployment that can never start (a missing variable) still stops by itself. Every restart after a
 kill or crash also sends you an alert email, so you will know long before the count matters.
 
-**Memory.** Settings → **Resources** (or the service's **Metrics** tab → Memory): note the
-service's **memory limit**. Reading a hostile CAD file took the site to about 1.3 GB in testing,
-so:
+**Memory: 2 GB, and tell the site.** Settings → **Resources** (or the service's **Metrics** tab →
+Memory): note the service's **memory limit**.
 
-- If the limit is **below 2 GB**: raise it to 2 GB or more if your plan allows. Below that, one
-  bad upload can kill the whole server rather than just the one file being read.
-- Then set the variable `MEMORY_BUDGET_MB` to match the limit, as that setting's notes describe.
-  **Confirm when availability-fixes merges:** that branch is not in this release, so the
-  variable does not exist yet and setting it does nothing. Until it merges, the limit itself is
-  what protects you.
+1. Set the limit to **2 GB** if your plan allows. This is the recommended size.
+2. Step 2, Variables: add `MEMORY_BUDGET_MB` with the same figure in MB: `2048` for 2 GB.
+   The two must agree. The variable does not change what Railway gives the service; it tells the
+   site how much it has, and the site sizes its file-reading limits from that.
 
-*You should see, later, in Admin → System:* nothing about memory unless something went wrong; an
-alert titled "The site was killed and restarted" is the sign that the limit was hit.
+What the figure changes for a customer: the largest models the site accepts (STL or 3MF near
+500,000 triangles of loose, unconnected geometry) need about 1 GB to read. At 2 GB they are read
+and priced. At the default of 1024 the site reads such a file by itself, with nothing else
+running, and if it still does not fit it stops that one file and tells the customer "this model
+is too heavy to price online, send it for a firm quote". Ordinary parts are read the same either
+way. Nothing is ever killed silently: a file that cannot be read gets an answer that says why.
+
+If you leave the service below 2 GB, set `MEMORY_BUDGET_MB` to whatever the limit is (for 1 GB:
+leave it unset). Never set it higher than the service's limit: the site would then accept work
+Railway kills it for.
+
+*You should see, in step 5's deploy log:* a line beginning `Memory budget: 2048 MB
+(MEMORY_BUDGET_MB)`. *Later, in Admin → System:* nothing about memory unless something went
+wrong; an alert titled "The site was killed and restarted" is the sign that the limit was hit.
 
 Why the start command must be empty: the image starts itself. It begins as root for one job —
 making the volume writable — then runs the site as an unprivileged user. A start command typed
@@ -337,6 +359,9 @@ The next step puts the site back on the public internet. Before you press the bu
   it is. (If you see `NOTICE: there is no admin account yet` or `WARNING: an ordinary account …
   already uses the ADMIN_EMAIL address` instead, go to step 6's table: "No admin account".)
 - `Database ready.` and a line with the database size
+- `Memory budget: 2048 MB (MEMORY_BUDGET_MB) — …; database ceiling 16 MB.` The first figure must
+  be the service's memory limit from step 3. If it says 1024 and the service has 2 GB, the
+  variable did not take
 - `Payments: card checkout sessions stay open 120 minutes; promotion codes at checkout are off.`
 - possibly, within the first minute of this first start, one line beginning **`Order sweep:`** —
   for example `Order sweep: 3 unpaid order(s) closed as expired, 0 settled late, 0 left for the
@@ -352,7 +377,8 @@ The next step puts the site back on the public internet. Before you press the bu
 - `[hosts] CANONICAL_HOST is not set: …` (correct until step 12)
 - `[ops] alerts by email and in this log; daily digest at 7:00 Central.`
 - the box `Straightedge quote API on port …`
-- **no** block starting `WARNING: BOT CHECK IS OFF`, **no** `WARNING: EMAIL_API_KEY…`, **no**
+- **no** block starting `WARNING: BOT CHECK IS OFF` or `WARNING: THE ROBOT CHECK IS OFF`, **no**
+  `WARNING: the database is already …`, **no** `WARNING: EMAIL_API_KEY…`, **no**
   `WARNING: the server is running as root`, **no** line starting `ALERT`
 
 *Then:* the deployment turns green ("Active"), and `https://nordmfg.com/api/health` in your
@@ -364,7 +390,10 @@ browser shows `{"status":"ok", …}`.
 |---|---|---|
 | Build log: the `node:20.20.2-bookworm-slim` image "not found" | That exact image tag is not on Docker Hub | In the repository edit the first `FROM` line of `Dockerfile` to `node:20-bookworm-slim`, commit to `master`. Tell me |
 | Build log stops in `npm ci` or `npm run build` | A dependency or the client build failed | Nothing is live. Send me the last 30 lines |
-| Deploy log: `FATAL: Missing required environment variables: …` | A required variable is missing. `STRIPE_WEBHOOK_SECRET` is one of them from this release: the site does not start without it | Add it (step 2), **Redeploy** |
+| Deploy log: `FATAL: Missing required environment variables: …` | A required variable is missing. `STRIPE_WEBHOOK_SECRET`, `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are among them from this release: the site does not start without them | Add it (step 2), **Redeploy** |
+| Deploy log: `FATAL: The robot check (Cloudflare Turnstile) is not set up, so the server will not start` | One or both Turnstile keys are missing | Part B, then step 2: enter both keys. **Redeploy**. Do not set `ALLOW_LAUNCH_WITHOUT_BOT_CHECK` to get past this |
+| `WARNING: THE ROBOT CHECK IS OFF (ALLOW_LAUNCH_WITHOUT_BOT_CHECK is set …)` | The waiver variable is in Variables | Delete `ALLOW_LAUNCH_WITHOUT_BOT_CHECK`, enter both Turnstile keys; **Redeploy** |
+| `WARNING: the database is already … of its … MB ceiling` | The existing database is large for the default ceiling | Step 2: set `DB_MAX_MB` to about four times the size the line gives (at least 64); **Redeploy** |
 | `WARNING: STRIPE_WEBHOOK_SECRET does not look like a Stripe signing secret` | The value does not start `whsec_`: it is probably an API key or a secret from another endpoint | Step 2a, item 1: copy the endpoint's signing secret again; **Redeploy** |
 | `WARNING: ADMIN_SETUP_CODE is still set` or `ADMIN_RECOVERY=…` warnings | A one-time setting was left in Variables | Delete it; **Redeploy** |
 | Deploy log: `FATAL: NORD_FILE_ENC_KEY is only … characters` | The key is too short or a placeholder | Fix the variable, **Redeploy** |
@@ -434,8 +463,8 @@ materials, finishes, lead times, orders moved by hand — with who and when.
    itself.
 2. Same window → `/rfq`. The same box above Send.
 
-*If the box is missing:* Railway deploy log — is the `BOT CHECK IS OFF` block there? Then a key
-did not take (step 2). *If it shows an error about the domain:* the hostname you are on is not in
+*If the box is missing:* Railway deploy log — is a `BOT CHECK IS OFF` or `ROBOT CHECK IS OFF`
+block there? Then a key did not take, or the waiver variable is set (step 2). *If it shows an error about the domain:* the hostname you are on is not in
 the widget's list (part B, item 2). *If it says the check could not load:* an ad blocker in that
 browser; try another. Cloudflare's real widget has not been run against the site before today, so
 tell me whatever you see here that is not a ticking box.
@@ -461,6 +490,13 @@ tell me whatever you see here that is not a ticking box.
    at 7 am Central.
 4. Press **Download full backup** and keep the file somewhere safe (it holds customer data).
    This is your copy *outside* Railway.
+5. On the same page, under **Storage**, read the **Database** line: size, ceiling and percent.
+   *You should see:* well under half. The ceiling is 16 MB unless you set `DB_MAX_MB`. A save
+   rewrites the whole file, which is why the ceiling is small: about 1 to 3 ms per MB.
+   *If it is over half:* set `DB_MAX_MB` to about four times the size shown (at least 64) and
+   redeploy. At 80 % the site starts clearing unsaved quotes of whoever holds the most; at 85 %
+   visitors without an account are asked to sign in before quoting; at 100 % new quotes and
+   uploads are refused for everyone. Orders, requests and anything on them are never cleared.
 
 The same check from a terminal, if you ever need it: `railway ssh -- npm run email:check`.
 
@@ -811,7 +847,8 @@ alert is not repeated for six hours, so one email means "now".
 | Alert "restarted after a crash" | Railway restarted the site after an error | Once: note the time. Repeating: Rollback B and tell me |
 | Alert "was killed and restarted" | The container ran out of memory (usually a huge or hostile upload), or a deploy happened with the draining time at 0 | Railway → Metrics → Memory at that time; step 3's memory and draining settings |
 | Alert "N orders need a look" | Orders flagged for you. The alert lists how many of each: *Duplicate payment*, *Late payment* (money arrived for an order that was cancelled or had closed), *Payment does not match the order*, *Nothing was collected* (a 100% promotion code), *Payment disputed*, *Refund problem*. A flagged order keeps its status; nothing was cancelled or refunded for you | Admin → Orders → the order: the banner says what happened. Deal with it in Stripe (refund the extra payment, answer the dispute), then **clear the flag with a note**. The alert stops when no order is flagged |
-| Alert "storage is N% full" | Customer files are accumulating | Decline spam requests; if genuine, raise `UPLOAD_DIR_MAX_MB` (the volume has room) |
+| Alert "Upload storage is N% full" | Customer files are accumulating | Decline spam requests; if genuine, raise `UPLOAD_DIR_MAX_MB` (the volume has room) |
+| Alert "The database is N% of its ceiling" | Unsaved quotes are piling up, or the business has outgrown the 16 MB default | Admin → Quotes → **Clear old drafts**. If it is still above half afterwards, it is real orders and requests: raise `DB_MAX_MB` (double it) and redeploy |
 | UptimeRobot "Down" | The site is not answering from outside | Railway → Deployments: is one Active? Deploy log. Railway's status page |
 | Digest: "told busy" or "timed out" counts above a handful | Customers' models are heavy for the instant quote | Normal in small numbers; they are offered a firm quote. Tell me if it grows |
 | Digest: "All orders by status" | The states are the site's own: *awaiting payment*, *PO to confirm*, *paid*, *received*, *in production*, *quality check*, *packing*, *shipped*, *delivered*, *expired* (never paid; shown as "Not paid, closed" in Admin), *cancelled*, *refunded*, and *paid, under review* (older orders only). "— needs a look" beside a state counts the flagged orders in it; "partly refunded" and "with a payment dispute open" are counted on their own lines | Nothing, unless "needs a look" appears: then Admin → Orders |

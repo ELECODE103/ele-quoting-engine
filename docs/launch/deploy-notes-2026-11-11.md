@@ -141,7 +141,7 @@ dependency on both.
 | The Docker image itself was **not built** | The sandbox has a Docker client but no running daemon, and the proxy refuses `registry-1.docker.io` and `hub.docker.com` (policy), so the base image cannot be pulled | Each stage's commands were run by hand in clean folders under Node 20 (section 4). Railway's first build is the first real build: watch its log (runbook step 5) |
 | That the tag `node:20.20.2-bookworm-slim` exists, and its digest | Same: Docker Hub is not reachable from here | If the build log says the image is not found, change the `FROM` line to `node:20-bookworm-slim` and redeploy. To pin a digest later: `docker buildx imagetools inspect node:20.20.2-bookworm-slim` |
 | Node 20.20.2 exactly | The sandbox has 20.20.0 and 22.23.4 | Suites run on both of those |
-| The names of the getters and of `MEMORY_BUDGET_MB`, `ADMIN_SETUP_CODE` *(the last confirmed at the merge, section 8; the first two still to confirm when availability-fixes merges)* | They are on branches not merged here (availability-fixes, review-fixes) | Marked "confirm at merge" in the runbook; `OPTIONAL_GETTERS` in `server/ops/status.js` |
+| The names of the getters and of `MEMORY_BUDGET_MB`, `ADMIN_SETUP_CODE` *(all confirmed: `ADMIN_SETUP_CODE` at the first merge, section 8; `MEMORY_BUDGET_MB` and the status figures when availability-fixes merged, 2026-11-12)* | They are on branches not merged here (availability-fixes, review-fixes) | Marked "confirm at merge" in the runbook; `OPTIONAL_GETTERS` in `server/ops/status.js` |
 | The order-lifecycle behaviour described in the runbook (six event types, refunded state and email, old unpaid orders closed at first start, `STRIPE_PROMOTION_CODES`, `CHECKOUT_SESSION_MINUTES`) | Taken from the coordinator's summary of `docs/security/order-lifecycle-fixes-2026-11-11.md`; that report is not on this branch and was not read here | Re-read steps 2a, 5 and 10 of the runbook against the report at merge |
 | Railway behaviour: start-up as root, `chown` of the mounted volume, SIGTERM delivery, draining time | Needs a real deployment | The entrypoint and the shutdown handler are tested locally as root with a root-owned folder; runbook step 5 lists the log lines that prove each on Railway |
 | That the volume is mounted at `/app/data` | Dashboard only | Runbook step 1 |
@@ -314,7 +314,7 @@ The runbook has these in order with what to expect; this is the list.
 | Settings → Deploy | Healthcheck path | `/api/health` |
 | Settings → Deploy | Healthcheck timeout | `300` |
 | Settings → Deploy | Restart policy | On Failure, max retries `100` (default is 10; see finding 10) |
-| Settings → Resources | Memory limit | 2 GB or more; `MEMORY_BUDGET_MB` to match (**confirm when availability-fixes merges**: not in this release) |
+| Settings → Resources | Memory limit | 2 GB recommended; `MEMORY_BUDGET_MB` to match, in MB (`2048`). Default 1024 (`server/security/limits.js`) |
 | Settings → Deploy | Draining time (graceful shutdown) | `15` seconds |
 | Settings → Deploy | Replicas | 1 |
 | Settings → Config-as-code / Railway Config File | path | empty |
@@ -371,6 +371,6 @@ above can be read as the record they are:
 | Finding 3 / decision D4: flush every save to disk | Done at the merge: `server/models/database.js` fsyncs the temporary file before the rename and the folder after it. Cost per save, measured: see the integration report, "Cross-cutting fixes" |
 | Finding 4: `npm test` 40/41 on a fresh checkout | Fixed at the merge (the suite no longer needs a pre-existing `data/` folder; `npm test` builds the client once when `client/dist` is missing) |
 | Finding 7: `seo.js` "can produce a protocol-relative Location" | Fixed by review-fixes. Both redirect layers are now tested together on every host (`server/ops/redirectsCompose.test.js`); one change here: a backslash in the path of a canonical-host redirect goes out as `%5C` |
-| Section 6, Railway: `MEMORY_BUDGET_MB`; `OPTIONAL_GETTERS` | **Still to confirm when availability-fixes merges.** Neither exists on the merged tree |
+| Section 6, Railway: `MEMORY_BUDGET_MB`; `OPTIONAL_GETTERS` | Confirmed 2026-11-12, when availability-fixes merged. `MEMORY_BUDGET_MB` is real (default 1024, 512 to 65536; the parse limits are derived from it). `OPTIONAL_GETTERS` is gone: `server/ops/status.js` reads the figures from the modules that own them (`BUDGET_SOURCES`), and `server/ops/ops.test.js` checks each is a real figure |
 | Admin → System | Gained "Card payments" (card checkout on/off, minutes a payment page stays open, promotion codes, shop emails) and the protection "One-time admin setup code removed" |
 

@@ -175,13 +175,10 @@ Replace `server/models/db.js` with PostgreSQL/MySQL adapter (same interface: `ge
 - Webhook handler for order confirmation
 
 ### Environment variables
-```env
-PORT=3000
-NODE_ENV=production
-DATABASE_URL=postgres://...
-STRIPE_SECRET_KEY=sk_...
-JWT_SECRET=...
-```
+Every setting the server reads is listed once, with its default, in [`.env.example`](.env.example).
+In production the server does not start without `JWT_SECRET`, `STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET` and both Cloudflare Turnstile keys (`TURNSTILE_SITE_KEY`,
+`TURNSTILE_SECRET_KEY`). What to enter where, step by step: [`docs/launch/go-live-runbook.md`](docs/launch/go-live-runbook.md).
 
 ### Build and deploy
 ```bash

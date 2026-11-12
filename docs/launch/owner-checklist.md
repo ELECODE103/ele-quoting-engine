@@ -29,10 +29,10 @@ where to click, what you should see, and what to do if you do not. **R** = requi
 - [ ] **R** `EMAIL_API_KEY` — email is a launch requirement: without it no order, payment-problem, refund or dispute email reaches the shop
 - [ ] **R** `EMAIL_FROM`
 - [ ] **R** `RFQ_NOTIFY_TO`
-- [ ] **R** `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`
+- [ ] **R** `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` — **both, before the merge: the site exits at startup without them** (runbook, "Before you start", part B)
 - [ ] **R** `NORD_FILE_ENC_KEY` — saved in the password manager **first**
 - [ ] `TRUST_PROXY_HOPS` left unset
-- [ ] **R** None of these exist: `RAILWAY_RUN_UID`, `SE_TEST_HOOKS`, `EMAIL_OUTBOX_DIR`, `CSP_REPORT_ONLY`, `ADMIN_RECOVERY`, `ADMIN_SETUP_CODE`, `NIXPACKS_*`
+- [ ] **R** None of these exist: `RAILWAY_RUN_UID`, `SE_TEST_HOOKS`, `EMAIL_OUTBOX_DIR`, `CSP_REPORT_ONLY`, `ADMIN_RECOVERY`, `ADMIN_SETUP_CODE`, `ALLOW_LAUNCH_WITHOUT_BOT_CHECK`, `NIXPACKS_*`
 - [ ] **R** Stripe webhook endpoint exists; its signing secret is the one entered above
 - [ ] **R** Stripe webhook event types enabled, all six: `checkout.session.completed`, `checkout.session.expired`, `charge.refunded`, `refund.updated`, `charge.dispute.created`, `charge.dispute.closed`
 - [ ] No promotion codes created in Stripe (`STRIPE_PROMOTION_CODES` stays off until you decide)
@@ -46,8 +46,8 @@ where to click, what you should see, and what to do if you do not. **R** = requi
 - [ ] **R** Start command **empty**; pre-deploy command empty
 - [ ] **R** Healthcheck path `/api/health`; timeout `300`
 - [ ] **R** Restart policy On Failure, `100`
-- [ ] **R** Service memory limit noted; 2 GB or more
-- [ ] `MEMORY_BUDGET_MB` — **confirm when availability-fixes merges** (not in this release; setting it now does nothing)
+- [ ] **R** Service memory limit set to 2 GB (recommended)
+- [ ] **R** `MEMORY_BUDGET_MB` = the service's memory limit in MB (`2048` for 2 GB; leave unset only if the service has 1 GB)
 - [ ] **R** Draining time `15` seconds
 - [ ] Railway config file path empty; replicas 1
 
@@ -58,6 +58,7 @@ where to click, what you should see, and what to do if you do not. **R** = requi
 - [ ] **R** Build log: `Using detected Dockerfile!` and `22/22 routes rendered`
 - [ ] **R** Deploy log: no `FATAL`, no `WARNING` block, no `ALERT`, no "running as root"
 - [ ] **R** Deploy log: `Admin account …: present.`
+- [ ] **R** Deploy log: `Memory budget: 2048 MB …` (the figure is the service's memory limit)
 - [ ] Deploy log, first start only: an `Order sweep:` line — old unpaid card orders checked with Stripe and closed; they read "Not paid, closed" in Admin (expected)
 - [ ] **R** `https://nordmfg.com/api/health` shows `"status":"ok"`
 
@@ -76,6 +77,7 @@ where to click, what you should see, and what to do if you do not. **R** = requi
 - [ ] **R** "Send a test email": email check arrived in the shop inbox (not spam)
 - [ ] "Send the digest now": digest arrived
 - [ ] **R** "Download full backup": file saved outside Railway
+- [ ] **R** Admin → System → Storage: **Database** is under half of its ceiling (if not: `DB_MAX_MB`, runbook step 9)
 
 ## 10. Real order
 

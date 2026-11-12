@@ -15,13 +15,18 @@ npm install && npm run build
 # 1. generate the reference parts (writes tools/vet-quotes/parts/*.stl + manifest.json)
 python3 tools/vet-quotes/generate_parts.py
 
-# 2. start a throw-away server on port 3010 with a fresh database
-rm -rf data && NODE_ENV=production PORT=3010 USE_SQLITE=true JWT_SECRET=test \
-  STRIPE_SECRET_KEY=sk_test_dummy node server/index.js &
+# 2. start a throw-away server on port 3010 with a fresh database in a temporary folder
+#    (nothing in the repository's data/ folder is touched). Every value below is a made-up test value.
+#    Production mode needs all of them: without the last one the server refuses to start with no bot check.
+VET=$(mktemp -d) && QUOTING_DATA_DIR=$VET QUOTING_DB_PATH=$VET/quoting.db \
+  NODE_ENV=production PORT=3010 USE_SQLITE=true \
+  JWT_SECRET=local-vetting-run-not-a-real-secret-0123456789 \
+  STRIPE_SECRET_KEY=sk_test_dummy STRIPE_WEBHOOK_SECRET=whsec_local_vetting_only \
+  ALLOW_LAUNCH_WITHOUT_BOT_CHECK=1 node server/index.js &
 
 # 3. quote every part × configuration × quantity and grade the answers
 env -u HTTPS_PROXY -u HTTP_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost \
-  node tools/vet-quotes/run_vetting.js            # --base http://host:port  --only part_id,…  --qtys 1,10
+  node tools/vet-quotes/run_vetting.js --base http://localhost:3010   # --only part_id,…  --qtys 1,10  --out folder
 
 # 4. (optional) try pricing-rule changes offline against the recorded run, no server needed
 node tools/vet-quotes/whatif.js --set cncMinimumMachineTime=0.15 --set cncToolingCostBase=2 --process cnc --qty 10

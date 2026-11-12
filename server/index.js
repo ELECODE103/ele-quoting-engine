@@ -261,6 +261,16 @@ async function start() {
   {
     const { limits } = require("./security/limits");
     console.log(`  Memory budget: ${limits.memoryBudgetMb} MB (MEMORY_BUDGET_MB) — parse workers ${limits.parseMaxHeapMb} MB heap each, ${limits.parseRssLimitMb} MB for parsing in all; database ceiling ${Math.round(limits.databaseMaxBytes / 1048576)} MB. Set MEMORY_BUDGET_MB to the service's memory limit in Railway.`);
+    // A database that was already large before this ceiling existed would have its first visitors
+    // refused ("we can't save new quotes right now"). Say so at start-up, where the owner is looking.
+    try {
+      const used = require("./security/uploadGuards").database.size();
+      const max = limits.databaseMaxBytes;
+      if (used >= max * 0.5) {
+        const mb = (n) => (n / 1048576).toFixed(1);
+        console.warn(`  WARNING: the database is already ${mb(used)} MB of its ${mb(max)} MB ceiling (DB_MAX_MB). At ${Math.round(limits.dbSweepFraction * 100)} % unsaved quotes start to be cleared, and at 100 % new quotes and uploads are refused. Set DB_MAX_MB to about four times the database's size (at least 64) and redeploy.`);
+      }
+    } catch { /* the size is only for this message */ }
   }
 
   // Unpaid orders whose checkout session has lapsed are closed out as expired (and one that was
