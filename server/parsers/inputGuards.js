@@ -27,6 +27,17 @@ const padded = () => Object.assign(
   { code: "file-padded", expose: true, offerRfq: true },
 );
 
+const nestedShells = () => Object.assign(
+  new Error(`This model has one closed shape inside another (a sealed hollow, or a part inside a part). The instant quote can't price that reliably, so we quote these by hand: email the file to ${brand.email} and we'll come back with a price.`),
+  { code: "nested-shells", expose: true, offerRfq: true },
+);
+
+/** Refuse a mesh in which one closed shell sits inside another (parsers/meshShells.js). */
+function assertNoNestedShells(xyz, triangles) {
+  if (!(triangles >= 8)) return;
+  if (require("./meshShells").findNestedShells(xyz, triangles).nested) throw nestedShells();
+}
+
 /** The same test parseSTL() uses to tell an ASCII STL from a binary one. */
 function isAsciiStl(buffer) {
   const header = buffer.slice(0, 80).toString("ascii");
@@ -61,6 +72,10 @@ function checkBinaryStl(buffer) {
   }
   if (!finiteAll) throw refusal("geometry-not-measurable");
   if (!inRange) throw refusal("geometry-out-of-range");
+  // One closed shape inside another (parsers/meshShells.js): to a person, not to a price.
+  const xyz = new Float32Array(count * 9);
+  for (let i = 0, off = 84, o = 0; i < count; i++, off += 50) for (let k = 12; k < 48; k += 4) xyz[o++] = view.getFloat32(off + k, true);
+  assertNoNestedShells(xyz, count);
 }
 
 // A number as an STL writer prints it: 12, -3.5, .25, 1e-3, 6.02E+23. Nothing else ("e", "+-", "nan").
@@ -80,6 +95,7 @@ function checkAsciiStl(buffer) {
   }
   let vertices = 0;
   let bad = null;
+  const xyz = new Float64Array(facets * 9);
   const vertexRe = /vertex\s+(\S+)\s+(\S+)\s+(\S+)/g;
   let m;
   while ((m = vertexRe.exec(text)) !== null) {
@@ -89,12 +105,14 @@ function checkAsciiStl(buffer) {
       const token = m[k];
       const v = STL_NUMBER.test(token) ? Number(token) : NaN;
       if (!(v >= -max && v <= max)) { bad = Number.isFinite(v) ? "geometry-out-of-range" : "geometry-not-measurable"; break; }
+      xyz[(vertices - 1) * 3 + k - 1] = v;
     }
     if (bad) break;
   }
   if (bad) throw refusal(bad);
   if (facets > 0 && vertices !== facets * 3) throw damaged();
   if (facets > 0 && buffer.length > 4096 + facets * limits.stlAsciiMaxBytesPerFacet) throw padded();
+  assertNoNestedShells(xyz, facets);
 }
 
 function checkStl(buffer) {
@@ -151,7 +169,7 @@ function checkInput(ext, buffer) {
  * them: refuse a non-finite or out-of-range coordinate before analysis.
  * @param {number[][]} rows
  */
-function assertFiniteVertices(rows) {
+function assertFiniteVertices(rows, opt = {}) {
   const max = limits.geometryMaxCoordMm;
   let outOfRange = false;
   for (let i = 0; i < rows.length; i++) {
@@ -162,7 +180,13 @@ function assertFiniteVertices(rows) {
     else throw refusal("geometry-not-measurable");
   }
   if (outOfRange) throw refusal("geometry-out-of-range");
+  // opt.shells: the rows are a triangle list (three corners each); refuse one closed shell inside another.
+  if (opt.shells && rows.length >= 24 && rows.length % 3 === 0 && rows.length / 3 <= limits.meshMaxTriangles) {
+    const xyz = new Float64Array(rows.length * 3);
+    for (let i = 0; i < rows.length; i++) { xyz[i * 3] = rows[i][0]; xyz[i * 3 + 1] = rows[i][1]; xyz[i * 3 + 2] = rows[i][2]; }
+    assertNoNestedShells(xyz, rows.length / 3);
+  }
   return rows;
 }
 
-module.exports = { checkInput, checkStl, checkBinaryStl, checkAsciiStl, checkTextPadding, checkDxf, assertFiniteVertices, isAsciiStl };
+module.exports = { checkInput, checkStl, checkBinaryStl, checkAsciiStl, checkTextPadding, checkDxf, assertFiniteVertices, assertNoNestedShells, isAsciiStl };

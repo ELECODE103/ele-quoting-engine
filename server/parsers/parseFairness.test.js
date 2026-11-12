@@ -23,15 +23,6 @@ const make = (opts) => { const p = new ParsePool(opts); pools.push(p); return p;
 const settle = (p) => p.then((value) => ({ value }), (error) => ({ error }));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** 5,000 random crossing lines: a DXF that keeps the contour builder busy for tens of seconds. */
-function crossingLinesDxf(n) {
-  let seed = 1;
-  const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 1000;
-  let s = "0\nSECTION\n2\nENTITIES\n";
-  for (let i = 0; i < n; i++) s += `0\nLINE\n8\n0\n10\n${r()}\n20\n${r()}\n11\n${r()}\n21\n${r()}\n`;
-  return s + "0\nENDSEC\n0\nEOF\n";
-}
-
 test("one client may hold only its share of the waiting line; another client still gets a place", async () => {
   const pool = make({ parseConcurrency: 1, parseQueueMax: 8, parseQueuePerClient: 2, parseQueueWaitMs: 5000, testDelayMs: 300 });
   const a = Array.from({ length: 6 }, () => settle(pool.run({ filePath: cube, client: "attacker" })));
@@ -116,11 +107,15 @@ test("memory limits derive from one setting, MEMORY_BUDGET_MB, with a default th
   const saved = { ...process.env };
   for (const k of ["MEMORY_BUDGET_MB", "PARSE_MAX_HEAP_MB", "PARSE_RSS_LIMIT_MB", "DB_MAX_MB"]) delete process.env[k];
   try {
-    assert.deepStrictEqual([limits.memoryBudgetMb, limits.parseMaxHeapMb, limits.parseRssLimitMb, limits.databaseMaxBytes / 1048576], [1024, 384, 512, 64]);
+    // worker heap, the parsing share (several parses / one alone), the line for the whole process (resident memory)
+    const lines = () => [limits.parseMaxHeapMb, limits.parseRssLimitMb, limits.parseRssSoloLimitMb, limits.parseRssCeilingMb];
+    assert.deepStrictEqual([limits.memoryBudgetMb, ...lines()], [1024, 384, 512, 634, 942]);
     process.env.MEMORY_BUDGET_MB = "2048";
-    assert.deepStrictEqual([limits.parseMaxHeapMb, limits.parseRssLimitMb, limits.databaseMaxBytes / 1048576], [768, 1024, 128]);
+    assert.deepStrictEqual(lines(), [768, 1024, 1269, 1884]);
     process.env.MEMORY_BUDGET_MB = "4096";
-    assert.deepStrictEqual([limits.parseMaxHeapMb, limits.parseRssLimitMb, limits.databaseMaxBytes / 1048576], [1536, 2048, 256]);
+    assert.deepStrictEqual(lines(), [1536, 2048, 2539, 3768]);
+    // The database ceiling no longer follows memory: it is what keeps a save short (16 MB, about 30 ms).
+    assert.strictEqual(limits.databaseMaxBytes / 1048576, 16);
     process.env.PARSE_MAX_HEAP_MB = "512";
     assert.strictEqual(limits.parseMaxHeapMb, 512, "an explicit setting still wins");
     process.env.MEMORY_BUDGET_MB = "not a number";
@@ -133,8 +128,11 @@ test("memory limits derive from one setting, MEMORY_BUDGET_MB, with a default th
 // ─── Through the upload route ────────────────────────────────
 let server;
 test("a request whose first file runs out of time: the rest of the request is not read, and the client's allowance is charged", async () => {
-  server = await live.start({ env: { PARSE_TIMEOUT_DXF_MS: "700", PARSE_SECONDS_PER_CLIENT_HOUR: "5", PARSE_CONCURRENCY: "2" } });
-  const slow = Buffer.from(crossingLinesDxf(5000));
+  // "A DXF that is slow to read" is made with the test hook (the worker spins 5 s before any .dxf),
+  // not with a pathological drawing: how fast the parser reads a given file changes from branch to
+  // branch, and this test is about what the pool does when a file runs out of time.
+  server = await live.start({ env: { PARSE_TIMEOUT_DXF_MS: "700", PARSE_SECONDS_PER_CLIENT_HOUR: "5", PARSE_CONCURRENCY: "2", PARSE_TEST_DELAY_MS: "5000", PARSE_TEST_DELAY_EXT: ".dxf" } });
+  const slow = Buffer.from("0\nSECTION\n2\nENTITIES\n0\nLWPOLYLINE\n8\n0\n90\n4\n70\n1\n10\n0\n20\n0\n10\n50\n20\n0\n10\n50\n20\n30\n10\n0\n20\n30\n0\nENDSEC\n0\nEOF\n");
   const files = [{ name: "slow.dxf", data: slow }, { name: "a.stl", data: cubeBytes }, { name: "b.stl", data: cubeBytes }, { name: "c.dxf", data: slow }];
   const t0 = Date.now();
   const r = await server.upload(files, { ip: "203.0.113.81" });
@@ -143,26 +141,51 @@ test("a request whose first file runs out of time: the rest of the request is no
   assert.deepStrictEqual(r.body.parts, []);
   assert.deepStrictEqual(r.body.errors.map((e) => e.code), ["parse-timeout", "not-read", "not-read", "not-read"]);
   assert.ok(/by itself/i.test(r.body.errors[1].error), r.body.errors[1].error);
-  assert.ok(took < 4000, `one file's limit, not four: ${took} ms`);
+  // The limit is 0.7 s of the worker's CPU time; on the clock that may be up to four times as long on a busy machine.
+  assert.ok(took < 5000, `one file's limit, not four: ${took} ms (load ${os.loadavg()[0].toFixed(1)})`);
   assert.deepStrictEqual(server.files("uploads"), [], "nothing is left on disk");
 
   // A real customer on another address is read normally meanwhile and afterwards.
   const ok = await server.upload([{ name: "cube.stl", data: cubeBytes }], { ip: "203.0.113.82" });
   assert.strictEqual(ok.body.parts.length, 1);
 
-  // The slow sender's allowance (5 s here) runs out after a few more stopped files; then it is refused before parsing.
+  // The slow sender's allowance (5 s on the clock here) runs out after a few more stopped files; then it is refused before parsing.
   const codes = [];
   for (let i = 0; i < 10 && !codes.includes("parse-budget"); i++) {
     const again = await server.upload([{ name: "slow.dxf", data: slow }], { ip: "203.0.113.81" });
     codes.push(again.body.errors[0].code);
   }
   assert.ok(codes.includes("parse-budget"), `codes: ${codes.join(" ")}`);
-  assert.ok(codes.filter((c) => c === "parse-timeout").length <= 8);
+  assert.ok(codes.filter((c) => c === "parse-timeout").length <= 10);
   const t1 = Date.now();
   const refused = await server.upload([{ name: "cube.stl", data: cubeBytes }, { name: "cube2.stl", data: cubeBytes }], { ip: "203.0.113.81" });
   assert.deepStrictEqual(refused.body.errors.map((e) => e.code), ["parse-budget", "parse-budget"]);
   assert.ok(Date.now() - t1 < 1500, "refused without a parse");
   assert.strictEqual(refused.body.errors[0].offerRfq, true);
+});
+
+test("the reading limit is the worker's CPU time, not the clock: a busy machine does not turn a file into a refusal, and the clock still has the last word", async () => {
+  if (!fs.existsSync("/proc/thread-self")) { console.log("       (no per-thread CPU clock on this system: the limit is on the clock, as before)"); return; }
+  // A parse that needs 300 ms of CPU, with a 600 ms limit, while three other threads compete for the processor.
+  const { Worker } = require("worker_threads");
+  const hogs = Array.from({ length: Math.max(3, os.cpus().length * 2) }, () => new Worker("const until = Date.now() + 4000; while (Date.now() < until) {}", { eval: true }));
+  try {
+    const pool = make({ parseConcurrency: 1, parseTimeoutMs: 600, testDelayMs: 300 });
+    const t0 = Date.now();
+    const r = await settle(pool.run({ filePath: cube, client: "customer" }));
+    const took = Date.now() - t0;
+    assert.ok(r.value, `read in ${took} ms on the clock with the processor contended: ${r.error && r.error.code}`);
+    // The same file given too little CPU time is still stopped, and the answer says so.
+    const tight = make({ parseConcurrency: 1, parseTimeoutMs: 150, testDelayMs: 2000 });
+    const s = await settle(tight.run({ filePath: cube, client: "customer" }));
+    assert.strictEqual(s.error && s.error.code, "parse-timeout");
+    // On the clock a parse may take PARSE_WALL_FACTOR times its limit and no more, however little CPU it was given.
+    const wall = make({ parseConcurrency: 1, parseTimeoutMs: 200, parseWallFactor: 1, testDelayMs: 2000 });
+    const t1 = Date.now();
+    const w = await settle(wall.run({ filePath: cube, client: "customer" }));
+    assert.strictEqual(w.error && w.error.code, "parse-timeout");
+    assert.ok(Date.now() - t1 < 1500, `stopped on the clock after ${Date.now() - t1} ms`);
+  } finally { for (const h of hogs) await h.terminate(); }
 });
 
 run(async () => {

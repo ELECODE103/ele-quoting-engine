@@ -176,21 +176,42 @@ test("memory watchdog: over PARSE_RSS_LIMIT_MB with two parses running, the long
   assert.ok((await third).value, "and the line moves on after it");
 });
 
-test("memory watchdog: a parse that is over the line by itself, or again on its run alone, is refused", async () => {
+test("memory watchdog: a parse is refused for memory only after a run by itself, measured from a fresh baseline; the customer beside it is never the one refused (RR-07)", async () => {
+  // Resident memory as the watchdog sees it: 100 MB, plus 700 MB whenever the hungry file is being read.
+  let pool;
+  const hungryRunning = () => [...pool.running].some((e) => e.client === "hungry");
+  pool = make({ parseConcurrency: 2, parseRssLimitMb: 500, watchIntervalMs: 50, rssProbe: () => (100 + (hungryRunning() ? 700 : 0)) * 1024 * 1024, testDelayMs: 900 });
+  const customer = settle(pool.run({ filePath: cube, client: "customer", sizeBytes: 2 * 1024 * 1024 }));
+  await new Promise((r) => setTimeout(r, 60));
+  const hungry = settle(pool.run({ filePath: cube, client: "hungry", sizeBytes: 3 * 1024 * 1024 }));
+  const c = await customer;
+  assert.ok(c.value && Math.abs(c.value.geometry.volume - 8000) < 1, "the customer's parse ran through");
+  const h1 = await hungry;
+  assert.strictEqual(h1.error && h1.error.code, "parse-memory", "the hungry one was stopped, run again alone, crossed the line alone, and only then refused");
+  assert.ok(/memory/i.test(h1.error.message) && /firm quote/i.test(h1.error.message), h1.error.message);
+  assert.deepStrictEqual([pool.stats().rerunAlone, pool.stats().outOfMemory], [1, 1]);
+  assert.strictEqual(pool._isSuspect("hungry"), true, "a sender refused on its own run is marked");
+  assert.strictEqual(pool._isSuspect("customer"), false);
+});
+
+test("memory watchdog: one parse running by itself has the whole parsing share (PARSE_RSS_SOLO_LIMIT_MB), and the process has a ceiling of its own (PARSE_RSS_CEILING_MB)", async () => {
+  // Alone, 600 MB over the baseline: over the shared line (500), under the solo line (700). It is left to finish.
   let rss = 100 * 1024 * 1024;
-  const pool = make({ parseConcurrency: 2, parsePerClient: 2, parseRssLimitMb: 500, watchIntervalMs: 50, rssProbe: () => rss, testDelayMs: 1500 });
-  const first = settle(pool.run({ filePath: cube }));
-  await new Promise((r) => setTimeout(r, 100));
-  const second = settle(pool.run({ filePath: cube }));
-  await new Promise((r) => setTimeout(r, 100));
-  rss = 900 * 1024 * 1024; // and it stays there
-  const b = await second;
-  assert.strictEqual(b.error && b.error.code, "parse-memory", "still over the line with one parse running: that one is refused");
-  const a = await first;
-  assert.strictEqual(a.error && a.error.code, "parse-memory", "the parse given a run alone is refused when it crosses the line again");
-  assert.ok(/memory/i.test(a.error.message) && /firm quote/i.test(a.error.message), a.error.message);
-  assert.strictEqual(pool.stats().outOfMemory, 2);
-  assert.strictEqual(pool.stats().running, 0);
+  const lone = make({ parseConcurrency: 2, parseRssLimitMb: 500, parseRssSoloLimitMb: 700, watchIntervalMs: 40, rssProbe: () => rss, testDelayMs: 500 });
+  const only = settle(lone.run({ filePath: cube, client: "customer" }));
+  await new Promise((r) => setTimeout(r, 80));
+  rss = 700 * 1024 * 1024;
+  assert.ok((await only).value, "a lone customer's parse is not judged against the line meant for several");
+  assert.deepStrictEqual([lone.stats().rerunAlone, lone.stats().outOfMemory], [0, 0]);
+  // The process line: resident memory over it stops a parse even though its own growth is small.
+  let at = 950 * 1024 * 1024;
+  const high = make({ parseConcurrency: 2, parseRssLimitMb: 500, parseRssCeilingMb: 1000, watchIntervalMs: 40, rssProbe: () => at, testDelayMs: 600 });
+  const p = settle(high.run({ filePath: cube, client: "customer" }));
+  await new Promise((r) => setTimeout(r, 80));
+  at = 1050 * 1024 * 1024; // the rest of the server grew: 100 MB added, 1,050 MB resident
+  const out = await p;
+  assert.strictEqual(out.error && out.error.code, "parse-memory", "over the process line on the first run and again on its run alone");
+  assert.strictEqual(high.stats().rerunAlone, 1);
 });
 
 test("fairness: one client's files queue behind each other, not in front of everyone else", async () => {

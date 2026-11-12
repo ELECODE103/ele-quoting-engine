@@ -175,6 +175,27 @@ const limits = {
    * Derived: half of MEMORY_BUDGET_MB (512 at 1 GB, 1024 at 2 GB).
    */
   get parseRssLimitMb() { return envInt("PARSE_RSS_LIMIT_MB", Math.max(256, Math.floor(this.memoryBudgetMb / 2)), 0, 65536); },
+  /**
+   * The same for ONE parse running by itself (nothing else is using the parsing share then). The
+   * repository's 2 MB STEP adds 460 to 515 MB resident on its own, which is at the shared line:
+   * measured against that line, a lone customer was refused (independent re-review 2026-11-12,
+   * RR-07). Derived: 62 % of MEMORY_BUDGET_MB (634 at 1 GB, 1269 at 2 GB).
+   */
+  get parseRssSoloLimitMb() { return envInt("PARSE_RSS_SOLO_LIMIT_MB", Math.max(this.parseRssLimitMb, Math.floor(this.memoryBudgetMb * 0.62)), 0, 65536); },
+  /**
+   * Resident memory of the whole process, MB, at which a parse is stopped whatever its own share
+   * looks like: the line that keeps the container from being killed. It is judged on resident
+   * memory because typed arrays and WASM are outside every heap limit. Derived: 92 % of
+   * MEMORY_BUDGET_MB (942 at 1 GB). 0 switches it off.
+   */
+  get parseRssCeilingMb() { return envInt("PARSE_RSS_CEILING_MB", Math.floor(this.memoryBudgetMb * 0.92), 0, 1048576); },
+  /**
+   * The per-kind reading limits (PARSE_TIMEOUT_*) are CPU time of the worker thread where the
+   * system reports it (Linux), so a busy machine does not turn a legitimate drawing into a refusal.
+   * On the clock a parse may take this many times its limit, and never more than PARSE_WALL_TIMEOUT_MS.
+   */
+  get parseWallFactor() { return envInt("PARSE_WALL_FACTOR", 4, 1, 100); },
+  get parseWallTimeoutMs() { return envInt("PARSE_WALL_TIMEOUT_MS", 120000, 100, 3600000); },
 
   // ── Model size ceilings (bigger models go to a firm quote) ────
   /** Triangles in an STL or 3MF, or produced from a STEP/IGES. */
@@ -199,6 +220,8 @@ const limits = {
   get geometryMinPartUm() { return envInt("GEOMETRY_MIN_PART_UM", 1000, 1, 1000000); },
   /** Every side of a 3D model must be at least this, micrometres (10 = 0.01 mm). */
   get geometryMinThicknessUm() { return envInt("GEOMETRY_MIN_THICKNESS_UM", 10, 1, 1000000); },
+  /** A part for 3D printing whose thinnest side, or whose average wall (twice its volume over its surface), is under this many micrometres is not priced: thinner than either printer makes. */
+  get geometryMinPrintWallUm() { return envInt("GEOMETRY_MIN_PRINT_WALL_UM", 400, 1, 100000); },
 
   // ── 3MF (a ZIP archive) ───────────────────────────────────────
   /** Entries allowed in the archive. */

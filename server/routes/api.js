@@ -565,7 +565,7 @@ function priceQuote(partConfigs, leadTimeSlug = "standard", { paperwork = false 
     if (part.payloadError) {
       throw quoteError(409, `${part.fileName}: we can no longer read what we measured from this file. Upload it again and it will be priced as before.`, { partId: config.partId, code: "part-data-unavailable" });
     }
-    assertSaneGeometry(part.geometry, { partId: config.partId, fileName: part.fileName }); // no real measurements, no price (parsers/saneGeometry.js)
+    assertSaneGeometry(part.geometry, { partId: config.partId, fileName: part.fileName, config }); // no real measurements, no price (parsers/saneGeometry.js)
     const material = materialsDB.getAll().find((m) => m.slug === config.materialSlug);
     // Same rule as the lead time: a material the catalog does not list (switched
     // off in admin, or not confirmed by the owner) cannot be priced or bought.

@@ -42,11 +42,33 @@
  *   const { pool } = require("./parsePool");
  *   const parsed = await pool.run({ filePath, sizeBytes, client: "203.0.113.9" });
  */
+const fs = require("fs");
 const path = require("path");
 const { Worker } = require("worker_threads");
 const { limits, envInt } = require("../security/limits");
 
 const WORKER = path.join(__dirname, "parseWorker.js");
+
+/** CPU time a thread of this process has used, ms (user + system), from /proc; -1 where there is none. */
+function threadCpuMs(tid) {
+  try {
+    const stat = fs.readFileSync(`/proc/${process.pid}/task/${tid}/stat`, "utf8");
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    return (Number(fields[11]) + Number(fields[12])) * 10; // clock ticks are 10 ms on Linux
+  } catch { return -1; }
+}
+
+/**
+ * Test-only: with the explicit test switch (SE_TEST_HOOKS=1), PARSE_TEST_DELAY_MS makes the worker
+ * spin that long before reading a file whose extension is PARSE_TEST_DELAY_EXT. A suite can then
+ * have "a file that is slow to read" without depending on how fast the parser is this month.
+ */
+function hookDelayMs(job) {
+  if (!process.env.PARSE_TEST_DELAY_MS || !require("../security/testHooks").enabled()) return 0;
+  const ext = String((job.options && job.options.ext) || path.extname(job.filePath || "")).toLowerCase();
+  const only = String(process.env.PARSE_TEST_DELAY_EXT || "").toLowerCase();
+  return !only || only === ext ? Math.max(0, Number(process.env.PARSE_TEST_DELAY_MS) || 0) : 0;
+}
 const RETIRE_AFTER_BYTES = 5 * 1024 * 1024; // a file this big has grown the worker's heap; start clean
 const RETIRE_AFTER_MS = 5000;               // so has a parse this slow
 const IDLE_MS = 60 * 1000;
@@ -234,7 +256,7 @@ class ParsePool {
     if (this.running.size >= concurrency) return false;
     // A parse that was stopped for memory while others were running gets one run on its own:
     // it starts when nothing else is running, and nothing else starts until it is done.
-    if (entry.solo) return this.running.size === 0;
+    if (entry.solo) return this.running.size === 0 && Date.now() >= (entry.soloReadyAt || 0);
     for (const e of this.running) if (e.solo) return false;
     for (const e of this.queue) if (e.solo) return false;
     // Each client address has its own lane; callers with no address share one.
@@ -257,8 +279,9 @@ class ParsePool {
       resourceLimits: { maxOldGenerationSizeMb: heap, maxYoungGenerationSizeMb: Math.min(64, Math.max(16, Math.floor(heap / 8))), stackSizeMb: 4 },
     });
     this.counters.workersStarted++;
-    const slot = { worker, jobs: 0, idleTimer: null, entry: null, dead: false };
+    const slot = { worker, jobs: 0, idleTimer: null, entry: null, dead: false, tid: "" };
     worker.on("message", (msg) => {
+      if (msg && msg.hello) { slot.tid = String(msg.tid || ""); return; }
       const entry = slot.entry;
       if (!entry || !msg || msg.id !== entry.id) return; // an answer for a job that already timed out
       if (msg.ok) { this.counters.completed++; return this._finish(entry, null, msg.result); }
@@ -299,6 +322,8 @@ class ParsePool {
   _start(entry) {
     clearTimeout(entry.waitTimer);
     const { filePath, options, buffer } = entry.job;
+    // A run alone starts clean: warm workers (and the memory they hold) are let go first.
+    if (entry.solo) for (const warm of [...this.idle]) { warm.dead = true; this._forget(warm); warm.worker.terminate().catch(() => {}); }
     let slot;
     try {
       slot = this._takeWorker();
@@ -315,19 +340,34 @@ class ParsePool {
     if (entry.client) { this.lastTurn.delete(entry.client); this.lastTurn.set(entry.client, entry.startedAt); if (this.lastTurn.size > 20000) this.lastTurn.clear(); }
     this._watch();
 
+    // The reading limit is CPU time of the worker thread where the system reports it, so a busy
+    // machine does not turn a legitimate file into a refusal; on the clock the parse may take a few
+    // times as long, and no more (PARSE_WALL_FACTOR, PARSE_WALL_TIMEOUT_MS). Without a CPU clock
+    // (not Linux, or the worker has not said which thread it is) the limit is on the clock.
     const timeoutMs = this._timeoutFor(entry.job);
-    entry.timer = setTimeout(() => {
+    const wallMs = Math.max(timeoutMs, Math.min(this._opt("parseWallTimeoutMs"), timeoutMs * this._opt("parseWallFactor")));
+    entry.cpuStart = slot.tid ? threadCpuMs(slot.tid) : 0; // a new worker's whole life is this job
+    const stop = () => {
       this.counters.timedOut++;
       this._markSuspect(entry.client);
-      console.warn(`Parse pool: stopped a parse after ${Math.round(timeoutMs / 1000)}s (${path.extname(filePath || "") || "file"})`);
+      console.warn(`Parse pool: stopped a parse after ${Math.round(timeoutMs / 1000)}s of work, ${Math.round((Date.now() - entry.startedAt) / 1000)}s on the clock (${path.extname(filePath || "") || "file"})`);
       this._finish(entry, poolError(
         "parse-timeout", 422,
         `This model took more than ${Math.round(timeoutMs / 1000)} seconds to read, which is longer than the instant quote allows. Simplify it or export it at a coarser resolution, or send it to us for a firm quote.`,
         { offerRfq: true },
       ), undefined, { kill: true });
-    }, timeoutMs);
+    };
+    const check = () => {
+      if (entry.settled || entry.slot !== slot) return;
+      const elapsed = Date.now() - entry.startedAt;
+      const cpu = slot.tid ? threadCpuMs(slot.tid) : -1;
+      const used = cpu >= 0 && entry.cpuStart >= 0 ? cpu - entry.cpuStart : elapsed;
+      if (used >= timeoutMs || elapsed >= wallMs) return stop();
+      entry.timer = setTimeout(check, Math.max(20, Math.min(timeoutMs - used, wallMs - elapsed, 1000)));
+    };
+    entry.timer = setTimeout(check, timeoutMs);
 
-    slot.worker.postMessage({ id: entry.id, filePath, options: options || {}, buffer: buffer || null, testDelayMs: this.opts.testDelayMs || 0 });
+    slot.worker.postMessage({ id: entry.id, filePath, options: options || {}, buffer: buffer || null, testDelayMs: this.opts.testDelayMs || hookDelayMs(entry.job) });
   }
 
   _memoryError() {
@@ -434,6 +474,11 @@ class ParsePool {
     entry.slot = null;
     entry.startedAt = 0;
     entry.solo = true;
+    // Not before the stopped worker's memory has had time to come back (its run alone is measured from a fresh baseline).
+    const settleMs = this.opts.soloSettleMs !== undefined ? this.opts.soloSettleMs : (this.opts.watchIntervalMs ? this.opts.watchIntervalMs * 2 : 1500);
+    entry.soloReadyAt = Date.now() + settleMs;
+    const ready = setTimeout(() => this._drain(), settleMs + 5);
+    if (ready.unref) ready.unref();
     entry.id = this.nextId++; // an answer still on its way from the stopped worker is not this run's
     this.queue.unshift(entry);
     entry.waitTimer = setTimeout(() => {
@@ -447,51 +492,95 @@ class ParsePool {
   }
 
   /**
-   * While anything is running, check the process's memory twice a second. What
-   * is limited is the growth since the parsers started work — the memory they
-   * added — so the size of the rest of the server (the in-memory database
-   * above all) neither eats into the parsers' budget nor hides their use.
+   * The running parse that is using the most memory, as far as it can be told: each worker is
+   * asked for its own heap, external (typed arrays, WASM) and allocator figures. They do not add up
+   * to resident memory, but they rank the workers, which "the largest file" did not: a 1 MB 3MF
+   * can need ten times the memory of a 2 MB STEP (independent re-review 2026-11-12, RR-07).
+   * A client whose parse was already refused this hour comes first; ties go to the larger file,
+   * then the longer-running parse.
+   */
+  async _heaviest() {
+    const entries = [...this.running];
+    const asked = await Promise.all(entries.map((e) => {
+      const worker = e.slot && e.slot.worker;
+      if (!worker || typeof worker.getHeapStatistics !== "function") return null;
+      return Promise.race([
+        worker.getHeapStatistics().then((h) => (Number(h.used_heap_size) || 0) + (Number(h.external_memory) || 0) + (Number(h.malloced_memory) || 0), () => null),
+        new Promise((resolve) => { const t = setTimeout(() => resolve(null), 300); if (t.unref) t.unref(); }),
+      ]);
+    }));
+    const STEP = 32 * 1024 * 1024; // figures this close are "the same"
+    let best = null;
+    let bestWeight = null;
+    entries.forEach((e, i) => {
+      if (e.settled || !this.running.has(e)) return;
+      const w = [this._isSuspect(e.client) ? 1 : 0, asked[i] === null ? -1 : Math.round(asked[i] / STEP), e.job.sizeBytes || (e.job.buffer ? e.job.buffer.length : 0), -e.startedAt];
+      if (!best || w.some((v, k) => v !== bestWeight[k] && w.slice(0, k).every((x, j) => x === bestWeight[j]) && v > bestWeight[k])) { best = e; bestWeight = w; }
+    });
+    return best;
+  }
+
+  /**
+   * While anything is running, check the process's memory twice a second.
+   *
+   *   the parsing share   the growth since the parsers started work may not pass
+   *        PARSE_RSS_LIMIT_MB while several parses run, or PARSE_RSS_SOLO_LIMIT_MB while one runs
+   *        alone (it has the whole share to itself). Growth, so the size of the rest of the server
+   *        neither eats into the parsers' share nor hides their use.
+   *   the process   resident memory may not pass PARSE_RSS_CEILING_MB whatever the growth looks
+   *        like: that line is what keeps the container alive.
+   *
+   * Over a line: warm workers are let go first. Then the heaviest parse is stopped and RUN AGAIN BY
+   * ITSELF, with nothing else running and a fresh baseline. Only a parse that crosses the line on
+   * that run alone is refused: nobody is refused on a measurement that someone else's memory, or a
+   * stopped worker's not-yet-returned memory, could have spoiled.
    */
   _watch() {
     if (this.watchdog) return;
-    const limitMb = this._opt("parseRssLimitMb");
-    if (!limitMb) return;
+    const sharedMb = this._opt("parseRssLimitMb");
+    if (!sharedMb) return;
+    const fixed = this.opts.parseRssLimitMb !== undefined; // a caller that fixes the shared line (the tests) fixes the others with it
+    const soloMb = this.opts.parseRssSoloLimitMb !== undefined ? this.opts.parseRssSoloLimitMb : fixed ? sharedMb : Math.max(sharedMb, limits.parseRssSoloLimitMb);
+    const ceilingMb = this.opts.parseRssCeilingMb !== undefined ? this.opts.parseRssCeilingMb : fixed ? 0 : limits.parseRssCeilingMb;
     const rss = () => (this.opts.rssProbe ? this.opts.rssProbe() : process.memoryUsage().rss) / (1024 * 1024);
     const baselineMb = rss();
     let settling = false;
-    this.watchdog = setInterval(() => {
+    let choosing = false;
+    this.watchdog = setInterval(async () => {
+      if (choosing) return;
       if (this.running.size === 0) return this._unwatch();
       // A worker that was just stopped takes a moment to give its memory back: one check is skipped.
       if (settling) { settling = false; return; }
-      const rssMb = rss() - baselineMb;
-      if (rssMb <= limitMb) return;
+      const nowMb = rss();
+      const addedMb = nowMb - baselineMb;
+      const alone = this.running.size === 1;
+      const lineMb = alone ? soloMb : sharedMb;
+      const overShare = addedMb > lineMb;
+      const overProcess = ceilingMb > 0 && nowMb > ceilingMb;
+      if (!overShare && !overProcess) return;
       settling = true;
-      // Warm workers hold memory too: let them go first. Then stop one parse. Memory is not known
-      // per worker, so the choice is by who is most likely to be the cause and least likely to be
-      // a customer: a client whose parse was already stopped this hour first, then the largest
-      // file, then the longest-running.
-      for (const slot of [...this.idle]) { slot.dead = true; this._forget(slot); slot.worker.terminate().catch(() => {}); }
-      let oldest = null;
-      const weight = (e) => [this._isSuspect(e.client) ? 1 : 0, e.job.sizeBytes || (e.job.buffer ? e.job.buffer.length : 0), -e.startedAt];
-      for (const e of this.running) {
-        if (!oldest) { oldest = e; continue; }
-        const a = weight(e), b = weight(oldest);
-        if (a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] > b[2]) oldest = e;
+      // Warm workers hold memory too: let them go, and look again once it has come back.
+      if (this.idle.length) {
+        for (const slot of [...this.idle]) { slot.dead = true; this._forget(slot); slot.worker.terminate().catch(() => {}); }
+        return;
       }
-      if (!oldest) return;
-      const kind = path.extname(oldest.job.filePath || "") || "file";
-      // Memory is not known per parse. If others were running too, this one may only have been
-      // unlucky in its company: it is stopped now (the ceiling holds) and run once more by itself.
-      // Stopped while alone, or a second time, it is refused.
-      if (this.running.size > 1 && !oldest.solo) {
+      choosing = true;
+      let victim = null;
+      try { victim = await this._heaviest(); } catch { /* fall through: nothing is stopped on a failed measurement */ } finally { choosing = false; }
+      if (!victim || victim.settled || !this.running.has(victim)) return;
+      const kind = path.extname(victim.job.filePath || "") || "file";
+      const why = overShare
+        ? `parsing has added ${Math.round(addedMb)} MB to the process, over the ${lineMb} MB line (${alone ? "PARSE_RSS_SOLO_LIMIT_MB" : "PARSE_RSS_LIMIT_MB"})`
+        : `the process is at ${Math.round(nowMb)} MB resident, over the ${ceilingMb} MB line (PARSE_RSS_CEILING_MB)`;
+      if (!victim.solo) {
         this.counters.rerunAlone++;
-        console.warn(`Parse pool: parsing has added ${Math.round(rssMb)} MB to the process, over the ${limitMb} MB ceiling (PARSE_RSS_LIMIT_MB); stopped a parse (${kind}) to run it again on its own`);
-        return this._rerunAlone(oldest);
+        console.warn(`Parse pool: ${why}; stopped a parse (${kind}) to run it again on its own`);
+        return this._rerunAlone(victim);
       }
       this.counters.outOfMemory++;
-      this._markSuspect(oldest.client);
-      console.warn(`Parse pool: parsing has added ${Math.round(rssMb)} MB to the process, over the ${limitMb} MB ceiling (PARSE_RSS_LIMIT_MB); stopped a parse (${kind})`);
-      this._finish(oldest, this._memoryError(), undefined, { kill: true });
+      this._markSuspect(victim.client);
+      console.warn(`Parse pool: ${why} with one parse running by itself; stopped it (${kind})`);
+      this._finish(victim, this._memoryError(), undefined, { kill: true });
     }, this.opts.watchIntervalMs || 500);
     if (this.watchdog.unref) this.watchdog.unref();
   }

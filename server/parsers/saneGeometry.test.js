@@ -155,4 +155,79 @@ test("pricing: a part stored before the fix with empty measurements is refused, 
   }
 });
 
+// ─── Independent re-review 2026-11-12, RR-09: finite but wrong ───
+
+/** Twelve triangles of an axis-aligned box at `o`, facing out (or in, with flip). */
+const boxTris = (w, d, hgt, o = [0, 0, 0], flip = false) => {
+  const v = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]].map((p) => [o[0] + p[0] * w, o[1] + p[1] * d, o[2] + p[2] * hgt]);
+  const t = [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]];
+  return t.map((f) => (flip ? [f[0], f[2], f[1]] : f).map((i) => v[i]));
+};
+
+test("RR-09: one closed shell inside another is sent to a person, whichever way the inner one faces and however it is written; parts side by side are not", async () => {
+  const outer = boxTris(100, 100, 100);
+  for (const [label, tris] of [
+    ["an inside-out cube a micrometre smaller (the solid cancelled down to a skin; it priced $100 with checkout open)", [...outer, ...boxTris(99.998, 99.998, 99.998, [0.001, 0.001, 0.001], true)]],
+    ["five cubes nested inside, all facing out (the volume counted 5.16 times)", [...outer, ...[10, 20, 30, 40, 45].flatMap((m) => boxTris(100 - 2 * m, 100 - 2 * m, 100 - 2 * m, [m, m, m]))]],
+    ["sixty closed boxes hidden inside one bar of a frame", [...boxTris(100, 4, 4), ...boxTris(4, 100, 4, [0, 4, 0]), ...Array.from({ length: 60 }, (_, i) => boxTris(1, 2, 2, [2 + i * 1.5, 1, 1])).flat()]],
+    ["an honest hollow box with a sealed cavity (real, and not something the instant quote can price)", [...outer, ...boxTris(80, 80, 80, [10, 10, 10], true)]],
+  ]) {
+    const binary = await parse("p.stl", g.stl(tris));
+    assertRefusal(binary.err, "nested-shells");
+    assert.strictEqual(binary.err.offerRfq, true, label);
+  }
+  // the same written as an ASCII STL, and as a 3MF
+  const hidden = [...outer, ...boxTris(10, 10, 10, [45, 45, 45])];
+  const ascii = `solid p\n${hidden.map((t) => `facet normal 0 0 0\nouter loop\n${t.map((v) => `vertex ${v.join(" ")}`).join("\n")}\nendloop\nendfacet`).join("\n")}\nendsolid p\n`;
+  assertRefusal((await parse("p.stl", Buffer.from(ascii))).err, "nested-shells");
+  // Not flagged: two parts side by side; a small part in the open corner of an L (inside its box, outside its surface).
+  const sideBySide = await parse("two.stl", g.stl([...boxTris(20, 20, 20), ...boxTris(20, 20, 20, [30, 0, 0])]));
+  assert.ok(sideBySide.ok, sideBySide.err && sideBySide.err.message);
+  const ell = [...boxTris(100, 20, 20), ...boxTris(20, 80, 20, [0, 20, 0])];
+  const inTheCorner = await parse("ell.stl", g.stl([...ell, ...boxTris(10, 10, 10, [60, 60, 5])]));
+  assert.ok(inTheCorner.ok, inTheCorner.err && inTheCorner.err.message);
+  // The shell test alone, on a large mesh: it is linear in the triangles.
+  const { findNestedShells } = require("./meshShells");
+  const many = Array.from({ length: 4000 }, (_, i) => boxTris(1, 1, 1, [(i % 100) * 3, Math.floor(i / 100) * 3, 0])).flat();
+  const xyz = new Float32Array(many.length * 9);
+  many.forEach((t, i) => t.forEach((v, k) => { xyz[i * 9 + k * 3] = v[0]; xyz[i * 9 + k * 3 + 1] = v[1]; xyz[i * 9 + k * 3 + 2] = v[2]; }));
+  const t0 = Date.now();
+  assert.deepStrictEqual(findNestedShells(xyz, many.length), { shells: 4000, nested: false });
+  assert.ok(Date.now() - t0 < 2000, `48,000 triangles in 4,000 separate boxes: ${Date.now() - t0} ms`);
+});
+
+test("RR-09: a counted volume larger than the bounding box is not a measurement", () => {
+  const cube = { boundingBox: { min: { x: 0, y: 0, z: 0 }, max: { x: 100, y: 100, z: 100 }, width: 100, height: 100, depth: 100 }, surfaceArea: 60000, volume: 1e6 };
+  assert.ok(isSaneGeometry(cube));
+  assert.ok(isSaneGeometry({ ...cube, volume: 1e6 * 1.0005 }), "rounding is allowed for");
+  assert.strictEqual(isSaneGeometry({ ...cube, volume: 5.16e6 }), false);
+  try { assertSaneGeometry({ ...cube, volume: 5.16e6 }); assert.fail("accepted"); } catch (err) { assertRefusal(err, "geometry-not-measurable"); }
+});
+
+test("RR-09: a part thinner than a printer makes is not priced for printing (it was $19.59 with checkout open); the same part for machining is judged as before", async () => {
+  const sheet = { boundingBox: { min: { x: 0, y: 0, z: 0 }, max: { x: 100, y: 100, z: 0.011 }, width: 100, height: 100, depth: 0.011 }, surfaceArea: 20004.4, volume: 110 };
+  assert.ok(isSaneGeometry(sheet), "with no process named it is a measurable part");
+  assert.doesNotThrow(() => assertSaneGeometry(sheet, { config: { process: "cnc" } }));
+  try { assertSaneGeometry(sheet, { partId: "p1", config: { process: "3d-printing" } }); assert.fail("priced"); } catch (err) {
+    assertRefusal(err, "too-thin-to-print");
+    assert.deepStrictEqual([err.status, err.extra.partId, err.offerRfq], [422, "p1", true]);
+  }
+  // A thin skin that is not thin in any one direction: a 100 mm cube's worth of box with 100 mm³ of material.
+  const skin = { boundingBox: { min: { x: 0, y: 0, z: 0 }, max: { x: 100, y: 100, z: 100 }, width: 100, height: 100, depth: 100 }, surfaceArea: 120000, volume: 100 };
+  assert.throws(() => assertSaneGeometry(skin, { config: { process: "3d-printing" } }), (err) => err.code === "too-thin-to-print");
+  // Ordinary printed parts are untouched: a solid cube, a 1.5 mm wall enclosure (twice its volume over its surface is its wall).
+  const enclosure = { boundingBox: skin.boundingBox, surfaceArea: 2 * 60000, volume: 60000 * 1.5 };
+  for (const g2 of [{ ...skin, surfaceArea: 60000, volume: 1e6 }, enclosure]) assert.doesNotThrow(() => assertSaneGeometry(g2, { config: { process: "3d-printing" } }));
+  // Through the routes: the sheet uploads, prices for machining as before, and is refused for printing.
+  h = h || await start({});
+  const up = await h.form("/api/upload", {}, { files: { name: "sheet.stl", data: g.stl(boxTris(100, 100, 0.011)) } });
+  assert.strictEqual(up.status, 200, up.text.slice(0, 200));
+  const partId = up.body.parts[0].partId;
+  const printMat = h.models.materialsDB.getAll().find((m) => m.process === "3d-printing" && m.active);
+  const printed = await h.post("/api/quote", { parts: [{ partId, materialSlug: printMat.slug, quantity: 1, process: "3d-printing" }] });
+  assert.deepStrictEqual([printed.status, printed.body.code, printed.body.offerRfq], [422, "too-thin-to-print", true], printed.text.slice(0, 200));
+  // a line that does not say its process: the material decides
+  assert.strictEqual((await h.post("/api/quote", { parts: [{ partId, materialSlug: printMat.slug, quantity: 1 }] })).body.code, "too-thin-to-print");
+});
+
 run(async () => { fs.rmSync(tmp, { recursive: true, force: true }); if (h) await h.stop(); process.exit(process.exitCode || 0); });

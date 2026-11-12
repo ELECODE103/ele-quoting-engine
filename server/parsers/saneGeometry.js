@@ -37,6 +37,7 @@ const MESSAGES = {
   "geometry-not-measurable": `We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (${brand.email}).`,
   "geometry-out-of-range": `This model's size doesn't come out as a real part: it is far larger than anything we make, or sits very far from the origin. Check the export units and upload again, or send it to us and we'll quote it by hand (${brand.email}).`,
   "geometry-too-small": `This model comes out smaller than anything we can hold or measure. Check the export units (millimetres or inches) and upload again, or send it to us and we'll quote it by hand (${brand.email}).`,
+  "too-thin-to-print": `This part is thinner than our printers can make it: its thinnest section comes out under half a millimetre. Thicken it, or send it to us and we'll look at how it could be made (${brand.email}).`,
 };
 
 /** An error both the upload path (worker → route) and the pricing path (route) know how to show. */
@@ -63,11 +64,23 @@ function coordOk(v, maxCoord = limits.geometryMaxCoordMm) {
   return typeof v === "number" && v >= -maxCoord && v <= maxCoord; // NaN fails both comparisons
 }
 
+/** Is this pricing call for 3D printing? From the line's configuration; its material decides when the line does not say. */
+function printing(ctx) {
+  const config = ctx && ctx.config;
+  if (!config || typeof config !== "object") return false;
+  let process = typeof config.process === "string" ? config.process : "";
+  if (!process && typeof config.materialSlug === "string") {
+    try { process = (require("../models").materialsDB.getAll().find((m) => m.slug === config.materialSlug) || {}).process || ""; } catch { process = ""; }
+  }
+  return process === "3d-printing";
+}
+
 /**
  * Throw unless `geometry` (what a parser returned, or what a part row holds)
  * describes a part with finite, positive, sane measurements.
  * @param {object} geometry
- * @param {{ partId?: string, fileName?: string }} [ctx] carried on the error for the pricing route
+ * @param {{ partId?: string, fileName?: string, config?: object }} [ctx] carried on the error for the pricing route;
+ *        config: the quote line being priced ({ process, materialSlug }), for the checks that depend on the process
  * @returns {object} the geometry, unchanged
  */
 function assertSaneGeometry(geometry, ctx = {}) {
@@ -105,6 +118,16 @@ function assertSaneGeometry(geometry, ctx = {}) {
   // A closed solid fills some of its bounding box. A millionth of it (or less than a thousandth of a cubic millimetre) is no solid.
   const boxVolume = dims[0] * dims[1] * dims[2];
   if (!(geometry.volume > 0) || geometry.volume < Math.max(1e-3, boxVolume * 1e-6)) fail("geometry-not-measurable");
+  // And it cannot hold more than its bounding box does: a counted volume above the box means shells
+  // counted more than once (re-review 2026-11-12, RR-09: five cubes nested in one measured 5.16 boxes).
+  if (geometry.volume > boxVolume * 1.001 + 1e-6) fail("geometry-not-measurable");
+  // For 3D printing, when the caller says what the part is to be made by: thinner than a printer
+  // makes is not a price, it is a question for a person. The thinnest side of the box, and the
+  // average wall (twice the volume over the surface: a sheet's thickness, a tube's wall, a strut's radius).
+  if (printing(ctx)) {
+    const minWall = limits.geometryMinPrintWallUm / 1000;
+    if (Math.min(...dims) < minWall || (2 * geometry.volume) / geometry.surfaceArea < minWall) fail("too-thin-to-print");
+  }
   // The other numbers pricing and DFM read straight from the geometry.
   for (const key of ["estimatedThickness", "flatWidth", "flatHeight", "flatArea", "estimatedPerimeter"]) {
     if (geometry[key] !== undefined && geometry[key] !== null && !finite(geometry[key])) fail("geometry-not-measurable");

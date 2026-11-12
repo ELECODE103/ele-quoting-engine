@@ -664,7 +664,7 @@ async function parse3MF(buffer) {
   if (totalTriangles === 0) {
     throw new Error("3MF file contains no mesh geometry. The file may contain only metadata or component references without embedded meshes.");
   }
-  inputGuards.assertFiniteVertices(allVertices); // a vertex or a transform that is not a number
+  inputGuards.assertFiniteVertices(allVertices, { shells: true }); // a vertex or a transform that is not a number; one closed shell inside another
 
   const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles, { source: "3mf" });
 
