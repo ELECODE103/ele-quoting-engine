@@ -18,9 +18,11 @@ test("every rule has key, group, label, help, unit, type, min, max, default", ()
   for (const r of schema.RULES) {
     for (const k of ["key", "group", "label", "help", "unit", "type", "min", "max", "default"]) assert.ok(k in r, `${r.key} missing ${k}`);
     assert.ok(groups.has(r.group), `${r.key} has unknown group ${r.group}`);
-    assert.ok(["number", "percent", "currency", "table"].includes(r.type), `${r.key} type ${r.type}`);
+    assert.ok(["number", "percent", "currency", "table", "choice", "text"].includes(r.type), `${r.key} type ${r.type}`);
     assert.ok(r.help.length > 10 && /[.]$/.test(r.help), `${r.key} help should be a sentence`);
-    if (r.type !== "table") assert.ok(r.default >= r.min && r.default <= r.max, `${r.key} default outside range`);
+    if (r.type === "choice") assert.ok(r.options.length >= 2 && r.options.some((o) => o.value === r.default) && r.options.every((o) => o.value && o.label), `${r.key} needs options and a default among them`);
+    else if (r.type === "text") assert.ok(typeof r.default === "string" && new RegExp(r.pattern).test(r.default), `${r.key} default must match its pattern`);
+    else if (r.type !== "table") assert.ok(r.default >= r.min && r.default <= r.max, `${r.key} default outside range`);
     else assert.ok(r.tableSpec && ["map", "rows"].includes(r.tableSpec.kind), `${r.key} table needs a tableSpec`);
   }
 });
@@ -80,6 +82,81 @@ test("legacy keys that kept their meaning still exist (admin-tuned values carry 
     "fdmInfillPercent", "slaLayerTimeSec", "slaScanTimeSecPerCm2", "slsLayerTimeSec", "slsScanTimeSecPerCm2", "slsPackingEfficiency", "slsPowderReuseRatio"]) {
     assert.ok(schema.RULE_BY_KEY[k], `missing ${k}`);
   }
+});
+
+// ─── Shipping & tax settings (2026-11-11) ──────────────────────────────────
+test("shipping and tax switches default to what the site did before they existed", () => {
+  const d = schema.defaultRules();
+  assert.strictEqual(d.shippingMethod, "formula", "shipping stays the weight formula");
+  assert.strictEqual(d.shippingBaseRate, 12);
+  assert.strictEqual(d.shippingPerKg, 2.5);
+  assert.strictEqual(d.shippingFreeOverSubtotal, 0, "no free-shipping threshold");
+  assert.strictEqual(d.shippingCarrierAccount, "off");
+  assert.strictEqual(d.shippingLocalPickup, "off");
+  assert.strictEqual(d.taxMode, "off", "no tax is collected");
+  assert.strictEqual(d.taxExemptDeclare, "off");
+  assert.strictEqual(d.taxTrustDeclaredExemptions, "off");
+  assert.strictEqual(d.taxProductCode, "", "no tax code is pinned: Stripe's own preset applies");
+});
+
+test("the shipping and tax switches are in the Simple view, in their own group, in plain words", () => {
+  const group = schema.RULE_GROUPS.find((g) => g.key === "checkout");
+  assert.ok(group && /shipping/i.test(group.label) && /tax/i.test(group.label));
+  for (const key of ["shippingMethod", "shippingCarrierAccount", "shippingLocalPickup", "taxMode", "taxExemptDeclare", "taxTrustDeclaredExemptions"]) {
+    const d = schema.getDescriptor(key);
+    assert.strictEqual(d.group, "checkout");
+    assert.strictEqual(d.simple, true, `${key} is in the Simple view`);
+    assert.ok(d.options.every((o) => !/[_{}]/.test(o.label)), `${key} options read as words`);
+  }
+  assert.ok(schema.getDescriptor("shippingMethod").options.find((o) => o.value === "formula").label.includes("as today"));
+});
+
+test("the rate table's seed numbers are marked as placeholders", () => {
+  const d = schema.getDescriptor("shippingRateTable");
+  assert.strictEqual(d.placeholder, true);
+  assert.ok(/PLACEHOLDER/.test(d.help) && /your own/.test(d.help));
+  assert.strictEqual(d.sortBy, "maxLb");
+});
+
+test("a choice takes one of its options and nothing else; a stored bad value falls back to the default", () => {
+  assert.deepStrictEqual(schema.validateRules({ shippingMethod: "table" }).values, { shippingMethod: "table" });
+  for (const bad of ["free", "", 1, true, null, ["table"], { value: "table" }, "TABLE", "table "]) {
+    const r = schema.validateRules({ shippingMethod: bad });
+    assert.strictEqual(r.ok, false, `refused: ${JSON.stringify(bad)}`);
+    assert.strictEqual(schema.mergeRules({ shippingMethod: bad }).shippingMethod, "formula");
+  }
+  assert.strictEqual(schema.validateRules({ taxMode: "on" }).ok, false, "taxMode is off or stripe, not on");
+  assert.strictEqual(schema.mergeRules({ taxMode: "stripe" }).taxMode, "stripe");
+  assert.strictEqual(schema.mergeRules({ taxTrustDeclaredExemptions: "yes" }).taxTrustDeclaredExemptions, "off");
+});
+
+test("the tax code is empty or exactly a Stripe code; anything else is refused", () => {
+  assert.strictEqual(schema.validateRules({ taxProductCode: "txcd_99999999" }).ok, true);
+  assert.strictEqual(schema.validateRules({ taxProductCode: "" }).ok, true);
+  assert.strictEqual(schema.validateRules({ taxProductCode: " txcd_99999999 " }).values.taxProductCode, "txcd_99999999");
+  for (const bad of ["txcd_1", "general goods", "txcd_99999999; drop", 99999999, null, "TXCD_99999999"]) {
+    assert.strictEqual(schema.validateRules({ taxProductCode: bad }).ok, false, `refused: ${JSON.stringify(bad)}`);
+    assert.strictEqual(schema.mergeRules({ taxProductCode: bad }).taxProductCode, "");
+  }
+});
+
+test("the rate table: rows in rising weight, numbers in range, at least one row", () => {
+  assert.strictEqual(schema.validateRules({ shippingRateTable: [{ maxLb: 2, price: 9 }, { maxLb: 10, price: 15 }] }).ok, true);
+  assert.strictEqual(schema.validateRules({ shippingRateTable: [{ maxLb: 10, price: 15 }, { maxLb: 2, price: 9 }] }).ok, false, "out of order");
+  assert.strictEqual(schema.validateRules({ shippingRateTable: [{ maxLb: 2, price: 9 }, { maxLb: 2, price: 12 }] }).ok, false, "duplicate band");
+  assert.strictEqual(schema.validateRules({ shippingRateTable: [] }).ok, false, "empty");
+  assert.strictEqual(schema.validateRules({ shippingRateTable: [{ maxLb: 2, price: -1 }] }).ok, false, "negative price");
+  assert.strictEqual(schema.validateRules({ shippingRateTable: [{ maxLb: 2 }] }).ok, false, "missing price");
+  // A stored table out of order is put in order, not thrown away.
+  assert.deepStrictEqual(schema.mergeRules({ shippingRateTable: [{ maxLb: 10, price: 15 }, { maxLb: 2, price: 9 }] }).shippingRateTable.map((r) => r.maxLb), [2, 10]);
+});
+
+test("the new settings do not touch any existing rule's default", () => {
+  // The values the engine priced with before 2026-11-11, spot-checked across groups.
+  const d = schema.defaultRules();
+  const before = { cncMachineRatePerHour: 110, marginPercent: 0.5, minimumOrderTotal: 25, shippingBaseRate: 12, shippingPerKg: 2.5, paperworkFeePerPart: 45, paperworkFeePerOrder: 15, routerSetupMinutes: 20, rfqQuantityThreshold: 100, bigTicketLineTotal: 5000, nestingEfficiencyBonus: 0.12 };
+  for (const [k, v] of Object.entries(before)) assert.strictEqual(d[k], v, k);
+  assert.deepStrictEqual(d.rushMultipliers, { standard: 1.0, expedited: 1.35, rush: 1.85, "same-day": 2.5 });
 });
 
 console.log(`\n${passed} checks passed`);
