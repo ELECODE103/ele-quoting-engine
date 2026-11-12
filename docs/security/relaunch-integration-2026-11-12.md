@@ -557,7 +557,7 @@ reduced where the full size needs most of the machine's memory.
 | C2 | `availability.js mainthread 1200` (1,200 holes, not 4,900; the full size did not finish in 280 s) | 11 quotes of 100 lines from one address, none rate-limited, median 47.7 s each; health check median 62.5 s, worst 64.6 s | Yes |
 | H1 | `price-nan.js` | honest 400 mm block: $3,727.15, sent to a person. The same block with one `Infinity` corner: **$352.04, open for card checkout; a checkout session was created**. With a `NaN` corner it is sent to a person | Yes |
 | H2 | `availability.js queue` | one address fills the waiting line: two of three real customers refused `busy` in 0.1 s, the third waited 38.9 s | Yes |
-| H2 | `availability.js pool` | @@POOL@@ | @@POOLYN@@ |
+| H2 | `availability.js pool` | result not recorded: the session stopped before this run was written up | not re-checked on this branch; fixed on `availability-fixes` |
 | H3 | `availability.js db 100` (100 quotes, not 1,600) | 354 kB per draft quote; 33.8 MB after 100 quotes in 31 s from one address; no limit reached | Yes (growth rate; the ceiling was not reached at this size) |
 | H4 | `availability.js storage` (full size) | four addresses stored 1,960 MB in 39 s; the fifth and a real customer's 9 kB STEP were refused `storage-full`; the log says 100% | Yes |
 | H5 | `retention-encryption.js retention` | on day 8 the CAD files are gone; an order placed that day goes to Stripe and the admin download answers 404 "File missing on disk"; the same for a firm-quote request | Yes |
