@@ -97,6 +97,9 @@ async function startServer({ turnstile }) {
   if (turnstile) {
     env.TURNSTILE_SITE_KEY = `e2e-site-${crypto.randomBytes(6).toString('hex')}`;
     env.TURNSTILE_SECRET_KEY = `e2e-secret-${crypto.randomBytes(12).toString('hex')}`;
+  } else {
+    // Since 2026-11-12 production does not start without the Turnstile keys unless this says so.
+    env.ALLOW_LAUNCH_WITHOUT_BOT_CHECK = '1';
   }
   const logFile = path.join(SCRATCH, `server-${turnstile ? 'keys' : 'nokeys'}.log`);
   const log = fs.createWriteStream(logFile);

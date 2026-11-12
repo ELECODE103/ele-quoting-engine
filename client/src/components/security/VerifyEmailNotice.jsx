@@ -38,7 +38,8 @@ export default function VerifyEmailNotice({ reason = 'before you pay', style }) 
     try {
       const r = await api.resendVerification();
       if (r.verified) { await refresh(); return; }
-      setNote(r.sent ? `Sent again to ${user.email}. Use the newest email; check the spam folder too.` : `We couldn't send it just now. Try again in a minute, or call ${brand.phone}.`);
+      // queued: over the hour's limit for confirmation emails, so it is held and sent within the hour (the server's own wording)
+      setNote(r.sent ? `Sent again to ${user.email}. Use the newest email; check the spam folder too.` : r.queued && r.message ? r.message : `We couldn't send it just now. Try again in a minute, or call ${brand.phone}.`);
     } catch (err) {
       setNote(err.message || `We couldn't send it. Call ${brand.phone}.`);
     }

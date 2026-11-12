@@ -236,7 +236,8 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
     const senderVerified = sender.verified;
     // Senders who could not be verified share one hourly allowance for the whole site (botGuard.js):
     // per-client limits alone do not stop a flood sent from many addresses.
-    if (!senderVerified && botGuard.unverifiedRequestsFull()) {
+    const senderKey = require("../security/clientKey").clientKey(req);
+    if (!senderVerified && botGuard.unverifiedRequestsFull(Date.now(), senderKey)) {
       await dropFile();
       botGuard.releaseForm(check);
       botGuard.noteUnverifiedRefused();
@@ -304,7 +305,7 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       clientTag: req.file ? require("../security/uploadGuards").clientTag(require("../security/clientKey").clientKey(req)) : "",
       drawingBytes: req.file ? req.file.size : 0,
     });
-    if (!senderVerified) botGuard.countUnverifiedRequest();
+    if (!senderVerified) botGuard.countUnverifiedRequest(Date.now(), senderKey);
 
     kept = true; // the request row owns the attachment now
     if (req.file) require("../security/uploadGuards").storage.add(req.file.size);
@@ -323,7 +324,7 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       ...templates.rfqReceivedShop({ rfq, adminUrl: `${orderEvents.baseUrl(req)}/admin`, part, unverified: !senderVerified, buyerEmailed: buyerEmail, partPending: sendPart && !partForBuyer }),
     });
     // confirmedRecipient: a signed-in customer writing from their own confirmed address (not counted against the site-wide cap on mail to unconfirmed addresses).
-    if (buyerEmail) mailer.send({ to: email, replyTo: mailer.shopNotifyAddress(), confirmedRecipient: sender.method === "account", ...templates.rfqReceivedBuyer({ rfq, part: partForBuyer }) });
+    if (buyerEmail) mailer.send({ to: email, replyTo: mailer.shopNotifyAddress(), confirmedRecipient: sender.method === "account", clientKey: senderKey, ...templates.rfqReceivedBuyer({ rfq, part: partForBuyer }) });
 
     const response = {
       rfqId: rfq.id,

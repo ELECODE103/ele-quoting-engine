@@ -16,6 +16,17 @@ if (process.env.NODE_ENV === "production") {
   }
 }
 
+// The robot check: in production the keys are required unless the owner waives it in so many
+// words (security/botCheckStartup.js). Names only are printed, never a value.
+{
+  const bot = require("./security/botCheckStartup").check(process.env);
+  if (!bot.ok) {
+    for (const line of bot.fatal) console.error(line);
+    process.exit(1);
+  }
+  if (bot.warning) console.warn(bot.warning);
+}
+
 // A file-encryption key that is set but unusable (too short, a placeholder) is a
 // misconfiguration, not a preference: stop the deploy rather than "encrypt" with it.
 {

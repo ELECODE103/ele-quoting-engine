@@ -141,12 +141,37 @@ test("M3: the mail caps count only the mail a stranger can cause; one owner noti
   caps.resetForTests();
   try {
     const t0 = Date.parse("2026-11-11T10:00:00Z");
-    assert.deepStrictEqual(caps.admit("verifyEmail", t0), { allowed: true, kind: "unconfirmed", notify: false });
+    assert.deepStrictEqual(caps.admit("verifyEmail", t0), { allowed: true, hold: false, kind: "unconfirmed", notify: false });
     assert.strictEqual(caps.admit("rfqReceivedBuyer", t0).allowed, true);
-    assert.deepStrictEqual(caps.admit("partRequestBuyer", t0), { allowed: false, kind: "unconfirmed", notify: true }, "the third is held and the owner is told");
-    assert.deepStrictEqual(caps.admit("verifyEmail", t0 + 1000), { allowed: false, kind: "unconfirmed", notify: false }, "told once, not for every message");
+    // Over the cap a message is HELD, to be sent when the hour turns; it used to be dropped (re-review RR-04).
+    assert.deepStrictEqual(caps.admit("partRequestBuyer", t0), { allowed: false, hold: true, kind: "unconfirmed", notify: true }, "the third is held and the owner is told");
+    assert.deepStrictEqual(caps.admit("verifyEmail", t0 + 1000), { allowed: false, hold: true, kind: "unconfirmed", notify: false }, "told once, not for every message");
+    // RR-04: a client's own first two in the hour go out whatever the site-wide count is…
+    assert.strictEqual(caps.admit("verifyEmail", t0 + 2000, { clientKey: "203.0.113.9" }).allowed, true, "a new customer's confirmation email is not behind the flood");
+    assert.strictEqual(caps.admit("verifyEmail", t0 + 2000, { clientKey: "203.0.113.9" }).allowed, true);
+    assert.deepStrictEqual(caps.admit("verifyEmail", t0 + 2000, { clientKey: "203.0.113.9" }), { allowed: false, hold: true, kind: "unconfirmed", notify: false }, "…its third waits like anyone's");
+    // …up to the hard ceiling, which holds even a first message (it protects the mail account from hundreds of addresses).
+    process.env.MAIL_UNCONFIRMED_HARD_PER_HOUR_SITE = "4";
+    assert.strictEqual(caps.admit("verifyEmail", t0 + 3000, { clientKey: "203.0.113.10" }).hold, true);
+    delete process.env.MAIL_UNCONFIRMED_HARD_PER_HOUR_SITE;
+    // What is held: one per recipient (the newest link), a few per client, given back when the hour turns —
+    // each client's first before anyone's second.
+    const msg = (to, n) => ({ template: "verifyEmail", to, text: `link ${n}` });
+    for (const k of ["flood", "flood", "someone", "someone"]) caps.admit("verifyEmail", t0, { clientKey: k }); // each has had its own first two this hour
+    assert.strictEqual(caps.hold(msg("a1@x.test", 1), { clientKey: "flood" }), true);
+    assert.strictEqual(caps.hold(msg("a1@x.test", 2), { clientKey: "flood" }), true, "the same recipient again replaces what was waiting");
+    assert.strictEqual(caps.hold(msg("a2@x.test", 3), { clientKey: "flood" }), true);
+    assert.strictEqual(caps.hold(msg("a3@x.test", 4), { clientKey: "flood" }), true);
+    assert.strictEqual(caps.hold(msg("a4@x.test", 5), { clientKey: "flood" }), false, "a sender with MAIL_HELD_PER_CLIENT (3) waiting has the next turned away");
+    assert.strictEqual(caps.hold(msg("real@customer.test", 6), { clientKey: "someone" }), true);
+    assert.deepStrictEqual(caps.due(t0 + 5000), [], "nothing goes while the hour's cap is still reached");
+    const later = caps.due(t0 + 61 * 60 * 1000);
+    assert.deepStrictEqual(later.map((m) => [m.to, m.text]), [["a1@x.test", "link 2"], ["real@customer.test", "link 6"], ["a2@x.test", "link 3"], ["a3@x.test", "link 4"]], "the next hour: the flood's first, the customer's, then the flood's others (their first two are outside the cap of 2)");
+    assert.strictEqual(caps.heldQueue.length, 0);
+    caps.resetForTests();
+    for (const t of ["verifyEmail", "rfqReceivedBuyer", "partRequestBuyer", "verifyEmail"]) caps.admit(t, t0);
     assert.strictEqual(caps.admit("rfqReceivedShop", t0).allowed, true);
-    assert.deepStrictEqual(caps.admit("rfqReceivedShop", t0), { allowed: false, kind: "shop", notify: true });
+    assert.deepStrictEqual(caps.admit("rfqReceivedShop", t0), { allowed: false, hold: false, kind: "shop", notify: true }, "a notice to the shop is not held: the request is in the admin panel");
     // never capped: orders, payments, accounts, the firm quote itself, the notice
     for (const t of ["orderConfirmation", "newOrderShop", "orderShipped", "rfqQuoted", "rfqAcceptedShop", "passwordResetRequested", "passwordChanged", "accountLocked", "twoFactorChanged", "mailCapReached"]) {
       for (let i = 0; i < 50; i++) assert.strictEqual(caps.admit(t, t0).allowed, true, t);
@@ -219,18 +244,29 @@ test("L1: a body sent without a Content-Length is counted as it arrives and cut 
   assert.strictEqual(s.files("quote-drawings").length, 1, "one drawing kept for the quote; the cut-off ones left nothing");
 });
 
-test("M2: requests from senders who cannot be verified share one hourly allowance for the whole site; a verified customer is not counted or refused", async () => {
-  const send = (i, o = {}) => s.rfq({ contactName: `Lead ${i}`, email: `lead${i}@example.test`, notes: `request ${i}` }, [], { ip: `198.51.100.${10 + i}`, ...o });
-  const statuses = [];
-  for (let i = 0; i < 6; i++) statuses.push((await send(i)).status);
-  assert.deepStrictEqual(statuses, [201, 201, 201, 201, 429, 429], "four an hour here, from six different addresses");
-  const refused = await send(7);
+test("M2 / RR-03: three addresses flooding the request form use up the site-wide allowance for themselves only; a visitor's own first requests always pass", async () => {
+  // This server: 4 an hour site-wide from senders who cannot be verified, after each address's own first 2.
+  const send = (ip, i, files = []) => s.rfq({ contactName: `Lead ${i}`, email: `lead${ip.split(".").pop()}-${i}@example.test`, notes: `request ${i}` }, files, { ip });
+  // The reviewer's attack: ten from each of three addresses at the start of the hour.
+  const flood = {};
+  for (const ip of ["198.51.100.10", "198.51.100.11", "198.51.100.12"]) { flood[ip] = []; for (let i = 0; i < 10; i++) flood[ip].push((await send(ip, i)).status); }
+  assert.deepStrictEqual(flood["198.51.100.10"], [201, 201, 201, 201, 201, 201, 429, 429, 429, 429], "the first address: its own two, then the site's four, then refused");
+  assert.deepStrictEqual(flood["198.51.100.11"], [201, 201, ...Array(8).fill(429)], "the second and third: their own two, and the allowance is gone");
+  assert.deepStrictEqual(flood["198.51.100.12"], [201, 201, ...Array(8).fill(429)]);
+  const refused = await send("198.51.100.10", 99);
   assert.strictEqual(refused.body.code, "requests-paused");
   assert.ok(/call|email/i.test(refused.body.error), refused.body.error);
-  // with an attachment: refused before the file is read, nothing written
-  const withFile = await s.rfq({ contactName: "Lead", email: "file@example.test", notes: "with drawing" }, [{ name: "d.pdf", data: Buffer.from("%PDF-1.4\n%%EOF\n") }], { ip: "198.51.100.90" });
+  // A real visitor, now, with a drawing: accepted (this used to be 429 for the rest of the hour).
+  const pdf = Buffer.from("%PDF-1.4\n%%EOF\n");
+  const visitor = await send("203.0.113.150", 0, [{ name: "d.pdf", data: pdf }]);
+  assert.strictEqual(visitor.status, 201, visitor.text.slice(0, 200));
+  assert.strictEqual(s.files("rfq-drawings").length, 1);
+  assert.strictEqual((await send("203.0.113.150", 1)).status, 201, "and their second");
+  assert.strictEqual((await send("203.0.113.150", 2)).status, 429, "a third in the hour waits for the site's allowance like anyone's");
+  // A flooding address with an attachment: refused before the file is read, nothing written.
+  const withFile = await send("198.51.100.11", 50, [{ name: "d.pdf", data: pdf }]);
   assert.strictEqual(withFile.status, 429);
-  assert.strictEqual(s.files("rfq-drawings").length, 0);
+  assert.strictEqual(s.files("rfq-drawings").length, 1);
   // a signed-in customer with a confirmed email, writing from their own address, is a verified sender
   const token = await s.register("customer@example.test", { ip: "198.51.100.91" });
   const mine = await s.rfq({ contactName: "Customer", email: "customer@example.test", notes: "a real request" }, [], { ip: "198.51.100.91", token });
@@ -246,18 +282,61 @@ test("M3: the shop's inbox gets request notices up to the hourly cap, then one '
   assert.ok(/admin panel/.test(capNotices[0].text) && !/lead\d@example\.test/.test(capNotices[0].text), "it says where the requests are and names no customer");
 });
 
-test("M3: confirmation emails to unconfirmed addresses stop at the site-wide hourly cap; the accounts are still created", async () => {
-  const before = s.mail(null, /confirm your email/i).length; // the customer registered above got one
-  const results = [];
-  for (let i = 0; i < 5; i++) {
-    const r = await s.post("/api/auth/register", { email: `typed${i}@elsewhere.test`, password: `Aa1-${crypto.randomBytes(9).toString("base64url")}`, name: "Someone" }, { ip: `198.51.100.${120 + i}`, headers: { "X-Form-Token": s.formToken("register") } });
-    results.push([r.status, r.body.verificationSent === true || s.mail(`typed${i}@elsewhere.test`, /confirm your email/i).length > 0]);
-  }
-  assert.ok(results.every(([status]) => status === 201), JSON.stringify(results));
-  const sentNow = s.mail(null, /confirm your email/i).length - before;
-  assert.strictEqual(sentNow, 3 - before, `the cap is 3 an hour for the whole site: ${sentNow} more went out after the ${before} already sent`);
+test("M3 / RR-04: one address registering accounts and asking again and again reaches the cap for itself; a new customer's confirmation email still goes out, and what is over the cap is held, not dropped", async () => {
+  // This server: 3 an hour site-wide to unconfirmed addresses, after each address's own first 2.
+  const A = "198.51.100.120";
+  const register = (email, ip) => s.post("/api/auth/register", { email, password: `Aa1-${crypto.randomBytes(9).toString("base64url")}`, name: "Someone" }, { ip, headers: { "X-Form-Token": s.formToken("register") } });
+  const got = (email) => s.mail(email, /confirm your email/i).length;
+  // The reviewer's worst case: ONE address, account after account.
+  const made = [];
+  for (let i = 0; i < 7; i++) { const r = await register(`typed${i}@elsewhere.test`, A); assert.strictEqual(r.status, 201, r.text.slice(0, 200)); made.push(r.body); }
+  // (This server has no mail provider configured: what "sent" means here is that the message reached the outbox folder.)
+  assert.deepStrictEqual(made.map((b, i) => got(`typed${i}@elsewhere.test`) > 0), [true, true, true, true, true, false, false], "its own two, the site's three, then no more this hour");
+  assert.deepStrictEqual(made.slice(5).map((b) => [b.verificationQueued, /within the hour/.test(b.verificationMessage || "")]), [[true, true], [true, true]], "the ones over the cap are in line, and the answer says so");
+  assert.strictEqual(got("typed5@elsewhere.test"), 0);
   assert.strictEqual(s.mail(s.adminEmail, /hourly limit reached for confirmation emails/i).length, 1, "the owner is told once");
-  assert.strictEqual(s.mail("typed4@elsewhere.test").length, 0, "the address typed after the cap got nothing");
+  // "Send it again", from that address: an honest answer while it is held, and a limit per address (five an hour) as well as per account.
+  const again = await s.post("/api/auth/verify-email/resend", {}, { ip: A, token: made[5].token });
+  assert.deepStrictEqual([again.status, again.body.sent, again.body.queued], [200, false, true], again.text.slice(0, 200));
+  assert.ok(/within the hour/.test(again.body.message));
+  const more = [];
+  for (let i = 0; i < 6; i++) more.push((await s.post("/api/auth/verify-email/resend", {}, { ip: A, token: made[i].token })).status);
+  assert.deepStrictEqual(more, [200, 200, 200, 200, 429, 429], `one address asked for ${more.length + 1} resends on different accounts: ${more.join(" ")}`);
+  // A real new customer, at that moment, from their own address:
+  const customer = await register("new-customer@somewhere.test", "203.0.113.160");
+  assert.deepStrictEqual([customer.status, customer.body.verificationQueued], [201, false], customer.text.slice(0, 200));
+  assert.strictEqual(got("new-customer@somewhere.test"), 1, "their confirmation email is sent at once (it used to be dropped until the hour ended, and they could not check out)");
+});
+
+test("RR-04: a held confirmation email is sent when the hour turns", async () => {
+  const caps = require("../services/mailCaps");
+  // The suite's harness replaces mailer.send with a recorder; this test needs the real one, so it loads its own copy of the module.
+  const mailerPath = require.resolve("../services/mailer");
+  const recorded = require.cache[mailerPath];
+  delete require.cache[mailerPath];
+  const mailer = require("../services/mailer");
+  const saved = process.env.MAIL_UNCONFIRMED_PER_HOUR_SITE;
+  process.env.MAIL_UNCONFIRMED_PER_HOUR_SITE = "1";
+  caps.resetForTests();
+  const realNow = Date.now;
+  try {
+    const message = (to) => ({ to, template: "verifyEmail", subject: "Straightedge: confirm your email address", text: "link" });
+    await mailer.send(message("first@x.test"));                       // uses the hour's one
+    const held = await mailer.send(message("second@x.test"));
+    assert.strictEqual(held, mailer.HELD, `over the cap: the mailer answers 'held', not false (${JSON.stringify(caps.counters().unconfirmed)})`);
+    assert.strictEqual(caps.heldQueue.length, 1);
+    await mailer.flushHeld();
+    assert.strictEqual(caps.heldQueue.length, 1, "still this hour: it waits");
+    Date.now = () => realNow() + 61 * 60 * 1000;
+    await mailer.flushHeld();
+    assert.strictEqual(caps.heldQueue.length, 0, "the hour turned: it went");
+    assert.strictEqual(caps.counters().unconfirmed.sentLaterSinceStart, 1);
+  } finally {
+    Date.now = realNow;
+    require.cache[mailerPath] = recorded;
+    if (saved === undefined) delete process.env.MAIL_UNCONFIRMED_PER_HOUR_SITE; else process.env.MAIL_UNCONFIRMED_PER_HOUR_SITE = saved;
+    caps.resetForTests();
+  }
 });
 
 run(async () => { if (h) await h.stop(); if (s) await s.stop(); process.exit(process.exitCode || 0); });

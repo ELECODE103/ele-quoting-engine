@@ -276,6 +276,8 @@ function resetForTests() {
   humanTokenUses.clear();
   unverifiedRequests.windowStart = 0;
   unverifiedRequests.count = 0;
+  unverifiedRequests.free = 0;
+  unverifiedPerClient.reset();
 }
 
 // ─── Site-wide cap on requests from unverified senders ─────────
@@ -285,24 +287,42 @@ function resetForTests() {
 // check is off, or could not be reached) share one hourly allowance for the
 // whole site, RFQ_UNVERIFIED_PER_HOUR_SITE. Verified senders and signed-in
 // customers with a confirmed email are not counted and are never refused here.
-const unverifiedRequests = { windowStart: 0, count: 0, refused: 0 };
+//
+// Independent re-review 2026-11-12, RR-03: with the check off, 30 requests from 3 addresses used
+// the allowance up and closed the form, the site's last door, to every real visitor for the rest
+// of the hour. So the allowance now starts after each address's own first few: an address's first
+// RFQ_UNVERIFIED_FREE_PER_CLIENT_HOUR (2) requests in an hour always pass and are not counted; the
+// site-wide allowance is for what an address sends beyond that. The cap bites on the addresses
+// that are flooding, never on the next visitor.
+const unverifiedRequests = { windowStart: 0, count: 0, refused: 0, free: 0 };
+const unverifiedPerClient = new (require("../services/usageWindow").UsageWindow)({ windowMs: HOUR });
 function unverifiedWindow(now) {
-  if (now - unverifiedRequests.windowStart >= HOUR) { unverifiedRequests.windowStart = now; unverifiedRequests.count = 0; }
+  if (now - unverifiedRequests.windowStart >= HOUR) { unverifiedRequests.windowStart = now; unverifiedRequests.count = 0; unverifiedRequests.free = 0; }
   return unverifiedRequests;
 }
-/** Has the site taken its hour's worth of requests from unverified senders? */
-function unverifiedRequestsFull(now = Date.now()) {
+/** Is this one of the client's own first few this hour (which always pass)? */
+function unverifiedIsFree(clientKey, now = Date.now()) {
+  return Boolean(clientKey) && unverifiedPerClient.total(clientKey, now) < require("./limits").limits.rfqUnverifiedFreePerClientHour;
+}
+/**
+ * Has the site taken its hour's worth of requests from unverified senders — as far as THIS client
+ * is concerned? Never for a client's first few.
+ */
+function unverifiedRequestsFull(now = Date.now(), clientKey = "") {
+  if (unverifiedIsFree(clientKey, now)) return false;
   return unverifiedWindow(now).count >= require("./limits").limits.rfqUnverifiedPerHourSite;
 }
 /** Count one accepted request from an unverified sender. */
-function countUnverifiedRequest(now = Date.now()) {
-  unverifiedWindow(now).count++;
+function countUnverifiedRequest(now = Date.now(), clientKey = "") {
+  const w = unverifiedWindow(now);
+  if (unverifiedIsFree(clientKey, now)) w.free++; else w.count++;
+  if (clientKey) unverifiedPerClient.add(clientKey, 1, now);
 }
 function noteUnverifiedRefused() { unverifiedRequests.refused++; }
 /** For the status page. */
 function unverifiedRequestStats(now = Date.now()) {
   const w = unverifiedWindow(now);
-  return { acceptedThisHour: w.count, capPerHour: require("./limits").limits.rfqUnverifiedPerHourSite, refusedSinceStart: unverifiedRequests.refused, windowStartedAt: new Date(w.windowStart).toISOString() };
+  return { acceptedThisHour: w.count, firstFewThisHour: w.free, capPerHour: require("./limits").limits.rfqUnverifiedPerHourSite, refusedSinceStart: unverifiedRequests.refused, windowStartedAt: new Date(w.windowStart).toISOString() };
 }
 
 module.exports = {

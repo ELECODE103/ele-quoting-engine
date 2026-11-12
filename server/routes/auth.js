@@ -35,6 +35,7 @@ const totp = require("../security/totp");
 const secretBox = require("../security/secretBox");
 const keys = require("../security/keys");
 const { createThrottle, clientKey } = require("../security/throttle");
+const { limits } = require("../security/limits");
 const { accountLinkBase } = require("../security/links");
 const mailer = require("../services/mailer");
 const templates = require("../emails/templates");
@@ -89,6 +90,7 @@ const resetPerIp = createThrottle({ windowMs: HOUR, max: 5 });
 const resetPerAddress = createThrottle({ windowMs: HOUR, max: 3 });
 const resendPerMinute = createThrottle({ windowMs: 60 * 1000, max: 1 });
 const resendPerDay = createThrottle({ windowMs: 24 * HOUR, max: 5 });
+const resendPerAddress = new (require("../services/usageWindow").UsageWindow)({ windowMs: HOUR });
 const lockMailPerDay = createThrottle({ windowMs: 24 * HOUR, max: 3 });
 
 /** Unsafe requests to this router carry JSON (or nothing). A form posted from another site is refused before it is read. */
@@ -150,7 +152,15 @@ function verificationUrl(user, req) {
 function sendVerification(user, req) {
   let u = user;
   if (!u.emailVerifyNonce) u = usersDB.update(u.id, { emailVerifyNonce: crypto.randomBytes(16).toString("hex") });
-  return mailer.send({ to: u.email, replyTo: mailer.shopNotifyAddress(), ...templates.verifyEmail({ verifyUrl: verificationUrl(u, req) }) });
+  // clientKey: whose doing this email is. Each address's first couple in an hour always go out; past
+  // the site-wide cap the rest are held and sent when the hour turns (services/mailCaps.js).
+  return mailer.send({ to: u.email, replyTo: mailer.shopNotifyAddress(), clientKey: clientKey(req), ...templates.verifyEmail({ verifyUrl: verificationUrl(u, req) }) });
+}
+
+/** What the customer is told about their confirmation email, from what the mailer answered. */
+function verificationAnswer(sent) {
+  if (sent === mailer.HELD) return { sent: false, queued: true, message: "We're sending a lot of confirmation emails right now. Yours is in line and will arrive within the hour; you don't need to ask again." };
+  return { sent: sent === true, queued: false };
 }
 
 /**
@@ -227,7 +237,8 @@ router.post("/register", registerLimiter, async (req, res) => {
     const sent = await sendVerification(user, req).catch(() => false);
 
     const issued = session.issue(user, res, req);
-    res.status(201).json({ ...sessionBody(user, issued), verificationSent: Boolean(sent) });
+    const told = verificationAnswer(sent);
+    res.status(201).json({ ...sessionBody(user, issued), verificationSent: told.sent, verificationQueued: told.queued, ...(told.message ? { verificationMessage: told.message } : {}) });
   } catch (err) {
     botGuard.releaseForm(check);
     console.error("Registration error:", err.message);
@@ -405,10 +416,18 @@ router.post("/verify-email/resend", authenticate, async (req, res) => {
   if (session.isEmailVerified(user)) return res.json({ sent: false, verified: true });
   if (resendPerMinute.peek(user.id).limited) return res.status(429).json({ error: "We just sent one. Give it a minute, and check the spam folder.", code: "rate-limited" });
   if (resendPerDay.peek(user.id).limited) return res.status(429).json({ error: `That's the limit for today. If the email isn't arriving, ${CALL}.`, code: "rate-limited" });
+  // Per address as well as per account: ten accounts registered from one address each asking five
+  // times was how one address used up the site's hour of confirmation emails (re-review RR-04).
+  const address = clientKey(req);
+  if (resendPerAddress.total(address) >= limits.verifyResendPerClientHour) {
+    return res.status(429).json({ error: `We've sent several confirmation emails from this network in the last hour. Check the spam folder, and try again later; if it isn't arriving, ${CALL}.`, code: "rate-limited" });
+  }
   resendPerMinute.hit(user.id);
-  resendPerDay.hit(user.id);
+  resendPerAddress.add(address, 1);
   const sent = await sendVerification(user, req).catch(() => false);
-  res.json({ sent: Boolean(sent), verified: false, configured: mailer.configured() });
+  // One of the day's five is used only by an email that really went out (or is in line to).
+  if (sent) resendPerDay.hit(user.id);
+  res.json({ ...verificationAnswer(sent), verified: false, configured: mailer.configured() });
 });
 
 // ─── Password reset ────────────────────────────────────────────

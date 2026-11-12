@@ -114,6 +114,9 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
     // In production mode the mailer only honours it together with the test switch.
     EMAIL_OUTBOX_DIR: path.join(tmp, "outbox"),
     SE_TEST_HOOKS: "1",
+    // Production refuses to start without the Turnstile keys unless this is set (security/botCheckStartup.js).
+    // The suites run with the check off unless they pass keys; one of them passes "" here to see the refusal.
+    ALLOW_LAUNCH_WITHOUT_BOT_CHECK: "1",
     ...env,
   };
   for (const k of ["EMAIL_API_KEY", "EMAIL_FROM", "STRIPE_WEBHOOK_SECRET", "HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY", "ADMIN_RECOVERY", "STRIPE_WEBHOOK_ALLOW_UNSIGNED"]) if (!(k in env)) delete childEnv[k];

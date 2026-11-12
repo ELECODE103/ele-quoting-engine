@@ -52,7 +52,7 @@ export default function VerifyEmailPage() {
     setResent('');
     try {
       const r = await api.resendVerification();
-      setResent(r.verified ? 'This address is already confirmed.' : 'A new link is on its way. Use the newest email.');
+      setResent(r.verified ? 'This address is already confirmed.' : r.queued && r.message ? r.message : 'A new link is on its way. Use the newest email.');
     } catch (err) {
       setResent(err.message || `We couldn't send it. Call ${brand.phone}.`);
     }

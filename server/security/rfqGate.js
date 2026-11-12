@@ -12,7 +12,8 @@
 const botGuard = require("./botGuard");
 
 function beforeBody(req, res, next) {
-  if (!botGuard.unverifiedRequestsFull()) return next();
+  // Never for an address's own first few requests this hour (botGuard.js: the allowance starts after them).
+  if (!botGuard.unverifiedRequestsFull(Date.now(), require("./clientKey").clientKey(req))) return next();
   const hasCheck = typeof req.headers["x-turnstile-token"] === "string" && req.headers["x-turnstile-token"] !== "";
   const hasSession = Boolean(req.headers.cookie || req.headers.authorization);
   if (hasCheck || hasSession) return next();

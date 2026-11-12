@@ -264,6 +264,16 @@ const limits = {
   get rfqUnverifiedPerHourSite() { return envInt("RFQ_UNVERIFIED_PER_HOUR_SITE", 30, 1, 100000); },
   /** Emails per hour, site-wide, to addresses nobody has confirmed (services/mailCaps.js). */
   get mailUnconfirmedPerHourSite() { return envInt("MAIL_UNCONFIRMED_PER_HOUR_SITE", 60, 1, 100000); },
+  /** A client address's first messages to unconfirmed addresses each hour, which go out whatever the site-wide count is. */
+  get mailUnconfirmedFreePerClientHour() { return envInt("MAIL_UNCONFIRMED_FREE_PER_CLIENT_HOUR", 2, 0, 1000); },
+  /** Past this many in an hour, whole site, even a first message is held for the next hour (the mail account's reputation is at stake). */
+  get mailUnconfirmedHardPerHourSite() { return envInt("MAIL_UNCONFIRMED_HARD_PER_HOUR_SITE", 300, 1, 1000000); },
+  /** Held messages one client address may have waiting; more are turned away. */
+  get mailHeldPerClient() { return envInt("MAIL_HELD_PER_CLIENT", 3, 0, 1000); },
+  /** "Send the confirmation again" from one client address in an hour (it is also limited per account). */
+  get verifyResendPerClientHour() { return envInt("VERIFY_RESEND_PER_CLIENT_HOUR", 5, 1, 100000); },
+  /** Requests an address that cannot be verified may always send in an hour, outside the site-wide allowance. */
+  get rfqUnverifiedFreePerClientHour() { return envInt("RFQ_UNVERIFIED_FREE_PER_CLIENT_HOUR", 2, 0, 1000); },
   /** New-request notices per hour to the shop's own inbox. */
   get mailShopRequestsPerHourSite() { return envInt("MAIL_SHOP_REQUESTS_PER_HOUR_SITE", 40, 1, 100000); },
 
