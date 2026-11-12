@@ -42,11 +42,14 @@ const { start, report, money, SHIP } = require("./lib");
     const paid = (await h.get(`/api/orders/${orderId}`, admin)).body;
     const forked = tries["re-price the ordered quote in place"].body.quoteId !== q.body.quoteId;
     r.note(Object.entries(tries).map(([k, v]) => `${k}: ${v.status}`).join("; "));
-    r.note(`paid order afterwards: "${paid.status}", ${money(paid.total)}, ship to "${paid.shippingAddress}", paperwork ${paid.paperwork}, ${paid.items[0].quantity} pcs; the re-price made a new quote (${forked}); the second checkout made a new, separate unpaid order`);
+    r.note(`paid order afterwards: "${paid.status}", ${money(paid.total)}, ship to "${paid.shippingAddress}", paperwork ${paid.paperwork}, ${paid.items[0].quantity} pcs; the re-price made a new quote (${forked}); the second checkout of the paid quote answered ${tries["checkout again with a new address (same quote)"].status} ${tries["checkout again with a new address (same quote)"].body.code || ""} (merge 2026-11-12: with both fix branches in, it no longer makes a second order)`);
     r.finding(paid.total !== s.amount_total / 100 || paid.shippingAddress !== SHIP.shippingAddress || !paid.paperwork || paid.items[0].quantity !== 40 || !forked, "a buyer can change a paid order's lines, address, paperwork flag or total");
 
     // ── F-08 (second part): an order cancelled by the shop can still be paid ──
-    const q2 = await h.post("/api/quote", { parts: [{ partId: cube.partId, process: "cnc", materialSlug: "cnc-brass-360", quantity: 2 }], leadTimeSlug: "standard" });
+    // (merge 2026-11-12, script fault, not the server's: this quote was asked for without a session after the part had been
+    //  claimed by the signed-in buyer at checkout, so with part ownership (review F5) it was refused and nothing below ran
+    //  against a real order. It is now priced by the buyer who owns the part. No attack request was changed.)
+    const q2 = await h.post("/api/quote", { parts: [{ partId: cube.partId, process: "cnc", materialSlug: "cnc-brass-360", quantity: 2 }], leadTimeSlug: "standard" }, buyer);
     const co2 = await h.post("/api/orders/checkout-session", { quoteId: q2.body.quoteId, ...SHIP }, buyer);
     const s2 = h.lastSession();
     await h.put(`/api/orders/${co2.body.orderId}/status`, { status: "cancelled" }, admin);
