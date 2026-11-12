@@ -174,6 +174,15 @@ test('a changed quote says nothing was accepted or charged, and gives the new pr
   assert.ok(m.message.includes('nothing was accepted and nothing was charged') && m.message.includes('The price is now $4,250.00.'), m.message);
   assert.strictEqual(m.action, 'reload');
   assert.ok(!cat.describe({ status: 409, code: 'quote-changed', context: 'firm-quote' }).message.includes('The price is now'));
+  // Relaunch merge: after the order-lifecycle fixes a link whose quote was edited and not sent again opens nothing
+  // (server/routes/rfq.js answers `linkReplaced`). The page shows no quote then, so the wording must not point at
+  // "the details below": it says the link is dead, that nothing was accepted or charged, and where the new one is.
+  const dead = cat.describe({ status: 409, code: 'quote-changed', data: { linkReplaced: true }, context: 'firm-quote' }).message;
+  assert.ok(/changed after this link was sent/.test(dead) && dead.includes('Nothing was accepted and nothing was charged') && /newest email/.test(dead) && dead.includes('224-213-6727'), dead);
+  assert.ok(!/below|accept again|Reload/.test(dead), dead);
+  // A stale page (the total on screen is no longer the quote's) is sent back to the page itself, not to "details below".
+  const stale = cat.describe({ status: 409, code: 'quote-changed', context: 'firm-quote' }).message;
+  assert.ok(/Reload this page/.test(stale) && !/details below/.test(stale), stale);
 });
 
 test('a code this file has never heard of still reads well: the server\'s sentence if it is a buyer\'s sentence, else the plain one for the status', () => {

@@ -188,10 +188,14 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'address-required': { '*': { text: 'Add the full ship-to address: name, street, city, state and ZIP.' } },
     'quote-changed': {
       '*': {
-        // The page shows the quote again with its current price; the buyer confirms that one.
+        // Firm-quote page. Two answers carry this code (server/routes/rfq.js) and in both the page stops showing the quote:
+        //   linkReplaced  the owner changed the quote after this link was sent and has not sent it again: the link
+        //                 opens nothing until the new email arrives, so the way on is that email or a person
+        //   otherwise     the total on the page is no longer the quote's: reloading shows it as it is now
         text: ({ data }) => {
+          if (data && data.linkReplaced) return `This quote was changed after this link was sent, so this link no longer opens it. Nothing was accepted and nothing was charged. Use the link in our newest email about this quote, or ${REACH}.`;
           const now = [data && data.quotedTotal, data && data.total, data && data.orderTotal].map(Number).find((n) => Number.isFinite(n) && n > 0);
-          return `This quote has changed since this page was opened, so nothing was accepted and nothing was charged.${now ? ` The price is now ${dollars(now)}.` : ''} Check the price and the details below, and accept again if they are right. Questions: ${PHONE}.`;
+          return `This quote has changed since this page was opened, so nothing was accepted and nothing was charged.${now ? ` The price is now ${dollars(now)}.` : ''} Reload this page to see the quote as it is now, and accept again if it is right. Questions: ${PHONE}.`;
         },
         action: 'reload',
       },

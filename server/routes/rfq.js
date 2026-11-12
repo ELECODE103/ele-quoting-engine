@@ -506,7 +506,7 @@ function rfqFromToken(req, res) {
   // The link was issued for one set of terms and one amount. If the quote has been edited since
   // and not sent again, the link does not open it: nobody accepts terms they were not sent.
   if (rfq.status === "quoted" && (termsChanged(rfq) || (claim.amt !== null && claim.amt !== rfqToken.amountCents(rfq)))) {
-    res.status(409).json({ error: `This quote was changed after this link was sent, so the link no longer works. We'll email you the updated quote; use the link in that email, or call ${brand.phone}.`, code: "quote-changed" });
+    res.status(409).json({ error: `This quote was changed after this link was sent, so the link no longer works. We'll email you the updated quote; use the link in that email, or call ${brand.phone}.`, code: "quote-changed", linkReplaced: true });
     return null;
   }
   // An expired link still opens for a buyer who accepted in time (it is their order page).

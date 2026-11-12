@@ -621,7 +621,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     assert.strictEqual((await h.get(`/api/rfq/quote/${f.token}`)).body.code, "link-superseded");
     assert.deepStrictEqual([(await h.get(`/api/rfq/quote/${fresh}`)).body.linkAmount, jwt.decode(fresh).amt], [2500, 250000]);
     // The page says which total the buyer was looking at; a different one is refused.
-    assert.deepStrictEqual([(await accept(fresh, { method: "card", seenTotal: 1500 })).body.code], ["quote-changed"]);
+    { const stale = await accept(fresh, { method: "card", seenTotal: 1500 }); assert.deepStrictEqual([stale.body.code, stale.body.linkReplaced], ["quote-changed", undefined]); } // a stale page: reload shows the quote
     const ok = await accept(fresh, { method: "card", seenTotal: 2500 });
     assert.strictEqual(ok.status, 201, ok.text);
     assert.strictEqual(h.stripe.created[h.stripe.created.length - 1].line_items[0].price_data.unit_amount, 250000);
@@ -645,6 +645,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const token = tokenFrom(h.sent.find((m) => m.to === "lines@oem.test"));
     await h.put(`/api/rfq/admin/${c.body.rfqId}`, { partQuantities: { [linesPart]: 250 } }, owner);
     assert.strictEqual((await h.get(`/api/rfq/quote/${token}`)).body.code, "quote-changed");
+    // (relaunch merge) …and says which kind of "changed" it is, so the page can tell the buyer the link is dead rather than "reload".
+    assert.strictEqual((await h.get(`/api/rfq/quote/${token}`)).body.linkReplaced, true);
     // Total saved as 0 on a quote that is out.
     const z = await quoted(1500, 10);
     // (merge 2026-11-12) Two defences meet here. The admin save now refuses a total of 0 on a quote that is out

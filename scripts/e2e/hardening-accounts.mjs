@@ -492,8 +492,10 @@ async function phaseWithKeys() {
     await page.getByLabel('Password').fill(buyerPw);
     await page.getByRole('group', { name: 'Spam check' }).getByText('Check passed.').waitFor();
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await page.getByRole('alert').filter({ hasText: 'Try again in 1 minute' }).waitFor({ timeout: 10000 });
-    check('after five wrong passwords the guessing browser has to wait, with the wait and the way out stated', /reset your password/.test(await page.getByRole('alert').filter({ hasText: 'Try again in 1 minute' }).textContent()));
+    // (The wording is the message catalogue's since the relaunch merge — client/src/utils/messageCatalogue.js `try-later` —
+    // not the server's sentence; what is held is the same: the length of the wait and the way out are both stated.)
+    await page.getByRole('alert').filter({ hasText: 'paused for 1 minute' }).waitFor({ timeout: 10000 });
+    check('after five wrong passwords the guessing browser has to wait, with the wait and the way out stated', /Choose a new password/.test(await page.getByRole('alert').filter({ hasText: 'paused for 1 minute' }).textContent()));
     await shot(page, 'login-paused', { fullPage: false });
     // Meanwhile the account's owner signs in from another browser: the spam check, then in.
     const elsewhere = await newContext();
@@ -558,7 +560,7 @@ async function phaseWithKeys() {
     await registerVia(page, { name: 'Owner', email: OWNER, password: ownerPw });
     await page.getByText('Success! (test stand-in)').waitFor();
     await page.getByRole('button', { name: 'Create account' }).click();
-    await page.getByRole('alert').filter({ hasText: 'already exists' }).waitFor({ timeout: 15000 });
+    await page.getByRole('alert').filter({ hasText: 'already an account for that address' }).waitFor({ timeout: 15000 }); // catalogue wording of `account-exists`
     await sleep(300);
     check('the ADMIN_EMAIL address cannot be registered, and nothing is mailed to the owner', mailsTo(OWNER, /confirm your email/).length === 0 && (await ctx.cookies(BASE)).every((c) => !c.name.endsWith('se_session')));
     await page.goto(`${BASE}/admin`);
