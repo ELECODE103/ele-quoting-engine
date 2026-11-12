@@ -173,7 +173,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const routing = h.models.materialsDB.getAll().find((m) => m.process === "routing" && m.active);
     const q = await h.raw("POST", "/api/quote", { json: { parts: [{ partId: part.partId, materialSlug: routing.slug, thicknessMm: (routing.thicknesses || [])[0]?.mm || (routing.thicknesses || [])[0] || 6.35, quantity: 2, process: "routing" }], process: "routing" }, headers: human });
     assert.strictEqual(q.status, 200, q.text);
-    const s = await h.raw("GET", `/api/quote/${q.body.quoteId}/session`);
+    // Reopening a quote is a quote-tool call like the others: without the verified-human token it is refused.
+    assert.strictEqual((await h.raw("GET", `/api/quote/${q.body.quoteId}/session`)).status, 403);
+    const s = await h.raw("GET", `/api/quote/${q.body.quoteId}/session`, { headers: human });
     assert.strictEqual(s.body.parts[0].editKey, part.editKey);
     // Once the part is on an order line, its geometry is fixed.
     const item = orderItemsDB.insert({ orderId: "some-order", partId: part.partId, fileName: "plate.dxf", quantity: 1 });

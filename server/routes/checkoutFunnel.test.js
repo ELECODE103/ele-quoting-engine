@@ -11,7 +11,10 @@ const assert = require("assert");
 const { start, runner } = require("../testSupport/harness");
 
 const { test, run } = runner("Checkout funnel");
-const QUOTE_ID = "3f0c7c1e-58a4-4d0b-9b57-5f0a4e7b9a11";
+// The id the browser makes up for its first pricing call. The server no longer takes it as the
+// quote's id (a client cannot choose a quote id): it makes its own and the browser keeps that.
+const CLIENT_ID = "3f0c7c1e-58a4-4d0b-9b57-5f0a4e7b9a11";
+let QUOTE_ID = null;
 const SHIP = { shippingName: "Dana Buyer", shippingAddress: "100 Main St", shippingCity: "Elgin", shippingState: "IL", shippingZip: "60120" };
 const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
 
@@ -24,9 +27,12 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
   // ─── Gap 6: one quote row per session ──────────────────────
   test("a guest uploads and prices without an account", async () => {
     partId = await h.uploadCube();
-    const r = await h.post("/api/quote", { quoteId: QUOTE_ID, parts: [h.cncConfig(partId, 2)], leadTimeSlug: "standard", process: "cnc" });
+    const r = await h.post("/api/quote", { quoteId: CLIENT_ID, parts: [h.cncConfig(partId, 2)], leadTimeSlug: "standard", process: "cnc" });
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.body.quoteId, QUOTE_ID, "the session's quote id is kept");
+    assert.notStrictEqual(r.body.quoteId, CLIENT_ID, "a quote id the client made up is not used");
+    assert.match(r.body.quoteId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.strictEqual(quotesDB.getById(CLIENT_ID), null, "no row was created under the client's id");
+    QUOTE_ID = r.body.quoteId; // what the browser stores and sends from here on
     assert.ok(r.body.orderTotal > 0);
     // Inspection paperwork is opt-in: an ordinary quote carries none, and says what it would cost.
     assert.strictEqual(r.body.paperwork, false);
@@ -106,8 +112,11 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.strictEqual(p.quantity, 7);
     assert.strictEqual(p.fileName, "cube_20mm.stl");
     assert.strictEqual(r.body.paperwork, false, "the paperwork box comes back as the buyer left it");
-    assert.ok(p.meshPreview.positions.length > 0, "preview mesh comes back");
-    assert.ok(p.geometry.boundingBox && !p.geometry.meshData);
+    // The part is described once, under its id; a mesh this small (a 16-triangle cube) still comes with it.
+    const described = r.body.partsById[partId];
+    assert.ok(described.meshPreview.positions.length > 0, "preview mesh comes back");
+    assert.strictEqual(described.mesh.url, `/api/parts/${partId}/mesh`);
+    assert.ok(described.geometry.boundingBox && !described.geometry.meshData);
   });
 
   test("after registering, the same quote and parts are there and checkout works", async () => {
@@ -308,7 +317,7 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
     assert.strictEqual(s.body.parts[0].partId, partId);
     assert.strictEqual(s.body.parts[0].quantity, 7);
     assert.strictEqual(s.body.parts[0].materialSlug, h.cncConfig(partId).materialSlug);
-    assert.ok(s.body.parts[0].meshPreview.positions.length > 0);
+    assert.ok(s.body.partsById[partId].meshPreview.positions.length > 0);
   });
 
   test("only the owner can reorder or read an order", async () => {
@@ -320,8 +329,9 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
 
   // ─── Stretch: notes + drawing on the instant path ──────────
   test("notes and a PDF drawing ride from the quote to the order without changing the price", async () => {
-    const id = "9b2f6a55-0c1d-4e6f-8a3b-2d7c5e1f4a90";
-    const plain = await h.post("/api/quote", { quoteId: id, parts: [h.cncConfig(partId, 2)], leadTimeSlug: "standard" }, buyer);
+    // The browser's own first id is not used; the id the server answers with is the quote's from then on.
+    const plain = await h.post("/api/quote", { quoteId: "9b2f6a55-0c1d-4e6f-8a3b-2d7c5e1f4a90", parts: [h.cncConfig(partId, 2)], leadTimeSlug: "standard" }, buyer);
+    const id = plain.body.quoteId;
     const noted = await h.post("/api/quote", { quoteId: id, parts: [h.cncConfig(partId, 2)], leadTimeSlug: "standard", notes: "The 0.500 bore is the one that matters." }, buyer);
     assert.strictEqual(noted.body.orderTotal, plain.body.orderTotal, "notes don't change the price");
     const bad = await h.form(`/api/quote/${id}/drawing`, {}, { drawing: { name: "print.pdf", data: Buffer.from("not a pdf at all") } }, buyer);

@@ -98,8 +98,23 @@ export const api = {
     }));
   },
 
-  /** Parts + configuration of a saved quote, to reopen it in the builder. */
-  async getQuoteSession(id) { return request(`/quote/${id}/session`); },
+  /**
+   * Parts + configuration of a saved quote, to reopen it in the builder.
+   * The server sends each line's configuration (`parts`) and each distinct part once (`partsById`);
+   * here they are put back together as one entry per line, which is what the builder works with.
+   * Previews are not in the answer: each part says where its own is (`mesh.url`, see partLoader.js).
+   */
+  async getQuoteSession(id) {
+    const saved = await gated(() => request(`/quote/${id}/session`));
+    const byId = saved.partsById || {};
+    return { ...saved, parts: (saved.parts || []).map((line) => ({ ...(byId[line.partId] || {}), ...line })) };
+  },
+
+  /** A part's preview mesh or geometry detail, from the URL the server gave for it. Only the browser that holds the part's key may fetch it. */
+  async getPartPayload(url, editKey) {
+    const path = String(url || '').replace(/^\/api/, '');
+    return gated(() => request(path, { headers: { 'X-Part-Key': editKey || '' } }));
+  },
 
   async uploadQuoteDrawing(quoteId, file) {
     return gated(() => {

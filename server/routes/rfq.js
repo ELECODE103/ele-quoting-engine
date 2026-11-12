@@ -73,6 +73,7 @@ if (!fs.existsSync(drawingDir)) fs.mkdirSync(drawingDir, { recursive: true });
 const { attachmentMatchesExtension, ATTACHMENT_EXTENSIONS: DRAWING_EXT } = require("../middleware/fileValidator");
 const ATTACHMENT_TYPES = "Send a PDF, DXF, DWG, or a photo (JPG, PNG, HEIC).";
 const upload = multer({
+  defParamCharset: "utf8", // a file name is read as UTF-8; it is only ever a label
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, drawingDir),
     // The stored name is ours: a random id plus an extension from the allow-list. Nothing the client sent is in the path.
@@ -233,6 +234,25 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       return res.status(403).json({ error: botGuard.MESSAGES.humanRequired, code: "human-check-required" });
     }
     const senderVerified = sender.verified;
+    // Senders who could not be verified share one hourly allowance for the whole site (botGuard.js):
+    // per-client limits alone do not stop a flood sent from many addresses.
+    if (!senderVerified && botGuard.unverifiedRequestsFull()) {
+      await dropFile();
+      botGuard.releaseForm(check);
+      botGuard.noteUnverifiedRefused();
+      res.set("Retry-After", "1800");
+      return res.status(429).json({ error: botGuard.MESSAGES.requestsPaused, code: "requests-paused" });
+    }
+    // The files behind the quote must still be here: a request for parts we no longer hold is a
+    // request the shop cannot quote (services/fileRetention.js partFilesPresent).
+    if (quote) {
+      const files = require("../services/fileRetention").partFilesPresent((quote.lineItems || []).map((li) => li && li.partId));
+      if (!files.ok) {
+        await dropFile();
+        botGuard.releaseForm(check);
+        return res.status(409).json({ error: files.message, code: files.code, missing: files.missing });
+      }
+    }
     // An account that has not confirmed its email does not trigger mail to that address yet.
     const accountUnconfirmed = Boolean(req.user && !req.user.emailVerified && mailer.configured());
     const buyerEmail = senderVerified && !accountUnconfirmed && botGuard.allowConfirmationEmail(req, email);
@@ -280,7 +300,11 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       // "turnstile" / "account" when the sender was verified; "none" when not.
       senderCheck: senderVerified ? sender.method : "none",
       buyerEmailed: buyerEmail,
+      // Whose stored bytes the attachment is (a keyed hash of the client key) and how many.
+      clientTag: req.file ? require("../security/uploadGuards").clientTag(require("../security/clientKey").clientKey(req)) : "",
+      drawingBytes: req.file ? req.file.size : 0,
     });
+    if (!senderVerified) botGuard.countUnverifiedRequest();
 
     kept = true; // the request row owns the attachment now
     if (req.file) require("../security/uploadGuards").storage.add(req.file.size);

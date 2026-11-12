@@ -132,6 +132,13 @@ async function start(opts = {}) {
   async function raw(method, url, { headers = {}, json, body, token, ip } = {}) {
     const hdrs = { "X-Forwarded-For": ip || h.ip || nextIp(), ...headers };
     if (token) hdrs.Authorization = `Bearer ${token}`;
+    // A verified-human token belongs to the address that passed the check and is not accepted from
+    // another. Each call here comes from its own address (a different visitor), so the suite's
+    // standard token is issued again for the address this call is sent from.
+    if (h.humanToken && hdrs["X-Human-Token"] === h.humanToken) {
+      const from = String(hdrs["X-Forwarded-For"]).split(",").pop().trim();
+      hdrs["X-Human-Token"] = botGuard.issueHumanToken(require("../security/clientKey").keyForAddress(from));
+    }
     let payload = body;
     if (json !== undefined) { hdrs["Content-Type"] = "application/json"; payload = JSON.stringify(json); }
     const res = await fetch(base + url, { method, headers: hdrs, body: payload, redirect: "manual" });
