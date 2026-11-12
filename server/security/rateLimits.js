@@ -12,6 +12,7 @@
  *   POST /api/parts/:id/units           shares the upload limit's size (its own bucket)
  *   POST /api/quote (pricing)           300 / 15 min and 40 / 10 s  RATE_QUOTE_PER_15MIN, RATE_QUOTE_BURST_PER_10SEC
  *   GET  /api/quote/:id/session         60 / 15 min                 RATE_QUOTE_SESSION_PER_15MIN
+ *   GET  /api/parts/:id/mesh|geometry   240 / 15 min (together)     RATE_PART_PREVIEW_PER_15MIN
  *   POST /api/quote/:id/drawing         20 / hour                   RATE_DRAWING_PER_HOUR
  *   /api/pdf/*, /api/orders/:id/traveler 60 / 15 min                RATE_PDF_PER_15MIN
  *   GET  /api/admin/backup/*            12 / hour
@@ -30,7 +31,7 @@ const brand = require("../../shared/brand.json");
 
 const MIN = 60 * 1000;
 
-function limiter({ windowMs, max, message, skip }) {
+function limiter({ windowMs, max, message, skip, code = "rate-limited" }) {
   return rateLimit({
     windowMs,
     max,
@@ -38,7 +39,7 @@ function limiter({ windowMs, max, message, skip }) {
     legacyHeaders: false,
     keyGenerator: clientKey,
     skip,
-    message: { error: message, code: "rate-limited" },
+    message: { error: message, code },
   });
 }
 
@@ -47,6 +48,8 @@ function skipGeneral(req) {
   const p = req.path; // relative to the /api mount
   if (p === "/health") return true;
   if (req.method === "POST" && (p === "/quote" || p === "/quote/")) return true;
+  // Part previews have their own limiter: a 25-part quote reopened is 25 fetches.
+  if (req.method === "GET" && /^\/parts\/[^/]+\/(mesh|geometry)\/?$/.test(p)) return true;
   return false;
 }
 
@@ -57,6 +60,11 @@ function install(app) {
   app.post("/api/quote", limiter({ windowMs: 15 * MIN, max: limits.rateQuotePer15Min, message: `That's a lot of pricing requests from this network. Try again in a few minutes, or call ${brand.phone}.` }));
 
   app.get("/api/quote/:id/session", limiter({ windowMs: 15 * MIN, max: limits.rateSessionPer15Min, message: "Too many requests, please try again later." }));
+
+  // A part's 3D preview and geometry detail (streamed files, megabytes each): their own allowance.
+  const preview = limiter({ windowMs: 15 * MIN, max: limits.ratePartPreviewPer15Min, message: "You've loaded a lot of part previews in a short time. They'll be back in a few minutes; pricing and ordering still work.", code: "preview-rate-limited" });
+  app.get("/api/parts/:partId/mesh", preview);
+  app.get("/api/parts/:partId/geometry", preview);
 
   app.post("/api/parts/:partId/units", limiter({ windowMs: 15 * MIN, max: limits.rateUploadPer15Min, message: "Too many changes to this drawing. Try again in a few minutes." }));
 

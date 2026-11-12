@@ -107,16 +107,24 @@ async function pipeline() {
     // ... followed on the same connection by a pricing request that creates a draft quote.
     const json = JSON.stringify({ parts: [line], leadTimeSlug: "standard" });
     const second = `POST /api/quote HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Forwarded-For: ${ip}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`;
+    // 2026-11-12, added with the fix: the client here keeps its half open after the server's answer and so
+    // never learns of the server's close (see hold()), so the server's own side is measured as well, the
+    // way hold() does it: its count of open sockets back to where it was.
+    const fds = () => { try { return require("fs").readdirSync(`/proc/${s.pid}/fd`).length; } catch { return -1; } };
+    await c.sleep(6500); // the admin's own connection for the count above has gone by now
+    const baseFds = fds(); const tFd = Date.now(); let serverSideClosedAfterMs = null; let sawOpen = false;
+    const watch = setInterval(() => { const now = fds(); if (now > baseFds) sawOpen = true; else if (sawOpen && serverSideClosedAfterMs === null) serverSideClosedAfterMs = Date.now() - tFd; }, 50);
     const r = await rawRequest(s.port, head, { maxMs: 20000, feed: async ({ write, isDone }) => {
       const chunk = Buffer.alloc(c.MB, 0x20);
       for (let left = length; left > 0 && !isDone();) { const b = left >= chunk.length ? chunk : chunk.subarray(0, left); write(b); left -= b.length; await c.sleep(5); }
       if (!isDone()) write(Buffer.from(second));
     } });
     await c.sleep(2500);
+    clearInterval(watch);
     const after = await count();
     const answers = (r.answer.match(/HTTP\/1\.1 \d+/g) || []);
     c.result({
-      test: "linger pipeline", firstAnswer: r.statusLine, answersOnTheConnection: answers, connectionClosedAfterMs: r.closedAfterMs,
+      test: "linger pipeline", firstAnswer: r.statusLine, answersOnTheConnection: answers, connectionClosedAfterMs: r.closedAfterMs, serverSideSocketClosedAfterMs: serverSideClosedAfterMs,
       pipelined: { request: "POST /api/quote (a new draft)", answered: answers.length > 1, executed: after > before, draftQuotesBefore: before, draftQuotesAfter: after },
     });
   } finally { await s.stop(); }

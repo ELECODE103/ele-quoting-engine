@@ -32,10 +32,18 @@ function canUse(part, { user = null, key = "", allowAnonymous = false } = {}) {
   return allowAnonymous === true || tokens.partEditKeyOk(part.id, key);
 }
 
-/** Bind a part nobody owns yet to the signed-in account that has just shown it may use it. */
+/**
+ * Bind a part nobody owns yet to the signed-in account that has just shown it may use it.
+ * Only the row is written (partsDB.setOwner): the part's measurements are not read again. The part
+ * handed in is marked too, so a quote that names one part on many lines claims it once.
+ */
 function claim(part, user, partsDB) {
   if (!part || part.userId || !user || !user.userId) return part;
-  return partsDB.update(part.id, { userId: user.userId }) || part;
+  if (typeof partsDB.setOwner === "function") partsDB.setOwner(part.id, user.userId);
+  else partsDB.update(part.id, { userId: user.userId, ownerId: user.userId });
+  part.userId = user.userId;
+  part.ownerId = user.userId;
+  return part;
 }
 
 module.exports = { canUse, claim, isAdmin };

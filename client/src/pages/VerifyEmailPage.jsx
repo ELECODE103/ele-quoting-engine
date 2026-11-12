@@ -5,6 +5,7 @@ import { useAuth } from '../utils/authContext';
 import Wordmark from '../components/Wordmark';
 import Notice from '../components/form/Notice';
 import brand from '../brand';
+import { describeNotice } from '../utils/messages';
 import { tokenFromHash } from '../utils/linkToken';
 import { storedQuoteId, pendingCheckout, authPath } from '../utils/returnTo';
 
@@ -64,7 +65,11 @@ export default function VerifyEmailPage() {
       const r = await api.resendVerification();
       setResent(r.verified
         ? { ok: true, text: 'This address is already confirmed. There is nothing more to do.' }
-        : { ok: true, text: `A new link is on its way to ${user?.email || 'your address'}. Use the newest email: older links stop working.` });
+        : r.queued
+          ? { ok: true, text: describeNotice('verification-queued') }
+          : r.sent === false
+            ? { ok: false, text: `We couldn't send it just now. Try again in a minute, or call ${brand.phone}.` }
+            : { ok: true, text: `A new link is on its way to ${user?.email || 'your address'}. Use the newest email: older links stop working.` });
     } catch (err) {
       setResent({ ok: false, text: err.message });
     }

@@ -146,4 +146,37 @@ function binaryStl(n) {
   return buf;
 }
 
-module.exports = { buildZip, boxModelXml, box3mf, binaryStl, crc32 };
+/**
+ * A binary STL of a real, closed solid: a w × d × h box whose faces are each a
+ * k × k grid (12·k² triangles, outward-facing). Unlike binaryStl() — a flat
+ * sheet, which has no volume and is refused as "not a measurable part" — this
+ * is a part the instant quote reads and prices. solidStl(32) is about 600 kB.
+ */
+function solidStl(k = 1, [w, d, h] = [60, 40, 20]) {
+  const tris = [];
+  // One face: origin o, edge vectors u and v, wound so that u × v points out of the box.
+  const face = (o, u, v) => {
+    const at = (i, j) => [o[0] + (u[0] * i + v[0] * j) / k, o[1] + (u[1] * i + v[1] * j) / k, o[2] + (u[2] * i + v[2] * j) / k];
+    for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) {
+      tris.push([at(i, j), at(i + 1, j), at(i + 1, j + 1)], [at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
+    }
+  };
+  face([0, 0, 0], [0, d, 0], [w, 0, 0]); // bottom (−z)
+  face([0, 0, h], [w, 0, 0], [0, d, 0]); // top (+z)
+  face([0, 0, 0], [w, 0, 0], [0, 0, h]); // front (−y)
+  face([0, d, 0], [0, 0, h], [w, 0, 0]); // back (+y)
+  face([0, 0, 0], [0, 0, h], [0, d, 0]); // left (−x)
+  face([w, 0, 0], [0, d, 0], [0, 0, h]); // right (+x)
+  const buf = Buffer.alloc(84 + tris.length * 50);
+  buf.write("test solid", 0, "ascii");
+  buf.writeUInt32LE(tris.length, 80);
+  let o = 84;
+  for (const t of tris) {
+    o += 12;
+    for (const p of t) { buf.writeFloatLE(p[0], o); buf.writeFloatLE(p[1], o + 4); buf.writeFloatLE(p[2], o + 8); o += 12; }
+    o += 2;
+  }
+  return buf;
+}
+
+module.exports = { buildZip, boxModelXml, box3mf, binaryStl, solidStl, crc32 };

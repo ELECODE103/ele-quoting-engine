@@ -22,6 +22,17 @@ if (process.env.NODE_ENV === "production") {
   }
 }
 
+// The robot check: in production the keys are required unless the owner waives it in so many
+// words (security/botCheckStartup.js). Names only are printed, never a value.
+{
+  const bot = require("./security/botCheckStartup").check(process.env);
+  if (!bot.ok) {
+    for (const line of bot.fatal) console.error(line);
+    process.exit(1);
+  }
+  if (bot.warning) console.warn(bot.warning);
+}
+
 // A file-encryption key that is set but unusable (too short, a placeholder) is a
 // misconfiguration, not a preference: stop the deploy rather than "encrypt" with it.
 {
@@ -34,6 +45,10 @@ if (process.env.NODE_ENV === "production") {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Before anything else: a request that arrives on a connection whose previous request was refused
+// and is only being drained is not run (security/uploadGuards.js lingerThenClose).
+app.use(require("./security/uploadGuards").refuseOnLingering);
 
 // ─── Trust proxy (required behind Railway/load balancer) ─────────
 if (process.env.NODE_ENV === "production") {
@@ -130,6 +145,10 @@ app.post("/api/rfq", rfqCreateLimiter);
 // An attachment is written to disk before the route sees it: hold the storage ceiling and the
 // client's daily upload budget first (the RFQ form sends at most one 25 MB file).
 app.post("/api/rfq", require("./security/uploadGuards").admit({ chargeDeclared: true, maxRequestBytes: () => 26 * 1024 * 1024 }));
+// The site-wide hourly allowance for requests from senders who cannot be verified: when it is used
+// up, such a request is refused here, before its attachment is read (the route checks again once it
+// knows who the sender is). Requests that carry a robot-check answer or a session go on to the route.
+app.post("/api/rfq", require("./security/rfqGate").beforeBody);
 const rfqRoutes = require("./routes/rfq");
 app.use("/api/rfq", rfqRoutes);
 
@@ -220,6 +239,28 @@ async function start() {
     sweepDatabase();
     const rowTimer = setInterval(sweepDatabase, 6 * 60 * 60 * 1000);
     if (rowTimer.unref) rowTimer.unref();
+  }
+  // Do the keys we were given open the encrypted files that are already here? With a key set, a part's
+  // measurements live in encrypted files, so a changed key with the old one not listed means existing
+  // parts cannot be priced or reopened until it is. Say so where it will be seen.
+  {
+    const check = require("./services/fileCrypto").checkKeysAgainst(uploadGuards.STORAGE_DIRS);
+    if (check.locked > 0) {
+      console.error("════════════════════════════════════════════════════════════════════");
+      console.error(`ERROR: EXISTING FILES CANNOT BE OPENED — ${check.locked} of the ${check.checked} encrypted files on the volume were written under a different key than NORD_FILE_ENC_KEY${process.env.NORD_FILE_ENC_KEY ? "" : " (which is not set)"}.`);
+      console.error("  Until this is fixed: parts uploaded before the key changed cannot be priced, reopened or downloaded");
+      console.error("  (customers are asked to upload again). New uploads are not affected. Nothing has been deleted.");
+      console.error("  Fix: put the earlier key in NORD_FILE_ENC_KEY_PREVIOUS (Railway → Variables) and redeploy.");
+      console.error("  See docs/security/file-encryption.md, \"Changing the key\".");
+      console.error("════════════════════════════════════════════════════════════════════");
+    }
+  }
+  // What gives way by itself when the database or the file folders fill up, the attachments of
+  // closed requests, and uploads left behind by an interrupted parse (services/storagePressure.js).
+  require("./services/storagePressure").start(require("./models"));
+  {
+    const { limits } = require("./security/limits");
+    console.log(`  Memory budget: ${limits.memoryBudgetMb} MB (MEMORY_BUDGET_MB) — parse workers ${limits.parseMaxHeapMb} MB heap each, ${limits.parseRssLimitMb} MB for parsing in all; database ceiling ${Math.round(limits.databaseMaxBytes / 1048576)} MB. Set MEMORY_BUDGET_MB to the service's memory limit in Railway.`);
   }
 
   // Unpaid orders whose checkout session has lapsed are closed out as expired (and one that was

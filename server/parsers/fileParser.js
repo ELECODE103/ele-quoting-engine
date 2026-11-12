@@ -15,6 +15,10 @@ const dxf = require("../geometry/dxf");
 const { summarizeChecks } = require("../processes/shared");
 const { limits } = require("../security/limits");
 const { read3mfModel } = require("./zipGuard");
+// The front door: cheap checks on the raw bytes before the expensive work, and the "did we measure a
+// real part" rule on what comes out (independent review 2026-11-11, H1, H4, L3).
+const inputGuards = require("./inputGuards");
+const { assertSaneGeometry } = require("./saneGeometry");
 
 /**
  * A model too big for the instant quote. The message is for the customer and
@@ -385,8 +389,10 @@ function extractOcctMeshes(result) {
 }
 
 // ─── STEP PARSER (via occt-import-js) — hardened ────────────
-const STEP_TIMEOUT_MS = 30000; // 30-second max parse time
-
+// Time limit: ReadStepFile is one synchronous call into the CAD kernel, so nothing in this thread
+// can interrupt it (a timer raced against it here never fired: it could only run after the call had
+// returned). The limit that works is outside: the parse pool stops this worker thread when the
+// file's budget is up (parsers/parsePool.js, PARSE_TIMEOUT_CAD_BASE_MS + per-MB, at most PARSE_TIMEOUT_MS).
 async function parseSTEP(buffer) {
   let occt;
   try {
@@ -396,18 +402,11 @@ async function parseSTEP(buffer) {
     throw new Error("STEP parser failed to initialize. Please try again or export as STL.");
   }
 
-  // Parse with timeout protection
   const fileBuffer = new Uint8Array(buffer);
   let result;
   try {
-    result = await Promise.race([
-      Promise.resolve(occt.ReadStepFile(fileBuffer, null)),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("STEP parsing timed out after 30 seconds. The file may be too complex — try simplifying or exporting as STL.")), STEP_TIMEOUT_MS)
-      ),
-    ]);
+    result = occt.ReadStepFile(fileBuffer, null);
   } catch (parseErr) {
-    if (parseErr.message.includes("timed out")) throw parseErr;
     throw new Error("Failed to read STEP file. The file may be corrupt or from an unsupported CAD version. Try re-exporting from your CAD software.");
   }
 
@@ -425,6 +424,7 @@ async function parseSTEP(buffer) {
   if (totalTriangles === 0) {
     throw new Error("STEP file parsed but produced no triangles. The geometry may be too small or degenerate.");
   }
+  inputGuards.assertFiniteVertices(allVertices);
 
   const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles, { source: "step", brepFaces, cornerNormals });
 
@@ -664,6 +664,7 @@ async function parse3MF(buffer) {
   if (totalTriangles === 0) {
     throw new Error("3MF file contains no mesh geometry. The file may contain only metadata or component references without embedded meshes.");
   }
+  inputGuards.assertFiniteVertices(allVertices, { shells: true }); // a vertex or a transform that is not a number; one closed shell inside another
 
   const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles, { source: "3mf" });
 
@@ -712,6 +713,7 @@ async function parseIGES(buffer) {
   if (totalTriangles === 0) {
     throw new Error("IGES file parsed but produced no triangles.");
   }
+  inputGuards.assertFiniteVertices(allVertices);
 
   const analysis = analyzeTriangleMesh(allVertices, allNormals, totalTriangles, { source: "iges", brepFaces, cornerNormals });
   analysis.units = "mm";
@@ -775,6 +777,9 @@ async function parseFile(filePath, processOptions = {}) {
   const ext = (processOptions.ext || path.extname(filePath)).toLowerCase();
   const buffer = processOptions.buffer || fs.readFileSync(filePath);
 
+  // Before any parser runs: coordinates that are not numbers, a file padded far past what its model needs.
+  inputGuards.checkInput(ext, buffer);
+
   let geometry;
 
   switch (ext) {
@@ -799,6 +804,9 @@ async function parseFile(filePath, processOptions = {}) {
     default:
       throw new Error(`Unsupported file format: ${ext}. Supported: .step, .stp, .stl, .iges, .igs, .3mf, .dxf`);
   }
+
+  // What came out must be a part: finite, positive, sane measurements — or it goes to a person, not to a price.
+  assertSaneGeometry(geometry);
 
   // Run DFM analysis for the requested process (default: first active process; a DXF is always routing)
   const dfm = runDFMAnalysis(geometry, { process: dxf.is2D(geometry) ? "routing" : defaultProcessSlug(), ...processOptions });

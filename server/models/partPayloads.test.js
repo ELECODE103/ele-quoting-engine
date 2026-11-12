@@ -22,7 +22,7 @@ const { test, run } = runner("Part payloads in files");
 const root = path.join(__dirname, "..", "..");
 const partsDir = path.join(root, "tools", "vet-quotes", "parts");
 let h, payloads, dataDir, payloadDir;
-const ENV_KEYS = ["NORD_FILE_ENC_KEY", "NORD_FILE_ENC_KEY_PREVIOUS", "PART_INLINE_MESH_KB", "PART_INLINE_GEOMETRY_KB", "UPLOAD_DIR_MAX_MB"];
+const ENV_KEYS = ["NORD_FILE_ENC_KEY", "NORD_FILE_ENC_KEY_PREVIOUS", "PART_INLINE_MESH_KB", "PART_INLINE_GEOMETRY_KB", "UPLOAD_DIR_MAX_MB", "UPLOAD_DIR_RESERVED_PERCENT"];
 const withEnv = async (env, fn) => {
   const keep = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   Object.assign(process.env, env);
@@ -83,7 +83,9 @@ test("what stays in the row: a small mesh and ordinary geometry; a large mesh an
   assert.deepStrictEqual(JSON.parse(hs.geometryJson), JSON.parse(JSON.stringify({ ...heavy, meshData: { positions: [], triangleCount: 4000 } })), "the geometry file is the whole geometry with the mesh stubbed");
   assert.deepStrictEqual(Object.keys(JSON.parse(hs.geometryJson)), Object.keys(heavy), "in the original key order");
   assert.deepStrictEqual([hs.row.volume, hs.row.surfaceArea, hs.row.triangleCount, hs.row.units, hs.row.boundingBox.width], [6000.25, 2200.5, 4000, "mm", 10], "the row keeps the scalars and the bounding box");
-  assert.ok(!("features" in hs.row) && !("profile2d" in hs.row) && JSON.stringify(hs.row).length < 2000, "and none of the bulk");
+  // Of the drawing the row keeps only its size and units (so a DXF is still recognisable as one from its row); no loops.
+  assert.deepStrictEqual(hs.row.profile2d, { bbox: heavy.profile2d.bbox, units: { unit: "mm" }, detail: "file" });
+  assert.ok(!("features" in hs.row) && !JSON.stringify(hs.row).includes("loops") && JSON.stringify(hs.row).length < 2000, "and none of the bulk");
   // The thresholds are the documented settings.
   await withEnv({ PART_INLINE_MESH_KB: "1024", PART_INLINE_GEOMETRY_KB: "4096" }, async () => {
     assert.deepStrictEqual(payloads.split(heavy), { row: heavy, meshJson: null, geometryJson: null }, "raised limits keep everything inline");
@@ -199,7 +201,9 @@ test("the storage ceiling counts payload files and refuses a part that would cro
   assert.ok(guards.STORAGE_DIRS.includes(payloadDir), "data/part-payloads is one of the folders under the ceiling");
   assert.ok(!guards.DRAWING_DIRS.includes(payloadDir), "and is not swept as a drawing folder");
   const filler = path.join(payloadDir, ".tmp-filler");
-  await withEnv({ UPLOAD_DIR_MAX_MB: "10" }, async () => {
+  // UPLOAD_DIR_RESERVED_PERCENT=0: this test is about the ceiling itself. The share kept back for
+  // signed-in customers (visitors without an account stop at 85 %) is tested in services/storagePressure.test.js.
+  await withEnv({ UPLOAD_DIR_MAX_MB: "10", UPLOAD_DIR_RESERVED_PERCENT: "0" }, async () => {
     // Fill the folders to within `room` bytes of a 10 MB ceiling, whatever earlier tests left in them.
     const leave = (room) => { try { fs.unlinkSync(filler); } catch { /* first time */ } fs.writeFileSync(filler, Buffer.alloc(10 * 1024 * 1024 - guards.storage.scan() - room)); guards.storage.invalidate(); };
     leave(20000);
@@ -286,7 +290,9 @@ test("with a file-encryption key: payloads are encrypted before they touch the d
   await withEnv({ NORD_FILE_ENC_KEY: keyA }, async () => {
     assert.strictEqual(partsDB.getById(plain.id, { mesh: true }).geometry.meshData.positions.length, 36000, "a plain file from before the key was set still reads");
     partsDB.update(plain.id, { geometry: bigGeometry() });
-    assert.deepStrictEqual(filesOf(plain.id), [`${plain.id}.mesh.json.enc`]);
+    // With a key set nothing of the shape stays in the (unencrypted) database row: the detail has its own encrypted file too.
+    assert.deepStrictEqual(filesOf(plain.id), [`${plain.id}.geometry.json.enc`, `${plain.id}.mesh.json.enc`]);
+    assert.ok(!JSON.stringify(partsDB.getRow(plain.id).geometry).includes('"holes"'), "the row keeps numbers only");
   });
   partsDB.delete(plain.id); partsDB.delete(part.id);
 });
@@ -347,13 +353,21 @@ test("prices do not move: a part priced from files gives the same quote as the s
 test("reopening a quote brings the 3D preview back from its file; if the file is gone the quote still opens, without the preview", async () => {
   const cnc = h.models.materialsDB.getAll().find((m) => m.process === "cnc" && m.active);
   const up = await upload("star_wheel.stl", fs.readFileSync(path.join(partsDir, "star_wheel.stl")));
-  assert.ok(up.meshPreview.positions.length > 10000, "the upload answer carries the mesh, as before");
+  // A mesh that lives in a file is not embedded in answers any more (independent review 2026-11-11, C1):
+  // the answer says where it is, and the browser fetches it with the part's key.
+  assert.deepStrictEqual(up.meshPreview.positions, []);
+  const preview = (part) => h.raw("GET", part.mesh.url, { headers: { "X-Part-Key": part.editKey } });
+  const fromUpload = await preview(up);
+  assert.strictEqual(fromUpload.status, 200);
+  assert.ok(fromUpload.body.positions.length > 10000, "the preview route serves the mesh");
   const q = await h.post("/api/quote", { parts: [{ partId: up.partId, materialSlug: cnc.slug, quantity: 1, process: "cnc", subProcess: "milling" }] });
   const session = await h.get(`/api/quote/${q.body.quoteId}/session`);
   assert.strictEqual(session.status, 200);
-  assert.deepStrictEqual(session.body.parts[0].meshPreview, up.meshPreview, "the same vertices the upload returned");
-  assert.ok(!("meshData" in session.body.parts[0].geometry) && session.body.parts[0].previewUnavailable === undefined);
-  assert.deepStrictEqual(session.body.parts[0].geometry.boundingBox, up.geometry.boundingBox);
+  const described = session.body.partsById[up.partId];
+  assert.deepStrictEqual(described.mesh, up.mesh, "the session names the same preview the upload did");
+  assert.deepStrictEqual((await preview({ mesh: described.mesh, editKey: described.editKey })).body, fromUpload.body, "the same vertices the upload's preview had");
+  assert.ok(!("meshData" in described.geometry));
+  assert.deepStrictEqual(described.geometry.boundingBox, up.geometry.boundingBox);
   // Other answers that carry a part's geometry no longer drag the mesh along.
   const view = await h.get(`/api/quote/${q.body.quoteId}`);
   assert.ok(view.text.length < 60000 && !/"positions":\[[-0-9.]/.test(view.text));
@@ -371,12 +385,14 @@ test("reopening a quote brings the 3D preview back from its file; if the file is
   }
   assert.ok(!/"positions"/.test(list.text) && list.text.length < 40000, `the order list is ${list.text.length} bytes`);
   fs.unlinkSync(path.join(payloadDir, `${up.partId}.mesh.json`));
-  const quiet = console.error; console.error = () => {};
-  let without;
-  // (As the buyer: the part became theirs when they priced it signed in, a few lines up.)
-  try { without = await h.get(`/api/quote/${q.body.quoteId}/session`, buyer); } finally { console.error = quiet; }
-  assert.strictEqual(without.status, 200);
-  assert.deepStrictEqual([without.body.parts[0].meshPreview.positions.length, without.body.parts[0].previewUnavailable], [0, true]);
+  // (As the buyer from here on: the part became theirs when they priced it signed in, a few lines up, so the
+  // visitor who uploaded it no longer opens it with the key alone: security/partAccess.js.)
+  const without = await h.get(`/api/quote/${q.body.quoteId}/session`, buyer);
+  assert.strictEqual(without.status, 200, "the quote still opens");
+  assert.ok(without.body.partsById[up.partId], "and still describes the part");
+  const gone = await h.raw("GET", up.mesh.url, { headers: { "X-Part-Key": up.editKey }, token: buyer });
+  assert.deepStrictEqual([gone.status, gone.body.code], [404, "preview-unavailable"], "the preview says it is unavailable; nothing else is affected");
+  assert.strictEqual((await h.raw("GET", up.mesh.url, { headers: { "X-Part-Key": up.editKey } })).status, 404, "without the account the key alone no longer opens the part at all");
   assert.strictEqual((await h.post("/api/quote", { parts: [{ partId: up.partId, materialSlug: cnc.slug, quantity: 2, process: "cnc", subProcess: "milling" }], quoteId: q.body.quoteId }, buyer)).status, 200, "and it still prices: the mesh is display only");
 });
 

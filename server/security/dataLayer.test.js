@@ -163,7 +163,8 @@ test("quote pricing: a body cannot set the price, the status or the owner, and o
   assert.strictEqual(many.status, 400);
   assert.strictEqual(many.body.code, "too-many-lines");
   assert.ok(/firm quote/i.test(many.body.error));
-  assert.strictEqual((await h.post("/api/quote", { parts: Array.from({ length: 100 }, () => config) })).status, 200, "one hundred lines is still an instant quote");
+  // A visitor without an account prices up to 25 lines at once (QUOTE_MAX_LINES_ANON); a signed-in customer keeps one hundred.
+  assert.strictEqual((await h.post("/api/quote", { parts: Array.from({ length: 25 }, () => config) })).status, 200, "twenty-five lines without an account");
   // A quantity beyond reason is refused. (It used to be clamped to the ceiling and priced; since the
   // review of 2026-11-11 nothing a request sends is turned into a different value and priced.)
   for (const quantity of [1e300, 1000001, 0, -5, 2.5]) {
@@ -173,6 +174,11 @@ test("quote pricing: a body cannot set the price, the status or the owner, and o
     assert.strictEqual(huge.body.orderTotal, undefined, "and no price comes back");
   }
   assert.strictEqual((await h.post("/api/quote", { parts: [{ ...config, quantity: 1000000 }] })).status, 200, "the ceiling itself is still priced (and gated to a person)");
+  // (The customer comes last: pricing the part signed in makes it theirs, and the visitor's requests above would then be refused.)
+  const customer = await h.register("hundred-lines@example.test");
+  assert.strictEqual((await h.post("/api/quote", { parts: Array.from({ length: 100 }, () => config) }, customer)).status, 200, "one hundred lines is still an instant quote");
+  const over = await h.post("/api/quote", { parts: Array.from({ length: 101 }, () => config) }, customer);
+  assert.deepStrictEqual([over.status, over.body.code], [400, "too-many-lines"]);
 });
 
 test("admin records: only the listed fields, only in their types — a blank multiplier can no longer null out the price", async () => {

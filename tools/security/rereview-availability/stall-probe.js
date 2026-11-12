@@ -29,7 +29,12 @@ async function start(env = {}) {
   s.stop = async (o) => { await stop(o); try { fs.unlinkSync(logFile); } catch { /* gone */ } };
   return s;
 }
-const LIFT = { QUOTE_NEW_PER_CLIENT_HOUR: "100000", QUOTE_NEW_PER_CLIENT_DAY: "1000000", QUOTE_NEW_PER_ACCOUNT_HOUR: "100000", QUOTE_NEW_PER_ACCOUNT_DAY: "1000000", RATE_QUOTE_PER_15MIN: "100000", RATE_QUOTE_BURST_PER_10SEC: "10000" };
+// 2026-11-12, added with the round-2 fix: one sender may now hold 512 kB of drafts, so one account can no
+// longer build the 60 MB database this probe times a save at (and its pricing time per hour would run out on the
+// way: stored lines are compressed, so 60 MB is several thousand quotes). The two allowances and the pricing time
+// are lifted here with the other limits on new drafts (same sizes, same saves: a measurement, as the header says;
+// db-ceiling.js is the attack).
+const LIFT = { QUOTE_NEW_PER_CLIENT_HOUR: "100000", QUOTE_NEW_PER_CLIENT_DAY: "1000000", QUOTE_NEW_PER_ACCOUNT_HOUR: "100000", QUOTE_NEW_PER_ACCOUNT_DAY: "1000000", RATE_QUOTE_PER_15MIN: "100000", RATE_QUOTE_BURST_PER_10SEC: "10000", QUOTE_DRAFT_KB_PER_CLIENT: "1048576", QUOTE_DRAFT_KB_PER_ACCOUNT: "1048576", QUOTE_PRICE_SECONDS_PER_CLIENT_HOUR: "86400", QUOTE_PRICE_SECONDS_PER_ACCOUNT_HOUR: "86400" };
 const med = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : null; };
 
 /** Health sampled every 25 ms with the time of each sample, so a slow one can be matched to what the server was doing. */

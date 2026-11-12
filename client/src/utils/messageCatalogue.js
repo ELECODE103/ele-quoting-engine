@@ -384,6 +384,16 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     disputed: () => `The bank behind the card has raised a question about this payment (a dispute). We answer the bank directly, and the order waits until it is settled. If you did not ask your bank about this charge, call ${PHONE}.`,
     cancelled: () => `This order was cancelled and will not be made. If that is not what you expected, call ${PHONE}.`,
   };
+  // ─── Notices: not refusals ───────────────────────────────────
+  // Something the server did that the buyer should know about, on an answer that is otherwise a success.
+  //   verification-queued  the site is over its hourly line for email to addresses nobody has confirmed, so the
+  //                        confirmation email is held and sent when the hour turns (`queued` / `verificationQueued`)
+  const NOTICES = {
+    'verification-queued': 'We are sending a lot of confirmation emails right now, so yours is waiting its turn. It will arrive within the hour, and you don\'t need to ask again. Check the spam folder when it does.',
+  };
+  const notice = (key) => NOTICES[key] || '';
+  const noticeTable = () => Object.entries(NOTICES).map(([key, text]) => ({ key, text }));
+
   // ─── Why a quote goes to a person (gate reasons) ─────────────
   // Not refusals: the reasons listed beside "Request a firm quote" (`gate.reasons[].code`, and the `reasons` of
   // an `rfq-required` answer). The server's sentence names the numbers (pieces, the limit, the thickness), so it
@@ -426,5 +436,5 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
   /** The order states and their sentences, for the same table. */
   const orderStateTable = () => Object.keys(ORDER_STATES).map((key) => ({ state: key, text: orderState(key, { amount: 120, email: 'the address on the order' }) }));
 
-  return { describe, contextFor, isDeveloperText, table, orderState, orderStateTable, gateReason, gateReasonTable, codes: Object.keys(BY_CODE), gateReasonCodes: Object.keys(GATE_REASONS) };
+  return { describe, contextFor, isDeveloperText, table, orderState, orderStateTable, gateReason, gateReasonTable, notice, noticeTable, codes: Object.keys(BY_CODE), gateReasonCodes: Object.keys(GATE_REASONS), noticeKeys: Object.keys(NOTICES) };
 }

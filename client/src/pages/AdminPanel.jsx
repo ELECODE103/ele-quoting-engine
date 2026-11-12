@@ -470,6 +470,21 @@ function AdminConsole() {
       {/* ─── QUOTES TAB ─── */}
       {tab === 'quotes' && (
         <div className="card table-scroll" tabIndex={0} role="region" aria-label="Quotes table" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid var(--border-subtle)', fontSize: 12 }}>
+            <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}
+              onClick={async () => {
+                if (!window.confirm('Delete draft quotes that visitors without an account started and have not touched for two days? Quotes that became orders or requests, and customers\' quotes, are kept.')) return;
+                try {
+                  const r = await api.purgeDrafts(48);
+                  const more = r.removedUnderPressure ? ` ${r.removedUnderPressure} of them came from whoever held the most, because the database was over its line.` : '';
+                  alert(`${r.removedDrafts} old draft quote${r.removedDrafts === 1 ? '' : 's'} deleted.${more}`);
+                  loadData();
+                } catch (e) { alert('Could not clear the drafts: ' + e.message); }
+              }}>
+              Clear old drafts
+            </button>
+            <span style={{ color: 'var(--text-dim)' }}>Removes abandoned drafts from visitors without an account. The site also does this by itself.</span>
+          </div>
           {quotes.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-dim)' }}>
               No quotes yet. Upload parts and configure a quote to see them here.

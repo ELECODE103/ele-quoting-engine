@@ -80,21 +80,27 @@ const storage = {
   /**
    * Is there room for `incoming` more bytes? Logs once a minute when the
    * answer is no, and once every ten minutes past the warning line.
+   * `opt.reserved: false` asks on behalf of a visitor without a confirmed
+   * account: their share ends UPLOAD_DIR_RESERVED_PERCENT short of the ceiling,
+   * so that a flood of anonymous uploads cannot close the door on customers.
    */
-  hasRoom(incoming = 0) {
-    const max = limits.storageMaxBytes;
+  hasRoom(incoming = 0, opt = {}) {
+    const full = limits.storageMaxBytes;
+    const max = opt.reserved === false ? full * (1 - limits.storageReservedFraction) : full;
     const used = this.usage();
     const now = Date.now();
     if (used + incoming > max) {
       if (now - this.lastRefuseLogAt > 60 * 1000) {
         this.lastRefuseLogAt = now;
-        console.error(`UPLOAD STORAGE FULL: ${mb(used)} MB of ${mb(max)} MB used in data/uploads, data/quote-drawings, data/rfq-drawings and data/part-payloads — new files are being refused. Raise UPLOAD_DIR_MAX_MB, shorten UPLOAD_RETENTION_HOURS, or clear old files.`);
+        console.error(opt.reserved === false && used + incoming <= full
+          ? `UPLOAD STORAGE NEARLY FULL: ${mb(used)} MB of ${mb(full)} MB used — new files from visitors without a confirmed account are being refused (the rest is kept for customers). Old uploads nothing refers to are being cleared automatically; raise UPLOAD_DIR_MAX_MB if this keeps happening.`
+          : `UPLOAD STORAGE FULL: ${mb(used)} MB of ${mb(full)} MB used in data/uploads, data/quote-drawings, data/rfq-drawings and data/part-payloads — new files are being refused. Raise UPLOAD_DIR_MAX_MB, shorten UPLOAD_RETENTION_HOURS, or clear old files.`);
       }
       return false;
     }
-    if (used + incoming > max * limits.storageWarnFraction && now - this.lastWarnAt > 10 * 60 * 1000) {
+    if (used + incoming > full * limits.storageWarnFraction && now - this.lastWarnAt > 10 * 60 * 1000) {
       this.lastWarnAt = now;
-      console.warn(`WARNING: upload storage at ${Math.round((used / max) * 100)}% (${mb(used)} MB of ${mb(max)} MB). New files are refused at 100%.`);
+      console.warn(`WARNING: upload storage at ${Math.round((used / full) * 100)}% (${mb(used)} MB of ${mb(full)} MB). Old uploads nothing refers to are cleared automatically from here; new files from visitors without an account are refused at ${Math.round((1 - limits.storageReservedFraction) * 100)}%, everyone's at 100%.`);
     }
     return true;
   },
@@ -111,27 +117,83 @@ const mb = (bytes) => Math.round(bytes / (1024 * 1024));
 const database = {
   lastWarnAt: 0,
   lastRefuseLogAt: 0,
+  /** The database as it is in memory now (what the next save writes): the file can lag behind re-priced drafts. */
   size() {
-    try { return require("../models/database").fileSize(); } catch { return 0; }
+    try { const d = require("../models/database"); return typeof d.liveSize === "function" ? d.liveSize() : d.fileSize(); } catch { return 0; }
   },
-  hasRoom() {
-    const max = limits.databaseMaxBytes;
+  /**
+   * Room for a new row? `opt.reserved: false` asks for a visitor without a
+   * confirmed account, whose share ends DB_RESERVED_PERCENT short of the ceiling.
+   */
+  hasRoom(opt = {}) {
+    const full = limits.databaseMaxBytes;
+    const max = opt.reserved === false ? full * (1 - limits.dbReservedFraction) : full;
     const used = this.size();
     const now = Date.now();
     if (used > max) {
       if (now - this.lastRefuseLogAt > 60 * 1000) {
         this.lastRefuseLogAt = now;
-        console.error(`DATABASE FULL: the database file is ${mb(used)} MB, over the ${mb(max)} MB ceiling (DB_MAX_MB) — new uploads are being refused until row retention brings it down.`);
+        console.error(opt.reserved === false && used <= full
+          ? `DATABASE NEARLY FULL: the database file is ${mb(used)} MB of ${mb(full)} MB (DB_MAX_MB) — new quotes and uploads from visitors without a confirmed account are being refused; customers are not affected. Old no-account drafts are being cleared automatically.`
+          : `DATABASE FULL: the database file is ${mb(used)} MB, over the ${mb(full)} MB ceiling (DB_MAX_MB) — new quotes and uploads are being refused. Checkout, sign-in and orders are not affected. Clear old drafts in the admin panel or raise DB_MAX_MB.`);
       }
       return false;
     }
-    if (used > max * limits.storageWarnFraction && now - this.lastWarnAt > 10 * 60 * 1000) {
+    if (used > full * limits.dbSweepFraction && now - this.lastWarnAt > 10 * 60 * 1000) {
       this.lastWarnAt = now;
-      console.warn(`WARNING: database file at ${Math.round((used / max) * 100)}% of its ceiling (${mb(used)} MB of ${mb(max)} MB). New uploads are refused at 100%.`);
+      console.warn(`WARNING: database file at ${Math.round((used / full) * 100)}% of its ceiling (${mb(used)} MB of ${mb(full)} MB). Old no-account drafts are cleared automatically from here; new ones are refused at ${Math.round((1 - limits.dbReservedFraction) * 100)}%.`);
     }
     return true;
   },
+  /**
+   * The question a route asks before it adds a row for this user (or visitor).
+   * @returns {{ ok: boolean, reserved: boolean }} reserved: the refusal is the anonymous share
+   *          (a confirmed customer would still get through)
+   */
+  roomFor(user) {
+    const confirmed = isConfirmedCustomer(user);
+    if (this.hasRoom({ reserved: confirmed })) return { ok: true, reserved: false };
+    return { ok: false, reserved: !confirmed && this.size() <= limits.databaseMaxBytes };
+  },
 };
+
+/** A signed-in account whose email is confirmed (or an admin): the people the reserved share is kept for. */
+function isConfirmedCustomer(user) {
+  return Boolean(user && (user.emailVerified || user.role === "admin"));
+}
+
+/**
+ * A stable tag for a client key: what a stored part or request carries so the
+ * bytes one client has on the volume can be added up. A keyed hash — the
+ * address itself is not written to the database.
+ */
+function clientTag(key) {
+  if (!key) return "";
+  return require("./keys").mac("client-tag-v1", String(key)).slice(0, 24);
+}
+
+/** Bytes this client has stored right now: CAD files and what was derived from them, and request attachments. */
+function storedBytesFor(key) {
+  const tag = clientTag(key);
+  if (!tag) return 0;
+  try {
+    const models = require("../models");
+    let total = models.partsDB.storedBytesFor(tag);
+    for (const r of models.rfqsDB.query((x) => x.clientTag === tag && x.drawingPath)) total += Number(r.drawingBytes) || 0;
+    return total;
+  } catch { return 0; }
+}
+
+/** Bytes an account has stored right now (parts uploaded while signed in to it, and its requests' attachments). */
+function storedBytesForAccount(userId) {
+  if (!userId) return 0;
+  try {
+    const models = require("../models");
+    let total = typeof models.partsDB.storedBytesForOwner === "function" ? models.partsDB.storedBytesForOwner(userId) : 0;
+    for (const r of models.rfqsDB.query((x) => x.userId === userId && x.drawingPath)) total += Number(r.drawingBytes) || 0;
+    return total;
+  } catch { return 0; }
+}
 
 // ─── Per-client daily byte budget ────────────────────────────
 
@@ -182,51 +244,214 @@ if (pruneTimer.unref) pruneTimer.unref();
 // ─── Middleware ──────────────────────────────────────────────
 
 const FULL_MESSAGE = `We can't take new files right now. Email them to ${brand.email} or call ${brand.phone} and we'll quote them by hand.`;
+const FULL_ANONYMOUS_MESSAGE = `We can't take new files from visitors without an account right now. Sign in (or create an account and confirm your email) and upload again, or email the files to ${brand.email} and we'll quote them by hand.`;
+const NOT_READ_MESSAGE = "We stopped reading this upload because another file in it could not be read in time. Upload this file by itself and it will be read.";
+const storedLimitMessage = () => `You've reached what we keep for one network at a time (${mb(limits.uploadStoredBytesPerClient)} MB of files). Files that are not on an order or a saved quote are cleared after a few days. Email your files to ${brand.email} or call ${brand.phone} and we'll quote them by hand.`;
+const storedLimitAccountMessage = () => `Your account has reached what we keep for one account at a time (${mb(limits.uploadStoredBytesPerAccount)} MB of files). Files that are not on an order are cleared after a few days. Email your files to ${brand.email} or call ${brand.phone} and we'll quote them by hand.`;
+const dailyLimitMessage = () => `You've reached today's upload limit from this network (${mb(limits.uploadDailyBytesPerClient)} MB in 24 hours). Email your files to ${brand.email} or call ${brand.phone} and we'll quote them by hand.`;
 
 /**
- * Refuse an upload before it is written.
+ * Refuse an upload before it is written, and count what it really sends.
  * @param {object} [opt]
  * @param {() => number} [opt.maxRequestBytes] the largest body this route can legitimately receive
  * @param {boolean} [opt.addsRows] the route stores parsed geometry: also hold the database ceiling
- * @param {boolean} [opt.chargeDeclared] count the declared Content-Length against the client's budget now
+ * @param {boolean} [opt.chargeDeclared] kept for callers; the bytes actually received are what is charged now
+ *
+ * Counting (independent review 2026-11-11, L1): the client's daily budget is
+ * charged with the bytes the server actually READ for this request, whatever
+ * became of them — kept, refused by a content check, over the size limit, or
+ * cut off. It used to be charged from the Content-Length header on one route,
+ * so an upload sent without one (chunked) was free, and an over-size file was
+ * never charged anywhere. A body with no Content-Length is also watched while
+ * it arrives and cut off when it passes the route's maximum or what is left of
+ * the client's budget.
  */
+const DISCARD_MS = 5000;
+const DISCARD_BYTES = 64 * 1024 * 1024;
+const DISCARD_COURTESY_BYTES = 4 * DISCARD_BYTES;  // thrown-away bytes past the day's allowance that still get the full reading-on
+const DISCARD_BYTES_OVER_BUDGET = 1024 * 1024; // after that, per refused request
+
+/**
+ * Close the connection of a refused upload without cutting the answer off.
+ *
+ * The answer says "Connection: close". Closing at once while the client is
+ * still sending makes the network reset the connection, and a browser then
+ * shows a network error instead of our message. So: our side is finished (the
+ * client sees the answer and the end of our half), what is still arriving is
+ * read and thrown away for at most DISCARD_MS and DISCARD_BYTES, and then the
+ * connection is closed for good. Nothing is written to disk and nothing is
+ * parsed. If this runtime closes the connection some other way, the old
+ * behaviour (an immediate close) is what happens.
+ */
+function lingerThenClose(req, { key = "" } = {}) {
+  const socket = req && req.socket;
+  if (!socket || typeof req.on !== "function" || typeof req.resume !== "function" || typeof socket.destroySoon !== "function") return;
+  let seen = 0;
+  let timer = null;
+  const close = () => {
+    clearTimeout(timer);
+    try { if (!socket.destroyed) socket.destroy(); } catch { /* already gone */ }
+  };
+  // Nothing else is done for this connection: a second request sent on it while it lingers is not
+  // run (independent re-review 2026-11-12, RR-06: one was, and could never be answered). See refuseOnLingering().
+  socket[LINGERING] = true;
+  // The server ends a "Connection: close" answer with socket.destroySoon(): finish our half only.
+  socket.destroySoon = function finishOurHalf() { try { this.end(); } catch { close(); } };
+  timer = setTimeout(close, DISCARD_MS);
+  if (timer.unref) timer.unref();
+  req.on("data", (chunk) => {
+    seen += chunk.length;
+    // What is read and thrown away still came from this sender: it counts against their day like any other byte.
+    if (key) budget.add(key, chunk.length);
+    // The reading-on is there so a browser gets to show our answer instead of "connection reset".
+    // A customer who runs into the day's allowance gets that courtesy a few times over; a sender
+    // who is hundreds of megabytes past it is closed after a megabyte.
+    if (seen > DISCARD_BYTES || (key && seen > DISCARD_BYTES_OVER_BUDGET && budget.used(key) > limits.uploadDailyBytesPerClient + DISCARD_COURTESY_BYTES)) close();
+  });
+  // The whole body has come: the answer is on its way out and our half is being finished. Give the
+  // client a moment to finish its own, then close whatever is left.
+  req.on("end", () => { clearTimeout(timer); timer = setTimeout(close, 1000); if (timer.unref) timer.unref(); });
+  req.on("error", close);
+  // (The request's own "close" event comes right after its "end", long before the connection goes: the timer is tied to the connection.)
+  socket.once("close", () => clearTimeout(timer));
+  req.resume();
+}
+
+/** Marks a connection whose request was refused and which is only being drained. */
+const LINGERING = Symbol("refused, lingering");
+
+/**
+ * First middleware of the app: a request that arrives on a connection we are only draining
+ * (its previous request was refused and answered "Connection: close") is not run and not answered.
+ */
+function refuseOnLingering(req, res, next) {
+  if (req.socket && req.socket[LINGERING]) {
+    // Our half was finished when the refusal was answered; a reset tells a client that is still
+    // holding its half open that the connection is over.
+    try { if (typeof req.socket.resetAndDestroy === "function") req.socket.resetAndDestroy(); else req.socket.destroy(); } catch { /* already gone */ }
+    return undefined;
+  }
+  return next();
+}
+
 function admit(opt = {}) {
   return (req, res, next) => {
     const declared = Number(req.headers["content-length"]);
-    const incoming = Number.isFinite(declared) && declared > 0 ? declared : 0;
+    const hasLength = Number.isFinite(declared) && declared >= 0 && req.headers["content-length"] !== undefined;
+    const incoming = hasLength && declared > 0 ? declared : 0;
+
+    const refuse = (status, body, headers = {}) => {
+      // Answer and close: nothing of the body is kept (see lingerThenClose for how the close is done).
+      res.set("Connection", "close");
+      for (const [k, v] of Object.entries(headers)) res.set(k, v);
+      lingerThenClose(req, { key: clientKey(req) });
+      return res.status(status).json(body);
+    };
 
     const maxRequest = typeof opt.maxRequestBytes === "function" ? opt.maxRequestBytes() : 0;
     if (maxRequest && incoming > maxRequest) {
-      // Answer and close: the body is not read.
-      res.set("Connection", "close");
-      return res.status(413).json({ error: `That upload is too large. Send up to ${mb(maxRequest)} MB at a time.`, code: "request-too-large" });
+      return refuse(413, { error: `That upload is too large. Send up to ${mb(maxRequest)} MB at a time.`, code: "request-too-large" });
     }
 
-    if (!storage.hasRoom(incoming) || (opt.addsRows && !database.hasRoom())) {
-      res.set("Connection", "close");
-      res.set("Retry-After", "3600");
-      return res.status(503).json({ error: FULL_MESSAGE, code: "storage-full" });
+    // Who is asking: the last share of both ceilings is kept for customers with a confirmed email.
+    if (req.user === undefined) { try { require("./session").optionalAuth(req, res, () => {}); } catch { /* a guest */ } }
+    const confirmed = isConfirmedCustomer(req.user);
+
+    if (!storage.hasRoom(incoming, { reserved: confirmed }) || (opt.addsRows && !database.hasRoom({ reserved: confirmed }))) {
+      // Over a line: let the sweeps run now rather than at their next turn.
+      try { require("../services/storagePressure").nudge(require("../models")); } catch { /* best effort */ }
+      const anonymousOnly = !confirmed && storage.hasRoom(incoming) && (!opt.addsRows || database.hasRoom());
+      return refuse(503, { error: anonymousOnly ? FULL_ANONYMOUS_MESSAGE : FULL_MESSAGE, code: anonymousOnly ? "uploads-paused" : "storage-full" }, { "Retry-After": anonymousOnly ? "900" : "3600" });
     }
 
     const key = clientKey(req);
     const left = budget.remaining(key);
     if (left <= 0 || incoming > left) {
-      res.set("Connection", "close");
-      return res.status(429).json({
-        error: `You've reached today's upload limit from this network (${mb(limits.uploadDailyBytesPerClient)} MB in 24 hours). Email your files to ${brand.email} or call ${brand.phone} and we'll quote them by hand.`,
-        code: "daily-upload-limit",
-      });
+      return refuse(429, { error: dailyLimitMessage(), code: "daily-upload-limit" });
+    }
+    // What this client already has on the volume, plus this upload.
+    if (storedBytesFor(key) + incoming > limits.uploadStoredBytesPerClient) {
+      return refuse(429, { error: storedLimitMessage(), code: "stored-limit" });
+    }
+    // An account is not a way round the cap: anyone with a mailbox has one (re-review 2026-11-12, rule D).
+    const accountId = req.user && req.user.userId ? req.user.userId : "";
+    if (accountId && storedBytesForAccount(accountId) + incoming > limits.uploadStoredBytesPerAccount) {
+      return refuse(429, { error: storedLimitAccountMessage(), code: "stored-limit" });
     }
     req.uploadClientKey = key;
-    // A route that cannot report back after multer (the RFQ form) is charged what it declared.
-    if (opt.chargeDeclared) budget.add(key, incoming);
+
+    // ── Count what really arrives ──
+    // What the request declares is charged at the door (so a burst of parallel uploads cannot all be
+    // admitted against the same remaining budget). What it actually sends is counted where the bytes
+    // enter the request — each body chunk the HTTP parser hands over — so nothing depends on a header
+    // or a timer: body bytes that arrived before this middleware ran are waiting in the request's own
+    // buffer (nothing has read it yet), and every later chunk passes through push() below.
+    const buffered = Number(req.readableLength) || 0;
+    let arrived = 0;
+    const received = () => buffered + arrived;
+    let chargedBytes = 0;
+    const chargeUpTo = (bytes) => { if (bytes > chargedBytes) { budget.add(key, bytes - chargedBytes); chargedBytes = bytes; } };
+    chargeUpTo(incoming);
+    let ended = false;
+    let cut = false;
+    const end = () => {
+      if (ended) return;
+      ended = true;
+      chargeUpTo(received());
+    };
+    req.uploadMeter = { received, charged: () => chargedBytes };
+    if (typeof res.on === "function") { res.on("finish", end); res.on("close", end); }
+
+    // A body with no Content-Length (chunked) could not be judged up front, so it is judged, and
+    // charged, as it arrives: past the route's maximum, the client's daily budget or its stored-bytes
+    // cap, the request is answered and cut off. (With a Content-Length the body cannot exceed what was
+    // declared, and that was checked above.)
+    const storedLeft = hasLength ? Infinity : Math.max(0, Math.min(limits.uploadStoredBytesPerClient - storedBytesFor(key), accountId ? limits.uploadStoredBytesPerAccount - storedBytesForAccount(accountId) : Infinity));
+    const stop = () => {
+      cut = true;
+      const got = received();
+      const overRoute = Boolean(maxRequest) && got > maxRequest;
+      if (!res.headersSent) {
+        res.set("Connection", "close");
+        res.status(overRoute ? 413 : 429).json(overRoute
+          ? { error: `That upload is too large. Send up to ${mb(maxRequest)} MB at a time.`, code: "request-too-large" }
+          : (got > storedLeft ? { error: storedLimitMessage(), code: "stored-limit" } : { error: dailyLimitMessage(), code: "daily-upload-limit" }));
+      }
+      // This request has its answer. The upload handler is still running and will try to answer too
+      // when its stream ends: from here on, setting a header on this response does nothing instead of
+      // throwing (an exception in that callback would stop the whole process).
+      res.setHeader = function alreadyAnswered() { return this; };
+      // Stop reading once the answer has had a moment to leave. Whatever the upload handler had
+      // written so far is removed by its own handling of an aborted request.
+      const t = setTimeout(() => { try { req.destroy(); } catch { /* already gone */ } }, 150);
+      if (t.unref) t.unref();
+    };
+    if (typeof req.push === "function") {
+      const push = req.push;
+      req.push = function meteredPush(chunk, encoding) {
+        if (chunk && chunk.length && !ended) {
+          arrived += chunk.length;
+          if (!hasLength) {
+            if (cut) return false; // already refused: the rest is dropped, not handed on
+            chargeUpTo(received());
+            const got = received();
+            if ((maxRequest && got > maxRequest) || budget.remaining(key) <= 0 || got > storedLeft) { stop(); return false; }
+          }
+        }
+        return push.call(this, chunk, encoding);
+      };
+    }
     next();
   };
 }
 
-/** Record what a request really delivered: against the client's budget, and (when kept) against storage. */
+/**
+ * Record what a request kept (against storage). What it RECEIVED is counted by
+ * admit() from the connection itself; `received` here is only used for a
+ * request that did not pass through admit().
+ */
 function account(req, { received = 0, stored = 0 } = {}) {
-  budget.add(req.uploadClientKey || clientKey(req), received);
+  if (!req.uploadMeter) budget.add(req.uploadClientKey || clientKey(req), received);
   storage.add(stored);
 }
 
@@ -248,4 +473,4 @@ function safeFileName(name, fallback = "file") {
   return clean || fallback;
 }
 
-module.exports = { storage, database, budget, admit, account, safeFileName, STORAGE_DIRS, DRAWING_DIRS, PART_PAYLOAD_DIR, DATA_DIR, FULL_MESSAGE };
+module.exports = { storage, database, budget, admit, account, lingerThenClose, safeFileName, clientTag, storedBytesFor, storedBytesForAccount, refuseOnLingering, isConfirmedCustomer, STORAGE_DIRS, DRAWING_DIRS, PART_PAYLOAD_DIR, DATA_DIR, FULL_MESSAGE, FULL_ANONYMOUS_MESSAGE, NOT_READ_MESSAGE };

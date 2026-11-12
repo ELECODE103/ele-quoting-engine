@@ -126,8 +126,23 @@ export const api = {
     }));
   },
 
-  /** Parts + configuration of a saved quote, to reopen it in the builder. */
-  async getQuoteSession(id) { return request(`/quote/${id}/session`); },
+  /**
+   * Parts + configuration of a saved quote, to reopen it in the builder.
+   * The server sends each line's configuration (`parts`) and each distinct part once (`partsById`);
+   * here they are put back together as one entry per line, which is what the builder works with.
+   * Previews are not in the answer: each part says where its own is (`mesh.url`, see partLoader.js).
+   */
+  async getQuoteSession(id) {
+    const saved = await gated(() => request(`/quote/${id}/session`));
+    const byId = saved.partsById || {};
+    return { ...saved, parts: (saved.parts || []).map((line) => ({ ...(byId[line.partId] || {}), ...line })) };
+  },
+
+  /** A part's preview mesh or geometry detail, from the URL the server gave for it. Only the browser that holds the part's key may fetch it. */
+  async getPartPayload(url, editKey) {
+    const path = String(url || '').replace(/^\/api/, '');
+    return gated(() => request(path, { headers: { 'X-Part-Key': editKey || '' } }));
+  },
 
   async uploadQuoteDrawing(quoteId, file) {
     return gated(() => {
@@ -321,6 +336,12 @@ export const api = {
   async getRfq(id) { return request(`/rfq/${id}`); },
   async getAdminRfqs() { return request('/rfq/admin/list'); },
   async updateRfq(id, data) { return request(`/rfq/admin/${id}`, { method: 'PUT', body: JSON.stringify(data) }); },
+  /** Admin: delete a request and its attachment (refused once the request has become an order). */
+  async deleteRequest(id) { return request(`/admin/requests/${id}`, { method: 'DELETE' }); },
+  /** Admin: delete draft quotes of visitors without an account that nobody has touched for this many hours. */
+  async purgeDrafts(olderThanHours = 48) { return request('/admin/drafts/purge', { method: 'POST', body: JSON.stringify({ olderThanHours }) }); },
+  /** Admin: where the database and the file folders stand against their ceilings. */
+  async getAdminStorage() { return request('/admin/storage'); },
   rfqDrawingUrl(id) { return `${BASE}/rfq/admin/${id}/drawing`; },
   async fetchRfqDrawing(id) {
     const res = await send(`/rfq/admin/${id}/drawing`, { credentials: 'same-origin' }, 'admin');

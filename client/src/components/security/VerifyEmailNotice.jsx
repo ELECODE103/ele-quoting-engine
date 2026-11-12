@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../../utils/api';
 import { useAuth } from '../../utils/authContext';
 import brand from '../../brand';
+import { describeNotice } from '../../utils/messages';
 
 const WAIT_SECONDS = 60; // the server sends one link a minute at most
 
@@ -54,6 +55,8 @@ export default function VerifyEmailNotice({ reason = 'before you pay', why = 'Yo
       const r = await api.resendVerification();
       if (r.verified) { await refresh(); return; }
       if (r.sent) { setNote({ ok: true, text: `Sent again to ${user.email}. Use the newest email (older links stop working), and check the spam folder too.` }); startWait(WAIT_SECONDS); }
+      // queued: the site is over the hour's line for confirmation emails, so this one is held and sent within the hour
+      else if (r.queued) { setNote({ ok: true, text: describeNotice('verification-queued') }); startWait(WAIT_SECONDS); }
       else setNote({ ok: false, text: `We couldn't send it just now. Try again in a minute, or call ${brand.phone}.` });
     } catch (err) {
       setNote({ ok: false, text: err.message });

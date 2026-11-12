@@ -42,6 +42,7 @@ const totp = require("../security/totp");
 const secretBox = require("../security/secretBox");
 const keys = require("../security/keys");
 const { createThrottle, clientKey } = require("../security/throttle");
+const { limits } = require("../security/limits");
 const { accountLinkBase } = require("../security/links");
 const mailer = require("../services/mailer");
 const templates = require("../emails/templates");
@@ -98,6 +99,8 @@ const resetPerIp = createThrottle({ windowMs: HOUR, max: 5 });
 const resetPerAddress = createThrottle({ windowMs: HOUR, max: 3 });
 const resendPerMinute = createThrottle({ windowMs: 60 * 1000, max: 1 });
 const resendPerDay = createThrottle({ windowMs: 24 * HOUR, max: 5 });
+// "Send it again" per address as well as per account (re-review RR-04): limits.verifyResendPerClientHour.
+const resendPerAddress = new (require("../services/usageWindow").UsageWindow)({ windowMs: HOUR });
 // The "someone is trying to sign in" notice: one a day per account at most, however long the guessing
 // goes on, so it cannot be used to fill a customer's inbox.
 const lockMailPerDay = createThrottle({ windowMs: 24 * HOUR, max: 1 });
@@ -173,7 +176,15 @@ function verificationUrl(user, req) {
 function sendVerification(user, req) {
   let u = user;
   if (!u.emailVerifyNonce) u = usersDB.update(u.id, { emailVerifyNonce: crypto.randomBytes(16).toString("hex") });
-  return mailer.send({ to: u.email, replyTo: mailer.shopNotifyAddress(), ...templates.verifyEmail({ verifyUrl: verificationUrl(u, req) }) });
+  // clientKey: whose doing this email is. Each address's first couple in an hour always go out; past
+  // the site-wide cap the rest are held and sent when the hour turns (services/mailCaps.js).
+  return mailer.send({ to: u.email, replyTo: mailer.shopNotifyAddress(), clientKey: clientKey(req), ...templates.verifyEmail({ verifyUrl: verificationUrl(u, req) }) });
+}
+
+/** What the customer is told about their confirmation email, from what the mailer answered. */
+function verificationAnswer(sent) {
+  if (sent === mailer.HELD) return { sent: false, queued: true, message: "We're sending a lot of confirmation emails right now. Yours is in line and will arrive within the hour; you don't need to ask again." };
+  return { sent: sent === true, queued: false };
 }
 
 // No public route gives an account the admin role. The admin account is made by the one-time
@@ -244,7 +255,8 @@ router.post("/register", registerLimiter, async (req, res) => {
     const sent = await sendVerification(user, req).catch(() => false);
 
     const issued = session.issue(user, res, req);
-    res.status(201).json({ ...sessionBody(user, issued, req), verificationSent: Boolean(sent) });
+    const told = verificationAnswer(sent);
+    res.status(201).json({ ...sessionBody(user, issued, req), verificationSent: told.sent, verificationQueued: told.queued, ...(told.message ? { verificationMessage: told.message } : {}) });
   } catch (err) {
     botGuard.releaseForm(check);
     console.error("Registration error:", err.message);
@@ -440,12 +452,24 @@ router.post("/verify-email/resend", authenticate, async (req, res) => {
   if (session.isEmailVerified(user)) return res.json({ sent: false, verified: true });
   if (resendPerMinute.peek(user.id).limited) return res.status(429).json({ error: "We just sent one. Give it a minute, and check the spam folder.", code: "rate-limited" });
   if (resendPerDay.peek(user.id).limited) return res.status(429).json({ error: `That's the limit for today. If the email isn't arriving, ${CALL}.`, code: "rate-limited" });
+  // Per address as well as per account: ten accounts registered from one address each asking five
+  // times was how one address used up the site's hour of confirmation emails (re-review RR-04).
+  const address = clientKey(req);
+  if (resendPerAddress.total(address) >= limits.verifyResendPerClientHour) {
+    return res.status(429).json({ error: `We've sent several confirmation emails from this network in the last hour. Check the spam folder, and try again later; if it isn't arriving, ${CALL}.`, code: "rate-limited" });
+  }
   resendPerMinute.hit(user.id);
-  resendPerDay.hit(user.id);
-  // An ordinary account holding the admin address gets the usual answer and no email.
-  if (adminAccount.isReservedAccount(user)) return res.json({ sent: mailer.configured(), verified: false, configured: mailer.configured() });
+  resendPerAddress.add(address, 1);
+  // An ordinary account holding the admin address gets the usual answer and no email (and its try is counted).
+  if (adminAccount.isReservedAccount(user)) {
+    resendPerDay.hit(user.id);
+    return res.json({ sent: mailer.configured(), queued: false, verified: false, configured: mailer.configured() });
+  }
   const sent = await sendVerification(user, req).catch(() => false);
-  res.json({ sent: Boolean(sent), verified: false, configured: mailer.configured() });
+  // One of the day's five is used by every request, as before, except one that the site's own hourly
+  // cap turned away with nothing left in line: that is our doing, not the customer's (re-review RR-04).
+  if (sent || !require("../services/mailCaps").recentlyDropped(user.email, "verifyEmail")) resendPerDay.hit(user.id);
+  res.json({ ...verificationAnswer(sent), verified: false, configured: mailer.configured() });
 });
 
 // ─── Password reset ────────────────────────────────────────────

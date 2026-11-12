@@ -90,8 +90,12 @@ const byteLength = (json) => Buffer.byteLength(json, "utf8");
  */
 function split(geometry, opt = {}) {
   if (!geometry || typeof geometry !== "object" || Array.isArray(geometry)) return { row: geometry, meshJson: null, geometryJson: null };
-  const inlineMesh = opt.inlineMeshBytes ?? limits.partInlineMeshBytes;
-  const inlineGeometry = opt.inlineGeometryBytes ?? limits.partInlineGeometryBytes;
+  // With a file-encryption key set, nothing of the shape stays in the database row (which is not
+  // encrypted): every mesh and every part's geometry detail goes to an encrypted file, whatever its
+  // size, and the row keeps only numbers (size, volume, counts). Independent review 2026-11-11, M5.
+  const encrypted = opt.encrypted ?? fileCrypto.isEnabled();
+  const inlineMesh = encrypted ? -1 : (opt.inlineMeshBytes ?? limits.partInlineMeshBytes);
+  const inlineGeometry = encrypted ? -1 : (opt.inlineGeometryBytes ?? limits.partInlineGeometryBytes);
 
   let base = geometry;
   let meshJson = null;
@@ -111,8 +115,13 @@ function split(geometry, opt = {}) {
   // Too large for the row: the file holds all of it; the row keeps what lists and sweeps read.
   const row = {};
   for (const [key, value] of Object.entries(base)) {
-    if (value === null || typeof value !== "object" || key === "boundingBox" || key === "meshData" || JSON.stringify(value).length <= 2048) row[key] = value;
+    // Encrypted: numbers, the bounding box and the empty mesh stub only (no outline, no hole positions).
+    if (value === null || typeof value !== "object" || key === "boundingBox" || key === "meshData" || (!encrypted && JSON.stringify(value).length <= 2048)) row[key] = value;
   }
+  // A DXF stays recognisable as one from its row (dxf.is2D reads `profile2d`): the row keeps the
+  // drawing's size and units — numbers, no outline — and says the rest is in the file.
+  const p2d = base.profile2d;
+  if (p2d && typeof p2d === "object" && !row.profile2d) row.profile2d = { bbox: p2d.bbox, units: p2d.units, detail: "file" };
   return { row, meshJson, geometryJson: baseJson };
 }
 
@@ -167,6 +176,21 @@ function readJson(partId, kind) {
 function exists(partId, kind) {
   const p = paths(partId, kind);
   return fs.existsSync(p.enc) || fs.existsSync(p.plain);
+}
+
+/**
+ * Where a payload is on disk, for a caller that streams it (routes/partPayloadRoutes.js).
+ * @returns {{ path: string, encrypted: boolean, bytes: number, mtimeMs: number } | null}
+ */
+function locate(partId, kind) {
+  const p = paths(partId, kind);
+  for (const [file, encrypted] of [[p.enc, true], [p.plain, false]]) {
+    try {
+      const st = fs.statSync(file);
+      if (st.isFile()) return { path: file, encrypted, bytes: st.size, mtimeMs: st.mtimeMs };
+    } catch { /* not this one */ }
+  }
+  return null;
 }
 
 // ─── Writing ─────────────────────────────────────────────────────────────────
@@ -280,4 +304,4 @@ function clearCacheForTests() {
   cacheBytes = 0;
 }
 
-module.exports = { split, read, readJson, write, remove, exists, list, sweep, usage, stem, dir, PayloadError, KINDS, clearCacheForTests };
+module.exports = { split, read, readJson, write, remove, exists, locate, list, sweep, usage, stem, dir, PayloadError, KINDS, clearCacheForTests };

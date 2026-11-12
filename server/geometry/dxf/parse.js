@@ -25,6 +25,7 @@
 const FLATTEN_TOL_MM = 0.005;   // chord error when a spline / ellipse becomes line segments
 // Entity ceiling: admin-tunable (DXF_MAX_ENTITIES, default 100,000). Read when used so a test can change it.
 const maxEntities = () => require("../../security/limits").limits.dxfMaxEntities;
+const maxBlockInstances = () => require("../../security/limits").limits.dxfMaxBlockInstances;
 const MAX_CURVES = 120000;
 const MAX_INSERT_DEPTH = 8;
 
@@ -362,6 +363,7 @@ function normalise(doc, scale) {
     curves.push({ segs: t, closed: !!closed, layer, src, approx: !!approx });
   };
 
+  let blockInstances = 0; // block copies expanded so far, across every level of nesting
   const walk = (recs, m, depth, insertLayer) => {
     for (let i = 0; i < recs.length; i++) {
       const rec = recs[i];
@@ -434,6 +436,8 @@ function normalise(doc, scale) {
         const sgn = flip ? -1 : 1; // minor axis = N × major
         const nxm = -my * ratio * sgn, nym = mx * ratio * sgn;
         let sweep = t1 - t0;
+        // An ELLIPSE whose parameters are not angles (1e308, say) would spin the loop below for ever.
+        if (!Number.isFinite(sweep) || Math.abs(t0) > 1e6 || Math.abs(t1) > 1e6) throw Object.assign(new Error("This DXF has an ellipse whose start or end angle is not a usable number. Re-export the outline from your CAD program, or send it to us for a firm quote."), { code: "dxf-bad-ellipse", offerRfq: true });
         while (sweep <= 1e-9) sweep += TAU;
         if (sweep > TAU) sweep = TAU;
         const full = Math.abs(sweep - TAU) < 1e-6;
@@ -486,6 +490,8 @@ function normalise(doc, scale) {
         const block = doc.blocks[name.toUpperCase()];
         if (!block || depth >= MAX_INSERT_DEPTH) { ignored.unknownBlocks++; ignored.total++; continue; }
         if (cols * rows > 10000) throw new Error("This DXF has a block array with more than 10,000 copies. Send it to us as an RFQ.");
+        // Nested arrays multiply (100 × 100, eight levels deep, is 10^32 copies): cap the total walked.
+        if ((blockInstances += cols * rows) > maxBlockInstances()) throw Object.assign(new Error("This DXF repeats its blocks more times than the instant quote reads. Explode the blocks and export the outline again, or send it to us for a firm quote."), { code: "dxf-too-many-blocks", offerRfq: true });
         const cs = Math.cos((rot * Math.PI) / 180), sn = Math.sin((rot * Math.PI) / 180);
         for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
           // p' = ins + R · (S · (p − base) + array offset)

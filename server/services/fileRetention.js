@@ -4,8 +4,9 @@
  * Customer CAD files shouldn't linger on disk forever. This periodically deletes
  * files in the upload directory older than the retention window, except the
  * ones the caller says are still needed (`opts.keep`): a part that was ordered,
- * or that sits in a firm-quote request still in play, keeps its file. A quote
- * nobody ordered loses its file after the window, as the site says.
+ * that sits in a firm-quote request still in play, or that is on a saved quote
+ * that can still be ordered keeps its file. Once nothing that can become an
+ * order refers to a file, it goes after the window.
  *
  * Window is configurable via UPLOAD_RETENTION_HOURS (default 168h = 7 days).
  */
@@ -61,22 +62,57 @@ function startRetentionSweep(uploadDir, opts = {}) {
 }
 
 /**
- * Stored names of the uploads still needed: every part on an order that was not
- * cancelled, and every part on an RFQ that is new, in review, quoted or accepted.
+ * Stored names of the uploads still needed: every part on an order that was
+ * not cancelled, every part on a request that is new, in review, quoted or
+ * accepted, and every part on a saved quote that can still be ordered.
+ *
+ * The last one is new (independent review 2026-11-11, H5): files used to be
+ * deleted at 7 days while the quote stayed orderable for 30, so an order placed
+ * on day 8 arrived without its CAD file. A file now lives as long as anything
+ * that can turn into an order refers to it (services/rowRetention.js
+ * `references` decides what is live).
  */
-function neededUploads({ ordersDB, orderItemsDB, rfqsDB, partsDB }) {
-  const partIds = new Set();
-  const live = new Set(ordersDB.getAll().filter((o) => o.status !== "cancelled").map((o) => o.id));
-  for (const it of orderItemsDB.getAll()) if (it.partId && live.has(it.orderId)) partIds.add(it.partId);
-  for (const r of rfqsDB.getAll()) {
-    if (["new", "in-review", "quoted", "accepted", "won"].includes(r.status)) for (const p of r.parts || []) if (p.partId) partIds.add(p.partId);
-  }
+function neededUploads(models) {
+  const { partsDB } = models;
+  const refs = require("./rowRetention").references(models);
+  const partIds = new Set([...refs.partsProtected, ...refs.partsOnAnonymousDrafts.keys()]);
   const names = new Set();
   for (const id of partIds) {
-    const part = partsDB.getById(id);
+    const part = typeof partsDB.getRow === "function" ? partsDB.getRow(id) : partsDB.getById(id);
     if (part && part.storedName) names.add(path.basename(part.storedName));
   }
   return names;
+}
+
+/**
+ * Are the uploaded files of these parts still on disk?
+ * For checkout and the request form: a quote whose file is gone must not turn
+ * into an order the shop has no model for — the buyer is asked to upload the
+ * file again instead.
+ *
+ * @param {string[]} partIds
+ * @param {{ partsDB?: object, uploadDir?: string }} [opt]
+ * @returns {{ ok: boolean, missing: Array<{ partId: string, fileName: string }>, message?: string, code?: string }}
+ *          `message` / `code` ("part-file-missing") are ready to send when ok is false.
+ */
+function partFilesPresent(partIds, opt = {}) {
+  const partsDB = opt.partsDB || require("../models").partsDB;
+  const uploadDir = opt.uploadDir || path.join(require("../security/uploadGuards").DATA_DIR, "uploads");
+  const missing = [];
+  for (const id of new Set((partIds || []).filter((x) => typeof x === "string" && x))) {
+    const part = typeof partsDB.getRow === "function" ? partsDB.getRow(id) : partsDB.getById(id);
+    const stored = part && part.storedName ? path.basename(String(part.storedName)) : "";
+    if (!part || !stored || !fs.existsSync(path.join(uploadDir, stored))) missing.push({ partId: id, fileName: (part && part.fileName) || "" });
+  }
+  if (missing.length === 0) return { ok: true, missing };
+  const names = missing.map((m) => m.fileName).filter(Boolean);
+  const which = names.length === 0 ? "one of the files on this quote" : names.length === 1 ? names[0] : `${names.slice(0, 3).join(", ")}${names.length > 3 ? ` and ${names.length - 3} more` : ""}`;
+  return {
+    ok: false,
+    missing,
+    code: "part-file-missing",
+    message: `We no longer have ${which} on our server. Please upload ${names.length > 1 ? "the files" : "the file"} again and we'll pick up where you left off.`,
+  };
 }
 
 /**
@@ -146,4 +182,4 @@ function startPayloadSweep(partsDB, opts = {}) {
   return timer;
 }
 
-module.exports = { startRetentionSweep, sweepOnce, neededUploads, referencedDrawings, sweepDrawings, startDrawingSweep, startPayloadSweep };
+module.exports = { startRetentionSweep, sweepOnce, neededUploads, partFilesPresent, referencedDrawings, sweepDrawings, startDrawingSweep, startPayloadSweep };

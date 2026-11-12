@@ -11,7 +11,7 @@ const path = require("path");
 const zlib = require("zlib");
 const { runner } = require("../testSupport/harness");
 const live = require("../testSupport/liveServer");
-const { buildZip, box3mf, boxModelXml, binaryStl } = require("../testSupport/zip");
+const { buildZip, box3mf, boxModelXml, binaryStl, solidStl } = require("../testSupport/zip");
 const { machineProbe, assertResponsive } = require("../testSupport/latency");
 
 const { test, run } = runner("Uploads (live server)");
@@ -284,8 +284,10 @@ test("3MF XML bombs: entity expansion is off and nesting is capped", async () =>
 // ─── Time, concurrency, responsiveness ───────────────────────
 
 test("a slow file is cut off at PARSE_TIMEOUT_MS; the site answers throughout; a second sender is told 'busy' (503)", async () => {
-  const s = await server({ env: { PARSE_TIMEOUT_MS: "2500", PARSE_CONCURRENCY: "1", PARSE_QUEUE_MAX: "0" } });
-  const slow = Buffer.from(crossingLinesDxf(5000)); // ~480 kB, tens of seconds of contour building
+  // "Slow" does not depend on how fast the drawing reader is: the test delay keeps the worker busy for 20 s
+  // before any .dxf (parsers/parsePool.js, SE_TEST_HOOKS only), whatever the drawing itself costs.
+  const s = await server({ env: { PARSE_TIMEOUT_MS: "2500", PARSE_CONCURRENCY: "1", PARSE_QUEUE_MAX: "0", PARSE_TEST_DELAY_MS: "20000", PARSE_TEST_DELAY_EXT: ".dxf" } });
+  const slow = Buffer.from(crossingLinesDxf(5000)); // ~480 kB of crossing lines
   // The same two requests while nothing is being parsed (the first pair warms a freshly started server and is not counted).
   const idle = [];
   for (let i = 0; i < 8; i++) { const h = await s.get(i % 2 ? "/api/materials" : "/api/health", { ip: "203.0.113.50" }); if (i >= 2) idle.push(h.ms); }
@@ -367,7 +369,7 @@ test("event loop stays responsive while a large STEP file parses: /api/health an
 
 test("daily byte budget per client: over UPLOAD_DAILY_MB_PER_IP the sender is refused; a forged X-Forwarded-For does not help", async () => {
   const s = await server({ env: { UPLOAD_DAILY_MB_PER_IP: "1" } });
-  const chunk = binaryStl(12000); // 600 kB, parses in a moment
+  const chunk = solidStl(32); // 600 kB of a real solid (a gridded box), parses in a moment
   const a1 = await s.upload([{ name: "a.stl", data: chunk }], { ip: "203.0.113.10" });
   assert.strictEqual(a1.status, 200, a1.text);
   const a2 = await s.upload([{ name: "b.stl", data: chunk }], { ip: "203.0.113.10" });
@@ -636,12 +638,19 @@ test("a dense model adds kilobytes to the database, not megabytes: its preview m
       ups.push(r.body.parts[0]);
     }
     const grew = fs.statSync(dbFile).size - before;
-    const meshJson = JSON.stringify(ups[0].meshPreview).length;
+    // The mesh is not in the upload answer (it is megabytes): the answer says where it is, and the
+    // preview route streams it, decrypted, to the browser that holds the part's key.
+    assert.deepStrictEqual(ups[0].meshPreview.positions, []);
+    const preview = (srv, u) => srv.get(u.mesh.url, { ip: me, headers: { "X-Part-Key": u.editKey } });
+    const firstMesh = await preview(s, ups[0]);
+    assert.strictEqual(firstMesh.status, 200, firstMesh.text.slice(0, 200));
+    const meshJson = firstMesh.text.length;
     assert.ok(meshJson > 2 * 1024 * 1024, `the mesh is ${meshJson} bytes of JSON`);
     assert.ok(grew < 200 * 1024, `three dense parts grew the database by ${grew} bytes (it was ${3 * meshJson} before this change)`);
     console.log(`       (three 14,160-triangle parts: database +${(grew / 1024).toFixed(0)} kB; their meshes, ${(3 * meshJson / 1e6).toFixed(1)} MB, are in files)`);
     const payloadFiles = s.files("part-payloads");
-    assert.deepStrictEqual(payloadFiles.slice().sort(), ups.map((u) => `${u.partId}.mesh.json.enc`).sort());
+    // With a key set, each part's measurements are in an encrypted file as well as its mesh: nothing of the shape is in the database row.
+    assert.deepStrictEqual(payloadFiles.slice().sort(), ups.flatMap((u) => [`${u.partId}.geometry.json.enc`, `${u.partId}.mesh.json.enc`]).sort());
     for (const f of payloadFiles) {
       const bytes = fs.readFileSync(path.join(s.dir("part-payloads"), f));
       assert.strictEqual(bytes.subarray(0, 4).toString("latin1"), "SEF1");
@@ -659,8 +668,14 @@ test("a dense model adds kilobytes to the database, not megabytes: its preview m
     assert.ok(!/removed \d+ part payload file/.test(s.log()), "the sweep leaves files that have a row");
     const session = await s.get(`/api/quote/${q.body.quoteId}/session`, { ip: me });
     assert.strictEqual(session.status, 200);
-    assert.deepStrictEqual(session.body.parts.map((p) => p.meshPreview.positions.length), ups.map((u) => u.meshPreview.positions.length));
-    assert.deepStrictEqual(session.body.parts[0].meshPreview.positions.slice(0, 300), ups[0].meshPreview.positions.slice(0, 300));
+    assert.ok(session.text.length < 100 * 1024, `the session answer is ${session.text.length} bytes: no mesh in it`);
+    assert.deepStrictEqual(session.body.parts.map((p) => session.body.partsById[p.partId].mesh.url), ups.map((u) => u.mesh.url));
+    for (const u of ups) {
+      const m = await preview(s, { mesh: session.body.partsById[u.partId].mesh, editKey: session.body.partsById[u.partId].editKey });
+      assert.strictEqual(m.status, 200);
+      assert.strictEqual(m.body.positions.length, firstMesh.body.positions.length);
+    }
+    assert.deepStrictEqual((await preview(s, ups[0])).body.positions.slice(0, 300), firstMesh.body.positions.slice(0, 300), "the same vertices after the restart");
     const again = await s.post("/api/quote", { parts: ups.map((u) => ({ partId: u.partId, materialSlug: mats[0].slug, quantity: 1, process: "cnc", subProcess: "milling" })), quoteId: q.body.quoteId }, { ip: me });
     assert.strictEqual(again.body.orderTotal, q.body.orderTotal, "the same price after the restart");
     // A stray payload with no part row is swept at the next start; the real ones stay.
@@ -671,7 +686,7 @@ test("a dense model adds kilobytes to the database, not megabytes: its preview m
     fs.utimesSync(stray, hourAgo, hourAgo);
     s = await live.start({ tmpDir, env: { NORD_FILE_ENC_KEY: key, JWT_SECRET: jwtSecret } });
     assert.ok(/File retention: removed 1 part payload file\(s\) with no part row/.test(s.log()));
-    assert.strictEqual(s.files("part-payloads").length, 3);
+    assert.strictEqual(s.files("part-payloads").length, 6);
     assert.ok(/part preview meshes are stored encrypted/.test(s.log()));
     assert.ok(!s.log().includes(key));
   } finally { await s.stop(); }

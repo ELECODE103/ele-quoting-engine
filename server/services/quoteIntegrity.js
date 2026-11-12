@@ -91,6 +91,9 @@ const reportMail = createThrottle({ windowMs: 24 * 60 * 60 * 1000, max: 5 });
  */
 function reportToOwner(kind, detail = {}) {
   try {
+    // A warm-up pass of the yielding pricing runner (services/pricingMemo.js) says nothing: the final
+    // pass meets the same failure and reports it, once.
+    if (require("./pricingMemo").warming()) return;
     const safe = JSON.stringify(detail, (k, v) => (typeof v === "number" && !Number.isFinite(v) ? String(v) : v));
     console.error(`[price-integrity] ${kind} ${safe}`);
     if (reportMail.peek("owner").limited) return;
@@ -526,11 +529,12 @@ function geometryHash(geometry) {
 }
 
 /** What the shop builds from, kept with the order so the traveler can be checked against what was charged. */
-function partSnapshot(part, line) {
+function partSnapshot(part, line, hash) {
   const g = part.geometry || {};
   const bb = g.boundingBox || {};
   return {
-    geometryHash: geometryHash(g),
+    // `hash`: geometryHash(part.geometry) when the caller has it already (it is tens of ms for a dense drawing).
+    geometryHash: typeof hash === "string" && hash ? hash : geometryHash(g),
     units: g.units || "mm",
     sourceUnit: line.is2D ? (g.profile2d && g.profile2d.units && g.profile2d.units.unit) || g.sourceUnit || null : null,
     dimsMm: {
@@ -547,9 +551,10 @@ function partSnapshot(part, line) {
  * The integrity record of a priced quote: one fingerprint per line (part,
  * stored geometry, validated configuration) and one for the whole quote.
  */
-function fingerprintQuote({ lines, parts, leadTimeSlug, paperwork, rules, leadTimeMultiplier, gate }) {
+function fingerprintQuote({ lines, parts, leadTimeSlug, paperwork, rules, leadTimeMultiplier, gate, geometryHashes }) {
   const perLine = lines.map((line, i) => {
-    const snapshot = partSnapshot(parts[i], line);
+    // geometryHashes[i], when given, IS geometryHash(parts[i].geometry): worked out once per part by the caller.
+    const snapshot = partSnapshot(parts[i], line, Array.isArray(geometryHashes) ? geometryHashes[i] : undefined);
     // The snapshot carries the validated configuration too (process, material, grade, stock thickness,
     // finish, quantity), so the order's documents can print exactly what was priced.
     const { partId: _id, ...setup } = line.normalized;

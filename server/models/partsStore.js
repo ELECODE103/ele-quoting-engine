@@ -79,11 +79,76 @@ class PartsStore {
   }
 
   /**
+   * Record which account a part belongs to, in the row and nowhere else: no payload file is read or
+   * written (update() answers with the whole part, which for a detailed part means reading its
+   * measurement file: 0.3 s for a dense drawing, on the pricing path).
+   * `userId` is who may use the part (security/partAccess.js); `ownerId` is the same account as the
+   * storage allowance reads it (security/uploadGuards.js).
+   * @returns {object|null} the row as stored
+   */
+  setOwner(id, userId) {
+    return this.table.update(id, { userId, ownerId: userId });
+  }
+
+  /**
    * @param {{ mesh?: boolean }} [opt]  mesh: also load the preview mesh from its file
    */
   getById(id, opt = {}) {
     const row = this.table.getById(id);
     return row ? this._hydrate(row, opt) : null;
+  }
+
+  /**
+   * The row as stored and nothing else: the summary geometry, `meshBytes` / `detailBytes`, no file
+   * read. For callers that only need to know what a part is and where its large pieces are.
+   */
+  getRow(id) {
+    return this.table.getById(id);
+  }
+
+  /** The stored file name of every part (for the sweep of uploads no part refers to). */
+  storedNames() {
+    if (typeof this.table._query === "function") {
+      return this.table._query(`SELECT stored_name FROM ${this.tableName} WHERE stored_name IS NOT NULL`).map((r) => String(r.stored_name).split(/[\\/]/).pop());
+    }
+    return this.table.getAll().map((r) => String(r.storedName || "").split(/[\\/]/).pop()).filter(Boolean);
+  }
+
+  /**
+   * One light row per part for retention and the pressure passes: who holds it, how big its row
+   * is in the database and how many bytes of files it has. No row's contents are read.
+   * @returns {Array<{ id, createdAt, clientTag, ownerId, storedName, bytes, fileBytes }>}
+   */
+  rowSizes() {
+    if (typeof this.table._query === "function") {
+      return this.table._query(`SELECT id, created_at, client_tag, owner_id, stored_name, 300 + COALESCE(OCTET_LENGTH(geometry_json), 0) + COALESCE(OCTET_LENGTH(dfm_json), 0) + COALESCE(LENGTH(file_name), 0) AS n, COALESCE(file_size, 0) + COALESCE(mesh_bytes, 0) + COALESCE(detail_bytes, 0) AS f FROM ${this.tableName}`)
+        .map((r) => ({ id: r.id, createdAt: r.created_at, clientTag: r.client_tag || "", ownerId: r.owner_id || "", storedName: r.stored_name || "", bytes: Number(r.n) || 300, fileBytes: Number(r.f) || 0 }));
+    }
+    return this.table.getAll().map((r) => {
+      let bytes = 300;
+      try { bytes += JSON.stringify(r.geometry || "").length + JSON.stringify(r.dfm || "").length; } catch { /* not counted */ }
+      return { id: r.id, createdAt: r.createdAt, clientTag: r.clientTag || "", ownerId: r.ownerId || "", storedName: r.storedName || "", bytes, fileBytes: (Number(r.fileSize) || 0) + (Number(r.meshBytes) || 0) + (Number(r.detailBytes) || 0) };
+    });
+  }
+
+  /** Bytes stored for one client tag: uploads plus what was derived from them. */
+  storedBytesFor(clientTag) {
+    if (!clientTag) return 0;
+    if (typeof this.table._query === "function") {
+      const rows = this.table._query(`SELECT COALESCE(SUM(COALESCE(file_size, 0) + COALESCE(mesh_bytes, 0) + COALESCE(detail_bytes, 0)), 0) AS n FROM ${this.tableName} WHERE client_tag = ?`, [clientTag]);
+      return rows.length ? Number(rows[0].n) || 0 : 0;
+    }
+    return this.table.getAll().filter((r) => r.clientTag === clientTag).reduce((sum, r) => sum + (Number(r.fileSize) || 0) + (Number(r.meshBytes) || 0) + (Number(r.detailBytes) || 0), 0);
+  }
+
+  /** The same for one account (parts uploaded while signed in to it). */
+  storedBytesForOwner(ownerId) {
+    if (!ownerId) return 0;
+    if (typeof this.table._query === "function") {
+      const rows = this.table._query(`SELECT COALESCE(SUM(COALESCE(file_size, 0) + COALESCE(mesh_bytes, 0) + COALESCE(detail_bytes, 0)), 0) AS n FROM ${this.tableName} WHERE owner_id = ?`, [ownerId]);
+      return rows.length ? Number(rows[0].n) || 0 : 0;
+    }
+    return this.table.getAll().filter((r) => r.ownerId === ownerId).reduce((sum, r) => sum + (Number(r.fileSize) || 0) + (Number(r.meshBytes) || 0) + (Number(r.detailBytes) || 0), 0);
   }
 
   _hydrate(row, { mesh = false } = {}) {

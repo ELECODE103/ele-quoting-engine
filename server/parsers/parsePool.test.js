@@ -43,6 +43,30 @@ const pools = [];
 const make = (opts) => { const p = new ParsePool(opts); pools.push(p); return p; };
 const settle = (p) => p.then((value) => ({ value }), (error) => ({ error }));
 
+// First, because it runs at the DEFAULT memory lines and those are about the whole process: after the memory tests
+// below this process is left holding several hundred MB (freed, but not given back to the system), and a parse
+// that needs 460 MB by itself would then be asked to try again later, exactly as the server would ask.
+test("the main thread stays free while a 2 MB STEP file (400 holes, ~10 s of OpenCascade) is read", async () => {
+  const pool = make({ parseTimeoutMs: 120000 });
+  let worstLag = 0, ticks = 0, last = Date.now();
+  // An idle timer on its own thread sees only what the machine does to every thread; the one below also sees this thread's work.
+  const machine = machineProbe();
+  const timer = setInterval(() => { const now = Date.now(); worstLag = Math.max(worstLag, now - last - 20); last = now; ticks++; }, 20);
+  const t0 = Date.now();
+  const parsed = await pool.run({ filePath: bigStep, sizeBytes: fs.statSync(bigStep).size });
+  clearInterval(timer);
+  const took = Date.now() - t0;
+  const machineMs = await machine.stop();
+  assert.strictEqual(parsed.geometry.estimatedHoles, 400, "the plate's 400 holes were recognised");
+  assert.ok(took > 1500, `the parse really is slow (${took} ms)`);
+  // Was a flat "< 250 ms". Now 250 ms plus the stall an idle thread saw in the same window, and never over the
+  // ceiling of 1000 ms / half the parse time, which a parse on this thread cannot meet (testSupport/latency.js).
+  assertResponsive([worstLag], { tightMs: 250, tookMs: took, machineMs, what: "longest the main thread was held during the parse" });
+  assert.ok(ticks > took / 20 / 2, `timers kept firing (${ticks} ticks in ${took} ms)`);
+  assert.strictEqual(pool.stats().idleWorkers, 0, "a worker that read a large, slow file is retired, not kept warm");
+  console.log(`       (STEP parse ${took} ms in a worker; worst main-thread lag ${worstLag} ms)`);
+});
+
 test("a file parsed in a worker gives exactly the result the main thread gives (STL, STEP, IGES, DXF, 3MF)", async () => {
   const pool = make({});
   const files = [
@@ -135,16 +159,25 @@ test("wall-clock timeout: the worker is terminated and the caller gets a firm-qu
   assert.deepStrictEqual([pool.stats().running, pool.stats().idleWorkers, pool.stats().timedOut], [0, 0, 1], "the stuck worker is gone, not parked");
 });
 
-test("timeout against a real pathological file: 5,000 crossing lines (a 480 kB DXF) are stopped mid-parse", async () => {
-  const pool = make({ parseConcurrency: 1, parseTimeoutMs: 1200 });
-  const dxf = write("crossing.dxf", crossingLinesDxf(5000));
-  assert.ok(fs.statSync(dxf).size < 600 * 1024, "the file is small — size limits alone would not catch it");
-  const t0 = Date.now();
-  const r = await settle(pool.run({ filePath: dxf }));
-  assert.strictEqual(r.error.code, "parse-timeout");
-  assert.ok(Date.now() - t0 < 3000, `stopped in ${Date.now() - t0} ms`);
-  // the slot is free again and a good file parses
-  assert.ok(Math.abs((await pool.run({ filePath: cube })).geometry.volume - 8000) < 1, "a good file still parses");
+test("timeout against a small file that is slow to read: a 480 kB DXF is stopped mid-parse", async () => {
+  // How slow this drawing is depends on the drawing reader (5,000 crossing lines took tens of seconds
+  // once and take a fraction of a second after the geometry speed-up), so the slowness is made with the
+  // test delay: the worker is kept busy for 20 s before any .dxf, whatever the drawing itself costs.
+  const hooks = { SE_TEST_HOOKS: process.env.SE_TEST_HOOKS, PARSE_TEST_DELAY_MS: process.env.PARSE_TEST_DELAY_MS, PARSE_TEST_DELAY_EXT: process.env.PARSE_TEST_DELAY_EXT };
+  Object.assign(process.env, { SE_TEST_HOOKS: "1", PARSE_TEST_DELAY_MS: "20000", PARSE_TEST_DELAY_EXT: ".dxf" });
+  try {
+    const pool = make({ parseConcurrency: 1, parseTimeoutMs: 1200 });
+    const dxf = write("crossing.dxf", crossingLinesDxf(5000));
+    assert.ok(fs.statSync(dxf).size < 600 * 1024, "the file is small — size limits alone would not catch it");
+    const t0 = Date.now();
+    const r = await settle(pool.run({ filePath: dxf }));
+    assert.strictEqual(r.error.code, "parse-timeout");
+    assert.ok(Date.now() - t0 < 3000, `stopped in ${Date.now() - t0} ms`);
+    // the slot is free again and a good file parses
+    assert.ok(Math.abs((await pool.run({ filePath: cube })).geometry.volume - 8000) < 1, "a good file still parses");
+  } finally {
+    for (const [k, v] of Object.entries(hooks)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
 });
 
 test("memory ceiling: a worker that outgrows its heap limit is stopped; the server process is untouched", async () => {
@@ -158,18 +191,104 @@ test("memory ceiling: a worker that outgrows its heap limit is stopped; the serv
   assert.ok(Math.abs((await make({}).run({ filePath: cube })).geometry.volume - 8000) < 1, "this process is alive and can still parse");
 });
 
-test("memory watchdog: when parsing has added more than PARSE_RSS_LIMIT_MB to the process, the longest-running parse is stopped", async () => {
+test("memory watchdog: over PARSE_RSS_LIMIT_MB with two parses running, the longest-running one is stopped at once and run again on its own", async () => {
   let rss = 100 * 1024 * 1024;
-  const pool = make({ parseConcurrency: 2, parsePerClient: 2, parseRssLimitMb: 500, watchIntervalMs: 50, rssProbe: () => rss, testDelayMs: 1500 });
+  const pool = make({ parseConcurrency: 2, parsePerClient: 2, parseRssLimitMb: 500, watchIntervalMs: 50, rssProbe: () => rss, testDelayMs: 700 });
   const first = settle(pool.run({ filePath: cube }));
   await new Promise((r) => setTimeout(r, 100));
   const second = settle(pool.run({ filePath: cube }));
+  const third = settle(pool.run({ filePath: cube, client: "someone-else" }));
   await new Promise((r) => setTimeout(r, 100));
   rss = 900 * 1024 * 1024; // +800 MB of WASM / typed-array memory the V8 heap limit does not see
-  const a = await first;
-  assert.strictEqual(a.error && a.error.code, "parse-memory", "the oldest parse is the one stopped");
+  await new Promise((r) => setTimeout(r, 80));
+  const st = pool.stats();
+  assert.strictEqual(st.running, 1, "one parse was stopped the moment the line was crossed");
+  assert.strictEqual(st.rerunAlone, 1);
+  assert.strictEqual(st.outOfMemory, 0, "nobody has been refused: memory is not known per parse, and it may only have been unlucky in its company");
   rss = 100 * 1024 * 1024;
-  assert.ok((await second).value, "the other parse finishes once memory is back under the line");
+  const b = await second;
+  assert.ok(b.value, "the other parse finishes once memory is back under the line");
+  await new Promise((r) => setTimeout(r, 60));
+  assert.strictEqual(pool.stats().running, 1, "the stopped parse runs by itself: the file that was waiting does not start beside it");
+  const a = await first;
+  assert.ok(a.value && Math.abs(a.value.geometry.volume - 8000) < 1, "the stopped parse was run again and answered");
+  assert.ok((await third).value, "and the line moves on after it");
+});
+
+test("memory watchdog: a parse is refused for memory only after a run by itself, measured from a fresh baseline; the customer beside it is never the one refused (RR-07)", async () => {
+  // Resident memory as the watchdog sees it: 100 MB, plus 700 MB whenever the hungry file is being read.
+  let pool;
+  const hungryRunning = () => [...pool.running].some((e) => e.client === "hungry");
+  pool = make({ parseConcurrency: 2, parseRssLimitMb: 500, watchIntervalMs: 50, rssProbe: () => (100 + (hungryRunning() ? 700 : 0)) * 1024 * 1024, testDelayMs: 900 });
+  const customer = settle(pool.run({ filePath: cube, client: "customer", sizeBytes: 2 * 1024 * 1024 }));
+  await new Promise((r) => setTimeout(r, 60));
+  const hungry = settle(pool.run({ filePath: cube, client: "hungry", sizeBytes: 3 * 1024 * 1024 }));
+  const c = await customer;
+  assert.ok(c.value && Math.abs(c.value.geometry.volume - 8000) < 1, "the customer's parse ran through");
+  const h1 = await hungry;
+  assert.strictEqual(h1.error && h1.error.code, "parse-memory", "the hungry one was stopped, run again alone, crossed the line alone, and only then refused");
+  assert.ok(/memory/i.test(h1.error.message) && /firm quote/i.test(h1.error.message), h1.error.message);
+  assert.deepStrictEqual([pool.stats().rerunAlone, pool.stats().outOfMemory], [1, 1]);
+  assert.strictEqual(pool._isSuspect("hungry"), true, "a sender refused on its own run is marked");
+  assert.strictEqual(pool._isSuspect("customer"), false);
+});
+
+test("memory watchdog: one parse running by itself has the whole parsing share (PARSE_RSS_SOLO_LIMIT_MB), and the process has a ceiling of its own (PARSE_RSS_CEILING_MB)", async () => {
+  // Alone, 600 MB over the baseline: over the shared line (500), under the solo line (700). It is left to finish.
+  let rss = 100 * 1024 * 1024;
+  const lone = make({ parseConcurrency: 2, parseRssLimitMb: 500, parseRssSoloLimitMb: 700, watchIntervalMs: 40, rssProbe: () => rss, testDelayMs: 500 });
+  const only = settle(lone.run({ filePath: cube, client: "customer" }));
+  await new Promise((r) => setTimeout(r, 80));
+  rss = 700 * 1024 * 1024;
+  assert.ok((await only).value, "a lone customer's parse is not judged against the line meant for several");
+  assert.deepStrictEqual([lone.stats().rerunAlone, lone.stats().outOfMemory], [0, 0]);
+  // The process line: resident memory over it stops a parse even though its own growth is small.
+  let at = 950 * 1024 * 1024;
+  const high = make({ parseConcurrency: 2, parseRssLimitMb: 500, parseRssCeilingMb: 1000, watchIntervalMs: 40, rssProbe: () => at, testDelayMs: 600 });
+  const p = settle(high.run({ filePath: cube, client: "customer" }));
+  await new Promise((r) => setTimeout(r, 80));
+  at = 1050 * 1024 * 1024; // the rest of the server grew: 100 MB added, 1,050 MB resident
+  const out = await p;
+  // Stopped on the first run and again on its run alone. It added 100 MB: it is the server that is short of
+  // room, so the customer is asked to try again, not told the model is too big, and is not marked.
+  assert.deepStrictEqual([out.error && out.error.code, out.error && out.error.status, out.error && out.error.retryAfter], ["busy", 503, 60]);
+  assert.deepStrictEqual([high.stats().rerunAlone, high.stats().shortOfRoom, high.stats().outOfMemory], [1, 1, 0]);
+  assert.strictEqual(high._isSuspect("customer"), false);
+  // The same, but the parse itself has taken more than the share two parses get between them (600 of 500 MB,
+  // under its solo line of 700): that file is too big for this server, and says so.
+  let heavy;
+  heavy = make({ parseConcurrency: 2, parseRssLimitMb: 500, parseRssSoloLimitMb: 700, parseRssCeilingMb: 900, watchIntervalMs: 40, rssProbe: () => { const e = [...heavy.running][0]; return (400 + (e && e.startedAt && Date.now() - e.startedAt > 150 ? 600 : 0)) * 1024 * 1024; }, testDelayMs: 900 });
+  const q = settle(heavy.run({ filePath: cube, client: "big-file" }));
+  const refused = await q;
+  assert.strictEqual(refused.error && refused.error.code, "parse-memory");
+  assert.deepStrictEqual([heavy.stats().shortOfRoom, heavy.stats().outOfMemory], [0, 1]);
+});
+
+test("where the runtime cannot be asked for a worker's memory (Node 20), parsers are ranked by the memory their thread has touched, not by file size", async () => {
+  // A: a tiny drawing declared as a 40 MB file, kept busy by the test delay without touching memory.
+  // B: a 15 MB STL (300,000 triangles), whose arrays take a few hundred MB. By file size A would be
+  // picked; by memory touched, B.
+  const hooks = { SE_TEST_HOOKS: process.env.SE_TEST_HOOKS, PARSE_TEST_DELAY_MS: process.env.PARSE_TEST_DELAY_MS, PARSE_TEST_DELAY_EXT: process.env.PARSE_TEST_DELAY_EXT, PARSE_MEMORY_RANKING: process.env.PARSE_MEMORY_RANKING };
+  Object.assign(process.env, { SE_TEST_HOOKS: "1", PARSE_TEST_DELAY_MS: "6000", PARSE_TEST_DELAY_EXT: ".dxf", PARSE_MEMORY_RANKING: "faults" });
+  try {
+    const pool = make({ parseConcurrency: 2, parseTimeoutMs: 60000, parseRssLimitMb: 0 });
+    const quietDxf = write("quiet.dxf", "0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n10\n21\n0\n0\nENDSEC\n0\nEOF\n");
+    const hungry = write("hungry.stl", binaryStl(300000));
+    const a = settle(pool.run({ filePath: quietDxf, sizeBytes: 40 * 1024 * 1024, client: "a" }));
+    const b = settle(pool.run({ filePath: hungry, client: "b" }));
+    let picked = null; let bDone = false; b.then(() => { bDone = true; });
+    for (let i = 0; i < 60 && !bDone && picked !== "hungry.stl"; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      const e = await pool._heaviest();
+      if (e && pool.running.size === 2) picked = path.basename(e.job.filePath);
+    }
+    assert.strictEqual(picked, "hungry.stl", "the parser that has taken the memory is the one picked, though the other file is declared larger");
+    await b;
+    await pool.close();
+    await a;
+  } finally {
+    for (const [k, v] of Object.entries(hooks)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
 });
 
 test("fairness: one client's files queue behind each other, not in front of everyone else", async () => {
@@ -196,26 +315,6 @@ test("cancel: a job whose client went away frees its worker and its place in the
   assert.deepStrictEqual([pool.stats().running, pool.stats().queued], [0, 0]);
 });
 
-test("the main thread stays free while a 2 MB STEP file (400 holes, ~10 s of OpenCascade) is read", async () => {
-  const pool = make({ parseTimeoutMs: 120000 });
-  let worstLag = 0, ticks = 0, last = Date.now();
-  // An idle timer on its own thread sees only what the machine does to every thread; the one below also sees this thread's work.
-  const machine = machineProbe();
-  const timer = setInterval(() => { const now = Date.now(); worstLag = Math.max(worstLag, now - last - 20); last = now; ticks++; }, 20);
-  const t0 = Date.now();
-  const parsed = await pool.run({ filePath: bigStep, sizeBytes: fs.statSync(bigStep).size });
-  clearInterval(timer);
-  const took = Date.now() - t0;
-  const machineMs = await machine.stop();
-  assert.strictEqual(parsed.geometry.estimatedHoles, 400, "the plate's 400 holes were recognised");
-  assert.ok(took > 1500, `the parse really is slow (${took} ms)`);
-  // Was a flat "< 250 ms". Now 250 ms plus the stall an idle thread saw in the same window, and never over the
-  // ceiling of 1000 ms / half the parse time, which a parse on this thread cannot meet (testSupport/latency.js).
-  assertResponsive([worstLag], { tightMs: 250, tookMs: took, machineMs, what: "longest the main thread was held during the parse" });
-  assert.ok(ticks > took / 20 / 2, `timers kept firing (${ticks} ticks in ${took} ms)`);
-  assert.strictEqual(pool.stats().idleWorkers, 0, "a worker that read a large, slow file is retired, not kept warm");
-  console.log(`       (STEP parse ${took} ms in a worker; worst main-thread lag ${worstLag} ms)`);
-});
 
 run(async () => {
   for (const p of pools) await p.close();

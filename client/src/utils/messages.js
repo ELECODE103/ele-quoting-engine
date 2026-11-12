@@ -15,4 +15,6 @@ export const contextFor = catalogue.contextFor;
 export const describeOrderState = catalogue.orderState;
 /** The sentence for one reason a quote goes to a person ({ code, message } from gate.reasons). */
 export const describeGateReason = catalogue.gateReason;
+/** A sentence that is not a refusal: something the server did that the buyer should know about (a confirmation email held in line). */
+export const describeNotice = catalogue.notice;
 export default catalogue;

@@ -104,6 +104,9 @@ async function startServer({ turnstile, prepare }) {
   if (turnstile) {
     env.TURNSTILE_SITE_KEY = `e2e-site-${crypto.randomBytes(6).toString('hex')}`;
     env.TURNSTILE_SECRET_KEY = `e2e-secret-${crypto.randomBytes(12).toString('hex')}`;
+  } else {
+    // Since 2026-11-12 production does not start without the Turnstile keys unless this says so.
+    env.ALLOW_LAUNCH_WITHOUT_BOT_CHECK = '1';
   }
   // `prepare(env)`: put something in the database before the server starts (a script run with the server's own environment).
   if (prepare) await prepare(env);
@@ -717,7 +720,9 @@ async function phaseWithKeys() {
       ['GET', `/api/orders/${order.id}/traveler`, [401, 403]],
       ['PUT', `/api/orders/${order.id}/status`, [401, 403]],
       ['GET', `/api/quote/${quoteId}`, [404]],
-      ['GET', `/api/quote/${quoteId}/session`, [404]],
+      // 403 for a visitor who has not passed the bot check (reopening a quote needs it since the
+      // availability fixes of 2026-11-11), 404 for one who has: refused either way, nothing shown.
+      ['GET', `/api/quote/${quoteId}/session`, [403, 404]],
       ['DELETE', `/api/quote/${quoteId}/drawing`, [404]],
       ['POST', '/api/orders/checkout-session', [401, 403], { quoteId }],
       ['GET', `/api/rfq/${danaRfq}`, [404]],

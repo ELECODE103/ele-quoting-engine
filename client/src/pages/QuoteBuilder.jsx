@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { describeGateReason } from '../utils/messages';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
+import { resolveDetail, wantMeshes, resetMeshes } from '../utils/partLoader';
 import HumanGate from '../components/security/HumanGate';
 import { formatCurrency, formatDim, formatShipDate } from '../utils/format';
 import ThreeViewer from '../components/ThreeViewer';
@@ -59,6 +60,7 @@ export default function QuoteBuilder() {
   // Parts state
   const [parts, setParts] = useState([]);          // { partId, fileName, geometry, dfm, meshPreview, materialSlug, grade, thicknessMm, finishSlug, quantity, process, subProcess, layerHeight, infill }
   const [activePart, setActivePart] = useState(null);
+  const [meshes, setMeshes] = useState({});        // partId → { positions, triangleCount }, loaded lazily (utils/partLoader.js)
   const [selectedLeadTime, setSelectedLeadTime] = useState('standard');
   const [paperwork, setPaperwork] = useState(false); // first-article report + certificate of conformance: off unless the buyer ticks it
   const [selectedProcess, setSelectedProcess] = useState(linkedProcess);
@@ -108,6 +110,8 @@ export default function QuoteBuilder() {
         if (savedId) {
           saved = await api.getQuoteSession(savedId).catch(() => null);
           if (!saved || saved.parts.length === 0) { saved = null; if (!fromLink) storeQuoteId(null); }
+          // A detailed drawing arrives as a summary: fetch its outline before it is shown (previews follow, lazily).
+          if (saved) { resetMeshes(); saved.parts = await resolveDetail(saved.parts); }
         }
         const process = saved?.process || linkedProcess;
         const [mats, fins] = await Promise.all([api.getMaterials(process), api.getFinishes(process)]);
@@ -132,6 +136,14 @@ export default function QuoteBuilder() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 3D previews are fetched after the parts are on the page: one at a time, the part on screen first.
+  // They are kept beside the parts, not in them, so a preview arriving does not re-price the quote.
+  useEffect(() => {
+    wantMeshes(parts.filter((p) => !meshes[p.partId]), activePart, (partId, meshPreview) => {
+      setMeshes((prev) => ({ ...prev, [partId]: meshPreview }));
+    });
+  }, [parts, activePart, meshes]);
 
   // Auto-refresh quote when parts change
   // Anodize and powder coat are sent out to a finisher, so a quote with either
@@ -310,6 +322,7 @@ export default function QuoteBuilder() {
 
     try {
       const result = await api.uploadFiles(files, proc);
+      result.parts = await resolveDetail(result.parts || []);
       const defaultMat = mats.find((m) => m.slug === preferredMaterial) || mats[0];
 
       const newParts = result.parts.map((p) => ({
@@ -319,6 +332,7 @@ export default function QuoteBuilder() {
         geometry: p.geometry,
         dfm: p.dfm,
         meshPreview: p.meshPreview,
+        mesh: p.mesh, // where the 3D preview is, when it was not small enough to come with the answer
         materialSlug: defaultMat?.slug || '', // blank only if the lists have not arrived yet: filled in below when they do
         grade: defaultMat?.grades?.[0]?.name || '',
         thicknessMm: pickThickness(defaultMat, p.geometry),
@@ -673,7 +687,7 @@ export default function QuoteBuilder() {
               <div className="card" style={{ marginBottom: 20, overflow: 'hidden' }}>
                 <div style={{ height: 360, position: 'relative' }}>
                   <ThreeViewer
-                    positions={active.meshPreview?.positions}
+                    positions={(meshes[active.partId] || active.meshPreview)?.positions}
                     color={materials.find((m) => m.slug === active.materialSlug)?.color || '#4F8CFF'}
                   />
                   {/* Overlay info */}

@@ -16,6 +16,8 @@ const shopFacts = require("../shopFacts");
 const mailer = require("../services/mailer");
 const checkoutGuard = require("../services/checkoutGuard"); // per-account checkout limit; what-was-priced snapshot
 const partAccess = require("../security/partAccess");
+const pricingGate = require("../security/pricingGate");   // who may price, and how much of the hour's pricing time they have had
+const pricingMemo = require("../services/pricingMemo");   // the site's one pricing runner
 const lifecycle = require("../services/orderLifecycle"); // what happens after a Stripe session exists
 const orderState = require("../services/orderState");
 const { singleLine, singleLines, SHIPPING_RULES } = require("../middleware/singleLine");
@@ -184,9 +186,27 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
     // handed a payment page again (payments review F-04): its parts have been locked since it was
     // made, but the rate card, the catalog and the gate have not. If it no longer passes, the quote
     // has to be reopened (it is not a draft any more, so the builder makes a new one from it).
+    // That re-pricing is real work on the one thread, and it has to be done in one step with the order
+    // it guards (nothing may change between the check and the order), so it cannot be handed to the
+    // pricing runner in pieces. What can be done is done: a sender who has used the hour's pricing
+    // allowance is told when to come back before any of it starts, each part is loaded and measured
+    // once however many lines name it (the memo inside verifyQuoteForOrder), and the time it takes is
+    // charged to the address and the account like any other pricing (security/pricingGate.js).
+    const spent = pricingGate.overBudget(req);
+    if (spent) {
+      res.set("Retry-After", String(spent.retryAfterSeconds));
+      return res.status(spent.status).json(spent.body);
+    }
+    const pricingStarted = Date.now();
     const checked = require("./api").verifyQuoteForOrder(quote, req.user, { confirmedTotal: req.body.confirmedTotal });
+    pricingGate.charge(req, Date.now() - pricingStarted);
     if (!checked.ok) return res.status(checked.status).json(resumable ? { ...checked.body, reopen: true, orderId: resumable.id } : checked.body);
     quote = checked.quote;
+
+    // An order is never taken (or paid for) for a part whose file the shop no longer has. Retention keeps
+    // the files of a quote that can still be ordered, so this should not fire; it is the check that it did.
+    const files = require("../services/fileRetention").partFilesPresent((quote.lineItems || []).map((li) => li.partId));
+    if (!files.ok) return res.status(409).json({ error: files.message, code: files.code, reopen: true, ...(resumable ? { orderId: resumable.id } : {}) });
 
     const leadDays = leadTime ? shipBy.leadDays(leadTime) : null;
     const account = usersDB.getById(req.user.userId);
@@ -621,7 +641,11 @@ router.post("/:id/confirm-payment", authenticate, async (req, res) => {
 // Re-prices the same parts and configuration at today's rates and returns a
 // draft quote the builder can open. Nothing is ordered here.
 // ═══════════════════════════════════════════════════════════════
-router.post("/:id/reorder", authenticate, (req, res) => {
+// Pricing here goes through the same door as POST /api/quote (security/pricingGate.js admit(): one
+// pricing request at a time per client, the hour's pricing allowance per address and per account) and
+// the site's one pricing runner (services/pricingMemo.js: each part loaded once, the work done in
+// pieces between which every other request is served).
+router.post("/:id/reorder", authenticate, pricingGate.admit(), async (req, res) => {
   try {
     const order = ownedOrder(req, res);
     if (!order) return;
@@ -637,13 +661,12 @@ router.post("/:id/reorder", authenticate, (req, res) => {
         status: order.status,
       });
     }
-    // NOTE FOR THE availability-fixes MERGE (re-review RR-05): saveQuote below prices every line on the
-    // main thread, with no memo, no line budget and no per-account wait. On a dense part with many lines
-    // it holds the site the way the pricing route did (uploads review C2). The fix needs modules that
-    // only exist on availability-fixes; wrap THIS call the way that branch wraps POST /api/quote.
     const items = orderItemsDB.query((i) => i.orderId === order.id);
     const configs = items
-      .filter((it) => it.partId && partsDB.getById(it.partId))
+      // getRow: "is the part still there" is answered from its row. getById reads the part's whole
+      // measurement file, once per line, before any pricing has started (0.7 s of held thread for 100
+      // lines of a dense part: availability-fixes round 2, RR-05).
+      .filter((it) => it.partId && partsDB.getRow(it.partId))
       .map((it) => ({
         materialSlug: it.materialSlug,
         finishSlug: it.finishSlug,
@@ -667,15 +690,30 @@ router.post("/:id/reorder", authenticate, (req, res) => {
     const fromOrder = { allowAnonymous: true };
     // The reorder keeps the paperwork choice (re-priced at today's fee, like everything else).
     const input = { parts: configs, process: configs[0].process, paperwork: Boolean(order.paperwork) };
+    // Who is charged for the work and whose allowances the new draft counts against (the address and the
+    // account), and how the parts may be used (the caller's own order stands in for the part keys).
+    const ctx = { ...pricingGate.context(req), access: fromOrder };
+    const priced = (body) => pricingMemo.run(() => saveQuote(body, req.user, ctx), pricingGate.job(req, configs));
+    // A refusal about load or allowances is answered as it is, with its Retry-After: the site is busy
+    // (503), this sender has had its share of pricing time, of new quotes or of stored drafts (429), or
+    // the quote took longer to price than the instant quote allows (quote-too-slow). None of those is
+    // "this order can't be re-quoted", and trying again with another lead time would only do the work twice.
+    const aboutLoad = (err) => err.status === 429 || err.status === 503 || (err.extra && err.extra.code === "quote-too-slow");
+    const passOn = (err) => {
+      if (err.retryAfterSeconds) res.set("Retry-After", String(err.retryAfterSeconds));
+      return res.status(err.status).json({ error: err.message, ...(err.extra || {}) });
+    };
     let result;
     try {
-      result = saveQuote({ ...input, leadTimeSlug: order.leadTimeSlug || "standard" }, req.user, { access: fromOrder });
+      result = await priced({ ...input, leadTimeSlug: order.leadTimeSlug || "standard" });
     } catch (err) {
       if (!err.expose) throw err;
+      if (aboutLoad(err)) return passOn(err);
       // A retired lead time shouldn't block a reorder; anything else (a retired material) does.
-      try { result = saveQuote({ ...input, leadTimeSlug: "standard" }, req.user, { access: fromOrder }); }
+      try { result = await priced({ ...input, leadTimeSlug: "standard" }); }
       catch (err2) {
         if (!err2.expose) throw err2;
+        if (aboutLoad(err2)) return passOn(err2);
         return res.status(409).json({ error: `This order can't be re-quoted as it was: ${err2.message}. Start a new quote instead.`, code: "reorder-failed" });
       }
     }

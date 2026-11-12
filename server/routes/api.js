@@ -6,8 +6,19 @@ const { randomUUID: uuidv4 } = require("crypto"); // RFC 4122 v4, same format th
 const { pool: parsePool } = require("../parsers/parsePool");
 const { PricingEngine } = require("../services/pricingEngine");
 const quoteGate = require("../services/quoteGate");
-const { runDFMAnalysis, defaultProcessSlug } = require("../parsers/fileParser");
-const { materialsDB, finishesDB, leadTimesDB, pricingDB, quotesDB, partsDB, pricingAuditDB, ordersDB, orderItemsDB } = require("../models");
+const { defaultProcessSlug } = require("../parsers/fileParser");
+const { pricingDB, quotesDB, pricingAuditDB, ordersDB, orderItemsDB } = require("../models");
+// Pricing reads these through a per-request memo (services/pricingMemo.js): each part and each catalog
+// table is loaded once per request and DFM runs once per configuration. With no pricing request
+// running they are the plain model handles and the plain DFM function.
+const pricingMemo = require("../services/pricingMemo");
+const { materialsDB, finishesDB, leadTimesDB, partsDB } = pricingMemo.wrapModels(require("../models"));
+const runDFMAnalysis = pricingMemo.wrapDfm(require("../parsers/fileParser").runDFMAnalysis);
+const { assertSaneGeometry } = require("../parsers/saneGeometry");
+const pricingGate = require("../security/pricingGate");
+const quoteGuards = require("../security/quoteGuards");
+const quoteSession = require("../services/quoteSession");
+const storagePressure = require("../services/storagePressure");
 const ruleSchema = require("../config/ruleSchema");
 const { createPricingAdmin } = require("../services/pricingAdmin");
 const pricingPreview = require("../services/pricingPreview");
@@ -15,6 +26,8 @@ const calibration = require("../services/calibration");
 const { activeProcesses } = require("../processes/registry");
 const quoteIntegrity = require("../services/quoteIntegrity"); // the whitelist, the price floor and the fingerprint every price passes through
 const partAccess = require("../security/partAccess");        // who may use an uploaded part
+// The hash of a part's stored geometry, once per part per pricing request (it is read for the gate and for the fingerprint).
+const geometryHashOf = pricingMemo.wrapPure(quoteIntegrity.geometryHash);
 const audit = require("../services/audit");                  // the one append-only admin change log
 const { authenticate, optionalAuth, requireAdmin } = require("./auth");
 const { sanitizeString, isValidSlug, isValidUUID, nonNegativeNumber, positiveInt } = require("../middleware/validate");
@@ -53,6 +66,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
+  // A file name is read as UTF-8 ("Gehäuse.stl" used to arrive as "GehÃ¤use.stl"); it is only ever a label.
+  defParamCharset: "utf8",
   // Size and count are admin-tunable (UPLOAD_MAX_FILE_MB, UPLOAD_MAX_FILES); the
   // rest bounds the multipart parser itself: a handful of short text fields.
   limits: {
@@ -124,7 +139,7 @@ function parseFailure(fileName, err) {
   return out;
 }
 
-const pricingEngine = new PricingEngine();
+const pricingEngine = pricingMemo.wrapEngine(new PricingEngine());
 const pricingAdmin = createPricingAdmin({ pricingDB, auditDB: pricingAuditDB });
 
 /**
@@ -243,9 +258,17 @@ function whitelist(body, allowedFields) {
 
 const DXF_ROUTING_ONLY = "A DXF is a 2D profile, so it can only be quoted for CNC routing (sheet and plate cut on the router). Switch the process to CNC routing and upload it again, or upload a STEP, STL, IGES or 3MF model for machining or printing.";
 
-/** What the client needs to show a part: geometry summary, DFM, and a 3D mesh or a 2D profile. */
+/**
+ * What the client needs to show a part: geometry summary, DFM, and a 3D mesh or a 2D profile.
+ * What is stored in a file (a preview mesh, the detail of a very detailed model) is named by a URL
+ * and fetched by the browser when it shows it; what is small enough to live in the part's row is in
+ * the answer (services/quoteSession.js describePart). `part.row`, when given, is the stored row.
+ */
 function partPayload(part, parsed) {
+  const stored = part.row ? quoteSession.describePart(part.row) : null;
+  const detailInFile = Boolean(stored && stored.geometryDetail);
   const g = parsed.geometry;
+  const meshInFile = Boolean(stored && stored.mesh && stored.mesh.bytes);
   return {
     partId: part.id,
     fileName: part.fileName,
@@ -265,16 +288,19 @@ function partPayload(part, parsed) {
       units: g.units,
       // Recognised features (server/geometry/SCHEMA.md): holes, pockets,
       // slots, walls, access, stock, confidence. Mesh data stays in meshPreview.
-      features: g.features || null,
+      // When the detail is in a file the answer carries what the row keeps of it; the rest is at geometryDetail.url.
+      features: (detailInFile ? stored.geometry.features : g.features) || null,
       // 2D input (DXF): the loops for the SVG preview, units, and what was skipped.
-      ...(dxf.is2D(g) ? { sourceFormat: "dxf", is2D: true, sourceUnit: g.sourceUnit, profile2d: g.profile2d } : {}),
+      ...(dxf.is2D(g) ? { sourceFormat: "dxf", is2D: true, sourceUnit: g.sourceUnit, profile2d: detailInFile ? stored.geometry.profile2d : g.profile2d } : {}),
     },
     dfm: parsed.dfm,
     dfmAll: parsed.dfmAll,
     meshPreview: {
-      positions: g.meshData?.positions || [],
+      positions: meshInFile ? [] : (g.meshData?.positions || []),
       triangleCount: g.meshData?.triangleCount || 0,
     },
+    ...(stored && stored.mesh ? { mesh: stored.mesh } : {}),
+    ...(detailInFile ? { geometryDetail: stored.geometryDetail } : {}),
   };
 }
 
@@ -338,10 +364,15 @@ router.post(
     const client = req.uploadClientKey || clientKey(req);
     const results = [];
     let busy = null;
+    // Once one file of a request has been stopped (out of time, out of memory, out of this client's
+    // parsing allowance), the rest of the request is not read: ten slow files in one request used
+    // to hold a worker for ten minutes (independent review 2026-11-11, H2).
+    let stopped = null;
     for (const file of req.files) {
       const fileName = uploadGuards.safeFileName(file.originalname);
       if (gone) break;
       if (busy) { errors.push({ fileName, error: busy.message, code: "busy" }); continue; }
+      if (stopped) { errors.push({ fileName, error: stopped.message, code: stopped.code }); continue; }
       try {
         const isDxfFile = path.extname(file.originalname).toLowerCase() === ".dxf";
         if (isDxfFile && selectedProcess && selectedProcess !== "routing") {
@@ -369,8 +400,10 @@ router.post(
           fileSize: file.size,
           geometry: parsed.geometry,
           dfm: parsed.dfm,
-          // The part belongs to the account that uploaded it; without one, to the holder of its edit key.
+          // The part belongs to the account that uploaded it; without one, to the holder of its edit key (security/partAccess.js).
           userId: req.user?.userId || null,
+          clientTag: uploadGuards.clientTag(client), // whose stored bytes these are (a keyed hash, not the address)
+          ownerId: req.user?.userId || "",            // the same account, as the storage allowance reads it (bytes are capped per account too)
         });
         pending.delete(storedPath); // the part row owns the file now
         uploadGuards.storage.add(file.size);
@@ -378,11 +411,16 @@ router.post(
         // small, dense STL) counts against the sender's daily budget too.
         uploadGuards.budget.add(client, (Number(part.meshBytes) || 0) + (Number(part.detailBytes) || 0));
 
-        results.push(partPayload(part, parsed));
+        results.push(partPayload({ ...part, row: partsDB.getRow(part.id) }, parsed));
       } catch (err) {
         current = null;
         if (err.code === "cancelled") break;
         if (err.code === "busy") { busy = err; errors.push({ fileName, error: err.message, code: "busy" }); continue; }
+        if (err.code === "parse-timeout" || err.code === "parse-memory" || err.code === "parse-budget") {
+          errors.push(parseFailure(fileName, err));
+          stopped = err.code === "parse-budget" ? { code: "parse-budget", message: err.message } : { code: "not-read", message: uploadGuards.NOT_READ_MESSAGE };
+          continue;
+        }
         if (err.name === "PayloadError") {
           // The file was read, but what we keep of it could not be stored (the storage ceiling, or the disk).
           // Nothing of this part was kept: its upload is deleted with the rest of `pending`.
@@ -400,6 +438,7 @@ router.post(
     // Refused files are off the disk before the answer goes out.
     await Promise.all([...pending].map(discard));
     pending.clear();
+    if (results.length) storagePressure.nudge(require("../models")); // over a line? the sweeps run now, not in five minutes
     // Nothing got through because the parsers are saturated: say so with the status a client can act on.
     if (busy && results.length === 0) {
       res.set("Retry-After", String(busy.retryAfter || 60));
@@ -568,6 +607,11 @@ function priceQuote(partConfigs, leadTimeSlug = "standard", { paperwork = false,
     if (part.payloadError) {
       throw quoteError(409, `${part.fileName}: we can no longer read what we measured from this file. Upload it again and it will be priced as before.`, { partId: config.partId, code: "part-data-unavailable" });
     }
+    // No real measurements, no price (parsers/saneGeometry.js): a model with a NaN or Infinity in it, a
+    // volume its own box cannot hold, or a printed part thinner than a printer makes is refused here,
+    // before the whitelist or the engine reads a number from it. `config` carries the process the
+    // thin-print check needs; the whitelist below settles the same process (it must be the material's own).
+    assertSaneGeometry(part.geometry, { partId: config.partId, fileName: part.fileName, config });
     const line = quoteIntegrity.resolveLine(config, { part, materials, finishes });
     lines.push(line);
     parts.push(part);
@@ -612,6 +656,8 @@ function priceQuote(partConfigs, leadTimeSlug = "standard", { paperwork = false,
       paperwork: paperwork === true,
     });
   } catch (err) {
+    // Not a failure: the yielding runner stopping this pass to let other requests run (services/pricingMemo.js).
+    if (err && err.pricingInterrupt) throw err;
     // The engine could not produce a price (its own guard against NaN, or a model that threw).
     quoteIntegrity.reportToOwner("pricing engine error", { error: String(err && err.message).slice(0, 160), parts: lines.map((l) => ({ partId: l.normalized.partId, process: l.process, material: l.material.slug })) });
     throw new quoteIntegrity.Refusal(422, "price-check-failed", "We couldn't price this setup automatically. Send us the part and we'll quote it by hand.", { offerRfq: true });
@@ -622,7 +668,7 @@ function priceQuote(partConfigs, leadTimeSlug = "standard", { paperwork = false,
   // Instant checkout or RFQ? Stored with the quote so checkout can enforce it.
   // Each line is judged on its own DFM result; quantities and totals are summed over the lines
   // of a part, over identical geometry, and over the order (services/quoteGate.js).
-  const geometryKeys = parts.map((p) => quoteIntegrity.geometryHash(p.geometry));
+  const geometryKeys = parts.map((p) => geometryHashOf(p.geometry));
   const gate = quoteIntegrity.withIntegrityReasons(quoteGate.evaluate(quote.lineItems, dfmByLine, rules, { geometryKeys }), lines, parts);
   // For the page, which shows one DFM panel per part: when a part is on several lines, the
   // result of the line that needs the most attention (never the last one's by accident).
@@ -633,7 +679,7 @@ function priceQuote(partConfigs, leadTimeSlug = "standard", { paperwork = false,
     if (!dfmByPartId[id] || severity(dfmByLine[i]) > severity(dfmByPartId[id])) dfmByPartId[id] = dfmByLine[i];
   });
   // What exactly was priced (stored geometry + validated configuration), for checkout to compare.
-  const integrity = quoteIntegrity.fingerprintQuote({ lines, parts, leadTimeSlug: leadTime.slug, paperwork: paperwork === true, rules, leadTimeMultiplier, gate });
+  const integrity = quoteIntegrity.fingerprintQuote({ lines, parts, leadTimeSlug: leadTime.slug, paperwork: paperwork === true, rules, leadTimeMultiplier, gate, geometryHashes: geometryKeys });
 
   return { quote, gate, dfmByPartId, dfmByLine, leadTime, leadTimeMultiplier, integrity, parts };
 }
@@ -666,7 +712,10 @@ function quoteEditableBy(quote, user) {
  * updated; otherwise a row is inserted (under `quoteId` if it is unused).
  * Every re-price restarts the 30-day price hold.
  */
-function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, process: builderProcess, notes, paperwork }, user, { access = {} } = {}) {
+function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, process: builderProcess, notes, paperwork }, user, ctx = {}) {
+  // ctx: { clientKey } who is asking, for the per-sender allowances (security/pricingGate.js context());
+  //      { access } how the parts may be used (security/partAccess.js), e.g. a reorder prices the parts of the caller's own order.
+  const access = ctx.access || {};
   if (!Array.isArray(rawConfigs) || rawConfigs.length === 0) throw quoteError(400, "No parts configured");
   if (rawConfigs.length > MAX_QUOTE_LINES) {
     throw quoteError(400, `An instant quote holds up to ${MAX_QUOTE_LINES} lines. For a larger job, send us the files for a firm quote.`, { code: "too-many-lines", offerRfq: true });
@@ -677,7 +726,15 @@ function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, proc
   // The only thing the client says about the paperwork is yes or no. The fee is
   // worked out here from the rate card and the number of lines; any amount sent
   // with the request is ignored.
+  // Who is asking and for which row, before any pricing work is done for them: a sender who may not
+  // start another quote, or has re-priced this one more than a person does, is told so now.
+  const existingRow = isValidUUID(quoteId) && typeof quotesDB.table?.getById === "function" ? quotesDB.table.getById(quoteId) : null;
+  const repricing = Boolean(existingRow && quoteEditableBy(existingRow, user));
+  if (repricing) quoteGuards.assertMayReprice(existingRow.id);
+  else quoteGuards.assertMayCreate({ user, clientKey: ctx.clientKey });
   const priced = priceQuote(partConfigs, leadTimeSlug, { paperwork: wantsPaperwork(paperwork), access: { user, ...access } });
+  // A warm-up pass of the yielding runner (services/pricingMemo.js) stops here: nothing is written until the final pass.
+  if (pricingMemo.warming()) return null;
   // A visitor who uploaded without an account and has since signed in: the parts are theirs now.
   // (Not an admin pricing a customer's part on their behalf.)
   if (user && user.userId && !partAccess.isAdmin(user)) for (const part of priced.parts) partAccess.claim(part, user, partsDB);
@@ -687,7 +744,7 @@ function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, proc
     // The fingerprint of what was priced; checkout prices again and compares (services/quoteIntegrity.js).
     integrity: priced.integrity,
   };
-  const existing = isValidUUID(quoteId) ? quotesDB.getById(quoteId) : null;
+  const existing = existingRow ? quotesDB.getById(quoteId) : null;
   const record = {
     ...priced.quote,
     gate: priced.gate,
@@ -700,15 +757,35 @@ function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, proc
     userId: user?.userId || null,
   };
   if (notes !== undefined) record.notes = sanitizeString(String(notes || ""), 2000);
+  const database = require("../models/database");
+  const clientTag = ctx.clientKey ? uploadGuards.clientTag(ctx.clientKey) : "";
   let saved;
   if (existing && quoteEditableBy(existing, user)) {
-    saved = quotesDB.update(existing.id, { ...record, userId: user?.userId || existing.userId || null });
+    // A re-price. What is asked of a new row is asked of a re-price that makes the row bigger: the
+    // sender's allowance of stored drafts, in bytes, and the database ceiling (security/quoteGuards.js).
+    const changes = { ...record, userId: user?.userId || existing.userId || null };
+    const asStored = { ...changes, notes: record.notes !== undefined ? record.notes : existing.notes };
+    quoteGuards.assertRoomForDraft({ user, clientKey: ctx.clientKey, bytes: quotesDB.sizeOf(asStored), existing: { id: existing.id, bytes: quotesDB.rowBytes(existing.id) } });
+    quoteGuards.recordReprice(existing.id);
+    // Re-pricing a draft is the most frequent write there is and the cheapest to lose: it may wait a
+    // moment for the file (models/database.js deferred()), so a busy quote tool does not rewrite the
+    // database file on every keystroke.
+    saved = database.deferred(() => quotesDB.update(existing.id, { ...changes, ...(existing.clientTag ? {} : { clientTag }) }));
   } else {
+    // A NEW row. Its id is always made here: a quote id the client sends only ever names a quote
+    // that already exists (and that the requester may edit, above); it is never used as the id of
+    // a new one. New rows are limited per client and per account in number and in bytes, and stop
+    // first for visitors without an account when the database is nearly full (security/quoteGuards.js).
+    quoteGuards.assertMayCreate({ user, clientKey: ctx.clientKey });
     // A quote that has moved on (ordered, sent as an RFQ) is forked, keeping the buyer's notes and drawing.
     const carry = existing && (!existing.userId || existing.userId === user?.userId)
       ? { notes: existing.notes || "", drawingFileName: existing.drawingFileName || "", drawingPath: existing.drawingPath || "" }
       : {};
-    saved = quotesDB.insert(!existing && isValidUUID(quoteId) ? { id: quoteId, ...record } : { ...carry, ...record });
+    const row = { ...carry, ...record, clientTag };
+    quoteGuards.assertRoomForDraft({ user, clientKey: ctx.clientKey, bytes: quotesDB.sizeOf(row) });
+    saved = quotesDB.insert(row); // a new row is written at once (only re-pricing may wait)
+    quoteGuards.recordCreated({ user, clientKey: ctx.clientKey });
+    storagePressure.nudge(require("../models"));
   }
   return { saved, ...priced };
 }
@@ -736,7 +813,10 @@ function repriceStoredQuote(quote, user) {
     throw new quoteIntegrity.Refusal(400, "config-invalid", "This quote can't be priced as it was saved.");
   }
   // The parts were authorised when they went into this quote; the caller owns (or holds) the quote.
-  return priceQuote(configs, quote.leadTimeSlug || "standard", { paperwork: Boolean(quote.paperwork), access: { user, allowAnonymous: true } });
+  // Priced in one go, with a memo of its own (services/pricingMemo.js within()): each part is loaded and
+  // hashed once and each distinct configuration checked once, however many lines name it. Everything is
+  // read fresh inside this one call, so what is compared at checkout is the part as it is stored NOW.
+  return pricingMemo.within(() => priceQuote(configs, quote.leadTimeSlug || "standard", { paperwork: Boolean(quote.paperwork), access: { user, allowAnonymous: true } }));
 }
 
 /**
@@ -810,6 +890,11 @@ function verifyQuoteForOrder(quote, user, { confirmedTotal } = {}) {
  * either way checkout prices again before it charges.
  */
 function refreshDraftQuotesFor(partId) {
+  // One memo and one write of the database file for the whole pass: the part is loaded once for all the
+  // drafts that hold it, not once per draft.
+  return require("../models/database").batch(() => pricingMemo.within(() => refreshDraftQuotesNow(partId)));
+}
+function refreshDraftQuotesNow(partId) {
   let touched = 0;
   for (const q of quotesDB.query((x) => x.status === "draft" && storedConfigs(x).some((c) => c && c.partId === partId))) {
     try {
@@ -830,7 +915,9 @@ function refreshDraftQuotesFor(partId) {
   return touched;
 }
 
-router.post("/quote", optionalAuth, (req, res) => {
+// One pricing request at a time per client, fewer lines without an account (security/pricingGate.js);
+// the pricing itself yields to other requests between lines and has a time budget (services/pricingMemo.js).
+router.post("/quote", optionalAuth, pricingGate.admit(), async (req, res) => {
   try {
     const { parts: partConfigs } = req.body;
 
@@ -838,7 +925,8 @@ router.post("/quote", optionalAuth, (req, res) => {
       return res.status(400).json({ error: "No parts configured" });
     }
 
-    const { saved, quote, gate, dfmByPartId, dfmByLine, leadTime } = saveQuote(req.body, req.user);
+    const ctx = pricingGate.context(req);
+    const { saved, quote, gate, dfmByPartId, dfmByLine, leadTime } = await pricingMemo.run(() => saveQuote(req.body, req.user, ctx), pricingGate.job(req));
 
     res.json({
       quoteId: saved.id,
@@ -856,7 +944,10 @@ router.post("/quote", optionalAuth, (req, res) => {
       dfmByLine: dfmByLine.map((d) => ({ summary: d.summary, checks: d.checks })),
     });
   } catch (err) {
-    if (err.expose) return res.status(err.status).json({ error: err.message, ...(err.extra || {}) });
+    if (err.expose) {
+      if (err.retryAfterSeconds) res.set("Retry-After", String(err.retryAfterSeconds));
+      return res.status(err.status).json({ error: err.message, ...(err.extra || {}) });
+    }
     console.error("Quote error:", err);
     res.status(500).json({ error: "Quote calculation failed. Please try again." });
   }
@@ -889,57 +980,51 @@ function readableQuote(req, res) {
 }
 
 /**
+ * Note that a draft was opened again. A no-account draft nobody ever reopens lapses after
+ * QUOTE_ANON_DRAFT_HOURS (services/rowRetention.js); one that is reopened keeps its full price hold.
+ * Written at most once every six hours per quote, and allowed to wait for the next save.
+ */
+function markOpened(quote) {
+  if (!quote || quote.status !== "draft") return;
+  const last = quote.lastOpenedAt ? Date.parse(quote.lastOpenedAt) : 0;
+  if (Number.isFinite(last) && Date.now() - last < 6 * 60 * 60 * 1000) return;
+  try {
+    require("../models/database").deferred(() => quotesDB.table.update(quote.id, { lastOpenedAt: new Date().toISOString() }));
+  } catch (err) { console.error("Quote: could not record the reopen:", err.message); }
+}
+
+/**
  * GET /api/quote/:id
  */
 router.get("/quote/:id", optionalAuth, (req, res) => {
   const quote = readableQuote(req, res);
-  if (quote) res.json(quoteView(quote));
+  if (!quote) return;
+  markOpened(quote);
+  res.json(quoteView(quote));
 });
 
 /**
  * GET /api/quote/:id/session
- * Everything the quote builder needs to reopen a quote: each part's geometry
- * and preview mesh with the configuration it was priced at. Used after the
- * sign-in / register detour, on reload, and by reorder.
+ * Everything the quote builder needs to reopen a quote: the configuration of
+ * each line, and each distinct part once — its measurements, DFM and where its
+ * 3D preview is. Meshes are never in this answer: the browser fetches them one
+ * at a time from GET /api/parts/:id/mesh (routes/partPayloadRoutes.js). Used
+ * after the sign-in / register detour, on reload, and by reorder.
+ * No file is read to build it (services/quoteSession.js).
  */
 router.get("/quote/:id/session", optionalAuth, (req, res) => {
   const quote = readableQuote(req, res);
   if (!quote) return;
-  // Quotes saved before the builder config was stored: rebuild it from the priced lines.
-  const configs = quote.config?.parts || (quote.lineItems || []).map((li) => ({
-    partId: li.partId, quantity: li.quantity, process: li.meta?.process, subProcess: li.meta?.subProcess,
-    materialSlug: li.meta?.materialSlug, grade: li.meta?.grade, finishSlug: li.meta?.finishSlug,
-  }));
-  const parts = [];
-  for (const config of configs) {
-    // The preview mesh is read from the part's file here, and only here.
-    const part = partsDB.getById(config.partId, { mesh: true });
-    if (!part) continue;
-    // A part that belongs to an account is shown (and its edit key handed out) to that account only;
-    // a part uploaded without one goes with the quote that holds it.
-    if (!partAccess.canUse(part, { user: req.user, allowAnonymous: true })) continue;
-    const { meshData, ...geometry } = part.geometry || {};
-    parts.push({
-      ...config,
-      fileName: part.fileName,
-      geometry,
-      dfm: part.dfm,
-      meshPreview: { positions: meshData?.positions || [], triangleCount: meshData?.triangleCount || 0 },
-      // The quote still opens and prices without its 3D preview (the mesh file is missing or cannot be decrypted).
-      ...(part.meshError ? { previewUnavailable: true } : {}),
-    });
-  }
-  res.json({
-    quoteId: quote.id,
-    status: quote.status,
-    process: quote.config?.process || parts[0]?.process || "",
-    leadTimeSlug: quote.leadTimeSlug || "standard",
-    paperwork: Boolean(quote.paperwork),
-    notes: quote.notes || "",
-    drawingFileName: quote.drawingFileName || "",
-    parts,
-  });
+  markOpened(quote);
+  // A part that belongs to an account is shown (and its edit key handed out) to that account only; a part
+  // uploaded without one goes with the quote that holds it (security/partAccess.js, the one access rule).
+  res.json(quoteSession.build(quote, partsDB, { mayUse: (part) => partAccess.canUse(part, { user: req.user, allowAnonymous: true }) }));
 });
+
+// A part's preview mesh and large geometry detail, streamed from their files.
+router.use(require("./partPayloadRoutes"));
+// Admin: delete a request with its attachment, clear old no-account drafts, storage figures.
+router.use(require("./adminStorage"));
 
 // ─── Drawing on the instant path ─────────────────────────────
 // An optional PDF the buyer attaches to a quote. It rides along to the order
@@ -948,6 +1033,7 @@ const quoteDrawingDir = path.join(uploadGuards.DATA_DIR, "quote-drawings");
 if (!fs.existsSync(quoteDrawingDir)) fs.mkdirSync(quoteDrawingDir, { recursive: true });
 
 const drawingUpload = multer({
+  defParamCharset: "utf8",
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, quoteDrawingDir),
     filename: (req, file, cb) => cb(null, `${uuidv4()}.pdf`), // server-generated; nothing from the client
@@ -1368,9 +1454,11 @@ router.put("/admin/lead-times/:id", authenticate, requireAdmin, (req, res) => {
 // ADMIN — Quotes / Orders
 // ═══════════════════════════════════════════════════════════════
 
+// The newest quotes, as the list shows them: totals and counts, not every priced line of every
+// quote (the full quote is GET /api/quote/:id). ?limit= up to 1000; default 200.
 router.get("/admin/quotes", authenticate, requireAdmin, (req, res) => {
-  const quotes = quotesDB.getAll().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  res.json(quotes);
+  res.set("X-Total-Count", String(quotesDB.count()));
+  res.json(quotesDB.summaries({ limit: req.query.limit }));
 });
 
 /**
@@ -1528,6 +1616,7 @@ router.get("/admin/backup/json", authenticate, requireAdmin, (req, res) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     res.setHeader("Content-Disposition", `attachment; filename="straightedge-backup-${timestamp}.json"`);
     res.setHeader("Content-Type", "application/json");
+    res.locals.skipAnswerCeiling = true; // a file the admin asked for, not a page
     res.json(backup);
   } catch (err) {
     console.error("JSON backup error:", err);

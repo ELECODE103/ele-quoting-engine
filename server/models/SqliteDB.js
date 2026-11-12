@@ -131,6 +131,15 @@ const FIELD_TO_COLUMN = {
   ...orderLifecycle.FIELD_MAP,
   // The admin change log (models/auditMigration.js)
   ...auditTable.FIELD_MAP,
+  // Availability fixes (2026-11-11)
+  lastOpenedAt: "last_opened_at",
+  partCount: "part_count",
+  totalUnits: "total_units",
+  clientTag: "client_tag",
+  drawingBytes: "drawing_bytes",
+  attachmentRemovedAt: "attachment_removed_at",
+  partIds: "part_ids",
+  ownerId: "owner_id",
 };
 
 // 0/1 columns that read back as booleans (SQLite has no boolean type).

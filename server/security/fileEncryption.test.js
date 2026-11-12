@@ -126,9 +126,16 @@ test("key changed: old files are refused with a clear reason, nothing else break
   assert.strictEqual(a.status, 500);
   assert.strictEqual(a.body.code, "wrong-key");
   assert.ok(/wrong-key/.test(s.log()), "the reason is in the server log");
-  // Quoting never needed the file: the stored geometry still prices.
+  // With a key set, what was measured from a part is kept in encrypted files as well (none of its
+  // shape is in the unencrypted database row: independent review 2026-11-11, M5). Under a different
+  // key an existing part therefore cannot be priced: the customer is asked to upload it again, in
+  // plain words, and it is back the moment the old key is listed as "previous" (below).
   const mats = (await s.get("/api/materials?process=cnc", { ip })).body;
-  assert.strictEqual((await s.post("/api/quote", { parts: [{ partId: state.cubeId, materialSlug: mats[0].slug, quantity: 3, process: "cnc", subProcess: "milling" }] }, { ip })).status, 200);
+  state.priceOldCube = () => s.post("/api/quote", { parts: [{ partId: state.cubeId, materialSlug: mats[0].slug, quantity: 3, process: "cnc", subProcess: "milling" }] }, { ip });
+  const notPriced = await state.priceOldCube();
+  assert.deepStrictEqual([notPriced.status, notPriced.body.code], [409, "part-data-unavailable"]);
+  assert.ok(/upload it again/i.test(notPriced.body.error) && !/key|decrypt|crypto/i.test(notPriced.body.error), notPriced.body.error);
+  assert.ok(/EXISTING FILES CANNOT BE OPENED/.test(s.log()), "the start-up log says, in capitals, that the key does not open what is on disk, and what to do");
   // Re-reading the DXF does need it: a plain "upload it again", no detail.
   const units = await s.post(`/api/parts/${state.dxfId}/units`, { units: "mm" }, { ip, headers: state.dxfKey });
   assert.strictEqual(units.status, 500);
@@ -141,6 +148,8 @@ test("key changed: old files are refused with a clear reason, nothing else break
 
   await restart({ NORD_FILE_ENC_KEY: keyB, NORD_FILE_ENC_KEY_PREVIOUS: keyA });
   assert.ok((await s.get(`/api/parts/${state.cubeId}/download`, { ip, token: state.admin })).buffer.equals(cube), "old file readable again");
+  assert.strictEqual((await state.priceOldCube()).status, 200, "and the old part prices again");
+  assert.ok(!/EXISTING FILES CANNOT BE OPENED/.test(s.log()), "no key warning once the old key is listed");
   assert.ok((await s.get(`/api/parts/${state.cube2}/download`, { ip, token: state.admin })).buffer.equals(cube), "new file readable");
   assert.ok((await s.get(`/api/rfq/admin/${state["print.pdf"]}/drawing`, { ip, token: state.admin })).buffer.equals(pdf));
 });

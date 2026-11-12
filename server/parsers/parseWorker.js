@@ -15,6 +15,13 @@ const { parentPort } = require("worker_threads");
 
 let parseFile = null;
 
+// Tell the pool which thread this is, so it can read this thread's CPU time from the system
+// (/proc on Linux): reading limits are on CPU time, not on the clock, where that is available.
+try {
+  const tid = require("fs").readlinkSync("/proc/thread-self").split("/").pop();
+  if (/^\d+$/.test(tid)) parentPort.postMessage({ hello: true, tid });
+} catch { /* not Linux: the pool uses the clock */ }
+
 parentPort.on("message", async (job) => {
   try {
     // Test-only hook, set through the pool's constructor (never from a request):

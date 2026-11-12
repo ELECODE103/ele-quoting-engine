@@ -11,8 +11,9 @@
  *   GET  /api/public/form-token   a token for one showing of a form
  *   POST /api/human/verify        Turnstile token → one-hour verified-human token
  *   gates in front of POST /api/upload, POST /api/quote,
- *   POST /api/quote/:id/drawing and POST /api/parts/:partId/units (the routes
- *   themselves live in routes/api.js and are not touched)
+ *   POST /api/quote/:id/drawing, POST /api/parts/:partId/units,
+ *   GET /api/quote/:id/session and GET /api/parts/:partId/mesh|geometry (the
+ *   routes themselves live in routes/api.js and routes/partPayloadRoutes.js)
  */
 const express = require("express");
 const turnstile = require("./turnstile");
@@ -30,6 +31,10 @@ function addPartEditKeys(req, res, next) {
     try {
       if (body && Array.isArray(body.parts)) {
         for (const p of body.parts) if (p && typeof p.partId === "string") p.editKey = tokens.partEditKey(p.partId);
+      }
+      // The quote-session answer describes each distinct part once, under its id.
+      if (body && body.partsById && typeof body.partsById === "object") {
+        for (const [id, p] of Object.entries(body.partsById)) if (p && typeof p === "object") p.editKey = tokens.partEditKey(id);
       }
     } catch { /* the response goes out unchanged */ }
     return json(body);
@@ -64,6 +69,8 @@ function partEditGate(req, res, next) {
 }
 
 function mount(app) {
+  // No JSON answer leaves the API larger than JSON_ANSWER_MAX_MB (security/answerCeiling.js).
+  require("./answerCeiling").install(app);
   const router = express.Router();
 
   router.get("/public/config", (req, res) => {
@@ -87,7 +94,11 @@ function mount(app) {
   router.post("/parts/:partId/units", quoteGate, partEditGate);
   // The optional drawing on a quote is a 25 MB file written to disk: same gate.
   router.post("/quote/:id/drawing", quoteGate);
-  router.get("/quote/:id/session", addPartEditKeys);
+  // Reopening a quote, and fetching a part's preview or detail, are quote-tool calls like the
+  // others: the same check when the bot check is on (they used to be outside it).
+  router.get("/quote/:id/session", quoteGate, addPartEditKeys);
+  router.get("/parts/:partId/mesh", quoteGate);
+  router.get("/parts/:partId/geometry", quoteGate);
 
   app.use("/api", router);
 }

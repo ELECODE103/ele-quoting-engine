@@ -23,6 +23,7 @@
 const fs = require("fs");
 const path = require("path");
 const brand = require("../../shared/brand.json");
+const mailCaps = require("./mailCaps");
 
 function configured() {
   return Boolean(process.env.EMAIL_API_KEY && process.env.EMAIL_FROM);
@@ -65,9 +66,59 @@ function templateLabel(message) {
   return typeof t === "string" && /^[A-Za-z][A-Za-z0-9]{0,40}$/.test(t) ? t : "unnamed";
 }
 
+/** What send() answers for a message that was not sent now but is kept and will be sent within the hour. */
+const HELD = "held";
+let heldTimer = null;
+
+/** Send what was held, once the cap's hour has turned (checked again every minute while anything waits). */
+async function flushHeld() {
+  heldTimer = null;
+  const ready = mailCaps.due(Date.now());
+  for (const message of ready) {
+    try { await send({ ...message, heldBefore: true }); } catch (err) { console.error("[mailer] a held message could not be sent:", err.message); }
+  }
+  if (ready.length) console.log(`[mailer] sent ${ready.length} confirmation email(s) that were held over from the last hour`);
+  if (mailCaps.heldQueue.length) scheduleHeld();
+}
+
+function scheduleHeld() {
+  if (heldTimer) return;
+  const wait = Math.max(1000, Math.min(60 * 1000, mailCaps.nextTurn(Date.now()) - Date.now() + 500));
+  heldTimer = setTimeout(() => { flushHeld().catch(() => {}); }, wait);
+  if (heldTimer.unref) heldTimer.unref();
+}
+
+/**
+ * @returns {Promise<boolean|"held">} true: handed to the mail provider. false: not sent.
+ *          "held": over the hour's cap for mail to unconfirmed addresses; kept and sent when the
+ *          hour turns (callers that tell the customer something say "within the hour").
+ */
 async function send(message) {
   const { text, html } = message || {};
   const label = templateLabel(message);
+  // Site-wide hourly caps on the mail a stranger can cause (services/mailCaps.js): confirmations to
+  // addresses nobody has confirmed, and new-request notices to the shop. Mail about orders, payments
+  // and accounts is never capped. When a cap is first reached in an hour the owner gets one notice.
+  const clientKey = typeof (message && message.clientKey) === "string" ? message.clientKey : "";
+  const cap = message && message.heldBefore
+    ? { allowed: true }
+    : mailCaps.admit(label, Date.now(), { confirmedRecipient: Boolean(message && message.confirmedRecipient), clientKey });
+  if (!cap.allowed) {
+    if (cap.notify) {
+      mailCaps.noteNoticeSent();
+      // Not awaited into the caller's result, and not itself capped (its template is not one of the capped ones).
+      send({ to: shopNotifyAddress(), ...mailCaps.ownerNotice(cap.kind) }).catch(() => {});
+    }
+    if (cap.hold) {
+      // Over the hour's cap for mail to unconfirmed addresses: kept, and sent when the hour turns.
+      const kept = mailCaps.hold({ ...message, template: label }, { clientKey, kind: cap.kind });
+      console.warn(`[mailer] hourly cap reached for mail to unconfirmed addresses: template ${label} ${kept ? "held, to be sent when the hour turns" : "not sent (this sender already has messages waiting)"}`);
+      if (kept) scheduleHeld();
+      return kept ? HELD : false;
+    }
+    console.warn(`[mailer] hourly cap reached for new-request notices: template ${label} not sent`);
+    return false;
+  }
   // Recipients and the subject are cleaned here, at the last step before the
   // wire, whatever the caller did: a typed address or name can never add a
   // header or a second recipient.
@@ -126,4 +177,4 @@ function shopNotifyAddress() {
   return parts.length > 1 ? parts : (parts[0] || brand.email);
 }
 
-module.exports = { send, configured, shopNotifyAddress, rfqNotifyAddress: shopNotifyAddress, cleanAddress, cleanSubject };
+module.exports = { send, configured, shopNotifyAddress, rfqNotifyAddress: shopNotifyAddress, cleanAddress, cleanSubject, capCounters: mailCaps.counters, HELD, flushHeld };

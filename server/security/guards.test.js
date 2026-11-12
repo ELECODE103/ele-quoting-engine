@@ -204,12 +204,21 @@ test("admit(): refuses on Content-Length before anything is read — too large, 
     assert.deepStrictEqual([full.passed, full.res.code, full.res.body.code], [false, 503, "storage-full"]);
     assert.ok(lines.some((l) => /UPLOAD STORAGE FULL/.test(l) && /UPLOAD_DIR_MAX_MB/.test(l)), "the refusal is logged with what to do about it");
     assert.ok(!/MB|disk|storage/i.test(full.res.body.error), "the customer is not told about our disk");
-    // under the ceiling but past the warning line: allowed, with a warning in the log
-    fs.writeFileSync(filler, Buffer.alloc(17 * MB));
+    // under the ceiling but past the warning line: allowed, with a warning in the log.
+    // (16.5 MB of 20: past the 80 % warning line, under the 85 % where visitors without an account stop.)
+    fs.writeFileSync(filler, Buffer.alloc(16.5 * MB));
     guards.storage.invalidate(); guards.storage.lastWarnAt = 0;
     const { result: warn, lines: warnLines } = silently(() => call({}, { "content-length": "1000" }, "203.0.113.8"));
     assert.strictEqual(warn.passed, true);
-    assert.ok(warnLines.some((l) => /upload storage at 85%/.test(l)), warnLines.join("|"));
+    assert.ok(warnLines.some((l) => /upload storage at 83%/.test(l)), warnLines.join("|"));
+    // past 85 %: a visitor without an account is asked to sign in or email; a customer with a confirmed email still gets in
+    fs.writeFileSync(filler, Buffer.alloc(17.5 * MB));
+    guards.storage.invalidate();
+    const { result: paused } = silently(() => call({}, { "content-length": "1000" }, "203.0.113.8"));
+    assert.deepStrictEqual([paused.passed, paused.res.code, paused.res.body.code], [false, 503, "uploads-paused"]);
+    assert.ok(/sign in/i.test(paused.res.body.error) && /quotes@/.test(paused.res.body.error), paused.res.body.error);
+    const customer = silently(() => { const res = { headers: {}, set(k, v) { this.headers[k] = v; return this; }, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } }; let passed = false; guards.admit({})({ headers: { "content-length": "1000" }, ip: "203.0.113.8", user: { userId: "u1", emailVerified: true } }, res, () => { passed = true; }); return passed; });
+    assert.strictEqual(customer.result, true, "the reserved share is for customers with a confirmed email");
     fs.unlinkSync(filler);
     guards.storage.invalidate();
 

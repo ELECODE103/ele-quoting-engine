@@ -71,9 +71,11 @@ const SHIP = { shippingName: "A", shippingAddress: "1 A St", shippingCity: "C", 
   test("a quote never hands out a part its reader may not use: geometry, file name, preview and edit key stay with the owner", async () => {
     const hers = await price([cnc(aPart.partId), routed(aDxf.partId)], alice);
     const mine = await h.get(`/api/quote/${hers.body.quoteId}/session`, alice);
-    assert.deepStrictEqual(mine.body.parts.map((p) => [p.partId, p.fileName, Boolean(p.editKey), Boolean(p.geometry)]), [[aPart.partId, "a.stl", true, true], [aDxf.partId, "a.dxf", true, true]]);
+    // (relaunch merge 2, availability-fixes) The answer names each line in `parts` and describes each distinct part
+    // once in `partsById`; a quote is reopened behind the same human check as the rest of the quote tool.
+    assert.deepStrictEqual(mine.body.parts.map((p) => [p.partId, p.fileName, Boolean(p.editKey), Boolean(mine.body.partsById[p.partId] && mine.body.partsById[p.partId].geometry)]), [[aPart.partId, "a.stl", true, true], [aDxf.partId, "a.dxf", true, true]]);
     for (const token of [bob, undefined]) {
-      assert.strictEqual((await h.raw("GET", `/api/quote/${hers.body.quoteId}/session`, { token })).status, 404);
+      assert.strictEqual((await h.raw("GET", `/api/quote/${hers.body.quoteId}/session`, { token, headers: human() })).status, 404);
       assert.strictEqual((await h.raw("GET", `/api/quote/${hers.body.quoteId}`, { token })).status, 404);
     }
     // A quote of Bob's that somehow names Alice's part (a row from before this rule): the part is left out of what Bob gets.
@@ -84,6 +86,7 @@ const SHIP = { shippingName: "A", shippingAddress: "1 A St", shippingCity: "C", 
     const leaked = await h.get(`/api/quote/${row.id}/session`, bob);
     assert.strictEqual(leaked.status, 200);
     assert.deepStrictEqual(leaked.body.parts.map((p) => p.partId), [bobPart.partId], "only Bob's own part");
+    assert.deepStrictEqual(Object.keys(leaked.body.partsById), [bobPart.partId], "and only his is described");
     assert.ok(!leaked.text.includes("a.stl") && !leaked.text.includes("a.dxf") && !leaked.text.includes(aPart.editKey) && !leaked.text.includes(aDxf.editKey));
     // …and it cannot be checked out or priced again with her parts in it.
     const co = await h.post("/api/orders/checkout-session", { quoteId: row.id, ...SHIP }, bob);
@@ -107,7 +110,7 @@ const SHIP = { shippingName: "A", shippingAddress: "1 A St", shippingCity: "C", 
     assert.ok(!JSON.stringify(stored).includes(gPart.editKey), "the key is never stored with the quote");
     assert.strictEqual(stored.userId, null);
     // Reloading the page: the quote (whose id is the visitor's credential) gives the parts and their keys back.
-    const reopened = await h.raw("GET", `/api/quote/${guestQuote}/session`, {});
+    const reopened = await h.raw("GET", `/api/quote/${guestQuote}/session`, { headers: human() });
     assert.deepStrictEqual(reopened.body.parts.map((p) => [p.partId, p.editKey]), [[gPart.partId, gPart.editKey], [gDxf.partId, gDxf.editKey]]);
     assert.strictEqual((await units(gDxf.partId, "in")).status, 404, "units: not without the key");
     assert.strictEqual((await units(gDxf.partId, "in", { key: gDxf.editKey })).status, 200);
@@ -117,7 +120,7 @@ const SHIP = { shippingName: "A", shippingAddress: "1 A St", shippingCity: "C", 
   test("hand-over: when that visitor registers and carries on, the parts and the draft quote become the account's — and the key alone stops working", async () => {
     const carol = await h.register("carol@buyer.test", "Carol");
     // The page reopens the quote after the sign-in detour and prices it again, sending the keys it holds.
-    const session = await h.raw("GET", `/api/quote/${guestQuote}/session`, { token: carol });
+    const session = await h.raw("GET", `/api/quote/${guestQuote}/session`, { token: carol, headers: human() });
     const configs = session.body.parts.map(({ partId, materialSlug, process, quantity, thicknessMm, editKey }) => ({ partId, materialSlug, process, quantity, thicknessMm, editKey }));
     const again = await price(configs, carol, { quoteId: guestQuote });
     assert.strictEqual(again.status, 200, again.text);
@@ -131,7 +134,7 @@ const SHIP = { shippingName: "A", shippingAddress: "1 A St", shippingCity: "C", 
     notFound(await price([cnc(gPart.partId, { editKey: gPart.editKey })], bob), "Bob holding the old key");
     assert.strictEqual((await units(gDxf.partId, "in", { key: gDxf.editKey })).status, 404);
     assert.strictEqual((await units(gDxf.partId, "in", { token: bob, key: gDxf.editKey })).status, 404);
-    assert.strictEqual((await h.raw("GET", `/api/quote/${guestQuote}/session`, {})).status, 404, "the quote is no longer readable by its id alone");
+    assert.strictEqual((await h.raw("GET", `/api/quote/${guestQuote}/session`, { headers: human() })).status, 404, "the quote is no longer readable by its id alone");
     // Carol checks out; reorder later needs no key either.
     const co = await h.post("/api/orders/checkout-session", { quoteId: guestQuote, ...SHIP }, carol);
     assert.strictEqual(co.status, 200, co.text);

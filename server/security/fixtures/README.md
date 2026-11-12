@@ -11,3 +11,14 @@
 
 Everything else the suites need (ZIP bombs, oversized meshes, renamed files, pathological DXFs) is
 generated in memory at run time by `server/testSupport/zip.js` and the suites themselves.
+
+## master-db-2026-11-11.db.gz
+
+A database file written by the server on `origin/master` (255753c), used by
+`server/models/masterDatabase.test.js` to prove that later schema changes are
+additive. It was made by starting master's own `server/index.js` on an empty
+data folder and sending it: one upload of `tools/vet-quotes/parts/cube_20mm.stl`,
+one of `dxf_plate_holes.dxf`, two quotes (one under a client-chosen id, which
+master allowed), one registration and one firm-quote request. It holds no real
+data: the account is `fixture-buyer@example.test` with a random password that
+was never kept, and the secrets master ran with were random and are not in it.
