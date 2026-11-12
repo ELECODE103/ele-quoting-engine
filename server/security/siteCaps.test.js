@@ -325,6 +325,15 @@ test("RR-04: a held confirmation email is sent when the hour turns", async () =>
     const held = await mailer.send(message("second@x.test"));
     assert.strictEqual(held, mailer.HELD, `over the cap: the mailer answers 'held', not false (${JSON.stringify(caps.counters().unconfirmed)})`);
     assert.strictEqual(caps.heldQueue.length, 1);
+    assert.strictEqual(caps.recentlyDropped("second@x.test", "verifyEmail"), false, "held is not turned away");
+    // One address may have three waiting; its fourth is turned away, and that is recorded as the cap's doing
+    // (the resend route does not charge the customer's day for it).
+    for (const to of ["free1@y.test", "free2@y.test"]) await mailer.send({ ...message(to), clientKey: "198.51.100.77" }); // its first two of the hour are outside the cap
+    for (const to of ["a@y.test", "b@y.test", "c@y.test"]) assert.strictEqual(await mailer.send({ ...message(to), clientKey: "198.51.100.77" }), mailer.HELD);
+    assert.strictEqual(await mailer.send({ ...message("d@y.test"), clientKey: "198.51.100.77" }), false, "the fourth from one address is not kept");
+    assert.strictEqual(caps.recentlyDropped("d@y.test", "verifyEmail"), true);
+    assert.strictEqual(caps.heldQueue.length, 4);
+    caps.heldQueue.splice(1); // back to the one this test follows
     await mailer.flushHeld();
     assert.strictEqual(caps.heldQueue.length, 1, "still this hour: it waits");
     Date.now = () => realNow() + 61 * 60 * 1000;

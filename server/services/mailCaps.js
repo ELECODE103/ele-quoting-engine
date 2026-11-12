@@ -139,10 +139,21 @@ function hold(message, { clientKey = "", kind = "unconfirmed", now = Date.now() 
   if (at >= 0) { heldQueue[at] = { ...heldQueue[at], message }; return true; }
   if (heldQueue.length >= HELD_MAX || (clientKey && heldQueue.filter((h) => h.clientKey === clientKey).length >= limits.mailHeldPerClient)) {
     totals.unconfirmed.dropped++;
+    lastDropped.set(`${message.template}\n${String(message.to).toLowerCase()}`, now);
+    if (lastDropped.size > 5000) lastDropped.clear();
     return false;
   }
   heldQueue.push({ message, clientKey, kind, at: now });
   return true;
+}
+
+/** Messages the caps turned away with nothing left in line, by template and recipient (for recentlyDropped()). */
+const lastDropped = new Map();
+
+/** Did the caps themselves turn away this recipient's message of this kind in the last few seconds, with nothing held for it? */
+function recentlyDropped(to, template, now = Date.now()) {
+  const at = lastDropped.get(`${template}\n${String(to).toLowerCase()}`);
+  return at !== undefined && now - at < 10 * 1000;
 }
 
 /** The held messages that may go now, removed from the queue (oldest first; each client's first before anyone's second). */
@@ -224,8 +235,9 @@ function resetForTests() {
   windows.shop = fresh(0);
   perClient.reset();
   heldQueue.length = 0;
+  lastDropped.clear();
   for (const k of ["unconfirmed", "shop"]) { for (const f of Object.keys(totals[k])) totals[k][f] = 0; }
   totals.noticesSent = 0;
 }
 
-module.exports = { admit, hold, due, nextTurn, ownerNotice, counters, noteNoticeSent, resetForTests, KIND_BY_TEMPLATE, heldQueue };
+module.exports = { admit, hold, due, nextTurn, recentlyDropped, ownerNotice, counters, noteNoticeSent, resetForTests, KIND_BY_TEMPLATE, heldQueue };

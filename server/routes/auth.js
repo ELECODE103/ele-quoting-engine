@@ -425,8 +425,9 @@ router.post("/verify-email/resend", authenticate, async (req, res) => {
   resendPerMinute.hit(user.id);
   resendPerAddress.add(address, 1);
   const sent = await sendVerification(user, req).catch(() => false);
-  // One of the day's five is used only by an email that really went out (or is in line to).
-  if (sent) resendPerDay.hit(user.id);
+  // One of the day's five is used by every request, as before, except one that the site's own hourly
+  // cap turned away with nothing left in line: that is our doing, not the customer's (re-review RR-04).
+  if (sent || !require("../services/mailCaps").recentlyDropped(user.email, "verifyEmail")) resendPerDay.hit(user.id);
   res.json({ ...verificationAnswer(sent), verified: false, configured: mailer.configured() });
 });
 
