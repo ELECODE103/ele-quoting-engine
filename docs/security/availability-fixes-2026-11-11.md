@@ -119,8 +119,10 @@ anonymous line limit.
 | Health, median / worst | 16,912 ms / 18,520 ms | 2 ms / 36 ms | 2 ms / 472 ms |
 
 In-process, 1,600-hole DXF on 100 identical lines: 1,209 ms with one 1,197 ms stall before; 73 ms
-with a worst stall of 37 ms after. The 472 ms worst case above is one unit that cannot be
-interrupted (the first DFM analysis of a 4,900-hole part); see 10.
+with a worst stall of 37 ms after. The 472 ms above is a single sample out of 596 (the median is
+2 ms, and one whole 100-line pricing takes 70 ms, so it is not a unit of pricing). A second run made
+while the sandbox was heavily loaded by other work gave a median of 6 ms and one sample of 1,212 ms.
+The cause of those single samples was not isolated; see 10.
 
 ### H1. `NaN` and `Infinity` in a model beat the price and the gate
 
@@ -188,7 +190,7 @@ L4).
 | | Before | After |
 |---|---|---|
 | Two requests of ten hostile DXFs hold the workers | 605 s (reviewer) | 1 s: all 20 files refused, `dxf-too-many-blocks` |
-| Twelve hostile uploads from one address, then three customers with a 2 MB STEP | customer 1 served in 16.4 s; customers 2 and 3 refused, `busy` | all three served (15 s, 25 s, 35 s on this loaded sandbox) |
+| Twelve hostile uploads from one address, then three customers with a 2 MB STEP | customer 1 served in 16.4 s; customers 2 and 3 refused at once, `busy` | all three served (15 s, 25 s, 35 s). In a later run with the sandbox heavily loaded each parse took 20 to 30 s: two were served and the third was told `busy` after its 30 s in line. The hostile files were out of the way in under a second both times |
 | Hostile DXFs (nested blocks, ellipse 1e308) | stopped at 60 s each | refused in under 0.1 s |
 
 ### H3. Draft quotes fill the database
@@ -574,10 +576,10 @@ Reviewer's scripts, each run before and after (numbers in section 2):
 |---|---|---|
 | `availability.js session 12 1` | 57.3 MB answer, health worst 1,911 ms | 0.1 MB, 12 ms |
 | `availability.js mainthread` | health median 16,912 ms | 2 ms; the quote is refused for line count or rate |
-| `measure-pricing.js 4900 30` (signed in) | not possible to measure: 18 s per quote | health median 2 ms, worst 472 ms; 114 priced, 772 told to retry |
+| `measure-pricing.js 4900 30` (signed in) | not possible to measure: 18 s per quote | health median 2 ms, worst 472 ms; 114 priced, 772 told to retry (loaded sandbox: median 6 ms, worst 1,212 ms) |
 | `price-nan.js` | `Infinity` variant priced with checkout open | every variant refused at upload |
 | `parser-abuse.js` (the 16 inputs in this lane) | 11 accepted that should not be, 2 stopped only at 60 s, 2 refused, 1 parsed and sent to a person | the 11 and the 2 refused in under 1 s; the other 3 as before |
-| `availability.js queue` | 2 of 3 customers refused | 3 of 3 served |
+| `availability.js queue` | 2 of 3 customers refused at once | 3 of 3 served (loaded sandbox: 2 served, 1 `busy` after 30 s in line) |
 | `availability.js pool` | workers held 605 s (reviewer) | 1 s |
 | `availability.js db` | 75 quotes over the ceiling, customers refused, no recovery | 1,574 quotes to reach 85 %; only visitors without an account paused; recovers by itself |
 | `availability.js storage` | 196 MB of padding stored, then everyone refused | 0 MB stored, customers served |
@@ -612,7 +614,9 @@ Could not be verified here, and why:
 | A flood from many addresses with the bot check off can still pause new quotes and uploads for visitors without an account | Medium | owner | It takes a few hundred addresses, each at its hourly limit, to hold the default database at 85 %. Customers with a confirmed email, re-pricing and checkout are unaffected, and it clears itself 5 minutes after the flood stops. The real answer is switching the bot check on (`TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`) |
 | File names, overall measurements, DFM notes with feature positions and quote lines are in the database in clear | Medium | owner decision | Encrypting the database file is a separate piece of work; the guide now says so plainly |
 | The whole database file is rewritten on every save | Medium (speed, not safety) | future work | 258 ms worst health at 13 MB during a flood. A native SQLite driver removes it |
-| One uninterruptible unit of pricing: the first DFM analysis of a very dense part (4,900 holes) holds the thread for about half a second | Low | geometry-speed | Yielding inside the analysis is inside another lane |
+| During a storm of pricing requests for a 4,900-hole part, one health sample in about 600 was slow (472 ms; 1,212 ms with the sandbox loaded) | Low | not isolated | Median 2 ms. Not a unit of pricing (a whole 100-line pricing is 70 ms); candidates are garbage collection, the batched database save, and the loaded sandbox |
+| The 10 s limit for a DXF is close for the densest legitimate drawings on a busy CPU: the 4,900-hole sheet reads in 3.4 s here when quiet and passed 10 s once when the sandbox was loaded | Low | owner / geometry-speed | It is refused with the offer of a firm quote. `PARSE_TIMEOUT_DXF_MS` raises it; geometry-speed's work shortens the read |
+| At the 1 GB default two mid-size STEP files do not fit in memory side by side: one is stopped and run again alone, which costs its first attempt's time | Low | owner | At 2 GB (`MEMORY_BUDGET_MB=2048`) both fit |
 | Storing a parsed dense part (the DFM analysis and writing its preview) holds the thread for 0.1 to 0.3 s per upload | Low | geometry-speed | Halved by this branch (the answer no longer carries the mesh); moving the rest into the worker is that lane's |
 | The 3D view frames a small cube very close on a reopened quote | Low (looks) | journey-qa | Seen in the browser check; the viewer's framing code is unchanged by this branch |
 | IPv6: per-client limits are per /64, so a /48 has 65,536 clients | Low | accepted | The site-wide caps (M2, M3, pricing in flight, both ceilings) are what bound it |
