@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-#
 # Straightedge — the production image.
 #
 # Railway builds this file because it is named "Dockerfile" at the root of the
@@ -15,9 +13,12 @@
 # NOT in the image. It is the Railway volume, mounted when the container
 # starts; .dockerignore keeps any local data/ out of the build altogether.
 #
-# Node version: 20.20.2 is the last release of the Node 20 line, the version
-# the test suite is run on. Node 20 left security support on 2026-04-30; moving
-# to Node 22 is a decision for the owner (docs/launch/deploy-notes-2026-11-11.md).
+# Node version: 20.20.2 is the last release of the Node 20 line and the version
+# the hardening reports name as the production runtime. Node 20 left security
+# support on 2026-04-30; moving to Node 22 is a decision for the owner
+# (docs/launch/deploy-notes-2026-11-11.md, D3). Only plain Dockerfile
+# instructions are used: no syntax directive, nothing fetched beyond this image
+# and the two npm lockfiles' packages.
 # To pin by digest as well, replace the tag below with
 #   node:20.20.2-bookworm-slim@sha256:<digest>
 # where <digest> is printed by: docker buildx imagetools inspect node:20.20.2-bookworm-slim
