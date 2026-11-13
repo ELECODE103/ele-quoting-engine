@@ -69,8 +69,18 @@ function fineDisc(n) {
     const rows = [];
     rows.push(await run("GET /api/orders (the customer's own list)", "/api/orders"));
     rows.push(await run("GET /api/orders again", "/api/orders"));
-    rows.push(await run("GET /api/orders/:id (one order)", `/api/orders/${(await s.get("/api/orders", { ip, token, timeoutMs: 300000 })).body?.[0]?.id || "none"}`));
+    // The OWNER's admin panel loads the same route for every order of every customer (client/src/pages/AdminPanel.jsx
+    // loadData: seven requests in one Promise.all; if one fails, none of the seven is shown).
+    const owner = await s.admin({ ip: "198.51.100.1" });
+    const runAs = async (label, url, tok) => { const keep = token; const t0 = Date.now(); const r = await s.get(url, { ip: "198.51.100.1", token: tok, timeoutMs: 300000 }); const row = { request: label, status: r.status, code: r.body && r.body.code, answerMb: Number((r.buffer.length / c.MB).toFixed(2)), ms: Date.now() - t0 }; c.log(JSON.stringify(row)); return row; };
+    const adminList = await runAs("GET /api/orders as the OWNER (the admin panel's order list)", "/api/orders", owner);
+    rows.push(adminList);
+    rows.push(await runAs("GET /api/orders/admin/queue as the owner (the production queue)", "/api/orders/admin/queue", owner));
+    rows.push(await runAs("GET /api/admin/quotes as the owner", "/api/admin/quotes", owner));
+    rows.push(await runAs("GET /api/admin/parts as the owner", "/api/admin/parts", owner));
     c.result({ test: "order-list-hold", vertices: VERTS, orders: made.length, linesPerOrder: lines, rows, limitThatApplies: "the general API limiter: 200 requests per 15 minutes per address" });
-    process.exitCode = rows.some((r) => r.healthWorstMs > 2000) ? 1 : 0;
+    const broken = rows.filter((r) => r.status >= 500);
+    if (broken.length) console.log(`FINDING: ${broken.map((r) => `${r.request}: ${r.status} ${r.code}`).join("; ")}`);
+    process.exitCode = broken.length || rows.some((r) => r.healthWorstMs > 2000) ? 1 : 0;
   } finally { await s.stop(); }
 })().catch((e) => { console.error(e); process.exit(2); });

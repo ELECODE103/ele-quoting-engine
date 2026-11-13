@@ -34,7 +34,10 @@ A script exits 1 when it prints a `FINDING` line.
 | F-06 | Low | Changing the delivery choice in a second tab overwrites the order before Stripe is asked whether the first tab's payment went through; a correct payment is then flagged as a wrong amount | `money-attacks.js` section 2 |
 | F-07 | Low | A refund event that arrives before the "completed" event leaves a fully refunded order in "paid". Not introduced by this merge | `money-attacks.js` section 4 |
 | F-08 | **Medium** | One press of "pay" on a 100-line quote stops the whole site for 0.6 s on an empty database, 2.2 s at 6 MB and 4.2 s at 12 MB (the ceiling is 16 MB). The author's figure (0.51 to 0.59 s) is the empty-database case | `checkout-hold.js` |
+| F-09 | **High** | One confirmed account, without paying anything, makes the order list too large to send: the customer's own "My orders" answers 500, and so does the owner's order list, which the admin panel loads together with everything else. The admin panel then shows nothing | `order-list-hold.js` |
 | F-10 | **Medium** | The catalogue upgrade switches back ON every material and finish the owner had switched off, and resets machinability, waste factor, thickness lists and grades, without a line in the log for any of them | `catalogue-upgrade.js` |
+| F-12 | **Medium** | Thirteen confirmed accounts that press "pay" and never pay hold the file store full: after the clean-up no visitor and no customer can upload. The same accounts with saved quotes only are cleared | `storage-pin-orders.js` |
+| F-13 | **Medium** | Changing a drawing's units re-prices every draft that holds it in one step: 0.6 to 0.75 s of the whole site per change at the default draft allowance, repeatable | `units-flip-hold.js` |
 | F-11 | Low | A database whose version marker is missing, null, 0 or negative is treated as version 1: at the next start every material and finish is replaced and no hand-edited price is kept | `catalogue-upgrade.js` section 4 |
 
 ## F-01 (High): the units of a drawing can be changed under an order while it is being made
@@ -446,3 +449,92 @@ marked.
 | `priceIntegrity`, `reorder`, `orderLifecycle`, `relaunchIntegration` tests | per-account pacing limits lifted | Not run separately | Same reason as `taxShipping.test.js`; the limits are real (my own first run of `money-attacks.js` hit them after 6 checkouts) |
 | `hardening-accounts.mjs` | waits for the sign-out answer before replaying the old token | Not run (browser) | Plausible; not verified |
 | `upgrade-proof.js` | a timer keeps the event loop busy | Not run | Not verified. The hang it works around is in the script's own process |
+
+## F-09 (High): one customer can blank the owner's admin panel
+
+**Where.** `server/routes/orders.js` lines 484 to 513 (`GET /api/orders`): for every order, every line's
+part is loaded with `partsDB.getById` and its measurements and DFM result are put in the answer. For the
+admin this is every order of every customer. `server/security/answerCeiling.js` (new with this merge)
+refuses any JSON answer over `JSON_ANSWER_MAX_MB` (16) with 500 `answer-too-large`.
+`client/src/pages/AdminPanel.jsx` lines 68 to 88: the admin panel loads materials, finishes, lead times,
+quotes, statistics, **orders** and parts in one `Promise.all`; if one of the seven fails, the `catch`
+logs to the browser console and none of the seven is shown.
+
+The order list has carried the measurements since before this merge; the ceiling arrived with it. Each
+is reasonable alone. Together a list that used to be slow is now refused.
+
+**Measured** (`order-list-hold.js 6000 4`, twice): one confirmed account uploads a 100 mm disc drawn as
+6,000 short segments (a 138 kB DXF), prices 49 lines of it ($4,924.76, open for checkout) and presses
+"pay" four times on four quotes. Nothing is paid. Then:
+
+| Request | Answer | Time | Thread held |
+|---|---|---|---|
+| `GET /api/orders` as that customer | **500 `answer-too-large`** | 626 to 756 ms | 621 to 754 ms |
+| `GET /api/orders` as the owner (what the admin panel loads) | **500 `answer-too-large`** | 580 ms | not sampled |
+| `GET /api/orders/admin/queue`, `/api/admin/quotes`, `/api/admin/parts` as the owner | 200 | 3 to 4 ms | |
+
+Read, not run in a browser: with that 500 the admin panel's `loadData` sets nothing, so the Orders tab,
+the materials and finishes tables, the quote list and the statistics are all empty, and the only sign is
+a line in the browser console. The production queue page uses its own route and still works.
+
+The orders do not go away by themselves: an unpaid order lapses to "expired" after its payment window,
+and expired orders stay in the list. There is no button in the admin panel that deletes an order, and
+the panel that would hold it is the one that is blank. The cure is a change to the database by hand.
+
+It needs no bad intent. Each line of an ordinary part adds 5 to 8 kB to the list (measured on seven of
+the repository's sample parts: 1.9 to 4.5 kB of measurements plus 2.4 to 3.3 kB of DFM result), so the
+owner's list passes 16 MB at roughly two to three thousand order lines; a few customers with detailed
+drawings bring that much nearer.
+
+Every call also reads each line's measurement file again on the one thread (0.6 to 0.75 s here for 196
+lines of a 93 kB file), limited only by the general 200 requests per 15 minutes per address.
+
+**What a fix must achieve.** The owner's order list and a customer's order list must load however many
+orders and lines there are and however detailed their parts: bounded in size (no per-line measurements,
+or pages), with no file read per line. One failed request must not empty the rest of the admin panel.
+
+## F-12 (Medium): unpaid orders hold the file store full
+
+**Where.** `server/services/rowRetention.js` lines 100 to 108 (`unpaidOrderIsPayable`): a file on an
+unpaid order is held outright ("never removed") until the later of 48 hours after the order was made and
+30 minutes after its payment page lapses. `server/services/storagePressure.js` line 367 skips every part
+held outright. Each account may store 150 MB and the store's ceiling is 2,048 MB, so fourteen accounts'
+worth of unpaid orders is the whole store.
+
+**Measured** (`storage-pin-orders.js pin` and `control`, scaled 1:10 like the author's own
+`storage-pin.js`: ceiling 200 MB, 15 MB per address and per account; the two "minimum age" settings set
+to one minute, which favours the defender):
+
+| | Accounts | Store after the flood | After the pressure pass | Two minutes on |
+|---|---|---|---|---|
+| `pin`: each account prices its uploads and presses "pay", never pays | 13 (31 seconds) | 100 % | 100 %; visitor `storage-full`, new customer `storage-full` | the same |
+| `control`: the same uploads and quotes, no checkout | 13 | 100 % | 63 %; visitor accepted, new customer accepted | the same |
+
+While it lasts every upload is answered "We can't take new files right now. Email them to
+quotes@... or call ... and we'll quote them by hand." It lasts 48 hours by itself, and an account can
+press "pay" again on the quote it gets back (12 checkouts per 15 minutes), so in practice until the owner
+cancels those orders by hand. Each account needs a confirmed email address and its own network address
+(a /64 counts as one). That is a real cost and a small one.
+
+The rule is the author's deliberate answer to "a file must never be removed while its order can still be
+paid", and that half holds (checkout checks the files are present). The other half is this.
+
+**What a fix must achieve.** What unpaid orders can hold, summed over all senders, must stay well short
+of the store, so that paying customers can always upload; or an unpaid order's files must be allowed to
+go under pressure, with the order closed and its buyer told, before the store is refused to everyone.
+
+## F-13 (Medium): a units change re-prices every draft in one step
+
+**Where.** `server/routes/api.js` lines 901 to 925 (`refreshDraftQuotesFor`): every draft that holds the
+part is priced again inside the units request, with no yielding.
+
+**Measured** (`units-flip-hold.js`): one confirmed account holds 25 drafts of 100 lines of a 40-hole
+plate, which is what the default 512 kB allowance takes (the 26th is refused `drafts-full`). Six unit
+changes in a row: each request took 621 to 846 ms and held the thread 592 to 753 ms. The author's open
+item 2 estimated "about 0.8 s"; the estimate was honest. What he did not say is that the change can be
+repeated back and forth: here the site was stopped for about two thirds of six seconds, and the limits
+that apply are the general 200 requests per 15 minutes and the sender's parse seconds, not the pricing
+allowance.
+
+**What a fix must achieve.** A units change must cost the thread no more than the one part's own
+re-reading; the drafts that hold it are priced when they are next opened, or in pieces.

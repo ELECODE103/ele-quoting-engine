@@ -190,8 +190,9 @@ const TABLE = [{ maxLb: 1, price: 9 }, { maxLb: 5, price: 14.5 }, { maxLb: 20, p
     const up = await h.form("/api/upload", {}, { files: { name: "plate.dxf", data: rectDxf(10, 10) } }, buyer);
     const dxfId = up.body.parts[0].partId;
     const m = h.models.materialsDB.getAll().find((x) => x.slug === "rt-hdpe");
-    const cfg = { partId: dxfId, materialSlug: "rt-hdpe", grade: m.grades[0].name, finishSlug: "", quantity: 2, process: "routing", thicknessMm: 6.4 };
+    const cfg = { partId: dxfId, materialSlug: "rt-hdpe", grade: m.grades[0].name, finishSlug: "", quantity: 2, process: "routing", thicknessMm: m.thicknesses[m.thicknesses.length - 1].mm };
     const q = await h.post("/api/quote", { parts: [cfg], leadTimeSlug: "standard" }, buyer);
+    if (q.status !== 200) throw new Error(`section 6 setup: ${q.status} ${q.text.slice(0, 200)}`);
     const before = q.body.orderTotal;
     // Tab 2 says the drawing is in millimetres (25.4x smaller) while tab 1 still shows the inch price.
     const u = await h.post(`/api/parts/${dxfId}/units`, { units: "mm", editKey: h.editKeys[dxfId] }, buyer);
@@ -229,6 +230,43 @@ const TABLE = [{ maxLb: 1, price: 9 }, { maxLb: 5, price: 14.5 }, { maxLb: 20, p
     await h.completed(s2.id);
     const o2 = ordersDB.getById(c2.body.orderId);
     R.check(o2.status !== "paid", "a payment $5 short whose report labels $5 of it as tax is not accepted as paid in full", `status ${o2.status}, flag ${o2.attention || "-"}`);
+  }
+
+  // ── 8. Pay twice? ────────────────────────────────────────────────────────────────────────────
+  console.log("\n8. one quote, one order, one payment");
+  await settings({});
+  {
+    const q = await price(3);
+    h.stripe.delayMs = 150; // Stripe takes a moment: both presses are in flight together
+    const [a, b, c3] = await Promise.all([checkout(q.body.quoteId), checkout(q.body.quoteId), checkout(q.body.quoteId)]);
+    h.stripe.delayMs = 0;
+    const orders = ordersDB.query((o) => o.quoteId === q.body.quoteId);
+    const urls = new Set([a, b, c3].filter((r) => r.status === 200).map((r) => r.body.sessionUrl));
+    const open = Object.values(h.stripe.sessions).filter((x) => x.metadata && x.metadata.orderId === (orders[0] && orders[0].id) && x.status === "open");
+    R.check(orders.length === 1 && urls.size === 1 && open.length === 1, "three presses of pay at once: one order, one payment page", `answers ${[a, b, c3].map((r) => r.status).join(" ")}; orders ${orders.length}; distinct pages ${urls.size}; open sessions at Stripe ${open.length}`);
+    await h.completed(open[0].id);
+    const again = await checkout(q.body.quoteId);
+    const paid = ordersDB.getById(orders[0].id);
+    R.check(paid.status === "paid" && again.status === 409 && again.body.code === "quote-already-ordered", "after payment the same quote cannot be checked out again", `order ${paid.status}; second checkout ${again.status} ${again.body.code}`);
+    // The same payment reported twice by webhook and once by the return page.
+    const mailsBefore = h.sent.length;
+    await h.completed(open[0].id);
+    const conf = await h.post(`/api/orders/${orders[0].id}/confirm-payment`, {}, buyer);
+    const after = ordersDB.getById(orders[0].id);
+    R.check(after.status === "paid" && !after.attention && h.sent.length === mailsBefore, "the same payment reported again (webhook, return page): nothing changes, nobody is emailed twice, no 'duplicate payment' flag", `status ${after.status}, flag ${after.attention || "-"}, new emails ${h.sent.length - mailsBefore}, confirm ${conf.status}`);
+    // A second, different payment for an order that is already paid (the buyer paid an old page too).
+    const q2 = await price(3);
+    const c1 = await checkout(q2.body.quoteId);
+    const s1 = sessionOfUrl(c1.body.sessionUrl);
+    const c2 = await checkout(q2.body.quoteId, { shippingName: "Dana B. Buyer" }); // same amount: the page is handed out again
+    const s2 = sessionOfUrl(c2.body.sessionUrl);
+    await h.completed(s1.id);
+    if (s2.id !== s1.id) {
+      Object.assign(s2, { status: "open" });
+      await h.completed(s2.id);
+      const o = ordersDB.getById(c1.body.orderId);
+      R.check(o.status === "paid" && o.attention === "duplicate-payment", "a second payment on another page of the same order is recorded and flagged for a refund", `status ${o.status}, flag ${o.attention}`);
+    } else R.holds("a second press with the same amount is handed the same payment page (there is no second page to pay)", `${s1.id}`);
   }
 
   await settings({});
