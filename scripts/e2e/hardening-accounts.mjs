@@ -697,8 +697,11 @@ async function phaseWithKeys() {
     const list = JSON.parse((await owner.evaluate(() => fetch('/api/rfq/admin/list').then((r) => r.text()))));
     const danaRfq = list.find((r) => r.email === 'dana@buyer.test').id;
     const anonRfq = list.find((r) => r.email === 'pat@oem.test').id;
+    // (2026-11-13, re-review F-09: the order list is a page of summaries and no longer carries the lines;
+    // an order's lines come from the single-order route.)
     const orders = JSON.parse(await owner.evaluate(() => fetch('/api/orders').then((r) => r.text())));
-    const order = orders.find((o) => o.id === state.buyerOrder);
+    const listed = orders.find((o) => o.id === state.buyerOrder);
+    const order = JSON.parse(await owner.evaluate((id) => fetch(`/api/orders/${id}`).then((r) => r.text()), listed.id));
     const partId = order.items[0].partId;
     const quoteId = order.quoteId;
 
