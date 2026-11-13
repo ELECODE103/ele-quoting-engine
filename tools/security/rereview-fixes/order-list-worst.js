@@ -93,10 +93,15 @@ async function build({ targetMb = TARGET_MB, segments = VERTS } = {}) {
       const id = crypto.randomUUID();
       const mine = copies % 2 === 0; // half are this account's own older orders, half are other customers'
       const day = new Date(Date.UTC(2026, 0, 1) + copies * 3600 * 1000).toISOString();
-      insert("orders", { ...order, id, user_id: mine ? order.user_id : crypto.randomUUID(), status: copies % 9 === 0 ? "paid" : "expired", paid_at: copies % 9 === 0 ? day : null, attention: copies % 50 === 0 ? "late-payment" : null, created_at: day, stripe_session_id: null });
       // One order in 25 carries every line of the largest quote; the rest carry one line. That gives
       // both things at once: a lot of lines (megabytes of them) and a lot of orders (hundreds to thousands).
       const mineLines = copies % 25 === 0 ? items : items.slice(0, 1);
+      // (2026-11-13: each copy records the number of lines it is given. The start-up check added for F-02
+      // flags a paid order that holds fewer lines than it was written with, and a copy that kept the
+      // original's count of 49 beside one line was, rightly, flagged: 112 flagged orders instead of 18.)
+      const row = { ...order, id, user_id: mine ? order.user_id : crypto.randomUUID(), status: copies % 9 === 0 ? "paid" : "expired", paid_at: copies % 9 === 0 ? day : null, attention: copies % 50 === 0 ? "late-payment" : null, created_at: day, stripe_session_id: null };
+      if ("line_count" in row) row.line_count = mineLines.length;
+      insert("orders", row);
       for (const it of mineLines) { insert("order_items", { ...it, id: crypto.randomUUID(), order_id: id }); itemRows++; }
       copies++; if (mine) mineCopies++;
     }

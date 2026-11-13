@@ -22,11 +22,14 @@
  *   7. the saved quote is re-priced by today's rules when it is ordered, or honoured inside its
  *      price hold: which one happened is printed
  *   8. the quoted firm quote still opens from the link origin/master issued
- *   9. prices the owner changed by hand are carried over the catalogue upgrade: before the first
- *      start, three prices in the copy are changed the way Admin changes them (a material, a finish,
- *      and a material the new catalogue no longer has). The first two are kept on the new catalogue,
- *      the third is reported as not kept, every other price is the new catalogue's, and the start-up
- *      log, the admin change log and the admin pricing page all carry the same list
+ *   9. what the owner changed by hand is carried over the catalogue upgrade: before the first
+ *      start, the copy is changed the way Admin changes it: three prices (a material, a finish, and
+ *      a material the new catalogue no longer has) and, since 2026-11-13 (re-review F-10), a
+ *      material switched off, a material switched on, a finish switched off, a machinability, and a
+ *      material deleted. All of it is kept on the new catalogue except the price on the material
+ *      that left, which is reported; every other field of every other row is the new catalogue's
+ *      (so nothing origin/master's code stored is mistaken for a change made by hand); and the
+ *      start-up log, the admin change log and the admin pricing page all carry the same list
  *
  * Exit 0 when every check holds, 1 otherwise. The in-process twin of this, with more of the order
  * behaviour, is server/models/orderLifecycleMigration.test.js.
@@ -131,15 +134,35 @@ const without = (dump, names) => Object.fromEntries(Object.entries(dump).filter(
       { table: "finishes", slug: "deburr", column: "price_per_part", field: "pricePerPart", yours: 3.25 },
     ],
     gone: [{ table: "materials", slug: "sla-tough", column: "price_per_cm3", field: "pricePerCm3", yours: 0.61 }],
+    // Not prices (re-review F-10): the on/off switch both ways, a finish switched off, a setting the price is worked out from.
+    other: [
+      { table: "materials", slug: "cnc-uhmw", column: "active", field: "active", yours: 0, says: /on\/off switch for .* \(cnc-uhmw\): off/ },
+      { table: "materials", slug: "cnc-stainless-304", column: "active", field: "active", yours: 1, says: /on\/off switch for .* \(cnc-stainless-304\): on/ },
+      { table: "finishes", slug: "cnc-bead-blast", column: "active", field: "active", yours: 0, says: /on\/off switch for .* \(cnc-bead-blast\): off/ },
+      { table: "materials", slug: "cnc-nylon", column: "machinability", field: "machinability", yours: 0.2, says: /machinability for .* \(cnc-nylon\): 0\.2/ },
+    ],
+    // A material the owner deleted: it must not come back.
+    removed: [{ table: "materials", slug: "cnc-ptfe" }],
   };
   const edited = path.join(tmp, "origin-master-with-edited-prices.db");
   {
     const SQL = await require("sql.js")();
     const db = new SQL.Database(fs.readFileSync(DB));
-    for (const e of [...EDITED.carry, ...EDITED.gone]) {
+    for (const e of [...EDITED.carry, ...EDITED.gone, ...EDITED.other]) {
       db.run(`UPDATE ${e.table} SET ${e.column} = ? WHERE slug = ?`, [e.yours, e.slug]);
       if (db.getRowsModified() !== 1) throw new Error(`the old database has no ${e.table} row ${e.slug}`);
     }
+    for (const e of EDITED.removed) {
+      db.run(`DELETE FROM ${e.table} WHERE slug = ?`, [e.slug]);
+      if (db.getRowsModified() !== 1) throw new Error(`the old database has no ${e.table} row ${e.slug}`);
+    }
+    // (2026-11-13) The fixture's two unpaid card orders were made on 2026-11-12. A payment page made before
+    // an expiry was stored lasts Stripe's default 24 hours, and the start-up sweep closes an unpaid order
+    // ten minutes after that: correct, and tested in orderLifecycle.test.js. From 2026-11-13 01:17 UTC that
+    // sweep closed both orders at the first start here, and "nothing is lost" and "the customer sees both
+    // orders in the right state" failed on the calendar, not on the upgrade. The copy's unpaid orders are
+    // given a creation time of an hour ago, so this proof stays about the upgrade whatever day it is run.
+    db.run("UPDATE orders SET created_at = ? WHERE status = 'pending_payment'", [new Date(Date.now() - 60 * 60 * 1000).toISOString()]);
     fs.writeFileSync(edited, Buffer.from(db.export()));
     db.close();
   }
@@ -192,9 +215,12 @@ const without = (dump, names) => Object.fromEntries(Object.entries(dump).filter(
     const keptOk = EDITED.carry.every((e) => now(e.table, e.slug) && num(now(e.table, e.slug)[e.column]) === e.yours);
     check("a price the owner had changed is kept on the new catalogue: one material, one finish", keptOk, EDITED.carry.map((e) => `${e.slug} ${e.column} = ${now(e.table, e.slug) ? now(e.table, e.slug)[e.column] : "(row gone)"} (set to ${e.yours}; catalogue default ${num(defaults[e.table === "materials" ? "DEFAULT_MATERIALS" : "DEFAULT_FINISHES"].find((x) => x.slug === e.slug)[e.field])})`).join("; "));
     check("a material that is no longer in the catalogue is not brought back, edited price or not", EDITED.gone.every((e) => !now(e.table, e.slug)), EDITED.gone.map((e) => e.slug).join(", "));
+    check("what the owner had switched off or on, and a machinability the owner had set, are as the owner left them", EDITED.other.every((e) => now(e.table, e.slug) && num(now(e.table, e.slug)[e.column]) === e.yours), EDITED.other.map((e) => `${e.slug} ${e.column} = ${now(e.table, e.slug) ? now(e.table, e.slug)[e.column] : "(row gone)"} (set to ${e.yours})`).join("; "));
+    check("a material the owner had deleted is not added back", EDITED.removed.every((e) => !now(e.table, e.slug)), EDITED.removed.map((e) => e.slug).join(", "));
     // Everything else: the new catalogue, price for price.
     const wrong = [];
-    for (const [t, list] of [["materials", defaults.DEFAULT_MATERIALS], ["finishes", defaults.DEFAULT_FINISHES]]) {
+    for (const [t, all] of [["materials", defaults.DEFAULT_MATERIALS], ["finishes", defaults.DEFAULT_FINISHES]]) {
+      const list = all.filter((d) => !EDITED.removed.some((e) => e.table === t && e.slug === d.slug));
       if (after1[t].rows.length !== list.length) wrong.push(`${t}: ${after1[t].rows.length} rows, the catalogue has ${list.length}`);
       for (const d of list) for (const [field, col] of Object.entries(COLS[t])) {
         if (EDITED.carry.some((e) => e.table === t && e.slug === d.slug && e.column === col)) continue;
@@ -203,11 +229,21 @@ const without = (dump, names) => Object.fromEntries(Object.entries(dump).filter(
       }
     }
     check("every other material and finish price is the new catalogue's", wrong.length === 0, wrong.length ? wrong.slice(0, 6).join(", ") : `${defaults.DEFAULT_MATERIALS.length} materials, ${defaults.DEFAULT_FINISHES.length} finishes`);
-    const keptLines = log1.split("\n").filter((l) => /Catalogue: kept your/.test(l));
+    // Exactly these and no more: a line for anything else would mean a value origin/master's code stored
+    // was taken for a change made by hand (the database is compared, field by field, with version 3's whole catalogue).
+    const keptLines = log1.split("\n").filter((l) => /Catalogue: kept (your|the) /.test(l));
+    const removedLines = log1.split("\n").filter((l) => /Catalogue: .* stays removed/.test(l));
     const notKeptLines = log1.split("\n").filter((l) => /Catalogue: could NOT keep your/.test(l));
-    check("the start-up log has one line per price kept and one per price that could not be", keptLines.length === EDITED.carry.length && notKeptLines.length === EDITED.gone.length && EDITED.carry.every((e) => keptLines.some((l) => l.includes(`(${e.slug})`))) && EDITED.gone.every((e) => notKeptLines.some((l) => l.includes(`(${e.slug})`))), [...keptLines, ...notKeptLines].map((l) => l.trim()).join(" | "));
+    check("the start-up log has one line per change kept and one per change that could not be, and no other",
+      keptLines.length === EDITED.carry.length + EDITED.other.length && removedLines.length === EDITED.removed.length && notKeptLines.length === EDITED.gone.length
+      && EDITED.carry.every((e) => keptLines.some((l) => l.includes(`(${e.slug})`))) && EDITED.other.every((e) => keptLines.some((l) => e.says.test(l)))
+      && EDITED.removed.every((e) => removedLines.some((l) => l.includes(`(${e.slug})`))) && EDITED.gone.every((e) => notKeptLines.some((l) => l.includes(`(${e.slug})`))),
+      [...keptLines, ...removedLines, ...notKeptLines].map((l) => l.trim()).join(" | "));
     const logged = (after1.admin_audit ? after1.admin_audit.rows : []).filter((r) => r.area === "catalogue");
-    check("and the admin change log has the same, one row each", logged.length === EDITED.carry.length + EDITED.gone.length && logged.filter((r) => r.action === "price-kept").length === EDITED.carry.length, logged.map((r) => `${r.action} ${r.target}`).join("; "));
+    const count = (action) => logged.filter((r) => r.action === action).length;
+    check("and the admin change log has the same, one row each",
+      logged.length === EDITED.carry.length + EDITED.other.length + EDITED.removed.length + EDITED.gone.length && count("price-kept") === EDITED.carry.length && count("edit-kept") === EDITED.other.length && count("removal-kept") === EDITED.removed.length && count("price-not-kept") === EDITED.gone.length,
+      logged.map((r) => `${r.action} ${r.target}`).join("; "));
   }
 
   const addedTables = Object.keys(after1).filter((t) => !before[t]);
@@ -257,7 +293,7 @@ const without = (dump, names) => Object.fromEntries(Object.entries(dump).filter(
 
     const carriedList = await s.get("/api/admin/catalogue-upgrade", A);
     const up = carriedList.body?.upgrade;
-    check("the admin pricing page is given the same list of prices kept and not kept", carriedList.status === 200 && Boolean(up) && up.kept.length === EDITED.carry.length && up.notKept.length === EDITED.gone.length && EDITED.carry.every((e) => up.kept.some((k) => k.slug === e.slug && k.yours === e.yours)) && EDITED.gone.every((e) => up.notKept.some((k) => k.slug === e.slug && k.yours === e.yours)), up ? `v${up.from} to v${up.to}: kept ${up.kept.map((k) => `${k.slug} ${k.fieldLabel} ${k.yours} (default ${k.newDefault})`).join(", ")}; not kept ${up.notKept.map((k) => `${k.slug} ${k.yours}: ${k.reason}`).join(", ")}` : `HTTP ${carriedList.status}`);
+    check("the admin pricing page is given the same list of changes kept and not kept", carriedList.status === 200 && Boolean(up) && up.kept.length === EDITED.carry.length + EDITED.other.length + EDITED.removed.length && up.notKept.length === EDITED.gone.length && EDITED.carry.every((e) => up.kept.some((k) => k.slug === e.slug && k.yours === e.yours)) && EDITED.other.every((e) => up.kept.some((k) => k.slug === e.slug && k.field === e.field)) && EDITED.removed.every((e) => up.kept.some((k) => k.slug === e.slug && k.what === "removed")) && EDITED.gone.every((e) => up.notKept.some((k) => k.slug === e.slug && k.yours === e.yours)), up ? `v${up.from} to v${up.to}: kept ${up.kept.map((k) => `${k.slug} ${k.fieldLabel} ${k.yours} (default ${k.newDefault})`).join(", ")}; not kept ${up.notKept.map((k) => `${k.slug} ${k.yours}: ${k.reason}`).join(", ")}` : `HTTP ${carriedList.status}`);
 
     const adminList = await s.get("/api/orders", A);
     const listed = Array.isArray(adminList.body) ? adminList.body : adminList.body?.orders || [];

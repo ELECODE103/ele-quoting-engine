@@ -143,14 +143,19 @@ Take a copy before anything changes.
    option C).
 5. **If you have ever changed a material or finish in Admin on the live site** (a price, a
    thickness, switched one on or off): open Admin → Materials and Admin → Finishes now and write
-   down what you changed. The new version carries a newer default catalogue, and on its first
-   start it replaces the materials, finishes and processes lists with it (four SLA resins go,
-   eight arrive). **A price you changed is kept**: the site knows what the old default was, so a
-   price that differs from it is yours and is put back on the new list. What is not kept: a price
-   on one of the four SLA resins that are gone, a material you added yourself, and anything you
-   changed other than a price (a name, a thickness, switched off). Your pricing rules (rates,
-   markups, minimums) are kept as you set them. After step 5, Admin → Pricing shows a box listing
-   every price that was kept and every one that could not be; re-enter the rest from your notes.
+   down what you changed, so you can check it afterwards. The new version carries a newer default
+   catalogue, and on its first start it brings the materials and finishes lists up to it (four SLA
+   resins go, eight arrive). **What you changed is kept**: the site knows what every field of the
+   old catalogue was, so anything that differs from it is yours and stays on the new list: a
+   price, a material or finish switched on or off, machinability, the thickness list, grades, a
+   name, a material you added yourself; a material you deleted stays deleted. What is not kept:
+   anything you had changed on one of the four SLA resins that are gone, and a price that is not
+   a usable amount. Your pricing rules (rates, markups, minimums) are kept as you set them. After
+   step 5, Admin → Pricing shows a box listing every change that was kept and every one that
+   could not be; compare it with your notes.
+   Three settings on the material form are not saved by this version or the last (material
+   class, stock forms, waste factor): the site uses its built-in values for them, before and
+   after, so there is nothing of yours to carry there.
    *If you never touched those two tabs:* nothing to do, and no box appears.
 
 ---
@@ -363,8 +368,11 @@ The next step puts the site back on the public internet. Before you press the bu
 - `entrypoint: making /app/data writable by node (volume mounted as root)` — the first time only
 - `Upgrading catalogs: seed v3 → v4 (materials, finishes, processes)...` — the first time only:
   the default catalogue being brought up to date (step 1, item 5), followed by `Seeding materials...` and the
-  like; then either `Catalogue: no price had been changed by hand, so there was nothing to carry over.` or one
-  line per price, `Catalogue: kept your … price …` / `Catalogue: could NOT keep your … price …`, and a count;
+  like; then either `Catalogue: no price had been changed by hand and no other setting either, so there was
+  nothing to carry over.` or one line per change, `Catalogue: kept your …` / `Catalogue: could NOT keep
+  your …`, and a count. (If you see `CATALOGUE NOT UPDATED` instead, the site could not tell which
+  catalogue version your lists came from and left them exactly as they were: read the lines under it
+  and check Admin → Materials and Finishes before taking orders.)
   and `Pricing rules: added … new key(s), seed v4.` (the new settings, each at its default)
 - `Admin account <your address>: present.` — your existing admin account was found and left as
   it is. (If you see `NOTICE: there is no admin account yet` or `WARNING: an ordinary account …

@@ -14,8 +14,9 @@
  * Versions 2 and 3 have the same prices for every material and finish (the bump changed other fields).
  * Version 1 predates slugs with prices on record here; a database still on it carries nothing across.
  *
- * WHEN YOU BUMP SEED_VERSION: add the new version here, with the prices of the new catalogue. The test
- * (seedCarry.test.js) fails until the entry for the current SEED_VERSION equals the current defaults.
+ * WHEN YOU BUMP SEED_VERSION: add the new version here, with the prices of the new catalogue, and write
+ * its whole-catalogue file (see catalogueOf at the end of this file). The test (seedCarry.test.js) fails
+ * until both equal the current defaults.
  *
  * Only prices are listed: materials by slug (pricePerKg for stock sold by weight, pricePerCm3 for printed
  * materials), finishes by slug (pricePerPart, pricePerSqIn). A field that is absent was not set in that version.
@@ -136,4 +137,30 @@ function pricesOf(version) {
   return Object.prototype.hasOwnProperty.call(SEED_PRICES, version) ? SEED_PRICES[version] : null;
 }
 
-module.exports = { SEED_PRICES, PRICE_FIELDS, pricesOf };
+/**
+ * The whole catalogue of one seed version: every field of every material and finish, by slug
+ * (seedSnapshots/v<N>.json), or null when that version is not on record. This is what a row in the
+ * database is compared with to tell what the owner changed (seedCarry.js).
+ *
+ * Where the files come from: versions 2 and 3 were read from git (the commits named above) on
+ * 2026-11-13; from version 4 on, a file is the catalogue in defaults.js at that version, written by
+ *     node scripts/dev/seed-snapshot.js
+ * WHEN YOU BUMP SEED_VERSION: run that script and commit the new file. seedCarry.test.js fails
+ * until the file for the current SEED_VERSION equals the current catalogue.
+ */
+const snapshots = new Map();
+function catalogueOf(version) {
+  if (!Number.isInteger(version) || version < 1) return null;
+  if (!snapshots.has(version)) {
+    let found = null;
+    try {
+      const file = require(`./seedSnapshots/v${version}.json`);
+      const bySlug = (rows) => Object.fromEntries((rows || []).filter((r) => r && typeof r.slug === "string" && r.slug).map((r) => [r.slug, r]));
+      if (file && file.seedVersion === version) found = { materials: bySlug(file.materials), finishes: bySlug(file.finishes) };
+    } catch { /* not on record */ }
+    snapshots.set(version, found);
+  }
+  return snapshots.get(version);
+}
+
+module.exports = { SEED_PRICES, PRICE_FIELDS, pricesOf, catalogueOf };

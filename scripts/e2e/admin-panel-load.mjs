@@ -18,6 +18,8 @@
  *     the largest size opens in the drawer with its lines
  *   - one section's request made to fail (the order list; then the materials): that tab says so in
  *     words with "Try again", every other tab is filled as before, and "Try again" loads it
+ *   - the Pricing tab's notice about the last catalogue upgrade, in both forms (what was kept and
+ *     not kept: prices, switches, lists, rows added and deleted; and "the lists were not updated")
  *   - nothing scrolls sideways
  */
 import { createRequire } from 'node:module';
@@ -143,6 +145,41 @@ try {
     await page.getByRole('button', { name: 'Try again' }).click();
     await page.locator('table tbody tr').first().waitFor({ timeout: 10000 });
     check('"Try again" loads the materials', (await page.getByTestId('section-error').count()) === 0);
+    // The Pricing tab's notice about the last catalogue upgrade (re-review F-10, F-11), in both of its
+    // forms. The answer of the one request is supplied here in the shape the server gives it
+    // (server/config/seedCarry.js latest(); seedCarry.test.js holds the server to that shape).
+    const upgraded = { upgrade: { from: 3, to: 4, at: '2026-11-13T09:00:00.000Z',
+      kept: [
+        { kind: 'material', slug: 'cnc-delrin', name: 'Delrin / Acetal (POM)', field: 'pricePerKg', fieldLabel: 'price per kg', yours: 12.75, newDefault: 11, yoursText: '$12.75', newDefaultText: '$11.00' },
+        { kind: 'material', slug: 'cnc-uhmw', name: 'UHMW Polyethylene', field: 'active', fieldLabel: 'on/off switch', yours: false, newDefault: true, yoursText: 'off', newDefaultText: 'on' },
+        { kind: 'material', slug: 'rt-acrylic', name: 'Acrylic', field: 'thicknesses', fieldLabel: 'thickness list', yours: [3, 6], newDefault: [3, 6, 9], yoursText: '2 thicknesses', newDefaultText: '3 thicknesses' },
+        { kind: 'material', slug: 'cnc-house-blend', name: 'House blend', field: null, fieldLabel: '', what: 'added', text: 'added by you: left as it is' },
+        { kind: 'material', slug: 'cnc-ptfe', name: 'PTFE', field: null, fieldLabel: '', what: 'removed', text: 'deleted by you: not added back' },
+      ],
+      notKept: [{ kind: 'material', slug: 'sla-tough', name: 'Tough Resin', field: 'active', fieldLabel: 'on/off switch', yours: false, yoursText: 'off', reason: 'this material is no longer in the catalogue' }] } };
+    await page.route('**/api/admin/catalogue-upgrade', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(upgraded) }));
+    await page.goto(`${BASE}/admin`);
+    await page.getByTestId('orders-count').waitFor({ timeout: 20000 });
+    await tab('Pricing');
+    await page.getByTestId('catalogue-upgrade').waitFor({ timeout: 15000 });
+    await page.getByTestId('catalogue-upgrade').locator('summary').click();
+    const notice = (await page.getByTestId('catalogue-upgrade').textContent()).replace(/\s+/g, ' ').trim();
+    check('the Pricing tab lists what the catalogue upgrade kept and did not keep, switches and lists as well as prices',
+      /What you had changed by hand: 5 kept, 1 not kept/.test(notice) && /UHMW Polyethylene \(cnc-uhmw\), on\/off switch: off \(the new list's default is on\)/.test(notice) && /thickness list: 2 thicknesses \(the new list's default is 3 thicknesses\)/.test(notice)
+      && /House blend \(cnc-house-blend\): added by you: left as it is/.test(notice) && /PTFE \(cnc-ptfe\): deleted by you: not added back/.test(notice) && /Tough Resin \(sla-tough\), on\/off switch: yours was off\. This material is no longer in the catalogue\./.test(notice), notice.slice(0, 400));
+    check('nothing scrolls sideways with the upgrade list showing', (await sideways()) <= 0, `${await sideways()} px`);
+    await page.screenshot({ path: path.join(SHOTS, `admin-catalogue-upgrade-${width}.png`), fullPage: false });
+    await page.unroute('**/api/admin/catalogue-upgrade');
+    const leftAlone = { upgrade: { from: null, to: 4, at: '2026-11-13T09:00:00.000Z', kept: [], notKept: [], notice: 'The material and finish lists were NOT updated to catalogue version 4: the catalogue version recorded with the pricing rules is missing. Nothing was replaced and nothing was added: every material and finish is exactly as it was. 8 entries of the current catalogue are not in yours; the start-up log names them.' } };
+    await page.route('**/api/admin/catalogue-upgrade', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(leftAlone) }));
+    await page.goto(`${BASE}/admin`);
+    await page.getByTestId('orders-count').waitFor({ timeout: 20000 });
+    await tab('Pricing');
+    await page.getByTestId('catalogue-upgrade').waitFor({ timeout: 15000 });
+    const alone = (await page.getByTestId('catalogue-upgrade').textContent()).replace(/\s+/g, ' ').trim();
+    check('a catalogue that was left alone because its version could not be established is said on the Pricing tab', /^Check your materials and finishes/.test(alone) && /were NOT updated to catalogue version 4/.test(alone) && /Nothing was replaced and nothing was added/.test(alone) && /before taking orders\.$/.test(alone), alone.slice(0, 300));
+    check('nothing scrolls sideways with that notice showing', (await sideways()) <= 0, `${await sideways()} px`);
+    await page.unroute('**/api/admin/catalogue-upgrade');
     check('no uncaught error on any admin page', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
     await context.close();
   }

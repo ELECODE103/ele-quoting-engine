@@ -30,7 +30,9 @@ function seedDatabaseNow() {
   try {
     // Detect stale data: if materials exist but lack the 'process' field, re-seed
     const existingMats = materialsDB.getAll();
-    if (existingMats.length > 0 && !existingMats[0].process) {
+    // (Every row, not the first one: these two checks are for databases from before the columns
+    // existed, where no row has them. One row the owner left without a value is not that.)
+    if (existingMats.length > 0 && existingMats.every((m) => !m.process)) {
       console.log("  Upgrading database: re-seeding with multi-process data...");
       for (const m of existingMats) materialsDB.delete(m.id);
       const existingFins = finishesDB.getAll();
@@ -43,49 +45,57 @@ function seedDatabaseNow() {
 
     // Detect missing pricing columns: re-seed materials & finishes if pricing data is null
     const existingMats2 = materialsDB.getAll();
-    if (existingMats2.length > 0 && existingMats2[0].pricePerKg == null && existingMats2[0].pricePerCm3 == null) {
+    if (existingMats2.length > 0 && existingMats2.every((m) => m.pricePerKg == null && m.pricePerCm3 == null && m.costPerKg == null)) {
       console.log("  Upgrading database: re-seeding materials and finishes with pricing data...");
       for (const m of existingMats2) materialsDB.delete(m.id);
       const existingFins2 = finishesDB.getAll();
       for (const f of existingFins2) finishesDB.delete(f.id);
     }
 
-    // Seed-version upgrade: when the default catalogs change (SEED_VERSION bump),
-    // replace materials/finishes/processes on an existing database. Quotes,
-    // orders, parts and users are untouched; pricing rules are merged below.
-    // A PRICE THE OWNER CHANGED BY HAND IS KEPT: every material and finish price that is not the
-    // default of the version this database was on is read here, before the rows go, and put back on
-    // the row with the same slug once the new catalogue is in (./seedCarry.js; the old defaults are in
-    // ./seedHistory.js). A price that was simply the old default takes the new default. A material or
-    // finish that is no longer in the catalogue is not brought back; its edited price is reported.
+    // Seed-version upgrade: when the default catalogue changes (SEED_VERSION goes up), the materials
+    // and finishes of an existing database are brought to it. Quotes, orders, parts and users are
+    // untouched; pricing rules are merged below.
+    // WHAT THE OWNER CHANGED BY HAND IS KEPT (./seedCarry.js): every row is merged field by field,
+    // by slug, against the catalogue the database was seeded from (./seedSnapshots). A field that
+    // still holds the old default takes the new one; anything else is the owner's and stays: a
+    // price, the on/off switch, machinability, the thickness list, grades, a row added by hand, a
+    // row deleted. A row whose slug left the catalogue is not brought back; what was changed on it
+    // is reported.
+    // THE VERSION MARKER MUST BE A VERSION. When the catalogue has rows and the version they came
+    // from cannot be established (the marker is missing or is not a whole number from 1 to the
+    // current version, or names a version that is not on record), NOTHING is replaced or added:
+    // until 2026-11-13 a missing marker was read as "version 1" and every row was replaced.
     const existingRules = pricingDB.getAll()[0];
-    const dbSeedVersion = existingRules?.rules?.seedVersion || 1;
-    let carried = null;
-    if (materialsDB.getAll().length > 0 && dbSeedVersion < SEED_VERSION) {
-      console.log(`  Upgrading catalogs: seed v${dbSeedVersion} → v${SEED_VERSION} (materials, finishes, processes)...`);
-      carried = seedCarry.collect({ fromVersion: dbSeedVersion, materials: materialsDB.getAll(), finishes: finishesDB.getAll() });
-      for (const m of materialsDB.getAll()) materialsDB.delete(m.id);
-      for (const f of finishesDB.getAll()) finishesDB.delete(f.id);
-      for (const proc of processesDB.getAll()) processesDB.delete(proc.id);
+    const marker = seedCarry.readMarker(existingRules, SEED_VERSION);
+    const hasCatalogue = materialsDB.getAll().length > 0 || finishesDB.getAll().length > 0;
+    let leftAlone = false;
+    if (hasCatalogue && marker.state === "valid" && marker.version < SEED_VERSION && seedCarry.catalogueOf(marker.version)) {
+      console.log(`  Upgrading catalogs: seed v${marker.version} → v${SEED_VERSION} (materials, finishes, processes)...`);
+      // All of it or none of it: a failure part way leaves the catalogue exactly as it was.
+      database.transaction(() => {
+        seedCarry.upgrade({ fromVersion: marker.version, toVersion: SEED_VERSION, oldCatalogue: seedCarry.catalogueOf(marker.version), newMaterials: DEFAULT_MATERIALS, newFinishes: DEFAULT_FINISHES, materialsDB, finishesDB });
+        for (const proc of processesDB.getAll()) processesDB.delete(proc.id);
+      });
+      leftAlone = true; // the two tables are as the upgrade left them, even if that is empty
+    } else if (hasCatalogue && !(marker.state === "valid" && marker.version === SEED_VERSION)) {
+      seedCarry.unknownOrigin({ marker, toVersion: SEED_VERSION, materialsDB, finishesDB, newMaterials: DEFAULT_MATERIALS, newFinishes: DEFAULT_FINISHES });
+      leftAlone = true;
     }
 
     // Only seed if empty
-    if (materialsDB.getAll().length === 0) {
+    if (!leftAlone && materialsDB.getAll().length === 0) {
       console.log("  Seeding materials...");
       for (const mat of DEFAULT_MATERIALS) {
         materialsDB.insert(mat);
       }
     }
 
-    if (finishesDB.getAll().length === 0) {
+    if (!leftAlone && finishesDB.getAll().length === 0) {
       console.log("  Seeding finishes...");
       for (const fin of DEFAULT_FINISHES) {
         finishesDB.insert(fin);
       }
     }
-
-    // The new catalogue is in: put the owner's own prices back on it, and say which could not be.
-    if (carried) seedCarry.apply(carried, { materialsDB, finishesDB, toVersion: SEED_VERSION });
 
     // Detect missing lead time days: re-seed if days field is null
     const existingLTs = leadTimesDB.getAll();
@@ -115,8 +125,13 @@ function seedDatabaseNow() {
       for (const [k, v] of Object.entries(DEFAULT_PRICING_RULES)) {
         if (merged[k] === undefined || merged[k] === null) { merged[k] = v; added++; }
       }
-      if (added > 0 || (current.seedVersion || 1) < SEED_VERSION) {
-        merged.seedVersion = SEED_VERSION;
+      // The marker is brought to the current version when the catalogue was brought to it, and
+      // also when the catalogue was left alone because its version could not be established (said
+      // above, once): from here on the rows ARE this database's catalogue of this version. A marker
+      // from newer code than this is left for that code.
+      const setMarker = marker.state !== "ahead" && current.seedVersion !== SEED_VERSION;
+      if (added > 0 || setMarker) {
+        if (setMarker) merged.seedVersion = SEED_VERSION;
         pricingDB.update(stored.id, { rules: merged });
         console.log(`  Pricing rules: added ${added} new key(s), seed v${SEED_VERSION}.`);
       }
