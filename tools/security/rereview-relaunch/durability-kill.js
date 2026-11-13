@@ -23,6 +23,7 @@ const live = require("../../../server/testSupport/liveServer");
 const initSqlJs = require("../../../node_modules/sql.js");
 
 const ROUNDS = Number(process.argv[2]) || 12;
+const ONLY = (process.env.RR_ONLY || "ABCDE").toUpperCase(); // e.g. RR_ONLY=C runs one section
 const LINES = Number(process.argv[3]) || 20;
 const cube = fs.readFileSync(path.join(__dirname, "..", "..", "vet-quotes", "parts", "cube_20mm.stl"));
 
@@ -70,8 +71,8 @@ const cube = fs.readFileSync(path.join(__dirname, "..", "..", "vet-quotes", "par
   const newQuote = async (lines = 1) => s.post("/api/quote", { parts: Array.from({ length: lines }, (_, i) => line(1 + (i % 3))), leadTimeSlug: "standard" }, { token: buyer });
 
   // ── A. acknowledged = on disk ──
-  console.log("\nA. killed the instant the answer arrives: is what was acknowledged on the disk?");
-  {
+  if (ONLY.includes("A")) console.log("\nA. killed the instant the answer arrives: is what was acknowledged on the disk?");
+  if (ONLY.includes("A")) {
     const q = await newQuote(2);
     await kill();
     let d = disk();
@@ -103,22 +104,22 @@ const cube = fs.readFileSync(path.join(__dirname, "..", "..", "vet-quotes", "par
     R.check(Boolean(u && u.email_verified_at), "a new account with its email confirmed", JSON.stringify(u || null)); d.close();
     await restart();
     const owner = await s.admin();
-    const mAll = (await s.get("/api/admin/materials", { token: owner })).body;
-    const target = mAll[0];
-    const price = target.pricePerKg ? { pricePerKg: Number(target.pricePerKg) + 1.23 } : { pricePerCm3: Number(target.pricePerCm3) + 0.0123 };
-    const put = await s.req({ method: "PUT", url: `/api/admin/materials/${target.id}`, json: { ...target, ...price }, token: owner });
+    const put = await s.req({ method: "PUT", url: "/api/admin/pricing", json: { rules: { shippingBaseRate: 13.37 }, note: "re-review: durability" }, token: owner });
     await kill();
     d = disk();
-    const row = d.q("SELECT price_per_kg, price_per_cm3 FROM materials WHERE id = ?", [target.id])[0];
-    const onDisk = Math.abs(Number(row.price_per_kg) - Number(price.pricePerKg)) < 1e-9 || Math.abs(Number(row.price_per_cm3) - Number(price.pricePerCm3)) < 1e-9;
-    const aud = d.q("SELECT COUNT(*) n FROM admin_audit").length ? d.q("SELECT COUNT(*) n FROM admin_audit")[0].n : "?";
-    R.check(put.status === 200 && onDisk, "an admin price edit (and the owner's account and two-step enrolment)", `PUT ${put.status}; on disk ${JSON.stringify(row)}; audit rows ${aud}`); d.close();
+    const rules = JSON.parse(d.q("SELECT rules_json FROM pricing_rules")[0].rules_json || "{}");
+    const adminRow = d.q("SELECT role FROM users WHERE email = ?", [s.adminEmail])[0];
+    R.check(put.status === 200 && rules.shippingBaseRate === 13.37 && adminRow && adminRow.role === "admin", "an admin price-rule edit, and the owner's account", `PUT ${put.status}; shippingBaseRate on disk ${rules.shippingBaseRate}; owner row role ${adminRow && adminRow.role}`); d.close();
+    await restart();
+    // (back to the default, so the rest of the run prices as the site does out of the box)
+    await s.req({ method: "PUT", url: "/api/admin/pricing", json: { rules: { shippingBaseRate: 12 }, note: "re-review: back to default" }, token: owner });
+    await kill();
     await restart(); buyer = await login("dana@buyer.test");
   }
 
   // ── B. a re-priced draft ──
-  console.log("\nB. a re-priced draft may wait up to 1.5 s for the file: what is lost with it?");
-  {
+  if (ONLY.includes("B")) console.log("\nB. a re-priced draft may wait up to 1.5 s for the file: what is lost with it?");
+  if (ONLY.includes("B")) {
     const q = await newQuote(1);
     const before = q.body.orderTotal;
     const re = await s.post("/api/quote", { quoteId: q.body.quoteId, parts: [line(9)], leadTimeSlug: "standard" }, { token: buyer });
@@ -140,9 +141,9 @@ const cube = fs.readFileSync(path.join(__dirname, "..", "..", "vet-quotes", "par
   }
 
   // ── C. killed during checkout ──
-  console.log(`\nC. killed at a random moment during the checkout of a ${LINES}-line quote (${ROUNDS} rounds)`);
   const partial = [];
-  {
+  if (ONLY.includes("C")) {
+    console.log(`\nC. killed at a random moment during the checkout of a ${LINES}-line quote (${ROUNDS} rounds)`);
     let whole = 0, none = 0;
     for (let i = 0; i < ROUNDS; i++) {
       const q = await newQuote(LINES);
@@ -170,7 +171,7 @@ const cube = fs.readFileSync(path.join(__dirname, "..", "..", "vet-quotes", "par
     for (const p of partial) console.log(`    killed after ${p.killedAfterMs} ms: order ${p.orderId.slice(0, 8)} has ${p.items} of ${LINES} lines, quote still '${p.quote}', sessions ${p.sessions}`);
     if (partial.length) {
       // The buyer comes back, presses pay again, and pays.
-      const p = partial[0];
+      const p = partial.find((x) => x.items > 0 && x.items < LINES) || partial.find((x) => x.items < LINES) || partial[0];
       const again = await s.post("/api/orders/checkout-session", { quoteId: p.quoteId, ...SHIP }, { token: buyer });
       let line2 = `second checkout: ${again.status} ${again.body && (again.body.code || "")}`;
       if (again.status === 200) {
@@ -186,9 +187,22 @@ const cube = fs.readFileSync(path.join(__dirname, "..", "..", "vet-quotes", "par
   }
 
   // ── D. killed during the 'paid' webhook ──
-  console.log(`\nD. killed during the 'paid' webhook, then Stripe sends it again (${ROUNDS} rounds)`);
-  {
+  if (ONLY.includes("D")) {
+    console.log(`\nD. killed during the 'paid' webhook, then Stripe sends it again (${ROUNDS} rounds)`);
     let lostMail = 0, notPaid = 0, flagged = 0, okRounds = 0, killedBeforeAnswer = 0;
+    {
+      // Control: the same payment with no kill. Both emails must be in the outbox, or the counts below mean nothing.
+      const q = await newQuote(2);
+      const c = await s.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, { token: buyer });
+      const sid = String(c.body.sessionUrl).split("/").pop();
+      await webhook({ id: `evt_rr_D_control_${Date.now()}`, type: "checkout.session.completed", data: { object: markPaid(sid) } });
+      await sleep(300);
+      const ref = c.body.orderId.slice(0, 8).toUpperCase();
+      const nb = s.mail("dana@buyer.test").filter((m) => (m.subject + m.text).toUpperCase().includes(ref)).length;
+      const ns = s.mail(s.adminEmail).filter((m) => (m.subject + m.text).toUpperCase().includes(ref)).length;
+      console.log(`  control (no kill): emails about the order: buyer ${nb}, shop ${ns}`);
+      if (!nb || !ns) { R.info("control failed: the outbox does not show the paid emails even without a kill; section D cannot judge emails", `buyer ${nb}, shop ${ns}`); }
+    }
     for (let i = 0; i < ROUNDS; i++) {
       const q = await newQuote(2);
       const c = await s.post("/api/orders/checkout-session", { quoteId: q.body.quoteId, ...SHIP }, { token: buyer });
@@ -219,8 +233,8 @@ const cube = fs.readFileSync(path.join(__dirname, "..", "..", "vet-quotes", "par
   }
 
   // ── E. the file ──
-  console.log("\nE. the file itself");
-  {
+  if (ONLY.includes("E")) console.log("\nE. the file itself");
+  if (ONLY.includes("E")) {
     await kill();
     const good = fs.readFileSync(dbFile);
     // A half-written temporary file beside a good database (the crash writeDurably is built for).
