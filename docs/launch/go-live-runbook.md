@@ -862,6 +862,9 @@ alert is not repeated for six hours, so one email means "now".
 | You see | It means | Do |
 |---|---|---|
 | Alert "started with N protections switched off" | A variable is missing after a deploy | Admin → System → Protections; fix; redeploy |
+| Log: `File storage: N unpaid order(s) closed to make room` (or `Database: …`) | The file store or the database was full and what filled it was on orders nobody had paid for. Those orders were closed, the largest holder first; each buyer was emailed that nothing was charged and how to order again. A paid order is never touched | Nothing, if it happens once. If it repeats, somebody is filling the site on purpose: tell me |
+| Log: `[owed-email] GAVE UP after a day: …` | An order confirmation or a shop notice could not be sent for 24 hours (the mail provider refused it every time) | Open the order in Admin → Orders and write to the customer yourself; then Admin → System → email check |
+| Log: `Order check: order … was only partly written … closed` or `… FLAGGED for the owner (order-incomplete)` | At start-up an order from before 2026-11-13 was found with lines missing (the server had been stopped while it was being written). Unpaid: closed, the buyer checks out again. Paid: flagged in Admin → Orders with what is missing | For a flagged order: open it, compare with the customer's quote, and call the customer |
 | Alert "Stripe webhooks are being refused (signature)" | Secret mismatch, or someone probing the address | Compare the secret; resend failed events in Stripe |
 | Alert "Emails are failing to send" | Resend problem (limit, domain, key) | Resend dashboard; then the test email button |
 | Alert "answering with server errors" | A bug or an overloaded server | Deploy log for `→ 500`; if it began with a deploy, Rollback B |
