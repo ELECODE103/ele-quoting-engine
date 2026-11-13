@@ -1,7 +1,8 @@
 # Independent re-review of the relaunch merge
 
-**STATE OF THIS DOCUMENT: IN PROGRESS.** Areas 1 (money), 2 (access) and 3 (durability) are written up
-below. Areas 4 to 8 are not finished; the verdict line will change when they are.
+**STATE OF THIS DOCUMENT: IN PROGRESS.** Areas 1 (money), 2 (access), 3 (durability), 6 (catalogue), 7 (what a
+customer sees) and 8 (the rest of the diff) are written up below. Area 5 (availability) is partly written;
+area 4 (the changed-tests audit) is not finished. The verdict line will change when they are.
 
 2026-11-12. Reviewer: independent (did not write any of the code under review). Change reviewed:
 `git diff 97f57f3..dce1e38` on `relaunch-2026-11-12` (101 commits). Machine: 2 cores, 7.8 GB, Node
@@ -32,6 +33,9 @@ A script exits 1 when it prints a `FINDING` line.
 | F-05 | Low | A hard kill during the "paid" webhook leaves the order paid and nobody emailed: not the buyer, not the shop. Stripe's retry is answered "already seen" | `durability-kill.js` section D |
 | F-06 | Low | Changing the delivery choice in a second tab overwrites the order before Stripe is asked whether the first tab's payment went through; a correct payment is then flagged as a wrong amount | `money-attacks.js` section 2 |
 | F-07 | Low | A refund event that arrives before the "completed" event leaves a fully refunded order in "paid". Not introduced by this merge | `money-attacks.js` section 4 |
+| F-08 | **Medium** | One press of "pay" on a 100-line quote stops the whole site for 0.6 s on an empty database, 2.2 s at 6 MB and 4.2 s at 12 MB (the ceiling is 16 MB). The author's figure (0.51 to 0.59 s) is the empty-database case | `checkout-hold.js` |
+| F-10 | **Medium** | The catalogue upgrade switches back ON every material and finish the owner had switched off, and resets machinability, waste factor, thickness lists and grades, without a line in the log for any of them | `catalogue-upgrade.js` |
+| F-11 | Low | A database whose version marker is missing, null, 0 or negative is treated as version 1: at the next start every material and finish is replaced and no hand-edited price is kept | `catalogue-upgrade.js` section 4 |
 
 ## F-01 (High): the units of a drawing can be changed under an order while it is being made
 
@@ -282,3 +286,130 @@ c7221a0:server/routes/taxShipping.test.js`): see the changed-tests audit.
 
 `npm test` on Node v20.20.0 in this worktree after `npm ci`: **88 of 88 suites passed** (run while other
 scripts were using the machine).
+
+## F-08 (Medium): one checkout stops the site for seconds once the database has grown
+
+**Where.** `server/routes/orders.js` lines 208 to 347: the re-pricing and every write of the order are
+one uninterrupted step, and each `ordersDB.insert`, `orderItemsDB.insert`, part claim and quote update is
+a separate save of the whole database file (`server/models/SqliteDB.js` line 328), each with two flushes.
+A 100-line order is more than 100 whole-file saves in that one step. Same cause as F-02.
+
+**Measured** (`checkout-hold.js 100 0,6,12`: one confirmed account, one press of "pay", quiet machine;
+the quote is 100 lines of a 12 mm cube in the first printing material, $1,654.36, open for checkout; the
+database is padded while the server is stopped, to stand in for a shop that has been running a while):
+
+| Database file | Checkout took | Longest wait of another visitor's health request |
+|---|---|---|
+| 0.2 MB (new) | 609 ms | 610 ms |
+| 6.1 MB | 2,183 ms | 2,183 ms |
+| 12.1 MB | 4,248 ms | 4,229 ms |
+
+With 25 lines of a machined cube ($4,831.65): 194 ms, 511 ms and 992 ms at the same three sizes.
+Nothing dense or clever is needed; the part is a cube. The author's open item 1 gives 0.51 to 0.59 s for
+a 100-line quote. That is the first row: a new database. The default ceiling is 16 MB and the runbook
+tells you to raise it if the database passes half of it, so 6 and 12 MB are sizes the site is expected to
+reach. The time spent writing is not charged to the sender's pricing allowance (`orders.js` line 213
+charges the pricing only), so the limit is the 12 checkouts per account per 15 minutes: at 12 MB one
+account can stop the site for about 50 seconds in every 15 minutes, in 4-second pieces, and each further
+account adds the same. During each piece no page, price or payment answer is served to anyone.
+
+An ordinary order is not affected much: about nine saves for a 5-line order, well under half a second at
+12 MB.
+
+**What a fix must achieve.** The time one checkout holds the thread must not grow with the number of
+lines times the size of the database: an order and its lines have to be one write. Whatever time
+remains must be charged to the sender.
+
+## F-10 (Medium): the catalogue upgrade undoes what the owner switched off
+
+**Where.** `server/config/seed.js` lines 63 to 69 delete every material, finish and process row when the
+catalogue version goes up; `server/config/seedCarry.js` puts back prices only
+(`server/config/seedHistory.js` line 132: `pricePerKg`, `pricePerCm3`, `pricePerPart`, `pricePerSqIn`).
+
+**Measured** (`catalogue-upgrade.js`, a version-3 database edited the way the owner edits it, then the
+real seed):
+
+| What the owner had done | After the upgrade | Said in the log |
+|---|---|---|
+| Changed a price (mild steel to $99.50 a kg; a finish) | kept | yes |
+| Changed a price on a resin that leaves the catalogue | not brought back | yes |
+| Switched a material off (stainless 304) | **back on** | no |
+| Switched a finish off (deburr) | **back on** | no |
+| Set machinability 0.2 and a waste factor on a material | **back at the default** | no |
+| Cut a thickness list down to what is stocked; renamed a grade | **back at the default (8 thicknesses)** | no |
+| Priced a material through "cost per kg" with "price per kg" empty (the admin form allows it) | **back at the default price** | a line that reads as if nothing had been set |
+| Added a material by hand | deleted | yes |
+
+The author lists this as open item 10, Low ("carry `active` the same way, if wanted") and the owner
+checklist asks you to write such changes down first. I rate it Medium because of what it does on the day:
+the default catalogue ships with three machining metals and five finishes switched off and everything else
+on. If on the live site you have switched off anything you do not stock or do not want to sell online, the
+upgrade puts it back on sale and nothing in the log or on the Pricing page names it. Machinability, waste
+factor, thicknesses and grade densities are all inputs to the price, so those materials are also priced
+differently from what you set.
+
+The upgrade from the live site's version 3 to version 4 is the first thing the deploy does.
+
+**What a fix must achieve.** Everything the owner changed on a catalogue row that still exists must
+survive the upgrade or be listed, row by row, where the owner will see it before the site takes an order.
+At the least: on/off, and the fields the price is computed from.
+
+## F-11 (Low): a missing version marker means "replace everything"
+
+`server/config/seed.js` line 62: `existingRules?.rules?.seedVersion || 1`. `catalogue-upgrade.js`
+section 4, on a version-4 database with two hand-edited prices: with the marker missing, null, 0 or -1
+the next start logs "seed v1 → v4", replaces every material and finish and keeps no price (mild steel
+$123.45 back to $1.10). With the marker "4" as text, "abc", 4.5 or 99 nothing is touched; with 3 the
+prices are carried correctly. The owner's own buttons do not move the marker (save, reset, restore: still
+4, same script section 5), so this needs a damaged or hand-edited rules row. If the rules row itself is
+lost the same thing happens.
+
+**What a fix must achieve.** An unreadable marker must never be read as "the oldest version"; the
+catalogue must not be replaced when the version it came from cannot be established.
+
+## What held (areas 6, 7, 8)
+
+**Catalogue upgrade** (`catalogue-upgrade.js`: 15 held)
+
+- Version 3 to 4: a hand-edited material price and finish price are kept; a price on a slug that leaves
+  is not brought back and is reported; the marker ends at 4; no active material is left without a price.
+- A second start changes nothing.
+- An edit equal to the new default ends at that figure. Version 2 to 4: the edited price is kept and all
+  45 other shared materials are at the version-4 default.
+- No slug is priced by a different field in version 4 than in version 3 (46 shared slugs), so a carried
+  price cannot land in the wrong column. Between 3 and 4 no default price changes; four SLA resins leave
+  and eight arrive, as the author says. `seedHistory.js` version 4 equals `defaults.js` (54 materials,
+  0 differences, checked directly).
+- Not checkable from the repository: that each shared slug names the same physical material in both
+  versions. `seedHistory.js` keeps prices, not names.
+
+**What a customer sees** (`public-surface.js`: 6 held)
+
+- The street address and ZIP are in none of the 60 built text files (`client/dist`: pages, bundle,
+  prerendered routes); none of the 22 JSON-LD blocks has a `streetAddress` or `postalCode` (city only).
+- No statement that it is a one-person shop; no test customer's name. The owner's name appears only inside
+  the company name "Erik Lutz Enterprise LLC", which `shared/shop-facts.json` records as confirmed.
+- 145 refusal codes found in the server. Each has words in `client/src/utils/messageCatalogue.js`, or is
+  an admin-page code, a gate reason or a DFM check id; two DXF codes keep the server's own sentence, which
+  was read and is written for a customer.
+- 17 hostile requests to a production-mode server (broken STL, STEP, 3MF and DXF files, a path in a file
+  name, SQL and prototype keys in a quote, a body that is not JSON, a 3 MB body, garbage links, an
+  unsigned webhook): no answer carries a path, a stack line or a JavaScript error text.
+- Refusal messages name limits in two places I would not worry about ("up to 100 lines", "up to N part
+  files at a time"): both are things a buyer needs to know.
+
+**The rest of the diff** (read, not run)
+
+- No dependency was added or changed: `package.json`, `package-lock.json`, `client/package.json` and
+  `client/package-lock.json` are not in the diff. `npm ci` on Node 20 reported 0 vulnerabilities for the
+  server install.
+- `Dockerfile`, `railway.toml`, `docker-entrypoint.sh`, `Procfile`, `client/public` and the Vite config
+  are not in the diff. Nothing new is copied into the client build.
+- What starts differently in production (`server/index.js`, 51 added lines): the server exits at once
+  without both Turnstile keys unless `ALLOW_LAUNCH_WITHOUT_BOT_CHECK=1`; it prints an error block when
+  stored files cannot be opened with the current encryption key; it starts the storage clean-up; it prints
+  the memory budget and warns when the database is over half of `DB_MAX_MB`. The database ceiling default
+  went from 256 MB to 16 MB, as the author says.
+- The test switch (`SE_TEST_HOOKS`) cannot open unsigned webhooks in production
+  (`server/security/testHooks.js`: `enabled() && NODE_ENV !== "production"`), and the parse delay and the
+  email outbox need the switch.
