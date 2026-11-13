@@ -230,7 +230,7 @@ function report(result, { log, audit }) {
   for (const e of result.notKept) {
     const words = FIELD_WORDS[e.field] || e.field;
     log(`  Catalogue: could NOT keep your ${words} for ${e.name} (${e.slug}), ${show(e.kind, e.field, e.yours)}: ${e.reason}.`);
-    audit.record({ actor: null, area: "catalogue", action: isPriceField(e) ? "price-not-kept" : "edit-not-kept", target: `${e.kind}:${e.slug}`, entityId: id, changes: { [e.field]: [e.yours, null] }, note: `${versions}: ${e.name}. Not kept: ${e.reason}.` });
+    audit.record({ actor: null, area: "catalogue", action: ACTIONS[isPriceField(e) ? "price" : "edit"].notKept, target: `${e.kind}:${e.slug}`, entityId: id, changes: { [e.field]: [e.yours, null] }, note: `${versions}: ${e.name}. Not kept: ${e.reason}.` });
   }
   for (const e of result.kept) {
     const thing = KIND_WORDS[e.kind];
@@ -245,7 +245,7 @@ function report(result, { log, audit }) {
       if (e.yours === null) log(`  Catalogue: kept the ${words} for ${e.name} (${e.slug}) empty, as you had it (the new catalogue's default is ${show(e.kind, e.field, e.newDefault)}).`);
       else log(`  Catalogue: kept your ${words} for ${e.name} (${e.slug}): ${show(e.kind, e.field, e.yours)} (the new catalogue's default is ${show(e.kind, e.field, e.newDefault)}).`);
       audit.record({
-        actor: null, area: "catalogue", action: isPriceField(e) ? "price-kept" : "edit-kept", target: `${e.kind}:${e.slug}`, entityId: id, changes: { [e.field]: [e.newDefault, e.yours] },
+        actor: null, area: "catalogue", action: ACTIONS[isPriceField(e) ? "price" : "edit"].kept, target: `${e.kind}:${e.slug}`, entityId: id, changes: { [e.field]: [e.newDefault, e.yours] },
         note: isPriceField(e)
           ? `${versions}: ${e.name}. Your price was kept; the default was ${dollars(e.oldDefault)} and is now ${dollars(e.newDefault)}.`
           : `${versions}: ${e.name}. Kept: your ${words}, ${show(e.kind, e.field, e.yours)}; the new catalogue's default is ${show(e.kind, e.field, e.newDefault)}.`,
@@ -255,6 +255,8 @@ function report(result, { log, audit }) {
   if (result.kept.length === 0 && result.notKept.length === 0) log("  Catalogue: no price had been changed by hand and no other setting either, so there was nothing to carry over.");
   else log(`  Catalogue: ${result.kept.length} change(s) you had made by hand were kept, ${result.notKept.length} could not be. The list is in Admin → Pricing.`);
 }
+// The change log's names for what happened to one field (a price keeps the names it had before 2026-11-13).
+const ACTIONS = { price: { kept: "price-kept", notKept: "price-not-kept" }, edit: { kept: "edit-kept", notKept: "edit-not-kept" } };
 const isPriceField = (e) => Boolean(e.field) && PRICE_FIELDS[e.kind].includes(e.field);
 
 /**
