@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
+const fs = require("fs");
 const path = require("path");
 const rateLimit = require("express-rate-limit");
 const { ready: dbReady } = require("./models/database");
@@ -110,9 +111,13 @@ app.use(express.json({ limit: require("./security/limits").limits.jsonBodyBytes 
 // an empty body instead of being parsed into one a JSON route would accept.
 
 // ─── Health Check (no version exposure) ──────────────────────────
+// "ok" only when the database is open and answers (re-review 2026-11-12, F-04): the host's health
+// check must not call a site healthy that cannot read its accounts and orders.
 app.get("/api/health", (req, res) => {
-  res.json({
-    status: "ok",
+  const usable = !require("./models").USE_SQLITE || require("./models/database").isUsable();
+  if (!usable) res.set("Retry-After", "30");
+  res.status(usable ? 200 : 503).json({
+    status: usable ? "ok" : "unavailable",
     timestamp: new Date().toISOString(),
   });
 });
@@ -205,6 +210,30 @@ app.use((err, req, res, next) => {
 async function start() {
   console.log("Initializing database...");
   await dbReady;
+  // A database file that is there and cannot be used stops the start: nothing has been written to
+  // it and nothing will be (models/database.js). Starting on an empty database in its place would
+  // look healthy with no accounts and no orders, and the one-time admin setup would be open again.
+  if (require("./models").USE_SQLITE) {
+    const database = require("./models/database");
+    const problem = database.openError();
+    if (problem) {
+      console.error(`FATAL: the database file ${problem.path} is there but cannot be used: ${problem.reason}. Nothing was written to it and the site has NOT started. Restore the volume from its backup; do not delete the file (docs/launch/go-live-runbook.md, step 5 table, "The database will not open").`);
+      process.exit(1);
+    }
+    if (database.wasCreated() && process.env.NODE_ENV === "production") {
+      // A first start, or a volume that is not where the site expects it: only a person can tell which.
+      const dataDir = path.dirname(database.DB_PATH);
+      let others = [];
+      try { others = fs.readdirSync(dataDir).filter((n) => !/^quoting\.db(\.tmp)?$/.test(n)).filter((n) => { try { const st = fs.statSync(path.join(dataDir, n)); return st.isDirectory() ? fs.readdirSync(path.join(dataDir, n)).length > 0 : st.size > 0; } catch { return false; } }); } catch { /* nothing to list */ }
+      console.error("════════════════════════════════════════════════════════════════════");
+      console.error(`NO DATABASE WAS FOUND at ${database.DB_PATH}: A NEW, EMPTY ONE WAS CREATED.`);
+      console.error("  On the very first start that is right. If this site had accounts, quotes or orders before,");
+      console.error("  it is NOT: the volume is not mounted where the site looks, or it came up empty. Stop here");
+      console.error('  and check it before anyone uses the site (docs/launch/go-live-runbook.md, step 5 table, "NO DATABASE WAS FOUND").');
+      if (others.length) console.error(`  The data folder is not empty (${others.slice(0, 6).join(", ")}): files from before are here and the database is not.`);
+      console.error("════════════════════════════════════════════════════════════════════");
+    }
+  }
   seedDatabase();
   if (require("./models").USE_SQLITE) console.log(`  Database file: ${(require("./models/database").fileSize() / 1e6).toFixed(1)} MB`);
   apiRoutes.loadPricingRules();

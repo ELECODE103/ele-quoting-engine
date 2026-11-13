@@ -280,7 +280,9 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
       if (!keep) fs.rmSync(tmp, { recursive: true, force: true });
     },
   };
-  if (exited) { const log = output; await s.stop(); throw Object.assign(new Error(`server exited at startup (${exited.code}):\n${log}`), { exitCode: exited.code, output: log }); }
+  // (A folder the caller handed in is the caller's: it is not removed when the start fails, so a test can
+  // look at what a refused start left on disk. A folder made here is removed, as before.)
+  if (exited) { const log = output; await s.stop({ keep: Boolean(tmpDir) }); throw Object.assign(new Error(`server exited at startup (${exited.code}):\n${log}`), { exitCode: exited.code, output: log }); }
   return s;
 }
 

@@ -421,7 +421,9 @@ browser shows `{"status":"ok", …}`.
 | A warning block about the bot check, email or the webhook secret | That variable did not take | Check its exact name in Variables; **Redeploy** |
 | `ALERT [startup-protections…]` with a list | The same, summarised: each name in the list is a setting that is off | Fix each; you also get this by email once email works |
 | Deployment stays "Deploying" for five minutes and then fails | The site did not answer its health check | Read the Deploy Log from the top for the first `FATAL` or `Error`. If nothing explains it: Rollback, option A |
-| The site is up but the database looks empty (no orders, your sign-in is unknown) | The volume is not mounted at `/app/data` | **Stop.** Do not register anything. Step 1, item 1; tell me |
+| Deploy log: `FATAL: the database file … is there but cannot be used: …` | **The database will not open.** The file on the volume is empty, cut short or damaged (the line says which). The site has not started and has written nothing to the file | **Do not delete the file.** Rollback, option C (restore the volume backup). If there is no backup to go to, tell me before doing anything else |
+| Deploy log: a block starting `NO DATABASE WAS FOUND at … A NEW, EMPTY ONE WAS CREATED` | There was no database file where the site looks. Right on the very first start of a new site; wrong on a site that had accounts and orders: the volume is not mounted at `/app/data`, or came up empty | If the site had data: **Stop.** Do not register anything. Step 1, item 1; then Rollback, option A, and tell me |
+| The site is up but the database looks empty (no orders, your sign-in is unknown) | The volume is not mounted at `/app/data` (the deploy log has the `NO DATABASE WAS FOUND` block) | **Stop.** Do not register anything. Step 1, item 1; tell me |
 
 ---
 

@@ -227,6 +227,32 @@ let SQL = null;
 let readyResolve;
 const ready = new Promise((resolve) => { readyResolve = resolve; });
 
+// Why the database could not be opened, when it could not (independent re-review 2026-11-12, F-04).
+// A file that EXISTS and cannot be used is never replaced: until 2026-11-13 a zero-length file (a
+// volume that came up empty) was opened as a new, empty database and written over, and a file that
+// was not a database left the server "healthy" with every request failing. Now nothing is opened,
+// nothing is written, and server/index.js stops the start with this reason in one line.
+let openFailure = null;   // { reason, bytes }
+let createdNew = false;   // no file was there: a new, empty database was made (a first start)
+
+/** Why these bytes cannot be used as the database, or "" when they can. Opens them; never writes. */
+function unusableReason(SQLlib, buffer) {
+  if (!buffer || buffer.length === 0) return "the file is empty (0 bytes)";
+  if (buffer.length < 100 || buffer.subarray(0, 16).toString("latin1") !== "SQLite format 3\u0000") return "the file is not a SQLite database";
+  let probe = null;
+  try {
+    probe = new SQLlib.Database(buffer);
+    const res = probe.exec("PRAGMA integrity_check");
+    const verdict = res && res[0] && res[0].values ? res[0].values.map((v) => String(v[0])) : [];
+    if (verdict.length !== 1 || verdict[0] !== "ok") return `SQLite's integrity check failed (${(verdict[0] || "no answer").slice(0, 120)})`;
+    return "";
+  } catch (err) {
+    return `SQLite cannot read it (${String((err && err.message) || err).slice(0, 120)})`;
+  } finally {
+    if (probe) { try { probe.close(); } catch (_) { /* nothing to close */ } }
+  }
+}
+
 (async function init() {
   try {
     SQL = await initSqlJs();
@@ -234,9 +260,16 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
 
     if (fs.existsSync(DB_PATH)) {
       const buffer = fs.readFileSync(DB_PATH);
+      const reason = unusableReason(SQL, buffer);
+      if (reason) {
+        openFailure = { reason, bytes: buffer.length };
+        readyResolve();
+        return; // dbInstance stays null: every save is a no-op, so the file is left exactly as it is
+      }
       dbInstance = new SQL.Database(buffer);
     } else {
       dbInstance = new SQL.Database();
+      createdNew = true;
     }
 
     // Run schema
@@ -371,9 +404,26 @@ const ready = new Promise((resolve) => { readyResolve = resolve; });
     readyResolve();
   } catch (err) {
     console.error("Failed to initialize SQLite:", err);
-    readyResolve(); // resolve anyway so the app doesn't hang
+    // Not usable: the start stops on it (server/index.js), and nothing more is written through a
+    // database whose schema or migrations did not finish.
+    openFailure = { reason: `it could not be opened or brought up to date (${String((err && err.message) || err).slice(0, 160)})`, bytes: null };
+    dbInstance = null;
+    readyResolve(); // resolve so whoever waits can see the failure
   }
 })();
+
+/** null when the database is open; otherwise why it is not: { reason, path }. */
+function openError() {
+  if (dbInstance && !openFailure) return null;
+  return { reason: openFailure ? openFailure.reason : "it has not been opened", path: DB_PATH, bytes: openFailure ? openFailure.bytes : null };
+}
+/** Is the database open and answering? (the health check asks) */
+function isUsable() {
+  if (!dbInstance || openFailure) return false;
+  try { dbInstance.exec("SELECT 1"); return true; } catch (_) { return false; }
+}
+/** True when this start found no database file and made a new, empty one. */
+function wasCreated() { return createdNew; }
 
 // Every write exports the whole database and rewrites the file, so a burst of
 // writes (seeding, a sweep) is grouped: inside batch() saves are held back and
@@ -650,4 +700,4 @@ process.on("SIGTERM", () => onStop("SIGTERM"));
 process.on("SIGINT", () => onStop("SIGINT"));
 process.once("beforeExit", () => { try { flush(); } catch { /* nothing more to do */ } });
 
-module.exports = { getDatabase, saveToDisk, writeDurably, batch, transaction, inTransaction, whenSaved, deferred, flush, pending, compact, vacuum, fileSize, liveSize, usedSize, ready, DB_PATH, payloadMigration: () => payloadMigration };
+module.exports = { getDatabase, openError, isUsable, wasCreated, unusableReason, saveToDisk, writeDurably, batch, transaction, inTransaction, whenSaved, deferred, flush, pending, compact, vacuum, fileSize, liveSize, usedSize, ready, DB_PATH, payloadMigration: () => payloadMigration };
