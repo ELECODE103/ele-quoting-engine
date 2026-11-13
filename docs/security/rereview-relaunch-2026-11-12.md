@@ -413,3 +413,36 @@ catalogue must not be replaced when the version it came from cannot be establish
 - The test switch (`SE_TEST_HOOKS`) cannot open unsigned webhooks in production
   (`server/security/testHooks.js`: `enabled() && NODE_ENV !== "production"`), and the parse delay and the
   email outbox need the switch.
+
+## The changed-tests audit (area 4)
+
+Method: each changed file was diffed against the commit it came from (`c7221a0` for tax-shipping,
+`f706811` for the availability suites, `7c9de0f` for the re-review scripts). The original test files
+were then run against the merged code where that could tell me something (copied in under a temporary
+name, run, removed; nothing of it is committed). "Original wrong" means the old test could not pass on a
+correct merged site; "finding edited away" would mean it failed for a real fault that the edit hides.
+
+**No finding was edited away. Two changes removed coverage that nothing else in the suite replaces, and
+one adapted script measures a much lighter case than the one it was written for.** Those three are
+marked.
+
+| Test or script | What changed | Original run on the merged code | Judgement |
+|---|---|---|---|
+| `taxShipping.test.js` (50 cases) | pacing limits lifted; four cases rewritten | With nothing changed: 9 of 50 pass, the rest stopped by `checkout-rate-limited` (12 checkouts per account per 15 minutes). With only the pacing limits lifted from outside: 14 pass, then the "no density" case fails half way and leaves a material without a density, and every later case fails on that | Original wrong for the merged site. See the four cases below |
+| ... case "a line with no weight" | was: refused 409 `shipping-manual`; now: 200 at the full total | Fails as the author says (200) | Original wrong. Checkout prices the saved lines again and takes the weights from that. I tampered with stored weights five ways in two modes (`money-attacks.js` section 5): the real total is charged each time. The rule "an unknown weight is never zero" is still enforced on the freshly priced lines (`shipping.js` line 275) |
+| ... case "a material with no density" | was: priced, shipping "unknown weight"; now: not priced at all | Fails: the material is refused by the whitelist | Original wrong; the merged rule is stricter |
+| ... case "promo code and tax" | codes switched on for the first half; a wrong amount is now "unpaid and flagged", not "paid, under review"; a third case added (tax on an order checked out with tax off) | Not reached | Stricter. Confirmed independently (`money-attacks.js` section 7) |
+| ... case "firm quotes" | the guest uploads their own part | Not reached | Ownership; read only |
+| `pricingAvailability.test.js` | requests carry the part key; the eight-address share is read when the 6-second window closes, with a second bound over the whole run | see the availability section | Original wrong (it read the figure after an 8-second tail). The bound itself (a burst plus 60 % of the clock) is unchanged and a second one was added |
+| `senderQuotas.test.js` | allowance used by the test 96 → 128 kB; the abandoned order now has a lapsed payment page | 7 pass, 2 fail: "2 re-prices accepted, 28 refused" and "a file on an order nobody paid for in three days is cleared" | First: original wrong (a stored draft grew from 2.3 to 2.8 kB at one line and from 5.9 to 7.8 kB at 25, so the test's own allowance was too small; the product default is 512 kB). Second: **a real change of behaviour that the edit follows**: an unpaid order with no payment page now holds its files for ever. A customer cannot normally make one (I looked: a failed session start deletes the order), so I accept it; F-02's partial orders are the exception |
+| `storagePressure.test.js` | the customer prices their own parts; the levelling check allows the last holder to be partly cut | 8 pass; the first failure is "a visitor can still change the quote they have open: 400"; the four after it are knock-on (the database is left "nearly full") | Original wrong: the test had a signed-in customer price the visitor's part, which now makes it the customer's. The looser levelling check accepts "6 6 6 6 6 6 6 10": equal senders are not cut equally; the last one reached keeps more. Harmless among flood senders, noted |
+| `databaseDurability.test.js` | a source-text check widened | Not run separately | Harmless. It only checks that `saveToDisk` ends in `writeDurably` |
+| `shutdown.test.js` | the "no handler" case rewritten to expect a clean exit; a live-server case added | Not run separately | **Coverage removed.** The old case killed the process at six delays and checked the file was whole even when the kill landed inside a save. The new case checks a graceful stop. The suite now has no case in which the process is killed hard while it is writing. My `durability-kill.js` does that about 60 times per full run (integrity `ok` every time), so the property holds; the suite no longer proves it |
+| `reorder-block.js` | makes "the largest order a customer can" (3 lines of the 4,900-hole drawing), pays it, reorders that | Original cannot run: the 100-line order is over $5,000 and an unpaid order cannot be reordered | **Lighter case.** The script was written to reorder 100 lines; it now reorders 3. A 100-line order under $5,000 exists (100 printed cubes, $1,654, see F-08), so "the largest order a customer can make" is not the heaviest reorder. Measured below |
+| `memo-check.js` | pays the order before reordering; prices its last step as the owner | Not run | Original wrong (ownership, paid-only reorder). One check changed meaning and the author says so: "memo against no memo" is now compared in `pricingAvailability.test.js`, not here |
+| `encryption.js`, `migration.js`, `retention-encryption.js` | carry part keys over a restart, or take them from the old quote | Not run | Original wrong: each priced its own part without the key the browser would hold |
+| `authorization.test.js` | follows routers mounted without a path; inventory gains five routes | Compared with my own walk of the routers (`route-inventory.js`: 98 routes, 50 owner routes, 0 without `authenticate` then `requireAdmin`) | The change makes the test see more, not less |
+| `messageCatalogue.test.js` | wider scan for codes | My own scan found 145 codes, all accounted for (`public-surface.js`) | Sees more, not less |
+| `priceIntegrity`, `reorder`, `orderLifecycle`, `relaunchIntegration` tests | per-account pacing limits lifted | Not run separately | Same reason as `taxShipping.test.js`; the limits are real (my own first run of `money-attacks.js` hit them after 6 checkouts) |
+| `hardening-accounts.mjs` | waits for the sign-out answer before replaying the old token | Not run (browser) | Plausible; not verified |
+| `upgrade-proof.js` | a timer keeps the event loop busy | Not run | Not verified. The hang it works around is in the script's own process |
