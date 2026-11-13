@@ -72,7 +72,7 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
   });
 
   test("checkout in the gap, before a saved quote has been priced again, is still refused with the new price: the fingerprint carries the part's revision", async () => {
-    const p = await plateOnDrafts("gap.dxf", 3, 4);
+    const p = await plateOnDrafts("gap.dxf", 3, 1);
     const mmTotals = p.totals();
     const r = await p.setUnits("in");
     assert.strictEqual(r.status, 200, r.text);
@@ -80,7 +80,7 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
     const last = p.ids[p.ids.length - 1];
     const c = await h.post("/api/orders/checkout-session", { quoteId: last, confirmedTotal: mmTotals[mmTotals.length - 1], ...SHIP }, buyer);
     assert.deepStrictEqual([c.status, c.body.code], [409, "quote-changed"], c.text.slice(0, 200));
-    assert.ok(c.body.newTotal > mmTotals[mmTotals.length - 1] * 1.5, `${mmTotals[mmTotals.length - 1]} → ${c.body.newTotal}`);
+    assert.ok(c.body.newTotal > mmTotals[mmTotals.length - 1] + 1, `the price of the part read in inches: ${mmTotals[mmTotals.length - 1]} → ${c.body.newTotal}`);
     await api.draftRefresh.idle();
   });
 
@@ -103,7 +103,9 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
   });
 
   test("a sender who has used the hour's pricing allowance gets the units change, and the saved quotes are only marked to be priced again: no pricing is done for them", async () => {
-    const p = await plateOnDrafts("spent.dxf", 4, 6);
+    // (One line each: read in inches, six lines of this plate pack to over 50 lb, which since F-03 is a firm
+    // quote for its freight; this case is about the price, so the quotes are kept inside the parcel limits.)
+    const p = await plateOnDrafts("spent.dxf", 4, 1);
     const mmTotals = p.totals();
     const prev = process.env.QUOTE_PRICE_SECONDS_PER_ACCOUNT_HOUR;
     const usedBefore = pricingMemo.usedMs(`user:${buyerId}`);
