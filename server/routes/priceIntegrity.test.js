@@ -324,6 +324,10 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
     const sw = await h.raw("POST", `/api/parts/${part.partId}/units`, { json: { units: "in" }, token: buyer, headers: { "X-Human-Token": h.humanToken, "X-Part-Key": part.editKey } });
     assert.strictEqual(sw.status, 200, sw.text);
     assert.strictEqual(Math.round(sw.body.geometry.boundingBox.width), 254, "the part is 25.4× bigger");
+    // (2026-11-13, re-review F-13.) The saved quotes that hold the part are no longer priced inside the
+    // units request, where they stopped the site for as long as they took: they are priced right after
+    // it, in pieces. This case used to read the quote in the same tick; it now waits for that work.
+    await require("./api").draftRefresh.idle();
     const stored = quotesDB.getById(small.body.quoteId);
     assert.ok(stored.orderTotal > small.body.orderTotal * 1.5, `the saved draft was priced again: ${small.body.orderTotal} → ${stored.orderTotal}`);
     assert.notStrictEqual(stored.config.integrity.fingerprint, fingerprint);

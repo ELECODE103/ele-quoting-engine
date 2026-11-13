@@ -100,4 +100,28 @@ function attentionFor(orderId) {
   };
 }
 
-module.exports = { lockedBy, locked, changedSincePriced, attentionFor };
+/**
+ * Has a part of this quote been replaced since the quote was priced? True when the quote is marked
+ * to be priced again, or when a line was priced from another revision of its part's measurements
+ * than the one stored now (a DXF's units were changed and the quote has not been priced since:
+ * routes/api.js prices saved quotes again AFTER a units change, in pieces, not inside it).
+ * A quote with no record of what it was priced from (made before 2026-11) has nothing to compare.
+ */
+function quoteBehindParts(quote) {
+  const integrity = quote && quote.config && quote.config.integrity;
+  if (!integrity || integrity.v !== 1 || !Array.isArray(integrity.lines)) return false;
+  if (integrity.stale) return true;
+  const items = Array.isArray(quote.lineItems) ? quote.lineItems : [];
+  const configs = quote.config && Array.isArray(quote.config.parts) ? quote.config.parts : [];
+  for (let i = 0; i < integrity.lines.length; i++) {
+    const snap = integrity.lines[i] && integrity.lines[i].snapshot;
+    const partId = (items[i] && items[i].partId) || (configs[i] && configs[i].partId);
+    if (!snap || snap.partRev === undefined || snap.partRev === null || !partId) continue;
+    const row = partsDB.getRow(partId);
+    if (row && (Number(row.geometryRev) || 0) !== Number(snap.partRev)) return true;
+  }
+  return false;
+}
+
+module.exports = {
+  quoteBehindParts, lockedBy, locked, changedSincePriced, attentionFor };

@@ -60,7 +60,9 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
     assert.strictEqual(width(d.partId), 508);
     assert.strictEqual(partsDB.getRow(d.partId).geometryRev, 2);
     assert.strictEqual(partLock.lockedBy(d.partId), null);
-    // The draft that holds it is at the inch price again (the server priced it, or marked it to be priced).
+    // The draft that holds it is at the inch price again (the server priced it, or marked it to be priced),
+    // once the work that follows the units answer is done (F-13: it is no longer inside the request).
+    await require("./api").draftRefresh.idle();
     const row = quotesDB.getById(d.quoteId);
     const stale = Boolean(row.config.integrity && row.config.integrity.stale);
     assert.ok(stale || Math.abs(row.orderTotal - d.inchTotal) < 0.011, `draft total ${row.orderTotal}, stale ${stale}`);

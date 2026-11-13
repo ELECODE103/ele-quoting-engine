@@ -282,7 +282,7 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
     const accountUnconfirmed = Boolean(req.user && !req.user.emailVerified && mailer.configured());
     const buyerEmail = senderVerified && !accountUnconfirmed && botGuard.allowConfirmationEmail(req, email);
 
-    const parts = quote ? snapshotParts(quote) : [];
+    let parts = quote ? snapshotParts(quote) : [];
     const process = parts[0]?.process || sanitizeString(b.process || "", 40);
     // Checkboxes arrive as multipart text ("true" / "false"). The return box is on by default on
     // the form, but a request that does not send it at all (an older client, a hand-built post)
@@ -299,6 +299,20 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       req.attachmentPaths.add(drawingPath);
     }
 
+    // In the same uninterrupted step as the write (re-review 2026-11-12, F-01 and F-13): this request
+    // has waited (the sender check, the attachment), and the quote may have been priced again in that
+    // time, or a drawing on it had its units changed and the quote has not been priced since. A request
+    // is made from the quote as it stands now, and never from a price worked out for another size.
+    if (quote) {
+      const current = quotesDB.getById(quote.id);
+      if (!current || require("../services/partLock").quoteBehindParts(current)) {
+        await dropFile();
+        botGuard.releaseForm(check);
+        return res.status(409).json({ error: "A drawing on this quote was changed after its price was worked out. Reopen the quote so it is priced again, then send your request. Nothing was sent.", code: "quote-part-changed" });
+      }
+      quote = current;
+      parts = snapshotParts(current);
+    }
     const rfq = rfqsDB.insert({
       quoteId: quote?.id || null,
       userId: req.user?.userId || quote?.userId || null,

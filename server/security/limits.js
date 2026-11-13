@@ -26,6 +26,13 @@ function envInt(name, def, min, max) {
 }
 
 const limits = {
+  // ── Drawing units (POST /api/parts/:id/units) ─────────────────
+  /**
+   * Units changes one address, and one account, may make in 10 minutes. A person sets the units of a
+   * drawing once or twice; each change has the file read again and every saved quote that holds the
+   * part priced again (in pieces, on the sender's own pricing allowance: routes/api.js).
+   */
+  get unitsChangesPerClient10Min() { return envInt("UNITS_CHANGES_PER_CLIENT_10MIN", 30, 1, 100000); },
   // ── Checkout (POST /api/orders/checkout-session) ──────────────
   /** Checkout requests one ACCOUNT may make in 15 minutes (each may create a Stripe session). */
   get rateCheckoutPerAccount15Min() { return envInt("CHECKOUT_PER_ACCOUNT_15MIN", 12, 1, 1000); },

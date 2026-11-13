@@ -216,6 +216,7 @@ protection that is off until you do.)
 | `ORDERS_UNPAID_PER_CLIENT` | 5 | The same, counted per address (an office behind one connection shares it) |
 | `ORDERS_UNPAID_NEW_PER_ACCOUNT_DAY` | 8 | Checkouts one account may start and leave unpaid in 24 hours |
 | `ORDERS_UNPAID_NEW_PER_CLIENT_DAY` | 16 | The same, per address |
+| `UNITS_CHANGES_PER_CLIENT_10MIN` | 30 | Times one address, and one account, may change a DXF drawing's units in 10 minutes. A person sets them once or twice per drawing; the next change is refused with "That's a lot of unit changes in a short time…". The saved quotes that hold the drawing are priced again after each change, a piece at a time, on that sender's own pricing allowance |
 | `MEMORY_BUDGET_MB` | 1024 | The memory limit of the Railway service, in MB. The site sizes its file-reading limits from it. **Set it in step 3** to match the service: the recommended service size is 2 GB with `MEMORY_BUDGET_MB=2048` |
 | `DB_MAX_MB` | 16 | The most the database file may grow to. Past it the site stops saving new quotes and uploads until room is made. **Check it in step 9**: if the database is already more than half of this on the first day, raise it |
 | `QUOTE_DRAFT_KB_PER_CLIENT`, `QUOTE_DRAFT_KB_PER_ACCOUNT` | 512 each | How much unsaved-quote data one visitor, or one account, may have stored at once: roughly 180 one-part quotes, or 23 quotes of 100 parts. Orders, requests and quotes on them are never counted |

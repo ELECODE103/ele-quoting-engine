@@ -130,6 +130,7 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'dxf-units-required': { '*': { text: 'Choose whether this drawing is in inches or millimetres, and the price follows.', keep: true } },
     'dxf-thickness-required': { '*': { text: 'Select a stock thickness: a DXF has no thickness of its own.', keep: true } },
     'part-locked': { '*': { text: 'This part is already on an order or a quote request, so its units can no longer be changed. Upload the file again to start a new quote.' } },
+    'units-rate-limited': { '*': { text: 'That is a lot of unit changes in a short time. Wait a few minutes, then set the units again. The drawing and its quote are as you left them.' } },
     'part-data-unavailable': { '*': { text: 'We can no longer read what we measured from this file. Upload it again and it is priced as before.', keep: true } },
 
     // Pricing and checkout
@@ -181,6 +182,7 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     },
     // Checkout: the quote is not what was priced, or has been used.
     'quote-needs-update': { '*': { text: 'Something on this quote is no longer offered the way it was priced, so we have not charged you. Reopen the quote to see today\'s options and price; your parts are still there.', action: 'reopen-quote' } },
+    'quote-part-changed': { '*': { text: 'A drawing on this quote was changed after its price was worked out, so nothing was sent. Reopen the quote so it is priced again, then send your request.', action: 'reopen-quote' } },
     'quote-already-ordered': { '*': { text: `This quote has already been ordered, so it can't be paid for a second time. Nothing was charged. Open that order to see where it stands; to order the same parts again, use Reorder on the order page. Questions: ${PHONE}.`, action: 'open-order' } },
     'checkout-rate-limited': { '*': { text: `That is a lot of tries at checkout in a few minutes, so checkout on this account is paused for a short while. Nothing was charged. Wait a few minutes and try again, or call ${PHONE} and we'll take the order by phone.`, action: 'retry' } },
     // Admin saves (the owner's screens): the server's sentence says which case it is.

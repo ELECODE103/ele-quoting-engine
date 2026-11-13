@@ -465,6 +465,12 @@ router.post(
  * edit key (X-Part-Key, handed to the uploader with the upload answer): the
  * part id alone is not enough to change a part.
  */
+// Units changes per sender (the address, and the account): security/limits.js unitsChangesPerClient10Min.
+const unitsChanges = require("../security/throttle").createThrottle({ windowMs: 10 * 60 * 1000, max: Number.MAX_SAFE_INTEGER }); // counted here; the ceiling is read per request
+function unitsSenders(req) {
+  return [clientKey(req), req.user && req.user.userId ? `user:${req.user.userId}` : ""].filter(Boolean);
+}
+
 router.post("/parts/:partId/units", async (req, res) => {
   try {
     const units = req.body?.units;
@@ -472,6 +478,15 @@ router.post("/parts/:partId/units", async (req, res) => {
     const part = isValidUUID(req.params.partId) ? partsDB.getById(req.params.partId) : null;
     if (!part) return res.status(404).json({ error: "Part not found" });
     if (!dxf.is2D(part.geometry)) return res.status(400).json({ error: "Units can only be chosen for a DXF. STEP, IGES and 3MF carry their own units; STL is read as millimetres." });
+    // A person sets a drawing's units once or twice. A script that flips them back and forth has the
+    // file read again and every saved quote priced again each time (re-review 2026-11-12, F-13).
+    const senders = unitsSenders(req);
+    const maxChanges = limits.unitsChangesPerClient10Min;
+    if (senders.some((k) => unitsChanges.peek(k).count >= maxChanges)) {
+      res.set("Retry-After", "300");
+      return res.status(429).json({ error: "That's a lot of unit changes in a short time. Wait a few minutes, then set the units again. The drawing and its quote are as you left them.", code: "units-rate-limited", retryAfterSeconds: 300 });
+    }
+    for (const k of senders) unitsChanges.hit(k);
     // The shop builds from the stored geometry of an ordered part. Once a part is on an order, a
     // firm-quote request or a quote that is no longer a draft, its units are settled: changing them
     // here would change the size on the traveler (services/partLock.js; the gate in security/index.js
@@ -508,10 +523,14 @@ router.post("/parts/:partId/units", async (req, res) => {
     if (!partsDB.getRow(part.id)) return res.status(404).json({ error: "Part not found" });
     if (partLock.locked(part.id)) return res.status(409).json(require("../security").PART_LOCKED);
     const updated = partsDB.update(part.id, { geometry: parsed.geometry, dfm: parsed.dfm }) || { ...part, geometry: parsed.geometry };
-    // The part is not the part that was priced any more: every draft quote that holds it is priced
-    // again now (or marked stale when it cannot be), so no stored total outlives the size it was for.
-    refreshDraftQuotesFor(part.id);
+    // The part is not the part that was priced any more. No order can be made from a price it had:
+    // what a quote was priced from is part of its fingerprint (the part's revision), and checkout
+    // prices again and compares before it charges. The saved quotes that hold the part are priced
+    // again AFTER this answer, one at a time, in pieces, through the site's one pricing runner and on
+    // this sender's pricing allowance (refreshDraftQuotesFor below): until 2026-11-13 they were all
+    // priced inside this request in one step, which stopped the site for as long as it took.
     res.json(partPayload({ id: part.id, fileName: updated.fileName || part.fileName }, parsed));
+    refreshDraftQuotesFor(part.id, { job: pricingGate.job(req, [{ partId: part.id }]) }).catch((err) => console.error("Draft quote refresh error:", err && err.message));
   } catch (err) {
     if (err.name === "PayloadError" && err.code === "storage-full") {
       res.set("Retry-After", "3600");
@@ -909,35 +928,116 @@ function verifyQuoteForOrder(quote, user, { confirmedTotal, totalShown, warmUp }
 }
 
 /**
- * A part's stored geometry changed (a DXF's units): price every draft quote
- * that holds it again, in place. A draft that cannot be priced as it stands
- * (the new size needs a setting it does not have) is marked stale instead;
- * either way checkout prices again before it charges.
+ * A part's stored geometry changed (a DXF's units): the saved (draft) quotes that hold it are priced
+ * again, in place.
+ *
+ * Not in the units request (re-review 2026-11-12, F-13): after it, one quote at a time, each through
+ * the site's one pricing runner (services/pricingMemo.js run(): in pieces, with the event loop turning
+ * between them, least-used sender first) and charged to the sender who changed the units. When that
+ * sender has used the hour's pricing allowance, or the runner is full, the quotes that are left are
+ * only marked stale, one small write each. Either way checkout prices again before it charges; the
+ * mark only makes the reason it gives ("the part changed") the right one.
+ *
+ * One sender's refreshes run one after another (a script changing the units of many parts queues
+ * behind itself, not in front of other visitors), and a refresh that has been overtaken by a later
+ * change to the same part stops: the later one does the work.
+ *
+ * @param {string} partId
+ * @param {{ job?: { keys: string[], heavy: boolean } }} [who]  the sender to charge (security/pricingGate.js job())
+ * @returns {Promise<{ quotes: number, priced: number, markedStale: number, superseded: boolean }>}
  */
-function refreshDraftQuotesFor(partId) {
-  // One memo and one write of the database file for the whole pass: the part is loaded once for all the
-  // drafts that hold it, not once per draft.
-  return require("../models/database").batch(() => pricingMemo.within(() => refreshDraftQuotesNow(partId)));
+const draftRefreshChains = new Map(); // sender key → the promise of that sender's last queued refresh
+const draftRefreshStats = { runs: 0, priced: 0, markedStale: 0, superseded: 0 };
+const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
+
+function refreshDraftQuotesFor(partId, who = {}) {
+  const job = who.job || { keys: [], heavy: false };
+  const chainKey = (job.keys && job.keys[0]) || "";
+  const work = () => refreshDraftQuotesInPieces(partId, who)
+    .catch((err) => { console.error("Draft quote refresh error:", err && err.message); return { quotes: 0, priced: 0, markedStale: 0, superseded: false }; })
+    // (Test servers only: the proof scripts read this line to know when the work a units change started is over.)
+    .then((out) => { if (process.env.SE_TEST_HOOKS === "1") console.log(`[test] draft refresh done: part ${String(partId).slice(0, 8)} priced ${out.priced} marked ${out.markedStale} superseded ${out.superseded}`); return out; });
+  if (!chainKey) return work();
+  const next = (draftRefreshChains.get(chainKey) || Promise.resolve()).then(work);
+  draftRefreshChains.set(chainKey, next);
+  next.then(() => { if (draftRefreshChains.get(chainKey) === next) draftRefreshChains.delete(chainKey); });
+  return next;
 }
-function refreshDraftQuotesNow(partId) {
-  let touched = 0;
-  for (const q of quotesDB.query((x) => x.status === "draft" && storedConfigs(x).some((c) => c && c.partId === partId))) {
-    try {
-      // Server-side refresh on behalf of the quote's owner (a part that belongs to another account stays closed).
-      const priced = repriceStoredQuote(q, q.userId ? { userId: q.userId } : null);
-      quotesDB.update(q.id, {
-        ...priced.quote,
-        gate: priced.gate,
-        config: { ...(q.config || {}), parts: storedConfigs(q), integrity: priced.integrity },
-        expiresAt: new Date(Date.now() + QUOTE_VALID_DAYS * 864e5).toISOString(),
-      });
-    } catch (err) {
-      if (!err.expose) console.error("Draft quote refresh error:", err.message);
-      quotesDB.update(q.id, { config: { ...(q.config || {}), integrity: { ...(q.config?.integrity || {}), v: 1, stale: true, staleAt: new Date().toISOString() } } });
-    }
-    touched++;
+
+/** Has any of these senders (an address, `user:<id>`) used the hour's pricing allowance? */
+function pricingSpent(keys) {
+  return (keys || []).some((k) => pricingMemo.usedMs(k) >= (k.startsWith("user:") ? limits.quotePriceSecondsPerAccountHour : limits.quotePriceSecondsPerClientHour) * 1000);
+}
+
+/** The ids of the draft quotes that hold a part: from the column kept beside each quote, no quote is read. */
+function draftIdsHolding(partId) {
+  const table = quotesDB.table;
+  if (table && typeof table._query === "function") {
+    // (part_ids is filled when a quote is written; a row from before the column existed has none and is looked at.)
+    return table._query("SELECT id FROM quotes WHERE status = 'draft' AND (part_ids LIKE ? OR part_ids IS NULL) ORDER BY updated_at DESC", [`%${partId}%`]).map((r) => r.id);
   }
-  return touched;
+  return quotesDB.query((x) => x.status === "draft" && storedConfigs(x).some((c) => c && c.partId === partId)).map((q) => q.id);
+}
+
+async function refreshDraftQuotesInPieces(partId, { job = { keys: [], heavy: false } } = {}) {
+  const database = require("../models/database");
+  const out = { quotes: 0, priced: 0, markedStale: 0, superseded: false };
+  const row = partsDB.getRow(partId);
+  if (!row) return out;
+  const rev = Number(row.geometryRev) || 0;
+  const ids = draftIdsHolding(partId);
+  draftRefreshStats.runs++;
+  for (const id of ids) {
+    await nextTurn();
+    // Changed again since: the later change has its own refresh queued behind this one.
+    const now = partsDB.getRow(partId);
+    if (!now || (Number(now.geometryRev) || 0) !== rev) { out.superseded = true; draftRefreshStats.superseded++; return out; }
+    let priced = false;
+    if (!pricingSpent(job.keys)) {
+      try {
+        const done = await pricingMemo.run(() => refreshOneDraft(id, partId), job);
+        if (done === "skipped") continue;
+        priced = done === "priced";
+      } catch (err) {
+        // The runner is full, or this quote took longer than one quote may: it is marked instead.
+        if (!(err && (err.expose || err.code || err.pricingInterrupt))) console.error("Draft quote refresh error:", err && err.message);
+      }
+    }
+    if (priced) { out.quotes++; out.priced++; draftRefreshStats.priced++; continue; }
+    const q = quotesDB.getById(id);
+    if (!q || q.status !== "draft" || !storedConfigs(q).some((c) => c && c.partId === partId)) continue;
+    database.deferred(() => quotesDB.update(q.id, { config: { ...(q.config || {}), integrity: { ...(q.config?.integrity || {}), v: 1, stale: true, staleAt: new Date().toISOString() } } }));
+    out.quotes++; out.markedStale++; draftRefreshStats.markedStale++;
+  }
+  return out;
+}
+
+/**
+ * Price one draft again and store it. Run by the pricing runner: called several times (warm-up
+ * passes, which must not write, then one final pass). Returns "priced", "stale" or "skipped".
+ */
+function refreshOneDraft(quoteId, partId) {
+  const database = require("../models/database");
+  const q = quotesDB.getById(quoteId);
+  if (!q || q.status !== "draft" || !storedConfigs(q).some((c) => c && c.partId === partId)) return "skipped";
+  try {
+    // Server-side refresh on behalf of the quote's owner (a part that belongs to another account stays closed).
+    const priced = repriceStoredQuote(q, q.userId ? { userId: q.userId } : null);
+    if (pricingMemo.warming()) return null;
+    database.deferred(() => quotesDB.update(q.id, {
+      ...priced.quote,
+      gate: priced.gate,
+      config: { ...(q.config || {}), parts: storedConfigs(q), integrity: priced.integrity },
+      expiresAt: new Date(Date.now() + QUOTE_VALID_DAYS * 864e5).toISOString(),
+    }));
+    return "priced";
+  } catch (err) {
+    if (err && err.pricingInterrupt) throw err;
+    if (pricingMemo.warming()) return null; // a warm-up pass decides nothing
+    // It cannot be priced as it stands (the new size needs a setting it does not have): marked by the caller.
+    if (!err.expose) console.error("Draft quote refresh error:", err.message);
+    return "stale";
+  }
 }
 
 // One pricing request at a time per client, fewer lines without an account (security/pricingGate.js);
@@ -1755,5 +1855,6 @@ module.exports.priceQuote = priceQuote;
 module.exports.repriceStoredQuote = repriceStoredQuote;
 module.exports.verifyQuoteForOrder = verifyQuoteForOrder;
 module.exports.refreshDraftQuotesFor = refreshDraftQuotesFor;
+module.exports.draftRefresh = { stats: draftRefreshStats, idle: () => Promise.all([...draftRefreshChains.values()]), resetForTests: () => { unitsChanges.reset(); } };
 module.exports.wantsPaperwork = wantsPaperwork;
 module.exports.QUOTE_VALID_DAYS = QUOTE_VALID_DAYS;
