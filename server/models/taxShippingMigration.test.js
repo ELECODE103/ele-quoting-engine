@@ -24,16 +24,23 @@ const mode = process.argv[2];
 const NEW = { quotes: migration.QUOTE_COLUMNS, orders: migration.ORDER_COLUMNS, rfqs: migration.RFQ_COLUMNS };
 const columnsOf = (db, table) => { const out = []; const st = db.prepare(`PRAGMA table_info(${table})`); while (st.step()) out.push(st.getAsObject().name); st.free(); return out; };
 
+const PART_ID = "7b0d6f5e-3c1a-4e2b-9a57-2f4c8d1e6a90"; // the part the old quote and order were made from
+
 // ─── child: write the "before" database ─────────────────────────────────────
 async function makeBefore() {
   const database = require("./database");
   await database.ready;
   require("../config/seed").seedDatabase();
-  const { quotesDB, ordersDB, orderItemsDB, rfqsDB } = require("./index");
-  const quote = quotesDB.insert({ lineItems: [{ partId: "p1", fileName: "bracket.step", quantity: 4, lineTotal: 180, perUnit: { final: 45 }, weight: { perUnit: 0.23478, total: 0.93912, units: "kg" }, meta: { process: "cnc", materialSlug: "cnc-delrin" } }], subtotal: 180, leadTimeSlug: "standard", leadTimeMultiplier: 1, leadTimeSurcharge: 0, shippingEstimate: 14.3478, orderTotal: 194.35, status: "ordered", paperwork: false, paperworkFee: 0, expiresAt: new Date(Date.now() + 20 * 864e5).toISOString() });
+  const { quotesDB, ordersDB, orderItemsDB, rfqsDB, partsDB } = require("./index");
+  // (2026-11-13, re-review F-03.) The quote's line used to point at a part that was not in the database.
+  // Whether an order gets a shipping price online now depends on its size and packed weight in every
+  // mode, so the part has to be there to be measured, as it is for any quote that can be checked out
+  // at all (checkout prices from the part). A 100 x 50 x 33.3 mm block of acetal, 0.235 kg, as the line says.
+  partsDB.insert({ id: PART_ID, fileName: "bracket.step", geometry: { volume: 166510, surfaceArea: 19990, boundingBox: { width: 100, height: 50, depth: 33.3 } } });
+  const quote = quotesDB.insert({ lineItems: [{ partId: PART_ID, fileName: "bracket.step", quantity: 4, lineTotal: 180, perUnit: { final: 45 }, weight: { perUnit: 0.23478, total: 0.93912, units: "kg" }, meta: { process: "cnc", materialSlug: "cnc-delrin" } }], subtotal: 180, leadTimeSlug: "standard", leadTimeMultiplier: 1, leadTimeSurcharge: 0, shippingEstimate: 14.3478, orderTotal: 194.35, status: "ordered", paperwork: false, paperworkFee: 0, expiresAt: new Date(Date.now() + 20 * 864e5).toISOString() });
   const draft = quotesDB.insert({ lineItems: quote.lineItems, subtotal: 180, leadTimeSlug: "standard", leadTimeMultiplier: 1, leadTimeSurcharge: 0, shippingEstimate: 14.3478, orderTotal: 194.35, status: "draft", expiresAt: new Date(Date.now() + 20 * 864e5).toISOString() });
   const order = ordersDB.insert({ quoteId: quote.id, status: "paid", shippingName: "Dana Buyer", shippingAddress: "100 Main St", shippingCity: "Elgin", shippingState: "IL", shippingZip: "60120", shippingCountry: "US", shippingMethod: "standard", shippingCost: 14.35, subtotal: 180, leadTimeSurcharge: 0, paperwork: false, paperworkFee: 0, tax: 0, total: 194.35, paymentMethod: "card", customerEmail: "dana@buyer.test", customerName: "Dana Buyer", leadTimeName: "Standard", leadDays: 10, shipBy: "2026-11-25", paidAt: new Date().toISOString() });
-  orderItemsDB.insert({ orderId: order.id, partId: "p1", fileName: "bracket.step", process: "cnc", materialSlug: "cnc-delrin", materialName: "Delrin / Acetal (POM)", quantity: 4, unitPrice: 45, lineTotal: 180, config: {} });
+  orderItemsDB.insert({ orderId: order.id, partId: PART_ID, fileName: "bracket.step", process: "cnc", materialSlug: "cnc-delrin", materialName: "Delrin / Acetal (POM)", quantity: 4, unitPrice: 45, lineTotal: 180, config: {} });
   const rfq = rfqsDB.insert({ status: "quoted", contactName: "Pat Purchasing", email: "pat@oem.test", quotedTotal: 4250, quotedLeadDays: 15, parts: [], requestType: "part", returnPart: true, paperwork: false });
   // Take the new columns away again: what is left is the table as the previous version made it.
   const db = database.getDatabase();

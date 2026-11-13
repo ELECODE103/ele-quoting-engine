@@ -22,14 +22,14 @@
     "fullMessage": "This file is damaged or incomplete. Re-export it from your CAD program and upload again."
    },
    "timing": {
-    "wallMs": 2,
+    "wallMs": 1,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
     "baseRssMb": 65.2,
-    "afterParseMs": 0,
-    "load": 2.1
+    "afterParseMs": 1,
+    "load": 1.4
    },
    "stages": null
   },
@@ -55,14 +55,14 @@
     "fullMessage": "This file is damaged or incomplete. Re-export it from your CAD program and upload again."
    },
    "timing": {
-    "wallMs": 2,
+    "wallMs": 1,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 64.9,
+    "baseRssMb": 65.2,
     "afterParseMs": 0,
-    "load": 2.1
+    "load": 1.4
    },
    "stages": null
   },
@@ -78,7 +78,7 @@
    "hash": {
     "geometry": "f5c3e4d6fb49022e37b7c72b87fe502379664b55d41c19534e500cf2fd913d9a",
     "dfm": "a5ef8038d7ed9b9dd4a999b597f570b346faeaade913ce4b26a5ead30184a42c",
-    "price": "b97ba03496eed9b1d6bc5753614b7ae7f86b517203aac3b66d4fb0a92aa4d818"
+    "price": "7b933126a0bc6685ddb985b86ac22af96b7db3b7ed95c686ae95bac4a217d016"
    },
    "snapshot": true,
    "summary": {
@@ -89,27 +89,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 994,
+    "wallMs": 955,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 195.4,
-    "baseRssMb": 70.1,
-    "afterParseMs": 112,
-    "load": 1.3
+    "peakRssMb": 190.3,
+    "baseRssMb": 69.8,
+    "afterParseMs": 79,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 69,
-    "segment": 158,
-    "bvh": 91,
-    "shape": 67,
-    "outline": 42,
-    "features": 7,
-    "thickness": 107,
-    "access": 198,
+    "mesh": 61,
+    "segment": 138,
+    "bvh": 80,
+    "shape": 63,
+    "outline": 41,
+    "features": 12,
+    "thickness": 114,
+    "access": 177,
     "overhang": 8,
-    "selfIntersect": 91,
-    "total": 838
+    "selfIntersect": 87,
+    "total": 782
    }
   },
   "blob-10k": {
@@ -124,7 +124,7 @@
    "hash": {
     "geometry": "58f162179c35f94de207a671e1a7a90c3677161e986f2d4c79ca73813e4a24f4",
     "dfm": "c3270072bdc0ef8731b4776b8fca2d95e64bbdbae4dadd60b810fb7faf79d5a9",
-    "price": "60383b936cdd86a2745d1a1d139285234bc990ed6b1d0b493792073de1179a19"
+    "price": "5932321343e9691d839fccf27864dd6a352064226f0691429e0f22c220573464"
    },
    "snapshot": true,
    "summary": {
@@ -135,27 +135,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 339,
+    "wallMs": 334,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 92.5,
+    "peakRssMb": 93.5,
     "baseRssMb": 65.6,
-    "afterParseMs": 75,
-    "load": 1.3
+    "afterParseMs": 84,
+    "load": 1.4
    },
    "stages": {
     "mesh": 17,
-    "segment": 48,
-    "bvh": 32,
+    "segment": 47,
+    "bvh": 33,
     "shape": 34,
-    "outline": 20,
-    "features": 0,
-    "thickness": 34,
-    "access": 58,
-    "overhang": 6,
-    "selfIntersect": 44,
-    "total": 293
+    "outline": 21,
+    "features": 1,
+    "thickness": 32,
+    "access": 61,
+    "overhang": 3,
+    "selfIntersect": 42,
+    "total": 291
    }
   },
   "blob-10k-3mf": {
@@ -170,7 +170,7 @@
    "hash": {
     "geometry": "93ad0960655d1dd4f75d2530d3c5bb0f667bb1a27ef75a40021225730d05c97f",
     "dfm": "06b4b264f755c748bee710268a45cb76b289659e424ccf56b00c99b26ec1b145",
-    "price": "a25b88b853356acb98b5644e0020e0706154b9c9514ecfdfab7598aeef0d93d4"
+    "price": "d141aa02b88712cd0002bd6a09734773a5344bb68ffd64cf368e8b995fcf2973"
    },
    "snapshot": true,
    "summary": {
@@ -181,27 +181,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 514,
+    "wallMs": 485,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 117.6,
-    "baseRssMb": 65,
-    "afterParseMs": 87,
-    "load": 1.3
+    "peakRssMb": 117.9,
+    "baseRssMb": 65.5,
+    "afterParseMs": 81,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 29,
-    "segment": 50,
-    "bvh": 28,
-    "shape": 32,
-    "outline": 20,
+    "mesh": 20,
+    "segment": 58,
+    "bvh": 35,
+    "shape": 33,
+    "outline": 31,
     "features": 0,
-    "thickness": 37,
-    "access": 63,
-    "overhang": 4,
-    "selfIntersect": 37,
-    "total": 300
+    "thickness": 32,
+    "access": 54,
+    "overhang": 3,
+    "selfIntersect": 30,
+    "total": 296
    }
   },
   "blob-10k-ascii": {
@@ -216,7 +216,7 @@
    "hash": {
     "geometry": "498cef2a1d00fce10257e196bbb769bbaa33c1bfbcc9f8cfa4ac86f5bf67a2ee",
     "dfm": "c3270072bdc0ef8731b4776b8fca2d95e64bbdbae4dadd60b810fb7faf79d5a9",
-    "price": "42bf42da969d95070e0228090dd466285cc2646dd530dcda3c0b21a57d4d42fa"
+    "price": "8d4d9544301573eacf5658b77fdb372e2f71dcd5d0d808467734c8e301a0a15f"
    },
    "snapshot": true,
    "summary": {
@@ -227,27 +227,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 370,
+    "wallMs": 404,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 119.7,
-    "baseRssMb": 67.9,
-    "afterParseMs": 85,
-    "load": 1.3
+    "peakRssMb": 119.9,
+    "baseRssMb": 67.8,
+    "afterParseMs": 86,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 16,
-    "segment": 53,
-    "bvh": 26,
-    "shape": 29,
-    "outline": 20,
+    "mesh": 20,
+    "segment": 38,
+    "bvh": 22,
+    "shape": 26,
+    "outline": 21,
     "features": 0,
-    "thickness": 38,
-    "access": 57,
-    "overhang": 3,
-    "selfIntersect": 31,
-    "total": 273
+    "thickness": 34,
+    "access": 66,
+    "overhang": 7,
+    "selfIntersect": 47,
+    "total": 282
    }
   },
   "blob-1k": {
@@ -262,7 +262,7 @@
    "hash": {
     "geometry": "30e31c3e3e573b0d9d271d45ddcbeb7abd9bbe3acd38d3e3f880b82a2e15dcd4",
     "dfm": "29fe4282b86672f22c2d6ba9bf98c4c2e3984c27711e0b6a59c4f52bdf931b9d",
-    "price": "57e12aea75cdfd93d227a7f6475dbd7f5e9de13e77d12ef2a89b7bc69518c582"
+    "price": "290c34cae85d4dbd59bbf6722fd3aef48727de0e105d1f9cf149c69ada5640af"
    },
    "snapshot": true,
    "summary": {
@@ -273,27 +273,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 94,
+    "wallMs": 74,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 74.3,
-    "baseRssMb": 65.2,
-    "afterParseMs": 75,
-    "load": 1.3
+    "peakRssMb": 74.5,
+    "baseRssMb": 65.1,
+    "afterParseMs": 74,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 4,
-    "segment": 8,
-    "bvh": 5,
-    "shape": 12,
+    "mesh": 3,
+    "segment": 6,
+    "bvh": 3,
+    "shape": 9,
     "outline": 3,
     "features": 0,
-    "thickness": 15,
-    "access": 15,
-    "overhang": 1,
-    "selfIntersect": 16,
-    "total": 79
+    "thickness": 11,
+    "access": 11,
+    "overhang": 0,
+    "selfIntersect": 13,
+    "total": 59
    }
   },
   "blob-500k": {
@@ -365,27 +365,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 13,
+    "wallMs": 23,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 0,
-    "baseRssMb": 65.2,
-    "afterParseMs": 76,
-    "load": 1.6
+    "peakRssMb": 69.1,
+    "baseRssMb": 65.3,
+    "afterParseMs": 87,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 0,
+    "mesh": 2,
     "segment": 0,
     "bvh": 0,
-    "shape": 5,
-    "outline": 0,
-    "features": 1,
-    "thickness": 0,
+    "shape": 8,
+    "outline": 3,
+    "features": 0,
+    "thickness": 1,
     "access": 0,
     "overhang": 0,
     "selfIntersect": 0,
-    "total": 6
+    "total": 14
    }
   },
   "box-ascii": {
@@ -411,27 +411,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 22,
+    "wallMs": 25,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 68.8,
-    "baseRssMb": 64.8,
-    "afterParseMs": 86,
-    "load": 1.6
+    "peakRssMb": 68.9,
+    "baseRssMb": 65.3,
+    "afterParseMs": 129,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 0,
+    "mesh": 1,
     "segment": 0,
     "bvh": 0,
-    "shape": 10,
-    "outline": 1,
+    "shape": 9,
+    "outline": 2,
     "features": 0,
     "thickness": 1,
-    "access": 0,
+    "access": 1,
     "overhang": 0,
     "selfIntersect": 0,
-    "total": 12
+    "total": 15
    }
   },
   "bracket-square": {
@@ -446,7 +446,7 @@
    "hash": {
     "geometry": "bb69d9491a67b7d94ebfb2ec350dd584545cad2d95f0f44af217f12b5b515374",
     "dfm": "61871be17cb0971024adc0be9d42546d6a0841991379091491f3e8630178bed3",
-    "price": "8c0645c1115c669bd0de4cd78252e23103d1e4f9c5526488fe01f7d0db300ac4"
+    "price": "0f03608b24684abbd25fdf9a8d6d05c710e8777ce24b9aef376f8b6f567bf847"
    },
    "snapshot": true,
    "summary": {
@@ -457,27 +457,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 19,
+    "wallMs": 25,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 0,
-    "baseRssMb": 65.2,
-    "afterParseMs": 76,
-    "load": 1.6
+    "peakRssMb": 69.1,
+    "baseRssMb": 64.8,
+    "afterParseMs": 107,
+    "load": 1.8
    },
    "stages": {
     "mesh": 0,
     "segment": 1,
     "bvh": 0,
     "shape": 8,
-    "outline": 1,
+    "outline": 2,
     "features": 0,
     "thickness": 0,
     "access": 1,
     "overhang": 0,
     "selfIntersect": 0,
-    "total": 11
+    "total": 12
    }
   },
   "bracket-tilted": {
@@ -492,7 +492,7 @@
    "hash": {
     "geometry": "7073c59e85d49914ec55d0c7e4eada92eb97aa2d79a69df99d453da02abfc84b",
     "dfm": "82dd5243e23ee7b6ef3f5638478065a79e25291e44c99348f5ec9d930d343194",
-    "price": "36ee48d14c4f187a50bb636d30f2613cf699356b45a9e84d19a7cb6294d083c0"
+    "price": "20997ce3449d51100530628b2ad7b655155ef75a7843c36a5d48f8b825b7de3a"
    },
    "snapshot": true,
    "summary": {
@@ -503,27 +503,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 20,
+    "wallMs": 23,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65.1,
-    "afterParseMs": 61,
-    "load": 1.6
+    "baseRssMb": 65.4,
+    "afterParseMs": 109,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 0,
+    "mesh": 1,
     "segment": 0,
-    "bvh": 1,
-    "shape": 7,
+    "bvh": 0,
+    "shape": 10,
     "outline": 1,
     "features": 0,
     "thickness": 0,
     "access": 1,
     "overhang": 0,
     "selfIntersect": 0,
-    "total": 11
+    "total": 13
    }
   },
   "ceiling-over-500001": {
@@ -552,10 +552,10 @@
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 116.3,
-    "baseRssMb": 89.2,
+    "peakRssMb": 116.6,
+    "baseRssMb": 88.4,
     "afterParseMs": 0,
-    "load": 2
+    "load": 1.4
    },
    "stages": null
   },
@@ -628,27 +628,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1179,
+    "wallMs": 1443,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 140.5,
-    "baseRssMb": 69,
-    "afterParseMs": 103,
-    "load": 1.6
+    "peakRssMb": 138.2,
+    "baseRssMb": 68.8,
+    "afterParseMs": 115,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 48,
-    "segment": 101,
-    "bvh": 89,
-    "shape": 70,
-    "outline": 61,
+    "mesh": 70,
+    "segment": 161,
+    "bvh": 144,
+    "shape": 127,
+    "outline": 92,
     "features": 7,
-    "thickness": 103,
-    "access": 418,
-    "overhang": 3,
-    "selfIntersect": 123,
-    "total": 1023
+    "thickness": 122,
+    "access": 383,
+    "overhang": 2,
+    "selfIntersect": 150,
+    "total": 1258
    }
   },
   "cup-10k": {
@@ -674,27 +674,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 331,
+    "wallMs": 405,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 91.4,
-    "baseRssMb": 65.9,
-    "afterParseMs": 88,
-    "load": 1.6
+    "peakRssMb": 91.9,
+    "baseRssMb": 65.5,
+    "afterParseMs": 94,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 22,
-    "segment": 16,
-    "bvh": 28,
-    "shape": 45,
-    "outline": 24,
-    "features": 6,
-    "thickness": 40,
-    "access": 62,
+    "mesh": 31,
+    "segment": 34,
+    "bvh": 36,
+    "shape": 39,
+    "outline": 31,
+    "features": 8,
+    "thickness": 39,
+    "access": 69,
     "overhang": 1,
-    "selfIntersect": 45,
-    "total": 289
+    "selfIntersect": 65,
+    "total": 353
    }
   },
   "cup-1k": {
@@ -720,27 +720,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 92,
+    "wallMs": 103,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.4,
-    "baseRssMb": 65.2,
-    "afterParseMs": 74,
-    "load": 1.6
+    "peakRssMb": 75.3,
+    "baseRssMb": 64.9,
+    "afterParseMs": 97,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 3,
+    "mesh": 4,
     "segment": 4,
-    "bvh": 4,
-    "shape": 11,
-    "outline": 3,
-    "features": 3,
-    "thickness": 9,
-    "access": 21,
+    "bvh": 5,
+    "shape": 9,
+    "outline": 7,
+    "features": 1,
+    "thickness": 10,
+    "access": 23,
     "overhang": 0,
-    "selfIntersect": 19,
-    "total": 78
+    "selfIntersect": 27,
+    "total": 90
    }
   },
   "cup-500k": {
@@ -811,14 +811,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 15,
+    "wallMs": 18,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
     "baseRssMb": 65.1,
-    "afterParseMs": 39,
-    "load": 2.7
+    "afterParseMs": 66,
+    "load": 1.4
    },
    "stages": null
   },
@@ -844,14 +844,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 25,
+    "wallMs": 28,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 72.4,
-    "baseRssMb": 65.4,
-    "afterParseMs": 47,
-    "load": 2.7
+    "peakRssMb": 71.4,
+    "baseRssMb": 65.3,
+    "afterParseMs": 86,
+    "load": 1.4
    },
    "stages": null
   },
@@ -867,7 +867,7 @@
    "hash": {
     "geometry": "e4eaf3ef6952e6ef00121ce7c50042c86c73e83f7e6284f3a3fff2d43f79ea9d",
     "dfm": "02f2612973120e7e362eb0a70bac9a0b4d112d8e5b1bbfced21f3275664f4deb",
-    "price": "eaf7ee6af0c97a2e004de8f76a218bb784c1b75482b49e56ebe4ade21a616fa5"
+    "price": "ce72ef3108eeff27dc387acba1358bcc051d4f22f8223b11b9b7981c1a33206d"
    },
    "snapshot": true,
    "summary": {
@@ -877,14 +877,14 @@
     "problems": 202
    },
    "timing": {
-    "wallMs": 20,
+    "wallMs": 26,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 69.3,
-    "baseRssMb": 64.9,
-    "afterParseMs": 74,
-    "load": 2
+    "peakRssMb": 68.9,
+    "baseRssMb": 65.2,
+    "afterParseMs": 67,
+    "load": 1.4
    },
    "stages": null
   },
@@ -943,14 +943,14 @@
     "fullMessage": "This DXF has 20,000 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
    },
    "timing": {
-    "wallMs": 297,
+    "wallMs": 243,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 153.1,
-    "baseRssMb": 67.3,
-    "afterParseMs": 1,
-    "load": 2
+    "peakRssMb": 152.9,
+    "baseRssMb": 66.8,
+    "afterParseMs": 0,
+    "load": 1.4
    },
    "stages": null
   },
@@ -966,7 +966,7 @@
    "hash": {
     "geometry": "f830d2300d08007faea721f99b7d16235d366a203214cefea094190a5505c4b5",
     "dfm": "c8d7ecf145335dce4bb63e0a6fced8993ffcb7522e6a578b9996d2566621912a",
-    "price": "2fa2bbcefbad429275e50b2c36b4623c9084def5f130e3a198f336f8320389a1"
+    "price": "954f7e642bf3492521f29786ba334e524287ddd53dbde335d4d95c26491ffb6f"
    },
    "snapshot": true,
    "summary": {
@@ -976,14 +976,14 @@
     "problems": 2552
    },
    "timing": {
-    "wallMs": 132,
+    "wallMs": 96,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 90.9,
-    "baseRssMb": 65,
-    "afterParseMs": 102,
-    "load": 2
+    "peakRssMb": 89.6,
+    "baseRssMb": 65.1,
+    "afterParseMs": 77,
+    "load": 1.4
    },
    "stages": null
   },
@@ -1032,7 +1032,7 @@
    "hash": {
     "geometry": "a6fed58eebd26959b12f824dc7d0a20b96dee3d2d5040d8b583bd927b92f7465",
     "dfm": "6c003c2148914e9893e49016ab32ab33cf28ed7bd9c750c3c533b133d65594bd",
-    "price": "4b701dddafb5f22bb47c088c4f2cd306cfa7bb340da0dd0c255d93910ef2f245"
+    "price": "a7a26fad3361cbfe2dffe55c2ede88f9afff7925ffe146af53e596d0490b5f41"
    },
    "snapshot": true,
    "summary": {
@@ -1042,14 +1042,14 @@
     "problems": 6347
    },
    "timing": {
-    "wallMs": 253,
+    "wallMs": 248,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 117.9,
-    "baseRssMb": 65.6,
-    "afterParseMs": 125,
-    "load": 2
+    "peakRssMb": 118.7,
+    "baseRssMb": 65.4,
+    "afterParseMs": 143,
+    "load": 1.4
    },
    "stages": null
   },
@@ -1065,7 +1065,7 @@
    "hash": {
     "geometry": "51056342cf9beed4ecfc812bfcf24d942ca3d164a14cee3d86f4292d57b99d39",
     "dfm": "967b2c9ec47c900bed34d8c0ae84520413e389d61dadf0f54412a7a1181ba127",
-    "price": "200e6112267564c55a109259163d71c4018551f72506c8bc3166192ed877f48c"
+    "price": "d41055d597e5012ef45076463724debc758f1e757b7b33f4a55740e7ec40cd4b"
    },
    "snapshot": true,
    "summary": {
@@ -1075,14 +1075,14 @@
     "problems": 815
    },
    "timing": {
-    "wallMs": 53,
+    "wallMs": 43,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.1,
+    "peakRssMb": 71.5,
     "baseRssMb": 65.3,
-    "afterParseMs": 70,
-    "load": 2
+    "afterParseMs": 65,
+    "load": 1.4
    },
    "stages": null
   },
@@ -1131,7 +1131,7 @@
    "hash": {
     "geometry": "2f317378399c183fd9bd83fdef9a02e27b7da357c48bb26b7970871434ae63db",
     "dfm": "9980a1cb729090ce8f5e6d7a3888f54c50ab47316ab40d56401633acaab05a50",
-    "price": "bd9b7e2370d63739a0e7c2b225b1c7088be0fd162322d59e517bb47f99b9453c"
+    "price": "0a9f2b62225e054d23e108f725e0e90d18be4d35e63865c1531bea9ab3faa613"
    },
    "snapshot": true,
    "summary": {
@@ -1141,14 +1141,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 399,
+    "wallMs": 341,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 134.9,
-    "baseRssMb": 65.6,
+    "peakRssMb": 134.6,
+    "baseRssMb": 66.1,
     "afterParseMs": 67,
-    "load": 2.3
+    "load": 1.4
    },
    "stages": null
   },
@@ -1164,7 +1164,7 @@
    "hash": {
     "geometry": "780b55045e0a6f6511b510a78e706b0ec1f837b140fb2b64b5958cd53ba10e6e",
     "dfm": "577d08e691d30036c4506f47a697e80a24511c49b9973da7d20b5e6db8cf6f59",
-    "price": "87292448dfba30f77d5e49ac006411ec84ec0cd097dac3070bb4759e8f2adfa2"
+    "price": "b2925e95c8b04252f8afc768148524b35a5435052950ceb78c06ceb6afee42db"
    },
    "snapshot": true,
    "summary": {
@@ -1174,14 +1174,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 114,
+    "wallMs": 111,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 86.2,
-    "baseRssMb": 65,
-    "afterParseMs": 50,
-    "load": 2.3
+    "peakRssMb": 86,
+    "baseRssMb": 65.4,
+    "afterParseMs": 75,
+    "load": 1.4
    },
    "stages": null
   },
@@ -1197,7 +1197,7 @@
    "hash": {
     "geometry": "9f19ed4f2e9b422b663bd79f40834121d07220517d47eb47457e9f9a32942831",
     "dfm": "0fcfacc8011522d2902ed89df2869c1746acdb929fe700f9dec8c8bab99ef316",
-    "price": "b15748d233eab23ee24664e19cd6145fa9bc22887beea9f031e08f875dddb424"
+    "price": "e7f2b0a640f93fd12349478ca9b2075831396725ad65840a078658c5c7f534e7"
    },
    "snapshot": true,
    "summary": {
@@ -1207,14 +1207,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 464,
+    "wallMs": 371,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 138.1,
-    "baseRssMb": 66.3,
+    "peakRssMb": 138.2,
+    "baseRssMb": 65.6,
     "afterParseMs": 73,
-    "load": 2.3
+    "load": 1.4
    },
    "stages": null
   },
@@ -1230,7 +1230,7 @@
    "hash": {
     "geometry": "79bcf7575cd46b491b9f51da5c61d887a7daf8c61e8a75adda6117357b5cb805",
     "dfm": "70bd23ad9aef1f559228a78b91bee9824bf2695321c1e837a3f0efb1138d88f8",
-    "price": "6c7b0b7b7ec0ccd33a91762d5078b8b4f28d6653d81404f17e4551fb50621e7c"
+    "price": "f273d5f844e056b5a4cb362948ba25f179591331d36804f06bb3bb1fd421e3ea"
    },
    "snapshot": true,
    "summary": {
@@ -1240,14 +1240,14 @@
     "problems": 194
    },
    "timing": {
-    "wallMs": 45,
+    "wallMs": 52,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 73.6,
+    "peakRssMb": 73.7,
     "baseRssMb": 65.4,
-    "afterParseMs": 45,
-    "load": 2.5
+    "afterParseMs": 62,
+    "load": 1.3
    },
    "stages": null
   },
@@ -1306,14 +1306,14 @@
     "fullMessage": "This DXF has 5,929 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
    },
    "timing": {
-    "wallMs": 162,
+    "wallMs": 174,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 115.8,
-    "baseRssMb": 65.7,
+    "peakRssMb": 120.2,
+    "baseRssMb": 66,
     "afterParseMs": 0,
-    "load": 2.5
+    "load": 1.3
    },
    "stages": null
   },
@@ -1329,7 +1329,7 @@
    "hash": {
     "geometry": "dfcbc2ca0d877c1172c11799a94e99ee839779ed529cf71cf408a2bc517e912c",
     "dfm": "7200cb9ac6a59a3100f81f92a5e12f771728c09e9ba916fe0cf80377a2de73c2",
-    "price": "17455586707d0300a739cc6e8385b93a305d652310348962001e329d7fcd407b"
+    "price": "1ee9047865dea1fcbbdc984e308a26b4fc746a82159605237ea1b644c37b6f19"
    },
    "snapshot": true,
    "summary": {
@@ -1339,14 +1339,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 452,
+    "wallMs": 374,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 121.7,
-    "baseRssMb": 65.3,
-    "afterParseMs": 89,
-    "load": 2.7
+    "peakRssMb": 125.1,
+    "baseRssMb": 65.2,
+    "afterParseMs": 106,
+    "load": 1.6
    },
    "stages": null
   },
@@ -1372,14 +1372,14 @@
     "fullMessage": "This DXF has 10,001 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
    },
    "timing": {
-    "wallMs": 73,
+    "wallMs": 84,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 88.4,
-    "baseRssMb": 65.3,
-    "afterParseMs": 1,
-    "load": 2.1
+    "peakRssMb": 85.1,
+    "baseRssMb": 65,
+    "afterParseMs": 0,
+    "load": 1.3
    },
    "stages": null
   },
@@ -1395,7 +1395,7 @@
    "hash": {
     "geometry": "52ef40c5b103d3721a558857cbd496c7ec442f223451a69144b2fd1927a2a624",
     "dfm": "122fd6e890ebe38ec20bf8f499c889001a4150496d462d7e4e5a97e665160b7d",
-    "price": "d180dc30c094fec5532e48e929b14b38d255a4bafac81ba2fec2818934ccb553"
+    "price": "a2c870e0c3d65b051dd46409f17968db64ed4046ae32ef1fca4f252f920973ff"
    },
    "snapshot": true,
    "summary": {
@@ -1405,14 +1405,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 603,
+    "wallMs": 560,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 146.1,
-    "baseRssMb": 65.3,
-    "afterParseMs": 149,
-    "load": 2
+    "peakRssMb": 147.4,
+    "baseRssMb": 64.8,
+    "afterParseMs": 139,
+    "load": 1.3
    },
    "stages": null
   },
@@ -1428,7 +1428,7 @@
    "hash": {
     "geometry": "20859124189bfec6cc8eb2f59043b17d243c66af40a40d7150989d0d60851165",
     "dfm": "9d4b11c9d89137f98a34e80cfff0bd28031902599d394467cb9c9dee76c10f48",
-    "price": "946e8a8210b78489b2103f991491b94dadbbf9798070935cd8bb45a115e53d68"
+    "price": "13bd2db7c8e231cf5f2d939e4f355df8d432e84df7c6ad2cd4f75d7aa0d52ca4"
    },
    "snapshot": true,
    "summary": {
@@ -1438,14 +1438,14 @@
     "problems": 4
    },
    "timing": {
-    "wallMs": 42,
+    "wallMs": 53,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 72,
-    "baseRssMb": 65.3,
-    "afterParseMs": 50,
-    "load": 2.7
+    "peakRssMb": 72.3,
+    "baseRssMb": 65,
+    "afterParseMs": 81,
+    "load": 1.4
    },
    "stages": null
   },
@@ -1471,14 +1471,14 @@
     "fullMessage": "This DXF has a closed shape inside a cutout (11 found) — a part within a part. Upload each part as its own file. If the outermost rectangle is a drawing border or the sheet outline, delete it and upload again."
    },
    "timing": {
-    "wallMs": 41,
+    "wallMs": 46,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 74.3,
-    "baseRssMb": 64.9,
-    "afterParseMs": 0,
-    "load": 2.7
+    "peakRssMb": 73.5,
+    "baseRssMb": 65.1,
+    "afterParseMs": 1,
+    "load": 1.4
    },
    "stages": null
   },
@@ -1504,14 +1504,14 @@
     "fullMessage": "This DXF contains 4 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation lay"
    },
    "timing": {
-    "wallMs": 28,
+    "wallMs": 20,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 67.6,
-    "baseRssMb": 64.9,
-    "afterParseMs": 1,
-    "load": 2.5
+    "peakRssMb": 0,
+    "baseRssMb": 64.8,
+    "afterParseMs": 0,
+    "load": 1.3
    },
    "stages": null
   },
@@ -1537,14 +1537,14 @@
     "fullMessage": "This DXF has 20,196 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
    },
    "timing": {
-    "wallMs": 231,
+    "wallMs": 230,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 137.2,
-    "baseRssMb": 66,
-    "afterParseMs": 0,
-    "load": 2.5
+    "peakRssMb": 142.5,
+    "baseRssMb": 65.8,
+    "afterParseMs": 1,
+    "load": 1.3
    },
    "stages": null
   },
@@ -1607,10 +1607,10 @@
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 93.4,
-    "baseRssMb": 65.4,
+    "peakRssMb": 93.1,
+    "baseRssMb": 65.2,
     "afterParseMs": 1,
-    "load": 2.5
+    "load": 1.3
    },
    "stages": null
   },
@@ -1636,14 +1636,14 @@
     "fullMessage": "This model's size doesn't come out as a real part: it is far larger than anything we make, or sits very far from the origin. Check the export units and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 173,
+    "wallMs": 146,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 104.7,
-    "baseRssMb": 65.1,
+    "peakRssMb": 102.1,
+    "baseRssMb": 65.3,
     "afterParseMs": 0,
-    "load": 2.5
+    "load": 1.3
    },
    "stages": null
   },
@@ -1659,7 +1659,7 @@
    "hash": {
     "geometry": "ec552f0e2be0fc6eadbdd3a6ec769580f15fcf4b2cda3515a1ab3c9c6c294d5e",
     "dfm": "aed71615df1b3823246ae06cb3959e6f4794e3276e9c3382b590020e00a2adb8",
-    "price": "12256f13ace43bb9dcaa723eae3fc5d6601b9218a2ae04cc07520c781d8c918a"
+    "price": "cae3601ac17c2de3e750e4690e141da26daf9ec251c358490375b316d2dc2068"
    },
    "snapshot": true,
    "summary": {
@@ -1669,14 +1669,14 @@
     "problems": 1232
    },
    "timing": {
-    "wallMs": 65,
+    "wallMs": 58,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.3,
-    "baseRssMb": 65.4,
-    "afterParseMs": 69,
-    "load": 2.5
+    "peakRssMb": 74.1,
+    "baseRssMb": 64.8,
+    "afterParseMs": 80,
+    "load": 1.3
    },
    "stages": null
   },
@@ -1692,7 +1692,7 @@
    "hash": {
     "geometry": "af931f6c006a7b2d0da34321b6f2741efbe08f97d88f948e034e19057c708fce",
     "dfm": "9a4805161cccebac6d3f2655932d1d9e7c251636dfdb0453cbb7c9e5f54bff8d",
-    "price": "76e4151891e1938c420e9476672470f6b7216a56a4813f717eada06518124273"
+    "price": "91bdd8a24ff61fdc6a2fe09bae2196fa2b6a15678a3f83b593f7589755d2834f"
    },
    "snapshot": true,
    "summary": {
@@ -1706,10 +1706,10 @@
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 73.3,
-    "baseRssMb": 65.3,
-    "afterParseMs": 63,
-    "load": 2.3
+    "peakRssMb": 72.9,
+    "baseRssMb": 64.8,
+    "afterParseMs": 82,
+    "load": 1.4
    },
    "stages": null
   },
@@ -1758,7 +1758,7 @@
    "hash": {
     "geometry": "c24b5616d43ffd50865040053a25a90f395b3454f950763eed8246ec5a50ac36",
     "dfm": "ccbea094482780fa8be237600f8868751ed97f31f3d0ce1cacbf4555552341f6",
-    "price": "39e7c266007e6d915cdc5ccf3ea87baefd0552ed47967ac59b1026494807996f"
+    "price": "2b6a830ffb557df555f4d2cffc85a06148048970e01ab665a390174cd24d4434"
    },
    "snapshot": true,
    "summary": {
@@ -1768,14 +1768,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 198,
+    "wallMs": 209,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 112.9,
-    "baseRssMb": 65.9,
-    "afterParseMs": 61,
-    "load": 2.3
+    "baseRssMb": 65.5,
+    "afterParseMs": 60,
+    "load": 1.4
    },
    "stages": null
   },
@@ -1824,7 +1824,7 @@
    "hash": {
     "geometry": "07ccab70e795d35cde4915fd4767cc994b378d5c0b8bf23070097d2fe2a000cf",
     "dfm": "a083003198c593688fa1fa6acc28f719cce956666b3a84fbe24e93c5882c5204",
-    "price": "b8541db9ddd817f5fa40f7d369d66bcad897d24cb7be530346579d1fbeedf0c0"
+    "price": "0ee60189e5f4c3322212bce019b45ea6310686d1d5284251ef70bb6fd86b3d69"
    },
    "snapshot": true,
    "summary": {
@@ -1834,14 +1834,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 62,
+    "wallMs": 65,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.2,
-    "baseRssMb": 65.3,
-    "afterParseMs": 51,
-    "load": 2.1
+    "peakRssMb": 75.5,
+    "baseRssMb": 65.2,
+    "afterParseMs": 55,
+    "load": 1.3
    },
    "stages": null
   },
@@ -1867,14 +1867,14 @@
     "fullMessage": "This DXF has 20,001 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
    },
    "timing": {
-    "wallMs": 3780,
+    "wallMs": 3324,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 891.1,
-    "baseRssMb": 68.8,
+    "peakRssMb": 922.1,
+    "baseRssMb": 68.6,
     "afterParseMs": 0,
-    "load": 2.1
+    "load": 1.3
    },
    "stages": null
   },
@@ -1890,7 +1890,7 @@
    "hash": {
     "geometry": "e2ba9f5536113b51ac5216e00498ac9ef3f0763531f5ee96309a71f1ccb2ffef",
     "dfm": "72662d89fe896b7cef11ad80de566fac4d72f51834a4c7edd9e3862f5e9e32ea",
-    "price": "f2fd33cf10a9c5b600d53b42b442b8a6aeb9b15ee7a11c767dd94e8a2999cafd"
+    "price": "d3c06fbd6fa97ca61a3fe5dc8b09770bc7baa53048c8ae3f618d270594c4f08b"
    },
    "snapshot": false,
    "summary": {
@@ -1900,14 +1900,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 1857,
+    "wallMs": 1562,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 347.9,
+    "peakRssMb": 351,
     "baseRssMb": 65.8,
-    "afterParseMs": 226,
-    "load": 2.1
+    "afterParseMs": 212,
+    "load": 1.3
    },
    "stages": null
   },
@@ -1923,7 +1923,7 @@
    "hash": {
     "geometry": "0f51175bceaa2347bd34eff99f953913ad0d3814ee80b209a032be5f458ddec3",
     "dfm": "77ddfe4b69b67619e8dc9924c4e85f05959623ad1d7e0be370a9d76a821dc319",
-    "price": "3d332d7ede6c4fdb2a96065bfa558b446006b73ef2bfeed9e877f37f25e03b6b"
+    "price": "18407d20b72e1ce63228f207acca6345e817f786e729a9474d02af4dc42c2330"
    },
    "snapshot": true,
    "summary": {
@@ -1933,14 +1933,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 425,
+    "wallMs": 368,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 127,
-    "baseRssMb": 65.4,
-    "afterParseMs": 95,
-    "load": 2.1
+    "peakRssMb": 120.2,
+    "baseRssMb": 65.1,
+    "afterParseMs": 103,
+    "load": 1.3
    },
    "stages": null
   },
@@ -1966,14 +1966,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 13,
+    "wallMs": 12,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65.2,
-    "afterParseMs": 50,
-    "load": 2.3
+    "baseRssMb": 65.1,
+    "afterParseMs": 62,
+    "load": 1.4
    },
    "stages": null
   },
@@ -1999,14 +1999,14 @@
     "fullMessage": "This DXF has a closed shape inside a cutout (2 found) — a part within a part. Upload each part as its own file. If the outermost rectangle is a drawing border or the sheet outline, delete it and upload again."
    },
    "timing": {
-    "wallMs": 9,
+    "wallMs": 7,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
     "baseRssMb": 65.2,
     "afterParseMs": 0,
-    "load": 2.3
+    "load": 1.4
    },
    "stages": null
   },
@@ -2032,14 +2032,14 @@
     "fullMessage": "This DXF contains 100 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation l"
    },
    "timing": {
-    "wallMs": 90,
+    "wallMs": 78,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 76,
-    "baseRssMb": 65.3,
-    "afterParseMs": 1,
-    "load": 2.3
+    "peakRssMb": 75.6,
+    "baseRssMb": 65.2,
+    "afterParseMs": 0,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2098,14 +2098,14 @@
     "fullMessage": "This DXF contains 3 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation lay"
    },
    "timing": {
-    "wallMs": 130,
+    "wallMs": 132,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 110,
-    "baseRssMb": 64.9,
-    "afterParseMs": 0,
-    "load": 2.3
+    "peakRssMb": 96.8,
+    "baseRssMb": 65.4,
+    "afterParseMs": 1,
+    "load": 1.3
    },
    "stages": null
   },
@@ -2136,9 +2136,9 @@
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65.5,
-    "afterParseMs": 1,
-    "load": 2.3
+    "baseRssMb": 64.8,
+    "afterParseMs": 0,
+    "load": 1.3
    },
    "stages": null
   },
@@ -2220,7 +2220,7 @@
    "hash": {
     "geometry": "be117e34943ff78414b25239585b4abd84d00b3d04cb6b52be8571bd094a732c",
     "dfm": "5b138e5c81661d4bef50dd7a0a80bb3eadf29688450df53a37b7da024d5cd509",
-    "price": "f25746b7fde52d4d446056f288e17d34c2fed97becd2aa10ad5a6b24c6889a5a"
+    "price": "8d6a1e16385da55e29bbd644d8f846748632d74edf17b30b6b47296aa47b0efa"
    },
    "snapshot": true,
    "summary": {
@@ -2234,10 +2234,10 @@
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 100.2,
-    "baseRssMb": 65.2,
-    "afterParseMs": 95,
-    "load": 2.7
+    "peakRssMb": 100,
+    "baseRssMb": 65.4,
+    "afterParseMs": 80,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2253,7 +2253,7 @@
    "hash": {
     "geometry": "dfa1d8459b270db62e70effc5be739846c2a77528794766cd8a789d5fedaad2c",
     "dfm": "5b632dc99b547f5caf6a1e5e73e21775ba07404b2643c3ec8f0a5157efa7909d",
-    "price": "ef775a0fce30c24f93fc8870a1a0394827604e16a94513e5a6b038082e4ba903"
+    "price": "5903a7926f28da8b59b8fc0a07ec8e8972d15cb0b9421c7edff29e8511afca60"
    },
    "snapshot": true,
    "summary": {
@@ -2263,14 +2263,14 @@
     "problems": 46
    },
    "timing": {
-    "wallMs": 19,
+    "wallMs": 18,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 64.9,
-    "afterParseMs": 53,
-    "load": 2.7
+    "baseRssMb": 65.1,
+    "afterParseMs": 55,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2296,14 +2296,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 62,
+    "wallMs": 59,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 73.9,
-    "baseRssMb": 64.9,
-    "afterParseMs": 56,
-    "load": 2
+    "peakRssMb": 74.6,
+    "baseRssMb": 65.2,
+    "afterParseMs": 58,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2352,7 +2352,7 @@
    "hash": {
     "geometry": "256321e20ab9a4a52580f598faf4c0dc98de68c66612b638a999acf04562fbc2",
     "dfm": "910a0d0932615ac425f559ff169170257e57bf1e1962d2f7b24668da52890504",
-    "price": "92718ee88fc7e21be032294752b5be2ae0d07ab09d84071fc051c5e243944ae5"
+    "price": "f3de83df34e9289b924facae8e83144f8fb13debcdb76a2a2792a2114662aa44"
    },
    "snapshot": true,
    "summary": {
@@ -2362,14 +2362,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 203,
+    "wallMs": 238,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 107.3,
-    "baseRssMb": 65.2,
-    "afterParseMs": 87,
-    "load": 2
+    "peakRssMb": 108.6,
+    "baseRssMb": 65.3,
+    "afterParseMs": 134,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2395,14 +2395,14 @@
     "fullMessage": "This DXF has 20,001 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
    },
    "timing": {
-    "wallMs": 182,
+    "wallMs": 164,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 128.7,
+    "peakRssMb": 134.5,
     "baseRssMb": 65.9,
     "afterParseMs": 1,
-    "load": 2
+    "load": 1.4
    },
    "stages": null
   },
@@ -2418,7 +2418,7 @@
    "hash": {
     "geometry": "25dc2f297860570464b8eaa9d33b57db10e970029d4d1f5e0905ecb49adbd33c",
     "dfm": "122fd6e890ebe38ec20bf8f499c889001a4150496d462d7e4e5a97e665160b7d",
-    "price": "d180dc30c094fec5532e48e929b14b38d255a4bafac81ba2fec2818934ccb553"
+    "price": "a2c870e0c3d65b051dd46409f17968db64ed4046ae32ef1fca4f252f920973ff"
    },
    "snapshot": true,
    "summary": {
@@ -2428,14 +2428,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 607,
+    "wallMs": 540,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 150.1,
+    "peakRssMb": 149.8,
     "baseRssMb": 65.4,
-    "afterParseMs": 148,
-    "load": 2
+    "afterParseMs": 151,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2461,14 +2461,14 @@
     "fullMessage": "This DXF has 6,001 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
    },
    "timing": {
-    "wallMs": 84,
+    "wallMs": 81,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 90.6,
+    "peakRssMb": 90.7,
     "baseRssMb": 65.2,
-    "afterParseMs": 0,
-    "load": 2
+    "afterParseMs": 1,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2484,7 +2484,7 @@
    "hash": {
     "geometry": "3c714637ee5aeece6d73ef3b0524faf1ef863222567c4e26494dafdd819f20c0",
     "dfm": "5425e62ad2b97c1a6e5bcaaf35618ea4a32c813e30b3dc86cb89fb6fa096d220",
-    "price": "bee3131ef02bb165edd176c0ee835d3c05c88ef16ed924a34235b51bb8504dca"
+    "price": "3831ba404aefc82c70d5bd0a95ebc03c743504c05947a6dfb8f66ccdc3152566"
    },
    "snapshot": true,
    "summary": {
@@ -2494,14 +2494,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 610,
+    "wallMs": 585,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 153.1,
-    "baseRssMb": 65.5,
-    "afterParseMs": 167,
-    "load": 2
+    "peakRssMb": 150.8,
+    "baseRssMb": 65,
+    "afterParseMs": 153,
+    "load": 1.3
    },
    "stages": null
   },
@@ -2527,14 +2527,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 231,
+    "wallMs": 203,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 110,
-    "baseRssMb": 65,
-    "afterParseMs": 95,
-    "load": 2
+    "peakRssMb": 108.7,
+    "baseRssMb": 65.3,
+    "afterParseMs": 85,
+    "load": 1.3
    },
    "stages": null
   },
@@ -2560,14 +2560,14 @@
     "fullMessage": "This DXF has a closed shape inside a cutout (11 found) — a part within a part. Upload each part as its own file. If the outermost rectangle is a drawing border or the sheet outline, delete it and upload again."
    },
    "timing": {
-    "wallMs": 229,
+    "wallMs": 205,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 105.4,
-    "baseRssMb": 65.2,
+    "peakRssMb": 105.3,
+    "baseRssMb": 65.5,
     "afterParseMs": 0,
-    "load": 2.5
+    "load": 1.4
    },
    "stages": null
   },
@@ -2593,14 +2593,14 @@
     "fullMessage": "This DXF has 20,001 contours — more than the instant quote reads (5,000). Perforated panels and nested sheets like this are quoted by a person: send it to us as an RFQ."
    },
    "timing": {
-    "wallMs": 689,
+    "wallMs": 573,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 224.5,
-    "baseRssMb": 68.9,
-    "afterParseMs": 1,
-    "load": 2.7
+    "peakRssMb": 225.1,
+    "baseRssMb": 68.4,
+    "afterParseMs": 0,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2616,7 +2616,7 @@
    "hash": {
     "geometry": "bf357d1fe9ba0fb0896002e2ed5580f3056aa0515e11d5b180ced89624a12a31",
     "dfm": "2d0475dcb7b0c1aa946f32de36e46f86fa98bb6c6560dae6a4b6642939c9ed7f",
-    "price": "c0cde9ee8e7863cc9d64f6a07345c1c2196f0f49b2d2445c20e530d290da11c5"
+    "price": "4049914b0b5d2a7cc19f609d113324f0f43c0a3110231f8a0b5f3b5f78a5ffc8"
    },
    "snapshot": true,
    "summary": {
@@ -2626,14 +2626,14 @@
     "problems": 28
    },
    "timing": {
-    "wallMs": 36,
+    "wallMs": 33,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 69.2,
-    "baseRssMb": 65.4,
-    "afterParseMs": 62,
-    "load": 2.5
+    "peakRssMb": 70.6,
+    "baseRssMb": 64.9,
+    "afterParseMs": 74,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2659,14 +2659,14 @@
     "fullMessage": "This DXF has a closed shape inside a cutout (55 found) — a part within a part. Upload each part as its own file. If the outermost rectangle is a drawing border or the sheet outline, delete it and upload again."
    },
    "timing": {
-    "wallMs": 1230,
+    "wallMs": 971,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 134.6,
+    "peakRssMb": 133.4,
     "baseRssMb": 66.1,
     "afterParseMs": 1,
-    "load": 2.7
+    "load": 1.4
    },
    "stages": null
   },
@@ -2692,14 +2692,14 @@
     "fullMessage": "This DXF contains 2 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation lay"
    },
    "timing": {
-    "wallMs": 11,
+    "wallMs": 12,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65.1,
+    "baseRssMb": 65,
     "afterParseMs": 0,
-    "load": 2.7
+    "load": 1.6
    },
    "stages": null
   },
@@ -2725,14 +2725,14 @@
     "fullMessage": "This DXF contains 2000 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation "
    },
    "timing": {
-    "wallMs": 2459,
+    "wallMs": 2636,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 132.6,
-    "baseRssMb": 65.2,
-    "afterParseMs": 1,
-    "load": 2.7
+    "peakRssMb": 134,
+    "baseRssMb": 65.4,
+    "afterParseMs": 0,
+    "load": 1.6
    },
    "stages": null
   },
@@ -2758,14 +2758,14 @@
     "fullMessage": "This DXF contains 3 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation lay"
    },
    "timing": {
-    "wallMs": 17,
+    "wallMs": 15,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65,
-    "afterParseMs": 0,
-    "load": 2.7
+    "baseRssMb": 65.4,
+    "afterParseMs": 1,
+    "load": 1.6
    },
    "stages": null
   },
@@ -2781,7 +2781,7 @@
    "hash": {
     "geometry": "97bcbbfb708b5fa2f6a670206bad399a7c21ac8bfc5b4686dcdfe8bc6d87f4dc",
     "dfm": "d570f45fdee5fecb16dd39c9019279bcce357dcbfe00b45ec9cde0e699de430e",
-    "price": "2196f1ec04124e0a4f9a3b228b83d7ed0e35d119ae1629b9c52bb9be89c7c462"
+    "price": "3b41c3d70780710ee5bd5c57cefc0201b5406c1a064638f3bc5ed7007ae97489"
    },
    "snapshot": false,
    "summary": {
@@ -2791,14 +2791,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 1705,
+    "wallMs": 1639,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 313.5,
-    "baseRssMb": 66.5,
-    "afterParseMs": 127,
-    "load": 2.7
+    "peakRssMb": 314.6,
+    "baseRssMb": 66.7,
+    "afterParseMs": 155,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2814,7 +2814,7 @@
    "hash": {
     "geometry": "56b54ee25d6587c27100e900230ce77de5cbc2b51a6de6773641a5d073895ea0",
     "dfm": "227462dc6dc02697827181e84893f60c34a54f74b70b90e387900b90b8d65e56",
-    "price": "85e01c55144eb32f4d69842369a4d23a3d68c7af0b686ec38326045c19af080d"
+    "price": "6029b4ddbcd0c3f8d8a2689204591d38233ebb6022687f305abe0a16619e52c0"
    },
    "snapshot": true,
    "summary": {
@@ -2824,14 +2824,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 628,
+    "wallMs": 592,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 161.6,
-    "baseRssMb": 65.7,
-    "afterParseMs": 93,
-    "load": 2.7
+    "peakRssMb": 162.6,
+    "baseRssMb": 65,
+    "afterParseMs": 111,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2847,7 +2847,7 @@
    "hash": {
     "geometry": "12d0a8882f1649378b2572e67a4f526abf5b43d9cb080c46e77fdee2174beff3",
     "dfm": "da7d6a4cc5e672de0583b0e436fa9e4cae22c7fc544a257a2dba87fc5d5e88c7",
-    "price": "7e964e257998a27eca1572cee04a304b67a10debe3ef808676189198317cc562"
+    "price": "872304c3712749ccaa2c0aec3eb27b03df6bfcf4a04132093f515e32d7507203"
    },
    "snapshot": true,
    "summary": {
@@ -2857,14 +2857,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 125,
+    "wallMs": 114,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 84.5,
-    "baseRssMb": 64.8,
-    "afterParseMs": 67,
-    "load": 2.7
+    "baseRssMb": 64.9,
+    "afterParseMs": 61,
+    "load": 1.4
    },
    "stages": null
   },
@@ -2890,14 +2890,14 @@
     "problems": 1
    },
    "timing": {
-    "wallMs": 29,
+    "wallMs": 21,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 69.5,
+    "peakRssMb": 0,
     "baseRssMb": 65.2,
-    "afterParseMs": 53,
-    "load": 2.7
+    "afterParseMs": 60,
+    "load": 1.6
    },
    "stages": null
   },
@@ -2923,14 +2923,14 @@
     "fullMessage": "This model's size doesn't come out as a real part: it is far larger than anything we make, or sits very far from the origin. Check the export units and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 68,
+    "wallMs": 65,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 91.5,
-    "baseRssMb": 65.1,
+    "peakRssMb": 95.4,
+    "baseRssMb": 65.4,
     "afterParseMs": 0,
-    "load": 2.7
+    "load": 1.6
    },
    "stages": null
   },
@@ -2956,14 +2956,14 @@
     "fullMessage": "This model's size doesn't come out as a real part: it is far larger than anything we make, or sits very far from the origin. Check the export units and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 19,
+    "wallMs": 15,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 63.3,
+    "baseRssMb": 65.2,
     "afterParseMs": 1,
-    "load": 2.7
+    "load": 1.6
    },
    "stages": null
   },
@@ -2979,7 +2979,7 @@
    "hash": {
     "geometry": "54ea63d8e47177beeb194bea85816df157b71ccc5dcb0fff3e4518eaa530b4f3",
     "dfm": "12fb668ff70eba3c85647f771bc3907c3c6e89c666490f382bd3127492d9acee",
-    "price": "e336aa5bd5ad1d0b306da93f4b9536bac4cbabc4d46f0dc70da4e436e9e0914a"
+    "price": "c22a7bd5fc9d1fdc4567823a4947afaa6e4449b66f04183dbebe7ca8b21f041d"
    },
    "snapshot": true,
    "summary": {
@@ -2989,14 +2989,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 296,
+    "wallMs": 256,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 112.1,
+    "peakRssMb": 110.4,
     "baseRssMb": 65.1,
-    "afterParseMs": 64,
-    "load": 2.3
+    "afterParseMs": 75,
+    "load": 1.3
    },
    "stages": null
   },
@@ -3045,7 +3045,7 @@
    "hash": {
     "geometry": "50209d7739e9667891526d7771311c8fd729b2ee25debe4973a7f0a55e3c464d",
     "dfm": "8d9dc51d87a68a137ce8a755608842959234143458c24cf3ca4a4831f448025e",
-    "price": "f542db84159e9efcf22cb1e0f887606c9623aa68565d5a9f5816187654f8dd8d"
+    "price": "6216c6aa01bbd6ef3894d4da24ef51875963bc29f9632f4f0b8a1a9fc7dbf916"
    },
    "snapshot": true,
    "summary": {
@@ -3055,14 +3055,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 30,
+    "wallMs": 29,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 71.2,
-    "baseRssMb": 65.3,
-    "afterParseMs": 51,
-    "load": 2.3
+    "peakRssMb": 71,
+    "baseRssMb": 65,
+    "afterParseMs": 55,
+    "load": 1.4
    },
    "stages": null
   },
@@ -3078,7 +3078,7 @@
    "hash": {
     "geometry": "859e61e2024cd39bb8f7e894b178a9b3c27a69cba3fe7bb8184cf7df2de2703c",
     "dfm": "a7b7ca4ebd3a84141cd6e81f1a811bca5775de1cb8fbe85e5e9819b787af7060",
-    "price": "22d6a112f5154077e029fa67c56ee2c1d979e7284261b8352675050fce7c476c"
+    "price": "1767a261fbcf7935d894dd1cdf9d4fbe654421482862d4f1c0d5f108c0738c7e"
    },
    "snapshot": true,
    "summary": {
@@ -3088,14 +3088,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 708,
+    "wallMs": 657,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 130.8,
-    "baseRssMb": 65.4,
-    "afterParseMs": 106,
-    "load": 2.3
+    "peakRssMb": 131.3,
+    "baseRssMb": 65.2,
+    "afterParseMs": 101,
+    "load": 1.3
    },
    "stages": null
   },
@@ -3111,7 +3111,7 @@
    "hash": {
     "geometry": "e97af236ded29abe4d39d957137d43f7bad5c7f91764ea7db1acd407f4fded5b",
     "dfm": "ae60a636b3291fbc14753dfa55639cd6c5b08af4252a1c5eb2cad564eeb57997",
-    "price": "46f2338e6708f58a631d11356bb7182fcabd1658b6dca130ad2541ebb05a73fe"
+    "price": "67fd18fda5bfaf6a53bfa8d7df602e96f4605633be8be1b482e1e129c3c50d10"
    },
    "snapshot": true,
    "summary": {
@@ -3122,27 +3122,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 502,
+    "wallMs": 406,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 261.6,
-    "baseRssMb": 65.5,
-    "afterParseMs": 99,
-    "load": 2.4
+    "peakRssMb": 263.3,
+    "baseRssMb": 64.9,
+    "afterParseMs": 63,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 2,
-    "segment": 13,
-    "bvh": 10,
-    "shape": 26,
-    "outline": 8,
-    "features": 5,
-    "thickness": 16,
-    "access": 14,
+    "mesh": 1,
+    "segment": 9,
+    "bvh": 1,
+    "shape": 30,
+    "outline": 2,
+    "features": 7,
+    "thickness": 15,
+    "access": 16,
     "overhang": 0,
-    "selfIntersect": 22,
-    "total": 117
+    "selfIntersect": 10,
+    "total": 91
    }
   },
   "fixture-box_hole-igs": {
@@ -3168,27 +3168,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 557,
+    "wallMs": 229,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 139.4,
-    "baseRssMb": 65,
-    "afterParseMs": 101,
-    "load": 2.3
+    "peakRssMb": 137.2,
+    "baseRssMb": 64.9,
+    "afterParseMs": 65,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 17,
-    "segment": 14,
+    "mesh": 1,
+    "segment": 5,
     "bvh": 1,
-    "shape": 24,
-    "outline": 3,
-    "features": 2,
-    "thickness": 14,
-    "access": 19,
+    "shape": 10,
+    "outline": 1,
+    "features": 1,
+    "thickness": 9,
+    "access": 7,
     "overhang": 0,
-    "selfIntersect": 12,
-    "total": 106
+    "selfIntersect": 4,
+    "total": 39
    }
   },
   "fixture-box_zip64-3mf": {
@@ -3214,27 +3214,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 32,
+    "wallMs": 26,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 68.7,
-    "baseRssMb": 64.9,
-    "afterParseMs": 116,
-    "load": 2.3
+    "peakRssMb": 70.3,
+    "baseRssMb": 65.1,
+    "afterParseMs": 57,
+    "load": 1.5
    },
    "stages": {
     "mesh": 0,
     "segment": 1,
     "bvh": 0,
-    "shape": 6,
+    "shape": 3,
     "outline": 1,
     "features": 0,
-    "thickness": 1,
-    "access": 0,
+    "thickness": 0,
+    "access": 1,
     "overhang": 0,
     "selfIntersect": 0,
-    "total": 9
+    "total": 6
    }
   },
   "fixture-bracket_block-stl": {
@@ -3249,7 +3249,7 @@
    "hash": {
     "geometry": "2e69a996c01f7cea2816e202cd85b402c10ef7b47f90e8ba6b3eecd70a6c488f",
     "dfm": "40edfbe6818c7f32da7d037a4b0b4afcf7bcaf33b91f720fa18eda46dd5681ea",
-    "price": "f8339f05f2e39316a70fc6b917920422fa803c18757c1e3850923c98f235cf26"
+    "price": "8d2a0a1d96bb93628f90292450a7ad7f1fbd9606d6cb7ef9e2e7fd6241a43cdc"
    },
    "snapshot": true,
    "summary": {
@@ -3260,27 +3260,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 88,
+    "wallMs": 77,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.3,
-    "baseRssMb": 65.3,
-    "afterParseMs": 78,
-    "load": 2.7
+    "peakRssMb": 74.9,
+    "baseRssMb": 64.9,
+    "afterParseMs": 71,
+    "load": 1.6
    },
    "stages": {
-    "mesh": 3,
-    "segment": 6,
-    "bvh": 3,
-    "shape": 16,
-    "outline": 6,
-    "features": 12,
-    "thickness": 2,
-    "access": 10,
+    "mesh": 4,
+    "segment": 5,
+    "bvh": 4,
+    "shape": 10,
+    "outline": 8,
+    "features": 10,
+    "thickness": 3,
+    "access": 3,
     "overhang": 0,
-    "selfIntersect": 17,
-    "total": 75
+    "selfIntersect": 14,
+    "total": 61
    }
   },
   "fixture-brand-straightedge-mark-solid-25mm-dxf": {
@@ -3305,14 +3305,14 @@
     "fullMessage": "This DXF contains 2 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation lay"
    },
    "timing": {
-    "wallMs": 8,
+    "wallMs": 7,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
     "baseRssMb": 65.2,
     "afterParseMs": 0,
-    "load": 2.4
+    "load": 1.5
    },
    "stages": null
   },
@@ -3343,9 +3343,9 @@
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65,
+    "baseRssMb": 65.1,
     "afterParseMs": 0,
-    "load": 2.4
+    "load": 1.5
    },
    "stages": null
   },
@@ -3371,14 +3371,14 @@
     "fullMessage": "This DXF contains 2 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation lay"
    },
    "timing": {
-    "wallMs": 8,
+    "wallMs": 9,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
     "baseRssMb": 65.2,
     "afterParseMs": 0,
-    "load": 2.4
+    "load": 1.5
    },
    "stages": null
   },
@@ -3404,14 +3404,14 @@
     "fullMessage": "This DXF contains 2 separate parts (outlines that are not inside one another). Upload one part per file so each gets its own material, thickness and quantity — set the quantity in the quote instead of drawing copies. If one of the outlines is a note, border or bend line, move it to an annotation lay"
    },
    "timing": {
-    "wallMs": 8,
+    "wallMs": 12,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65.1,
+    "baseRssMb": 65.2,
     "afterParseMs": 0,
-    "load": 2.4
+    "load": 1.5
    },
    "stages": null
   },
@@ -3438,27 +3438,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 80,
+    "wallMs": 75,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 73.3,
-    "baseRssMb": 65.4,
-    "afterParseMs": 69,
-    "load": 2.7
+    "peakRssMb": 73.4,
+    "baseRssMb": 65.1,
+    "afterParseMs": 77,
+    "load": 1.6
    },
    "stages": {
-    "mesh": 4,
-    "segment": 8,
+    "mesh": 3,
+    "segment": 6,
     "bvh": 3,
-    "shape": 12,
-    "outline": 4,
-    "features": 3,
+    "shape": 11,
+    "outline": 5,
+    "features": 1,
     "thickness": 9,
-    "access": 12,
+    "access": 14,
     "overhang": 0,
     "selfIntersect": 12,
-    "total": 67
+    "total": 64
    }
   },
   "fixture-conveyor_guide_rail-stl": {
@@ -3473,7 +3473,7 @@
    "hash": {
     "geometry": "a9bc2040badef44e00f48088746fe0f92b8caaefb9e44fc5d6a72e8804c330bb",
     "dfm": "bb83d454f61c40fa92e37e23543d6ca8caaa5c89cadc4fe2b0331d64a9b66a1f",
-    "price": "af8b908a1716759988451e97be40e2173adeef9477d950bc91919bb0fbae2a36"
+    "price": "9cb6d459d1b4426a290cd2af26160efde5d5fc27cf453d25323743fa17e4f3c3"
    },
    "snapshot": true,
    "summary": {
@@ -3484,27 +3484,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 121,
+    "wallMs": 145,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.5,
-    "baseRssMb": 65.2,
-    "afterParseMs": 74,
-    "load": 2.7
+    "peakRssMb": 77.5,
+    "baseRssMb": 64.8,
+    "afterParseMs": 71,
+    "load": 1.6
    },
    "stages": {
-    "mesh": 3,
-    "segment": 9,
-    "bvh": 4,
-    "shape": 20,
-    "outline": 7,
-    "features": 8,
-    "thickness": 12,
-    "access": 17,
+    "mesh": 4,
+    "segment": 10,
+    "bvh": 5,
+    "shape": 22,
+    "outline": 8,
+    "features": 5,
+    "thickness": 19,
+    "access": 31,
     "overhang": 0,
-    "selfIntersect": 22,
-    "total": 102
+    "selfIntersect": 21,
+    "total": 126
    }
   },
   "fixture-cube_20mm-stl": {
@@ -3530,27 +3530,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 14,
+    "wallMs": 16,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65.3,
-    "afterParseMs": 66,
-    "load": 2.7
+    "baseRssMb": 65.1,
+    "afterParseMs": 80,
+    "load": 1.6
    },
    "stages": {
     "mesh": 1,
     "segment": 0,
     "bvh": 0,
-    "shape": 5,
-    "outline": 1,
-    "features": 0,
+    "shape": 4,
+    "outline": 0,
+    "features": 1,
     "thickness": 0,
     "access": 0,
     "overhang": 0,
     "selfIntersect": 1,
-    "total": 8
+    "total": 7
    }
   },
   "fixture-drill_fixture_plate-stl": {
@@ -3565,7 +3565,7 @@
    "hash": {
     "geometry": "25d19802654f94652d5f3acc90285a0bf7deb128b41e37dd4b9109f9142811a7",
     "dfm": "d3b3ab4697271f52c8309ec1061baaf2ffc76165f4ad81968125489a9aa4d04a",
-    "price": "cf058a73972e7fb69a2ce4059311283f91f47b7052dd8d2ec259d1f00cb69062"
+    "price": "c4a1fc28746d431587da0479acbf639896d204cdf522ab428d543dcfb2eae8dc"
    },
    "snapshot": true,
    "summary": {
@@ -3576,27 +3576,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 162,
+    "wallMs": 159,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 78.3,
-    "baseRssMb": 65,
-    "afterParseMs": 73,
-    "load": 2.6
+    "peakRssMb": 78.1,
+    "baseRssMb": 65.2,
+    "afterParseMs": 70,
+    "load": 1.6
    },
    "stages": {
-    "mesh": 11,
-    "segment": 14,
-    "bvh": 11,
-    "shape": 21,
-    "outline": 17,
+    "mesh": 9,
+    "segment": 11,
+    "bvh": 10,
+    "shape": 17,
+    "outline": 20,
     "features": 13,
-    "thickness": 12,
-    "access": 16,
-    "overhang": 1,
-    "selfIntersect": 19,
-    "total": 135
+    "thickness": 11,
+    "access": 17,
+    "overhang": 0,
+    "selfIntersect": 23,
+    "total": 131
    }
   },
   "fixture-dxf_bracket_window-dxf": {
@@ -3621,14 +3621,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 19,
+    "wallMs": 18,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
     "baseRssMb": 65,
-    "afterParseMs": 57,
-    "load": 2.6
+    "afterParseMs": 47,
+    "load": 1.6
    },
    "stages": null
   },
@@ -3644,7 +3644,7 @@
    "hash": {
     "geometry": "fa66e07c6ef823ce960eb956e172d5916d5f13ecc7f2c1f5756b11772d26b150",
     "dfm": "b56f77a3639ef3d0473f89562fd873a499e14ac8b817d28c9f0401ffcdfa3d65",
-    "price": "e3db2aad40a9ff95319ba752963abfd1e4c2f228e661171b5afe6145f62879ee"
+    "price": "83d18053f6a77109d3fe6ec4f61d8b9a64dabcc149e97ba78d24a903c9fde5f6"
    },
    "snapshot": true,
    "summary": {
@@ -3655,27 +3655,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 500,
+    "wallMs": 460,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 270.3,
+    "peakRssMb": 270.8,
     "baseRssMb": 65.2,
-    "afterParseMs": 97,
-    "load": 2.6
+    "afterParseMs": 124,
+    "load": 1.6
    },
    "stages": {
-    "mesh": 0,
-    "segment": 22,
+    "mesh": 1,
+    "segment": 23,
     "bvh": 1,
-    "shape": 42,
-    "outline": 11,
-    "features": 10,
-    "thickness": 11,
-    "access": 22,
+    "shape": 23,
+    "outline": 2,
+    "features": 1,
+    "thickness": 22,
+    "access": 24,
     "overhang": 0,
-    "selfIntersect": 15,
-    "total": 135
+    "selfIntersect": 20,
+    "total": 117
    }
   },
   "fixture-dxf_inch_guard-dxf": {
@@ -3700,14 +3700,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 25,
+    "wallMs": 20,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 70.8,
-    "baseRssMb": 65.4,
-    "afterParseMs": 46,
-    "load": 2.6
+    "peakRssMb": 0,
+    "baseRssMb": 64.8,
+    "afterParseMs": 60,
+    "load": 1.6
    },
    "stages": null
   },
@@ -3723,7 +3723,7 @@
    "hash": {
     "geometry": "782eabc53f3e7c2c3bc56cc39baae6423139ca38512be3c74a9ed911b73fc46f",
     "dfm": "2505b87bffc2f5a00549981fcd1f001fc90d06e2c86a518fd32f5105ee842a44",
-    "price": "35369df6631f54ac2e2d5812183c9170448844d14c342c931a68eb8a70d7484a"
+    "price": "51520e4fbb72713c613c964df14945cf6d10c6c7352f3ba7e765e50f0962c298"
    },
    "snapshot": true,
    "summary": {
@@ -3734,27 +3734,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 610,
+    "wallMs": 581,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 270.2,
-    "baseRssMb": 65.2,
-    "afterParseMs": 96,
-    "load": 2.6
+    "baseRssMb": 65,
+    "afterParseMs": 103,
+    "load": 1.6
    },
    "stages": {
     "mesh": 2,
-    "segment": 23,
-    "bvh": 2,
-    "shape": 49,
-    "outline": 8,
+    "segment": 15,
+    "bvh": 7,
+    "shape": 36,
+    "outline": 12,
     "features": 3,
-    "thickness": 39,
-    "access": 48,
+    "thickness": 36,
+    "access": 44,
     "overhang": 0,
     "selfIntersect": 24,
-    "total": 199
+    "total": 179
    }
   },
   "fixture-dxf_plate_holes-dxf": {
@@ -3779,14 +3779,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 24,
+    "wallMs": 32,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 71.1,
-    "baseRssMb": 65.1,
-    "afterParseMs": 38,
-    "load": 2.6
+    "peakRssMb": 69.1,
+    "baseRssMb": 64.9,
+    "afterParseMs": 80,
+    "load": 1.6
    },
    "stages": null
   },
@@ -3802,7 +3802,7 @@
    "hash": {
     "geometry": "43f9597c5f9fc0612285d86dc9da1c2f5f3ac19cc2c626c5e9d3eee704178459",
     "dfm": "9632c42515b83fe91e032714a7136bbb5a83b3c3ffe4218481cca05237819676",
-    "price": "8be20c67b70ef84fcd694a864eb291d1a399980eda8f4dfe6f1e7417b3a31dd1"
+    "price": "1a79bb40e671b317c5049665b79112276cee07f0ad599d3a3e35dce5953b39f4"
    },
    "snapshot": true,
    "summary": {
@@ -3813,27 +3813,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 549,
+    "wallMs": 470,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 266.2,
-    "baseRssMb": 64.8,
-    "afterParseMs": 104,
-    "load": 2.6
+    "peakRssMb": 266.3,
+    "baseRssMb": 65.2,
+    "afterParseMs": 99,
+    "load": 1.6
    },
    "stages": {
-    "mesh": 8,
-    "segment": 32,
-    "bvh": 7,
-    "shape": 60,
-    "outline": 11,
-    "features": 8,
-    "thickness": 6,
-    "access": 17,
+    "mesh": 1,
+    "segment": 21,
+    "bvh": 10,
+    "shape": 71,
+    "outline": 17,
+    "features": 11,
+    "thickness": 2,
+    "access": 8,
     "overhang": 0,
-    "selfIntersect": 15,
-    "total": 164
+    "selfIntersect": 13,
+    "total": 154
    }
   },
   "fixture-dxf_slotted_guide-dxf": {
@@ -3858,14 +3858,14 @@
     "problems": 0
    },
    "timing": {
-    "wallMs": 27,
+    "wallMs": 25,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 70.8,
-    "baseRssMb": 65.4,
-    "afterParseMs": 49,
-    "load": 2.4
+    "peakRssMb": 70.9,
+    "baseRssMb": 65,
+    "afterParseMs": 61,
+    "load": 1.6
    },
    "stages": null
   },
@@ -3881,7 +3881,7 @@
    "hash": {
     "geometry": "c2b6421269f9499fa55d676e819570182f27729dce5931e9d5a418c9fdcbed92",
     "dfm": "3cd05eee4ec36904af5698a0afe61f79104d0d68fa4881e7c40da4e2e1f83f94",
-    "price": "7fd2df8e698e9356887b66670ab212f3135d522736e5d9658a5470f6e4e1136d"
+    "price": "9a63e22be65cb2dba5dc2902c2867b58e225c646a29b0a88ded463223f11f518"
    },
    "snapshot": true,
    "summary": {
@@ -3892,27 +3892,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 610,
+    "wallMs": 629,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 268.2,
-    "baseRssMb": 64.9,
-    "afterParseMs": 76,
-    "load": 2.4
+    "peakRssMb": 270.9,
+    "baseRssMb": 64.1,
+    "afterParseMs": 84,
+    "load": 1.6
    },
    "stages": {
-    "mesh": 6,
-    "segment": 21,
-    "bvh": 11,
-    "shape": 44,
-    "outline": 9,
-    "features": 8,
-    "thickness": 35,
-    "access": 13,
+    "mesh": 10,
+    "segment": 49,
+    "bvh": 6,
+    "shape": 50,
+    "outline": 14,
+    "features": 9,
+    "thickness": 20,
+    "access": 8,
     "overhang": 0,
-    "selfIntersect": 16,
-    "total": 163
+    "selfIntersect": 8,
+    "total": 175
    }
   },
   "fixture-gear_disc-stl": {
@@ -3927,7 +3927,7 @@
    "hash": {
     "geometry": "37d94c0bbaf5adcbf3dd26dde4df3d5716a5289b23103d3bfe079e9c46e2effd",
     "dfm": "1f3d39440a81aede8a1881b6c4acc1faa34dfa0b3fbc14264f120c6ea8b4e416",
-    "price": "04c6d60614e6295ce82f6cbba616876d0c30c9868723961d7771f7a6270975f4"
+    "price": "8b7761cd6949363a377ae84a218079e8e6b5edac5a230415b4f7795c6d71a2bc"
    },
    "snapshot": true,
    "summary": {
@@ -3938,27 +3938,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 221,
+    "wallMs": 224,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 81,
-    "baseRssMb": 65.7,
-    "afterParseMs": 77,
-    "load": 2.4
+    "peakRssMb": 79.8,
+    "baseRssMb": 65.2,
+    "afterParseMs": 82,
+    "load": 1.6
    },
    "stages": {
-    "mesh": 10,
-    "segment": 14,
-    "bvh": 13,
-    "shape": 32,
-    "outline": 30,
-    "features": 8,
-    "thickness": 28,
-    "access": 24,
+    "mesh": 9,
+    "segment": 15,
+    "bvh": 19,
+    "shape": 29,
+    "outline": 39,
+    "features": 7,
+    "thickness": 22,
+    "access": 18,
     "overhang": 0,
-    "selfIntersect": 28,
-    "total": 187
+    "selfIntersect": 25,
+    "total": 183
    }
   },
   "fixture-oversize_panel-stl": {
@@ -3973,7 +3973,7 @@
    "hash": {
     "geometry": "9d6e5fee478e238eeccabba31a703359b6360021f64a8245b7360b685b978ba8",
     "dfm": "c7ecbdae9b6899df21a34cdb479ce7e97d09abd8523a6850396fcb52305804cc",
-    "price": "d2665b4ce0f74b7b9d5e6f0889cb039ce8427020aba15b970b3c8a5d268db3e1"
+    "price": "ebb3031d6ab27f441fd1c648bf51f062e5487eba41e38cc5b6a787652746aed7"
    },
    "snapshot": true,
    "summary": {
@@ -3984,27 +3984,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 78,
+    "wallMs": 83,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.5,
-    "baseRssMb": 65.3,
-    "afterParseMs": 85,
-    "load": 2.4
+    "peakRssMb": 74.9,
+    "baseRssMb": 65.2,
+    "afterParseMs": 86,
+    "load": 1.6
    },
    "stages": {
-    "mesh": 3,
+    "mesh": 2,
     "segment": 6,
     "bvh": 2,
-    "shape": 12,
-    "outline": 5,
+    "shape": 14,
+    "outline": 6,
     "features": 3,
-    "thickness": 15,
-    "access": 9,
+    "thickness": 11,
+    "access": 14,
     "overhang": 0,
-    "selfIntersect": 11,
-    "total": 66
+    "selfIntersect": 9,
+    "total": 67
    }
   },
   "fixture-plate_400_holes-step": {
@@ -4019,7 +4019,7 @@
    "hash": {
     "geometry": "a22010d13f4a4dbeb7bede0553508d5940f8cc835af32b51ddfc4adaa91470ab",
     "dfm": "5bf2823d90a45858206e0dacccd14426f70897e9b271fa89f68332647be1b3c1",
-    "price": "8e4fb979601638125b0f8ddb0c368a692d5edca76e8ce683434596dc505dc220"
+    "price": "97321e59fa55c132f595e2d68b1c1759a0edf158b751f3d39a35a7700a733369"
    },
    "snapshot": true,
    "summary": {
@@ -4030,27 +4030,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 7943,
+    "wallMs": 5584,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 495.5,
-    "baseRssMb": 67.1,
+    "peakRssMb": 500.9,
+    "baseRssMb": 66.9,
     "afterParseMs": 121,
-    "load": 2.3
+    "load": 1.5
    },
    "stages": {
-    "mesh": 32,
-    "segment": 194,
-    "bvh": 68,
-    "shape": 86,
-    "outline": 95,
-    "features": 89,
-    "thickness": 276,
-    "access": 175,
+    "mesh": 40,
+    "segment": 216,
+    "bvh": 64,
+    "shape": 64,
+    "outline": 88,
+    "features": 78,
+    "thickness": 262,
+    "access": 140,
     "overhang": 3,
-    "selfIntersect": 145,
-    "total": 1164
+    "selfIntersect": 157,
+    "total": 1114
    }
   },
   "fixture-plate_hole_pattern-stl": {
@@ -4065,7 +4065,7 @@
    "hash": {
     "geometry": "071974b1837ce0170cdb70aede2ab8b84995bd13ed84ab44ee21fa470b20b544",
     "dfm": "ca042cb345db004b84b6ad18b73e86ecdb1fae97b5945ded00f7c6e86f4e57ae",
-    "price": "c055f6fac1e1c691d23e07e5430f3eb7b9eaf87e06b6ab19ebbfa88062241da3"
+    "price": "1a6beb388cd23f87c5543c87c0631e9443b8ae805b106e42a1a8850be540f6e4"
    },
    "snapshot": true,
    "summary": {
@@ -4076,27 +4076,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 129,
+    "wallMs": 99,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 76,
-    "baseRssMb": 65,
-    "afterParseMs": 85,
-    "load": 2.4
+    "peakRssMb": 76.4,
+    "baseRssMb": 64.9,
+    "afterParseMs": 78,
+    "load": 1.6
    },
    "stages": {
-    "mesh": 4,
+    "mesh": 3,
     "segment": 8,
-    "bvh": 4,
-    "shape": 22,
-    "outline": 12,
-    "features": 8,
-    "thickness": 11,
-    "access": 23,
-    "overhang": 0,
-    "selfIntersect": 14,
-    "total": 106
+    "bvh": 3,
+    "shape": 17,
+    "outline": 10,
+    "features": 4,
+    "thickness": 15,
+    "access": 11,
+    "overhang": 3,
+    "selfIntersect": 9,
+    "total": 83
    }
   },
   "fixture-plate_holes-step": {
@@ -4111,7 +4111,7 @@
    "hash": {
     "geometry": "e5fb93880a3de4a6c10e9cbf7f4cb253f73c8d9d4f23a608032d59f216f74f52",
     "dfm": "34ccf16504956dd7266c487b7a40be45911b596c0dfa294f28ad51dcb3d467c5",
-    "price": "4bfabbd0eebbef700e7c52448108414508ab30763e00422b4af439b078e5254c"
+    "price": "21d3a785a323a635e3929b18582878ed1050d2081866debd6a7af13ae0800e66"
    },
    "snapshot": true,
    "summary": {
@@ -4122,27 +4122,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 713,
+    "wallMs": 689,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 268.7,
-    "baseRssMb": 65.1,
-    "afterParseMs": 120,
-    "load": 2.4
+    "peakRssMb": 285,
+    "baseRssMb": 65,
+    "afterParseMs": 78,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 3,
-    "segment": 24,
-    "bvh": 8,
-    "shape": 78,
-    "outline": 8,
-    "features": 15,
-    "thickness": 8,
-    "access": 27,
+    "mesh": 12,
+    "segment": 72,
+    "bvh": 17,
+    "shape": 117,
+    "outline": 9,
+    "features": 14,
+    "thickness": 20,
+    "access": 24,
     "overhang": 0,
-    "selfIntersect": 27,
-    "total": 199
+    "selfIntersect": 23,
+    "total": 308
    }
   },
   "fixture-pocketed_tray-stl": {
@@ -4157,7 +4157,7 @@
    "hash": {
     "geometry": "811836fc98a9fa852e7c3089f4b9b63d78b129cde9b4de02a4de06728dfba9a1",
     "dfm": "4614b00cfb3bfd345ca16243041fbe7dad0ffa7eba40bdcdc31d5bdf98f1816f",
-    "price": "e9e67a06427674c1ca9ed57c39ba532f8f53880b554bfa406bd2787c064d56f8"
+    "price": "4156742d5cb7a890ff40223c85d6f06b36787758639d7c998ed1c94a6506e66c"
    },
    "snapshot": true,
    "summary": {
@@ -4168,27 +4168,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 50,
+    "wallMs": 46,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 73.4,
-    "baseRssMb": 65.4,
-    "afterParseMs": 91,
-    "load": 2.4
+    "peakRssMb": 73.1,
+    "baseRssMb": 64.9,
+    "afterParseMs": 78,
+    "load": 1.6
    },
    "stages": {
     "mesh": 1,
     "segment": 3,
     "bvh": 1,
-    "shape": 10,
+    "shape": 9,
     "outline": 2,
-    "features": 4,
+    "features": 3,
     "thickness": 4,
-    "access": 7,
+    "access": 8,
     "overhang": 1,
     "selfIntersect": 6,
-    "total": 39
+    "total": 38
    }
   },
   "fixture-roller-stl": {
@@ -4203,7 +4203,7 @@
    "hash": {
     "geometry": "8ca4fde167bbcc1de4e02a163aa60a6c049af5036482315d511618beedb66497",
     "dfm": "d68ccf7ac30827fe41d31756c893c19b08e6ab2dbf2e02ae3c5a88d0eb4c1ad3",
-    "price": "1233d85e745fd119f9762a3d2799c857fa0286ac4b29beddaec2f65d0402abbb"
+    "price": "63e7821f4d36a8849556ff8e0853aa31d14140244af8ee5f13baacaa1be5e2bd"
    },
    "snapshot": true,
    "summary": {
@@ -4214,27 +4214,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 86,
+    "wallMs": 70,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.3,
-    "baseRssMb": 65.2,
-    "afterParseMs": 74,
-    "load": 2.4
+    "peakRssMb": 73.4,
+    "baseRssMb": 64.1,
+    "afterParseMs": 75,
+    "load": 1.6
    },
    "stages": {
     "mesh": 3,
-    "segment": 9,
+    "segment": 6,
     "bvh": 3,
-    "shape": 11,
-    "outline": 6,
+    "shape": 9,
+    "outline": 4,
     "features": 1,
-    "thickness": 10,
+    "thickness": 9,
     "access": 15,
-    "overhang": 0,
-    "selfIntersect": 14,
-    "total": 72
+    "overhang": 1,
+    "selfIntersect": 9,
+    "total": 60
    }
   },
   "fixture-saddle_clamp-stl": {
@@ -4249,7 +4249,7 @@
    "hash": {
     "geometry": "23afa9559e05b3dac7895d00fb1acf82e42621cf1515e8983920249ee5b92d12",
     "dfm": "5fc7b0005a4bf92ec7d4344e5a233e0b290925d2482b5eb05f6a947228075a17",
-    "price": "017facce86c91dbf1275cc6d6dfbb93a2da8d095d391804bd417bf47baea013f"
+    "price": "23d77b3cb4df3eef5b9350b578a868d957d705eebc0f85787efb5a77b2870041"
    },
    "snapshot": true,
    "summary": {
@@ -4260,27 +4260,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 76,
+    "wallMs": 89,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 72.5,
-    "baseRssMb": 64.4,
-    "afterParseMs": 94,
-    "load": 2.4
+    "peakRssMb": 74.5,
+    "baseRssMb": 65.3,
+    "afterParseMs": 116,
+    "load": 1.5
    },
    "stages": {
     "mesh": 2,
-    "segment": 6,
+    "segment": 5,
     "bvh": 1,
-    "shape": 12,
-    "outline": 4,
-    "features": 3,
-    "thickness": 11,
-    "access": 12,
+    "shape": 10,
+    "outline": 3,
+    "features": 5,
+    "thickness": 10,
+    "access": 19,
     "overhang": 0,
-    "selfIntersect": 12,
-    "total": 63
+    "selfIntersect": 21,
+    "total": 77
    }
   },
   "fixture-seal_ring_peek-stl": {
@@ -4306,24 +4306,24 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 83,
+    "wallMs": 81,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 74.5,
-    "baseRssMb": 65.3,
-    "afterParseMs": 73,
-    "load": 2.4
+    "peakRssMb": 73.5,
+    "baseRssMb": 64.8,
+    "afterParseMs": 81,
+    "load": 1.5
    },
    "stages": {
     "mesh": 3,
-    "segment": 8,
+    "segment": 6,
     "bvh": 2,
-    "shape": 13,
+    "shape": 12,
     "outline": 5,
     "features": 2,
-    "thickness": 9,
-    "access": 17,
+    "thickness": 14,
+    "access": 14,
     "overhang": 0,
     "selfIntersect": 10,
     "total": 69
@@ -4352,27 +4352,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 32,
+    "wallMs": 31,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 72,
-    "baseRssMb": 65,
-    "afterParseMs": 52,
-    "load": 2.4
+    "peakRssMb": 71.9,
+    "baseRssMb": 64.9,
+    "afterParseMs": 68,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 1,
+    "mesh": 0,
     "segment": 2,
-    "bvh": 0,
+    "bvh": 1,
     "shape": 9,
     "outline": 1,
     "features": 1,
-    "thickness": 3,
+    "thickness": 2,
     "access": 3,
     "overhang": 0,
-    "selfIntersect": 4,
-    "total": 24
+    "selfIntersect": 2,
+    "total": 22
    }
   },
   "fixture-spacer-stl": {
@@ -4398,27 +4398,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 65,
+    "wallMs": 53,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 73.1,
-    "baseRssMb": 65.1,
-    "afterParseMs": 64,
-    "load": 2.4
+    "peakRssMb": 73.6,
+    "baseRssMb": 65.3,
+    "afterParseMs": 75,
+    "load": 1.5
    },
    "stages": {
     "mesh": 1,
-    "segment": 4,
-    "bvh": 2,
-    "shape": 9,
-    "outline": 4,
-    "features": 1,
-    "thickness": 9,
-    "access": 14,
+    "segment": 3,
+    "bvh": 1,
+    "shape": 8,
+    "outline": 2,
+    "features": 0,
+    "thickness": 6,
+    "access": 12,
     "overhang": 0,
-    "selfIntersect": 9,
-    "total": 54
+    "selfIntersect": 8,
+    "total": 43
    }
   },
   "fixture-star_wheel-stl": {
@@ -4433,7 +4433,7 @@
    "hash": {
     "geometry": "f014605c07dfeece37df2337d4dc99b6324e0ce84d9b2f839ffcbebeb6c1683d",
     "dfm": "d594c148b49d1453f61e8b3f35df992dd260f4a6bf7d3498e9e8d04f40b9bcbd",
-    "price": "173458251c0d633c89ddaa4e81f7873abca1f3fd6e0ee9e1d965d716e795ef57"
+    "price": "a03988e7b834f3239ab92a5fb26bee633ea0f4722f839037d09e5bda8226c9a5"
    },
    "snapshot": true,
    "summary": {
@@ -4444,27 +4444,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 299,
+    "wallMs": 263,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 90.7,
-    "baseRssMb": 65.2,
-    "afterParseMs": 84,
-    "load": 2.4
+    "peakRssMb": 89.8,
+    "baseRssMb": 64.9,
+    "afterParseMs": 65,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 19,
-    "segment": 28,
-    "bvh": 22,
-    "shape": 48,
-    "outline": 46,
-    "features": 8,
-    "thickness": 26,
-    "access": 20,
+    "mesh": 14,
+    "segment": 17,
+    "bvh": 18,
+    "shape": 29,
+    "outline": 37,
+    "features": 6,
+    "thickness": 37,
+    "access": 28,
     "overhang": 0,
-    "selfIntersect": 37,
-    "total": 254
+    "selfIntersect": 39,
+    "total": 226
    }
   },
   "fixture-thin_wall_housing-stl": {
@@ -4479,7 +4479,7 @@
    "hash": {
     "geometry": "94a06100169f19ab9974c137bc299e335f01f615e63acceca5420ea3286ba89c",
     "dfm": "be48fc32a7959cf4b0145b49c3a171ae5ca0155eb2d17a1db46576d0c8125362",
-    "price": "52af82ac2eabb53d1b891236a0f0fc8af8cdba75ecda3f7a69e117e0be3031c8"
+    "price": "7150877481cfc78a85985cea1b2a375efb84fa19ca486e2a0b26d7108fef158f"
    },
    "snapshot": true,
    "summary": {
@@ -4490,27 +4490,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 46,
+    "wallMs": 51,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 74.4,
-    "baseRssMb": 65,
-    "afterParseMs": 79,
-    "load": 2.4
+    "peakRssMb": 72.9,
+    "baseRssMb": 65.2,
+    "afterParseMs": 72,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 0,
-    "segment": 4,
+    "mesh": 1,
+    "segment": 3,
     "bvh": 0,
-    "shape": 9,
-    "outline": 2,
+    "shape": 11,
+    "outline": 1,
     "features": 3,
-    "thickness": 5,
-    "access": 6,
+    "thickness": 4,
+    "access": 8,
     "overhang": 0,
-    "selfIntersect": 6,
-    "total": 35
+    "selfIntersect": 8,
+    "total": 39
    }
   },
   "fixture-tray-step": {
@@ -4525,7 +4525,7 @@
    "hash": {
     "geometry": "ae9019c02c3413f7429a15f10829a638ee17685bc5f104bb4bad63f518d42cdd",
     "dfm": "606a8933482829675c1afcc13b42e9243d1509ffaf8ffbdcfa2ac18926b5525b",
-    "price": "421f2ba2ab45ab66439c948977a6dd7c7de71124d1c455e6a9b8930df7085e85"
+    "price": "80143370189ef4cfc8cf0887152f739b5a37379b89d1004031dec19f3247ef79"
    },
    "snapshot": true,
    "summary": {
@@ -4536,27 +4536,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 565,
+    "wallMs": 435,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 271,
-    "baseRssMb": 64.8,
-    "afterParseMs": 102,
-    "load": 2.4
+    "peakRssMb": 262.3,
+    "baseRssMb": 64.4,
+    "afterParseMs": 94,
+    "load": 1.5
    },
    "stages": {
     "mesh": 0,
-    "segment": 30,
+    "segment": 8,
     "bvh": 0,
-    "shape": 37,
+    "shape": 21,
     "outline": 1,
-    "features": 17,
-    "thickness": 16,
-    "access": 28,
-    "overhang": 1,
+    "features": 9,
+    "thickness": 3,
+    "access": 22,
+    "overhang": 0,
     "selfIntersect": 9,
-    "total": 139
+    "total": 73
    }
   },
   "fixture-tslot_block-step": {
@@ -4571,7 +4571,7 @@
    "hash": {
     "geometry": "ca49fb1af747aba44a60d97ff7953db7c40b3bd2a8b994e9ed92dfc20ea85c3a",
     "dfm": "d5596f2d16bf0499576a4775004fe5f6c0f1a130b589cefd38497f06ea29ef69",
-    "price": "b1ed3a0647bd1229a726e658f2de4b45ac66d5d3cddf9ead1df10819622b4836"
+    "price": "8a17387a0d60a749e89c31c4d62c6bf535448643063d410c73442b5d60b3ea03"
    },
    "snapshot": true,
    "summary": {
@@ -4582,27 +4582,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 420,
+    "wallMs": 426,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 262.6,
-    "baseRssMb": 65.2,
-    "afterParseMs": 94,
-    "load": 2.3
+    "peakRssMb": 262.4,
+    "baseRssMb": 65.4,
+    "afterParseMs": 86,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 0,
+    "mesh": 9,
     "segment": 1,
-    "bvh": 0,
-    "shape": 14,
-    "outline": 2,
-    "features": 1,
-    "thickness": 9,
+    "bvh": 1,
+    "shape": 16,
+    "outline": 1,
+    "features": 8,
+    "thickness": 5,
     "access": 2,
     "overhang": 0,
-    "selfIntersect": 10,
-    "total": 39
+    "selfIntersect": 6,
+    "total": 49
    }
   },
   "fixture-tube-step": {
@@ -4617,7 +4617,7 @@
    "hash": {
     "geometry": "8f5284f6706113db4687e7ab039cd369a8302ebab10df5150d547833cccb647d",
     "dfm": "5edbd81d84b04cdb37bb9b23df283495e16f9f34274a8806e2b26c55cf5a0dfc",
-    "price": "75c8015135be9920aea9977373a8aa7886e86aafd07c6adce82e3ffba67cba4c"
+    "price": "f676b35b825d039a1a2bfc9b68caf4a16a6ff0a24920991b2fa3bc0120b4e0dc"
    },
    "snapshot": true,
    "summary": {
@@ -4628,27 +4628,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 584,
+    "wallMs": 403,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 258.9,
-    "baseRssMb": 65,
-    "afterParseMs": 88,
-    "load": 2.3
+    "peakRssMb": 263.2,
+    "baseRssMb": 65.5,
+    "afterParseMs": 111,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 6,
-    "segment": 33,
-    "bvh": 2,
-    "shape": 52,
-    "outline": 41,
-    "features": 2,
-    "thickness": 50,
-    "access": 54,
+    "mesh": 10,
+    "segment": 28,
+    "bvh": 1,
+    "shape": 41,
+    "outline": 8,
+    "features": 5,
+    "thickness": 22,
+    "access": 48,
     "overhang": 0,
-    "selfIntersect": 11,
-    "total": 251
+    "selfIntersect": 35,
+    "total": 198
    }
   },
   "fixture-wear_strip-stl": {
@@ -4663,7 +4663,7 @@
    "hash": {
     "geometry": "f8e16390ea119f9232b4d99ce662c2883a3e4d0bad3fbfdda6945f785ce724fe",
     "dfm": "ab8c3c5b7188657d9e12b44adc8ff6d89431a103aaa8a8659fe26d0fd230da01",
-    "price": "6b57361ee6dd8b42f645d282a30cf6810f033e415033ca1c80d6d62a14613ef3"
+    "price": "91963f80fa9e7ddc5b28a90598ee563a12b4b2e6365d2a4df81b50796dfc6e1a"
    },
    "snapshot": true,
    "summary": {
@@ -4674,27 +4674,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 90,
+    "wallMs": 97,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.8,
-    "baseRssMb": 65.3,
-    "afterParseMs": 70,
-    "load": 2.4
+    "peakRssMb": 76.5,
+    "baseRssMb": 65.2,
+    "afterParseMs": 93,
+    "load": 1.5
    },
    "stages": {
     "mesh": 3,
     "segment": 5,
-    "bvh": 3,
-    "shape": 14,
+    "bvh": 2,
+    "shape": 13,
     "outline": 8,
-    "features": 11,
-    "thickness": 13,
-    "access": 9,
-    "overhang": 1,
+    "features": 4,
+    "thickness": 26,
+    "access": 13,
+    "overhang": 0,
     "selfIntersect": 10,
-    "total": 77
+    "total": 84
    }
   },
   "flat-sheet-two-sided": {
@@ -4719,14 +4719,14 @@
     "fullMessage": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 6,
+    "wallMs": 5,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65.4,
+    "baseRssMb": 65.2,
     "afterParseMs": 0,
-    "load": 2.1
+    "load": 1.4
    },
    "stages": null
   },
@@ -4753,27 +4753,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 18,
+    "wallMs": 25,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 0,
-    "baseRssMb": 65.1,
-    "afterParseMs": 80,
-    "load": 1.6
+    "peakRssMb": 70,
+    "baseRssMb": 65.3,
+    "afterParseMs": 72,
+    "load": 1.8
    },
    "stages": {
     "mesh": 0,
     "segment": 1,
     "bvh": 0,
-    "shape": 4,
+    "shape": 13,
     "outline": 1,
     "features": 0,
     "thickness": 1,
-    "access": 1,
+    "access": 0,
     "overhang": 0,
     "selfIntersect": 1,
-    "total": 9
+    "total": 17
    }
   },
   "hollow-sphere-100k": {
@@ -4798,14 +4798,14 @@
     "fullMessage": "This model has one closed shape inside another (a sealed hollow, or a part inside a part). The instant quote can't price that reliably, so we quote these by hand: email the file to quotes@straightedgemfg.com and we'll come back with a price."
    },
    "timing": {
-    "wallMs": 61,
+    "wallMs": 60,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 87.4,
-    "baseRssMb": 70.2,
+    "peakRssMb": 88.8,
+    "baseRssMb": 69.9,
     "afterParseMs": 0,
-    "load": 1.5
+    "load": 2.1
    },
    "stages": null
   },
@@ -4831,14 +4831,14 @@
     "fullMessage": "This model has one closed shape inside another (a sealed hollow, or a part inside a part). The instant quote can't price that reliably, so we quote these by hand: email the file to quotes@straightedgemfg.com and we'll come back with a price."
    },
    "timing": {
-    "wallMs": 26,
+    "wallMs": 32,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 70.7,
-    "baseRssMb": 65.5,
+    "peakRssMb": 69.6,
+    "baseRssMb": 65.6,
     "afterParseMs": 0,
-    "load": 1.5
+    "load": 2.1
    },
    "stages": null
   },
@@ -4854,7 +4854,7 @@
    "hash": {
     "geometry": "008ada06c6348b5095d79884bdc5cdb8fcc2c1c5ed940ff28ad016d98f647edc",
     "dfm": "e6608f282c95a0eb5c416a6195c424650637000ceca13360872a3b8b0ddb5335",
-    "price": "1a9eac7b730be43315a99f0a895ff560b1905ed50bd84d5b25e4c06852f61ed1"
+    "price": "aa6a91fa2d567b4d920dba4dfb59a0826b2c94b1c5523d91697ce27533cde84b"
    },
    "snapshot": true,
    "summary": {
@@ -4865,27 +4865,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 102,
+    "wallMs": 91,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 74.4,
-    "baseRssMb": 65.2,
-    "afterParseMs": 78,
-    "load": 1.3
+    "peakRssMb": 75.4,
+    "baseRssMb": 65.4,
+    "afterParseMs": 71,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 4,
+    "mesh": 3,
     "segment": 10,
-    "bvh": 4,
-    "shape": 21,
+    "bvh": 6,
+    "shape": 16,
     "outline": 5,
     "features": 0,
-    "thickness": 12,
-    "access": 15,
-    "overhang": 1,
-    "selfIntersect": 9,
-    "total": 82
+    "thickness": 11,
+    "access": 12,
+    "overhang": 0,
+    "selfIntersect": 10,
+    "total": 73
    }
   },
   "icosphere-20k": {
@@ -4900,7 +4900,7 @@
    "hash": {
     "geometry": "e0a083276e3e67950d9d1bf45a7bdf47b4e24a0ee0dc1ecb67c938f767172f77",
     "dfm": "0efadbd8af68b716591918147e93f53843067aed480d9f8ea5853237d8643c53",
-    "price": "33bdf14da4d9516cf4b30b3ac46bcd3e6767c92154ed48ee27d76a1430144a1c"
+    "price": "fcd5ca9085406bd00f5cc668a14d909cc1109f6e33bbe3ceaa54889dfbbe6544"
    },
    "snapshot": true,
    "summary": {
@@ -4911,27 +4911,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 497,
+    "wallMs": 452,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 101.6,
+    "peakRssMb": 102.5,
     "baseRssMb": 66.1,
-    "afterParseMs": 79,
-    "load": 1.3
+    "afterParseMs": 83,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 29,
-    "segment": 75,
-    "bvh": 39,
-    "shape": 45,
-    "outline": 33,
+    "mesh": 26,
+    "segment": 73,
+    "bvh": 32,
+    "shape": 43,
+    "outline": 28,
     "features": 0,
-    "thickness": 59,
-    "access": 88,
-    "overhang": 5,
-    "selfIntersect": 48,
-    "total": 421
+    "thickness": 66,
+    "access": 81,
+    "overhang": 4,
+    "selfIntersect": 31,
+    "total": 384
    }
   },
   "icosphere-328k": {
@@ -4992,7 +4992,7 @@
    "hash": {
     "geometry": "591bf5d9ac8b6fe5ec890e7bc08f5dd504785ce0423570769456d54f00e0159e",
     "dfm": "e7094c172571715b577ec727b3be5567affad7e7699a2b730d173088255d023b",
-    "price": "b7b31f10b99fa0068b5c98a94c55ab3d49738bfdb123eb72eda6d1e357af4802"
+    "price": "086af365dc6689fbc67fea331e9b496b55ecc749d26ce4f4d414e838a3065405"
    },
    "snapshot": true,
    "summary": {
@@ -5003,27 +5003,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 933,
+    "wallMs": 869,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 190.3,
-    "baseRssMb": 68.9,
-    "afterParseMs": 81,
-    "load": 1.3
+    "peakRssMb": 180.8,
+    "baseRssMb": 69,
+    "afterParseMs": 100,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 51,
-    "segment": 155,
-    "bvh": 84,
-    "shape": 50,
-    "outline": 57,
+    "mesh": 55,
+    "segment": 152,
+    "bvh": 89,
+    "shape": 53,
+    "outline": 55,
     "features": 0,
-    "thickness": 116,
-    "access": 147,
+    "thickness": 111,
+    "access": 115,
     "overhang": 8,
-    "selfIntersect": 85,
-    "total": 754
+    "selfIntersect": 68,
+    "total": 706
    }
   },
   "intersecting-100k": {
@@ -5038,7 +5038,7 @@
    "hash": {
     "geometry": "8ff72e1ce70fef17fad91c6143cb6aebf801f4fab573f90fc4f47a7c54e715d3",
     "dfm": "0065f54c4c52aebc8b0eaa373b549d5ca0a9282bc0c11f14c8bb8c9263155ca6",
-    "price": "e07e14f63ec2a5fdc4446eaf677f8d4d2fba25d1d4cf91b2e7d5da1d30e43989"
+    "price": "bd998930c1adac49e8da4f1e3bf99c272b65707ac941e7b1494d223668fdcf03"
    },
    "snapshot": true,
    "summary": {
@@ -5049,27 +5049,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 873,
+    "wallMs": 1080,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 179.2,
-    "baseRssMb": 69.9,
-    "afterParseMs": 103,
-    "load": 1.3
+    "peakRssMb": 168.1,
+    "baseRssMb": 69.7,
+    "afterParseMs": 132,
+    "load": 3.3
    },
    "stages": {
-    "mesh": 73,
-    "segment": 132,
-    "bvh": 96,
-    "shape": 85,
-    "outline": 56,
-    "features": 17,
-    "thickness": 105,
-    "access": 122,
-    "overhang": 8,
-    "selfIntersect": 19,
-    "total": 714
+    "mesh": 78,
+    "segment": 192,
+    "bvh": 142,
+    "shape": 87,
+    "outline": 48,
+    "features": 27,
+    "thickness": 107,
+    "access": 183,
+    "overhang": 14,
+    "selfIntersect": 25,
+    "total": 904
    }
   },
   "intersecting-10k": {
@@ -5084,7 +5084,7 @@
    "hash": {
     "geometry": "53011dd713a1e64a462bf845430c1b88676886bd9910f4211b63b71f05d200c1",
     "dfm": "8f374e04965a12760631544ae38324f308756b20121f9eeb846e897218919167",
-    "price": "7d58f791caa142189375c145e9ad55a363223145ee2de6ef649c11f33fe8cc22"
+    "price": "f73e492e9175d7b341fdd027a590e2785124b7f996996f8a59d0f61fedac93da"
    },
    "snapshot": true,
    "summary": {
@@ -5095,27 +5095,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 287,
+    "wallMs": 481,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 90.6,
+    "peakRssMb": 92,
     "baseRssMb": 65.4,
-    "afterParseMs": 83,
-    "load": 1.3
+    "afterParseMs": 94,
+    "load": 3.3
    },
    "stages": {
-    "mesh": 18,
-    "segment": 38,
-    "bvh": 29,
-    "shape": 46,
-    "outline": 19,
+    "mesh": 27,
+    "segment": 84,
+    "bvh": 52,
+    "shape": 75,
+    "outline": 32,
     "features": 0,
-    "thickness": 31,
-    "access": 41,
-    "overhang": 3,
-    "selfIntersect": 21,
-    "total": 246
+    "thickness": 53,
+    "access": 59,
+    "overhang": 12,
+    "selfIntersect": 22,
+    "total": 416
    }
   },
   "lattice-100k": {
@@ -5130,7 +5130,7 @@
    "hash": {
     "geometry": "a67ee5c3cd53dc9fa4796c977f7336f3ad133fe61df6710ed1fe72517bf317aa",
     "dfm": "fd1a6e395a9c4a68170f86f11d1ef2490a7cf96475df57e94d4c4e3f6b6cbb0d",
-    "price": "40b6bcb4ac86b46af0aff2ed2e417217fa97c7787646a18f73b508e3bc753fda"
+    "price": "566b6e6ebeba21ae0c4fa7c4d7e350be596e59b2c3917a94fd624f923f43a066"
    },
    "snapshot": true,
    "summary": {
@@ -5141,27 +5141,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 11177,
+    "wallMs": 10915,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 228.1,
-    "baseRssMb": 70.2,
-    "afterParseMs": 88,
-    "load": 1.6
+    "peakRssMb": 234.2,
+    "baseRssMb": 69.8,
+    "afterParseMs": 90,
+    "load": 2.3
    },
    "stages": {
-    "mesh": 61,
-    "segment": 187,
-    "bvh": 126,
-    "shape": 105,
-    "outline": 82,
-    "features": 55,
-    "thickness": 1290,
-    "access": 8878,
-    "overhang": 158,
-    "selfIntersect": 2,
-    "total": 10944
+    "mesh": 85,
+    "segment": 271,
+    "bvh": 184,
+    "shape": 129,
+    "outline": 121,
+    "features": 77,
+    "thickness": 1383,
+    "access": 8282,
+    "overhang": 154,
+    "selfIntersect": 1,
+    "total": 10687
    }
   },
   "lattice-10k": {
@@ -5176,7 +5176,7 @@
    "hash": {
     "geometry": "81dcf26f4701e19839da31cf49b309fa7f0ff5d651ecbb6446c97288309a5258",
     "dfm": "fcb08169308a638aa5d1436d2d8fa8898bf4bf2b36a446dc1e2eb555ce36bcb0",
-    "price": "dd234ef5ce99a20a1d4143b0deb46e7b53fb2b74fd6e7545186160ca2d94ecef"
+    "price": "e720f04049953fe361396a77ca1e78bee8905309989178de4f50faf75c066f3e"
    },
    "snapshot": true,
    "summary": {
@@ -5187,27 +5187,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1054,
+    "wallMs": 1105,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 107.8,
-    "baseRssMb": 65.2,
-    "afterParseMs": 92,
-    "load": 1.6
+    "peakRssMb": 115.6,
+    "baseRssMb": 65.7,
+    "afterParseMs": 90,
+    "load": 2.3
    },
    "stages": {
-    "mesh": 18,
-    "segment": 36,
-    "bvh": 34,
-    "shape": 46,
-    "outline": 32,
-    "features": 21,
-    "thickness": 220,
-    "access": 577,
+    "mesh": 28,
+    "segment": 64,
+    "bvh": 55,
+    "shape": 66,
+    "outline": 43,
+    "features": 44,
+    "thickness": 233,
+    "access": 485,
     "overhang": 16,
     "selfIntersect": 1,
-    "total": 1001
+    "total": 1035
    }
   },
   "lattice-1k": {
@@ -5233,27 +5233,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 97,
+    "wallMs": 132,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.6,
-    "baseRssMb": 65.3,
-    "afterParseMs": 79,
-    "load": 1.5
+    "peakRssMb": 74.5,
+    "baseRssMb": 65.1,
+    "afterParseMs": 100,
+    "load": 2.3
    },
    "stages": {
-    "mesh": 3,
-    "segment": 5,
+    "mesh": 6,
+    "segment": 4,
     "bvh": 4,
-    "shape": 14,
-    "outline": 3,
-    "features": 5,
-    "thickness": 19,
-    "access": 24,
+    "shape": 19,
+    "outline": 4,
+    "features": 9,
+    "thickness": 23,
+    "access": 30,
     "overhang": 1,
     "selfIntersect": 0,
-    "total": 78
+    "total": 100
    }
   },
   "lattice-500k": {
@@ -5314,7 +5314,7 @@
    "hash": {
     "geometry": "ce2b9acaade65a4be580645c2bbb3591aeb669f48ad9bd4a63d8a23b4a01a970",
     "dfm": "0dd1e6de0cb0cd17b5a52b832e8e6702e89dd0846e1318adf2dffa9bd93c4268",
-    "price": "8d6106250a0dd1380d6f5839d6ba896beeebb2890f6e5cd687364c0d8a312280"
+    "price": "09038580e7814e62af6ac747233c1c959b2fcd7afe32d2642805c2941f60d3eb"
    },
    "snapshot": true,
    "summary": {
@@ -5325,27 +5325,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 5768,
+    "wallMs": 5844,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 209.7,
-    "baseRssMb": 69.7,
-    "afterParseMs": 88,
-    "load": 1.4
+    "peakRssMb": 213.6,
+    "baseRssMb": 69.5,
+    "afterParseMs": 123,
+    "load": 2.6
    },
    "stages": {
-    "mesh": 74,
-    "segment": 137,
-    "bvh": 106,
-    "shape": 92,
-    "outline": 117,
-    "features": 58,
-    "thickness": 1585,
-    "access": 3295,
-    "overhang": 106,
+    "mesh": 80,
+    "segment": 209,
+    "bvh": 133,
+    "shape": 130,
+    "outline": 161,
+    "features": 54,
+    "thickness": 1269,
+    "access": 3440,
+    "overhang": 140,
     "selfIntersect": 1,
-    "total": 5571
+    "total": 5617
    }
   },
   "lattice-round-10k": {
@@ -5360,7 +5360,7 @@
    "hash": {
     "geometry": "ce81f46154416899c5c7701f8746e48ef6eae377270a970cd50c606a22a92ae7",
     "dfm": "4befd3fea0dd8f751b5fc0b715002a133e0b9f92dda266ab2dafc3ee4464bff7",
-    "price": "0777d8668fd5516dfc01d27ac60540d48631fffaf2b656248baa1090016678ba"
+    "price": "4804fc056769897acab61ea800eae62205980e932743208c4aee38d4d7acfade"
    },
    "snapshot": true,
    "summary": {
@@ -5371,27 +5371,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 704,
+    "wallMs": 869,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 95.9,
-    "baseRssMb": 65.9,
-    "afterParseMs": 65,
-    "load": 1.4
+    "peakRssMb": 95,
+    "baseRssMb": 65.6,
+    "afterParseMs": 129,
+    "load": 2.6
    },
    "stages": {
-    "mesh": 13,
-    "segment": 33,
-    "bvh": 33,
-    "shape": 43,
-    "outline": 47,
-    "features": 22,
-    "thickness": 233,
-    "access": 217,
-    "overhang": 10,
+    "mesh": 22,
+    "segment": 61,
+    "bvh": 60,
+    "shape": 105,
+    "outline": 57,
+    "features": 23,
+    "thickness": 223,
+    "access": 237,
+    "overhang": 18,
     "selfIntersect": 0,
-    "total": 651
+    "total": 806
    }
   },
   "mixed-winding-100k": {
@@ -5417,27 +5417,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1115,
+    "wallMs": 1308,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 187.1,
-    "baseRssMb": 70,
-    "afterParseMs": 105,
-    "load": 1.6
+    "peakRssMb": 185.6,
+    "baseRssMb": 69.8,
+    "afterParseMs": 135,
+    "load": 3.5
    },
    "stages": {
-    "mesh": 97,
-    "segment": 134,
-    "bvh": 122,
-    "shape": 112,
-    "outline": 103,
-    "features": 16,
-    "thickness": 90,
-    "access": 144,
-    "overhang": 14,
-    "selfIntersect": 99,
-    "total": 931
+    "mesh": 63,
+    "segment": 155,
+    "bvh": 128,
+    "shape": 116,
+    "outline": 139,
+    "features": 23,
+    "thickness": 116,
+    "access": 164,
+    "overhang": 19,
+    "selfIntersect": 176,
+    "total": 1099
    }
   },
   "mixed-winding-10k": {
@@ -5463,27 +5463,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 347,
+    "wallMs": 415,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 90.2,
-    "baseRssMb": 65.9,
-    "afterParseMs": 76,
-    "load": 1.6
+    "peakRssMb": 95.9,
+    "baseRssMb": 65.8,
+    "afterParseMs": 96,
+    "load": 3.5
    },
    "stages": {
-    "mesh": 20,
-    "segment": 40,
-    "bvh": 36,
-    "shape": 49,
-    "outline": 40,
-    "features": 5,
+    "mesh": 28,
+    "segment": 51,
+    "bvh": 43,
+    "shape": 60,
+    "outline": 65,
+    "features": 7,
     "thickness": 32,
-    "access": 47,
-    "overhang": 3,
-    "selfIntersect": 29,
-    "total": 301
+    "access": 46,
+    "overhang": 6,
+    "selfIntersect": 32,
+    "total": 370
    }
   },
   "mixed-winding-1k": {
@@ -5509,27 +5509,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 91,
+    "wallMs": 88,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 74.6,
-    "baseRssMb": 65.3,
-    "afterParseMs": 62,
-    "load": 1.6
+    "peakRssMb": 73.7,
+    "baseRssMb": 65.2,
+    "afterParseMs": 81,
+    "load": 3.5
    },
    "stages": {
-    "mesh": 4,
-    "segment": 11,
-    "bvh": 5,
-    "shape": 18,
-    "outline": 5,
-    "features": 1,
-    "thickness": 11,
-    "access": 13,
-    "overhang": 1,
-    "selfIntersect": 10,
-    "total": 79
+    "mesh": 5,
+    "segment": 9,
+    "bvh": 4,
+    "shape": 19,
+    "outline": 6,
+    "features": 0,
+    "thickness": 8,
+    "access": 19,
+    "overhang": 0,
+    "selfIntersect": 6,
+    "total": 76
    }
   },
   "multibody-100k": {
@@ -5544,7 +5544,7 @@
    "hash": {
     "geometry": "38653542c53669550bd99798f3e350dc08d7975b5382c837de34ea5f76a565b8",
     "dfm": "0bdae3f8faffee941e4fa0e91beb9130336152f3f82089538ff386631a46b704",
-    "price": "63843eb72f4f0ae3b60574d70233f6580980c922ca845751ce3a50f5775abaa1"
+    "price": "36c4dc94d28618d9e5001a0e2a6e73b943acc6a0384e881099951090067ca1b9"
    },
    "snapshot": true,
    "summary": {
@@ -5555,27 +5555,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 912,
+    "wallMs": 1168,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 163.1,
-    "baseRssMb": 69.6,
-    "afterParseMs": 73,
-    "load": 1.4
+    "peakRssMb": 173.8,
+    "baseRssMb": 69.7,
+    "afterParseMs": 136,
+    "load": 2.8
    },
    "stages": {
-    "mesh": 58,
-    "segment": 135,
-    "bvh": 86,
-    "shape": 105,
-    "outline": 23,
-    "features": 46,
-    "thickness": 122,
-    "access": 104,
-    "overhang": 4,
-    "selfIntersect": 63,
-    "total": 746
+    "mesh": 107,
+    "segment": 232,
+    "bvh": 119,
+    "shape": 93,
+    "outline": 21,
+    "features": 79,
+    "thickness": 152,
+    "access": 123,
+    "overhang": 5,
+    "selfIntersect": 73,
+    "total": 1005
    }
   },
   "multibody-10k": {
@@ -5601,27 +5601,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 399,
+    "wallMs": 573,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 94,
-    "baseRssMb": 65.8,
-    "afterParseMs": 89,
-    "load": 1.4
+    "peakRssMb": 93.7,
+    "baseRssMb": 65.6,
+    "afterParseMs": 109,
+    "load": 2.8
    },
    "stages": {
-    "mesh": 18,
-    "segment": 43,
-    "bvh": 32,
-    "shape": 58,
-    "outline": 37,
-    "features": 35,
-    "thickness": 34,
-    "access": 59,
-    "overhang": 3,
-    "selfIntersect": 36,
-    "total": 355
+    "mesh": 27,
+    "segment": 76,
+    "bvh": 69,
+    "shape": 68,
+    "outline": 56,
+    "features": 57,
+    "thickness": 45,
+    "access": 66,
+    "overhang": 10,
+    "selfIntersect": 38,
+    "total": 513
    }
   },
   "multibody-10k-3mf": {
@@ -5647,27 +5647,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 538,
+    "wallMs": 748,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 117.7,
-    "baseRssMb": 64.9,
-    "afterParseMs": 74,
-    "load": 1.3
+    "peakRssMb": 119.8,
+    "baseRssMb": 65.2,
+    "afterParseMs": 119,
+    "load": 3.3
    },
    "stages": {
-    "mesh": 25,
-    "segment": 48,
-    "bvh": 26,
-    "shape": 40,
-    "outline": 30,
-    "features": 48,
-    "thickness": 36,
-    "access": 57,
-    "overhang": 2,
-    "selfIntersect": 34,
-    "total": 347
+    "mesh": 27,
+    "segment": 84,
+    "bvh": 63,
+    "shape": 55,
+    "outline": 56,
+    "features": 64,
+    "thickness": 55,
+    "access": 76,
+    "overhang": 5,
+    "selfIntersect": 42,
+    "total": 528
    }
   },
   "multibody-1k": {
@@ -5693,27 +5693,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 120,
+    "wallMs": 157,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.6,
-    "baseRssMb": 64.9,
-    "afterParseMs": 65,
-    "load": 1.4
+    "peakRssMb": 75.5,
+    "baseRssMb": 65.1,
+    "afterParseMs": 151,
+    "load": 2.8
    },
    "stages": {
-    "mesh": 4,
-    "segment": 10,
+    "mesh": 3,
+    "segment": 8,
     "bvh": 5,
-    "shape": 29,
-    "outline": 8,
-    "features": 15,
-    "thickness": 10,
-    "access": 13,
-    "overhang": 1,
-    "selfIntersect": 10,
-    "total": 105
+    "shape": 20,
+    "outline": 14,
+    "features": 10,
+    "thickness": 15,
+    "access": 35,
+    "overhang": 0,
+    "selfIntersect": 25,
+    "total": 135
    }
   },
   "multibody-500k": {
@@ -5785,27 +5785,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 23,
+    "wallMs": 19,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65.3,
-    "afterParseMs": 111,
-    "load": 1.5
+    "baseRssMb": 65.2,
+    "afterParseMs": 71,
+    "load": 1.3
    },
    "stages": {
-    "mesh": 0,
+    "mesh": 1,
     "segment": 0,
-    "bvh": 1,
+    "bvh": 0,
     "shape": 7,
-    "outline": 1,
-    "features": 0,
-    "thickness": 5,
+    "outline": 0,
+    "features": 1,
+    "thickness": 0,
     "access": 1,
     "overhang": 0,
-    "selfIntersect": 0,
-    "total": 15
+    "selfIntersect": 1,
+    "total": 11
    }
   },
   "open-sheet-100k": {
@@ -5831,27 +5831,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 993,
+    "wallMs": 957,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 155.4,
-    "baseRssMb": 69.9,
-    "afterParseMs": 98,
-    "load": 1.6
+    "peakRssMb": 156.4,
+    "baseRssMb": 69.7,
+    "afterParseMs": 129,
+    "load": 3.5
    },
    "stages": {
-    "mesh": 64,
-    "segment": 122,
+    "mesh": 56,
+    "segment": 153,
     "bvh": 115,
-    "shape": 123,
-    "outline": 40,
-    "features": 25,
-    "thickness": 41,
-    "access": 181,
+    "shape": 103,
+    "outline": 53,
+    "features": 24,
+    "thickness": 42,
+    "access": 154,
     "overhang": 2,
-    "selfIntersect": 97,
-    "total": 810
+    "selfIntersect": 84,
+    "total": 786
    }
   },
   "open-sheet-10k": {
@@ -5877,27 +5877,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 335,
+    "wallMs": 364,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 96.8,
-    "baseRssMb": 65.6,
-    "afterParseMs": 99,
-    "load": 1.6
+    "peakRssMb": 94,
+    "baseRssMb": 65.3,
+    "afterParseMs": 86,
+    "load": 3.5
    },
    "stages": {
-    "mesh": 19,
-    "segment": 49,
-    "bvh": 46,
-    "shape": 39,
-    "outline": 17,
+    "mesh": 17,
+    "segment": 63,
+    "bvh": 51,
+    "shape": 55,
+    "outline": 24,
     "features": 6,
-    "thickness": 15,
-    "access": 67,
+    "thickness": 21,
+    "access": 58,
     "overhang": 0,
-    "selfIntersect": 36,
-    "total": 294
+    "selfIntersect": 29,
+    "total": 325
    }
   },
   "open-sheet-1k": {
@@ -5923,27 +5923,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 82,
+    "wallMs": 127,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 73.9,
-    "baseRssMb": 65.4,
-    "afterParseMs": 77,
-    "load": 1.6
+    "baseRssMb": 65.1,
+    "afterParseMs": 88,
+    "load": 3.5
    },
    "stages": {
-    "mesh": 3,
-    "segment": 11,
-    "bvh": 3,
-    "shape": 10,
-    "outline": 6,
+    "mesh": 4,
+    "segment": 10,
+    "bvh": 5,
+    "shape": 16,
+    "outline": 11,
     "features": 0,
-    "thickness": 8,
-    "access": 11,
+    "thickness": 13,
+    "access": 21,
     "overhang": 0,
-    "selfIntersect": 15,
-    "total": 67
+    "selfIntersect": 28,
+    "total": 108
    }
   },
   "open-sheet-500k": {
@@ -6004,7 +6004,7 @@
    "hash": {
     "geometry": "eb8312b2129721c5843a103da84aa477fc7ee58521a2dff8c5b4e0d3220d5078",
     "dfm": "7b72be5a684602240eb453a5dd452da633892efd22d01a83a97b8029255c7fd8",
-    "price": "c6cd31c2ade6d7f87516eb050a1ec5cc687b0476c8a12f5715846c8b68a90d0d"
+    "price": "13677e913c691030e5f76610610ecce7fcd3418bad0c0f2f9fb61c323d357055"
    },
    "snapshot": true,
    "summary": {
@@ -6015,27 +6015,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1001,
+    "wallMs": 1088,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 172.1,
-    "baseRssMb": 69.5,
-    "afterParseMs": 99,
-    "load": 1.3
+    "peakRssMb": 161.4,
+    "baseRssMb": 69.3,
+    "afterParseMs": 114,
+    "load": 3.5
    },
    "stages": {
-    "mesh": 64,
-    "segment": 139,
-    "bvh": 139,
-    "shape": 94,
-    "outline": 51,
-    "features": 14,
-    "thickness": 94,
-    "access": 132,
-    "overhang": 12,
-    "selfIntersect": 88,
-    "total": 827
+    "mesh": 73,
+    "segment": 163,
+    "bvh": 131,
+    "shape": 130,
+    "outline": 92,
+    "features": 31,
+    "thickness": 88,
+    "access": 129,
+    "overhang": 17,
+    "selfIntersect": 74,
+    "total": 928
    }
   },
   "open-sphere-10k": {
@@ -6050,7 +6050,7 @@
    "hash": {
     "geometry": "81cf8ad8990f51e498f92426cae39d43c25d8ddaf3f073602e2bb51179e4def1",
     "dfm": "9355636b2f5e59404ad9485abb60838f90f50b38147656014a4ce15654b16c4c",
-    "price": "4a8e878a2e46919eefeade4fe86f23d5b612055f3d53eb830f1ca20fbb66fd6a"
+    "price": "5d3e681aef46c3d324e3a3b61a53c2f72e46b7c13b897614f08f5d365c571e9e"
    },
    "snapshot": true,
    "summary": {
@@ -6061,27 +6061,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 316,
+    "wallMs": 400,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 92,
-    "baseRssMb": 65.6,
-    "afterParseMs": 76,
-    "load": 1.3
+    "peakRssMb": 90,
+    "baseRssMb": 65.2,
+    "afterParseMs": 94,
+    "load": 3.3
    },
    "stages": {
-    "mesh": 24,
-    "segment": 37,
-    "bvh": 35,
-    "shape": 46,
-    "outline": 23,
+    "mesh": 32,
+    "segment": 54,
+    "bvh": 56,
+    "shape": 47,
+    "outline": 39,
     "features": 0,
-    "thickness": 33,
-    "access": 45,
-    "overhang": 5,
-    "selfIntersect": 19,
-    "total": 267
+    "thickness": 35,
+    "access": 43,
+    "overhang": 3,
+    "selfIntersect": 25,
+    "total": 334
    }
   },
   "open-sphere-1k": {
@@ -6096,7 +6096,7 @@
    "hash": {
     "geometry": "f817dc93985943e0bdfa86f79881cef8ab9c2491bfe8af7233070e07308911c8",
     "dfm": "14bfb1422f991811723ffd59a7fc5273b155994a9f955dab65f758d8fe43aaeb",
-    "price": "73cd129a637ac7f0a54a6def7040e5630735a29d5d8b48f3cbd7413eb8487bea"
+    "price": "68ebb54b1128fa3e7752d45d36275be3951d2e7a6b0d54ab14059047d6b42df6"
    },
    "snapshot": true,
    "summary": {
@@ -6107,27 +6107,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 72,
+    "wallMs": 112,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 74.3,
-    "baseRssMb": 64.9,
-    "afterParseMs": 62,
-    "load": 1.3
+    "baseRssMb": 65.3,
+    "afterParseMs": 91,
+    "load": 3.3
    },
    "stages": {
-    "mesh": 3,
-    "segment": 6,
-    "bvh": 3,
-    "shape": 10,
-    "outline": 4,
+    "mesh": 4,
+    "segment": 8,
+    "bvh": 5,
+    "shape": 17,
+    "outline": 3,
     "features": 0,
-    "thickness": 9,
-    "access": 15,
+    "thickness": 13,
+    "access": 31,
     "overhang": 0,
-    "selfIntersect": 8,
-    "total": 58
+    "selfIntersect": 14,
+    "total": 95
    }
   },
   "plate-100k": {
@@ -6142,7 +6142,7 @@
    "hash": {
     "geometry": "9a45ade54556f66498583f091de5d320344563463fef333c68511a055c41313a",
     "dfm": "90ddea55a53ac0d6af1304395c57e0ba9e0169024684b347b2dd80a9d68340e4",
-    "price": "d4b781bf2b6f3e285c3a075d751fe549f32c8b13a1dac5fa8adb925a733e63ed"
+    "price": "e72dea116a4af124899e4b8f3b65a4942a680c7997bec3719de2da5ad90a1764"
    },
    "snapshot": true,
    "summary": {
@@ -6153,27 +6153,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1352,
+    "wallMs": 1171,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 170.5,
-    "baseRssMb": 69,
-    "afterParseMs": 144,
-    "load": 1.4
+    "peakRssMb": 182.4,
+    "baseRssMb": 69.1,
+    "afterParseMs": 117,
+    "load": 1.3
    },
    "stages": {
     "mesh": 55,
-    "segment": 232,
-    "bvh": 111,
-    "shape": 120,
-    "outline": 116,
-    "features": 158,
-    "thickness": 163,
-    "access": 66,
-    "overhang": 4,
-    "selfIntersect": 150,
-    "total": 1178
+    "segment": 177,
+    "bvh": 87,
+    "shape": 109,
+    "outline": 115,
+    "features": 149,
+    "thickness": 151,
+    "access": 56,
+    "overhang": 2,
+    "selfIntersect": 123,
+    "total": 1027
    }
   },
   "plate-100k-3mf": {
@@ -6188,7 +6188,7 @@
    "hash": {
     "geometry": "f6386bef4dea3906b77d1c55f303180068ff59a28d091ff5942932f8e4b3b012",
     "dfm": "e72208a19844043407f116c20bb3a5b3b8c228078fad366c6a8603544139d0e7",
-    "price": "dce5366eb544efac245677b4c2896165b48833df598a6b44256c241538ec8820"
+    "price": "ac74ef77e782410d1d079f18ff3b11d8a801185b5b571e3c4582bf92a8c6ae48"
    },
    "snapshot": true,
    "summary": {
@@ -6199,27 +6199,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 2058,
+    "wallMs": 1823,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 219.3,
+    "peakRssMb": 214.6,
     "baseRssMb": 65.7,
     "afterParseMs": 128,
-    "load": 1.4
+    "load": 1.3
    },
    "stages": {
-    "mesh": 99,
-    "segment": 179,
-    "bvh": 83,
-    "shape": 136,
-    "outline": 121,
-    "features": 148,
-    "thickness": 158,
-    "access": 61,
+    "mesh": 53,
+    "segment": 177,
+    "bvh": 91,
+    "shape": 86,
+    "outline": 110,
+    "features": 149,
+    "thickness": 175,
+    "access": 53,
     "overhang": 3,
-    "selfIntersect": 130,
-    "total": 1121
+    "selfIntersect": 128,
+    "total": 1027
    }
   },
   "plate-10k": {
@@ -6234,7 +6234,7 @@
    "hash": {
     "geometry": "34a960efc3c54d3b977e8cdc3f8b62af4b175dfcdb2fbeb2d7c10243861f0d4a",
     "dfm": "70ff01f9180f8690b6f6f6b0964bb9b8bfb63fbb9c4d3b96c8c82a882ca92fae",
-    "price": "43c135274751cbe8964bd731d1c9c86b79629f83100f5c89d95030f1448d7d3b"
+    "price": "fa343278128f02ea28348913510bd676319c4d65c97bf30728679f2cb596dbad"
    },
    "snapshot": true,
    "summary": {
@@ -6245,27 +6245,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 413,
+    "wallMs": 383,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 92,
-    "baseRssMb": 64.4,
-    "afterParseMs": 82,
+    "peakRssMb": 94.9,
+    "baseRssMb": 65.5,
+    "afterParseMs": 69,
     "load": 1.3
    },
    "stages": {
-    "mesh": 19,
-    "segment": 43,
-    "bvh": 42,
-    "shape": 45,
-    "outline": 48,
-    "features": 39,
-    "thickness": 48,
-    "access": 39,
-    "overhang": 0,
-    "selfIntersect": 44,
-    "total": 367
+    "mesh": 16,
+    "segment": 52,
+    "bvh": 26,
+    "shape": 49,
+    "outline": 52,
+    "features": 40,
+    "thickness": 39,
+    "access": 34,
+    "overhang": 1,
+    "selfIntersect": 38,
+    "total": 348
    }
   },
   "plate-10k-3mf": {
@@ -6280,7 +6280,7 @@
    "hash": {
     "geometry": "117a38a129e4cf1312db69b56984154148f41286a5c0be2196d3f483fdd3e798",
     "dfm": "bf82868547e0ef5beece709cc5a96cde46b016816ebc4f3cea56a6380d8fa3e0",
-    "price": "e92ae3da0704126d63a7548acf1283723d03bcf608018067f5621bcec91ca0a0"
+    "price": "2b81e5cc78f7085c0fc6fe7d205cbb52d2c58a5c6d3f147faff1178e5f7cb74b"
    },
    "snapshot": true,
    "summary": {
@@ -6291,27 +6291,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 532,
+    "wallMs": 513,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 120.6,
+    "peakRssMb": 117.2,
     "baseRssMb": 65.3,
-    "afterParseMs": 88,
-    "load": 1.4
+    "afterParseMs": 71,
+    "load": 1.3
    },
    "stages": {
-    "mesh": 18,
-    "segment": 46,
-    "bvh": 53,
-    "shape": 41,
-    "outline": 43,
-    "features": 40,
-    "thickness": 36,
-    "access": 28,
-    "overhang": 4,
+    "mesh": 32,
+    "segment": 54,
+    "bvh": 36,
+    "shape": 35,
+    "outline": 37,
+    "features": 33,
+    "thickness": 38,
+    "access": 32,
+    "overhang": 1,
     "selfIntersect": 35,
-    "total": 345
+    "total": 333
    }
   },
   "plate-10k-ascii": {
@@ -6326,7 +6326,7 @@
    "hash": {
     "geometry": "0bea6e5a763ab6977d68cf7020a280ab7856c482adfb48c9b42089451d9957d8",
     "dfm": "bf82868547e0ef5beece709cc5a96cde46b016816ebc4f3cea56a6380d8fa3e0",
-    "price": "e92ae3da0704126d63a7548acf1283723d03bcf608018067f5621bcec91ca0a0"
+    "price": "2b81e5cc78f7085c0fc6fe7d205cbb52d2c58a5c6d3f147faff1178e5f7cb74b"
    },
    "snapshot": true,
    "summary": {
@@ -6337,27 +6337,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 456,
+    "wallMs": 410,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 100.1,
-    "baseRssMb": 66.7,
-    "afterParseMs": 84,
-    "load": 1.4
+    "peakRssMb": 98.2,
+    "baseRssMb": 66.1,
+    "afterParseMs": 81,
+    "load": 1.3
    },
    "stages": {
-    "mesh": 31,
-    "segment": 49,
-    "bvh": 44,
-    "shape": 40,
-    "outline": 34,
-    "features": 44,
+    "mesh": 27,
+    "segment": 52,
+    "bvh": 30,
+    "shape": 37,
+    "outline": 42,
+    "features": 32,
     "thickness": 39,
-    "access": 33,
+    "access": 35,
     "overhang": 1,
-    "selfIntersect": 45,
-    "total": 360
+    "selfIntersect": 36,
+    "total": 332
    }
   },
   "plate-1k": {
@@ -6372,7 +6372,7 @@
    "hash": {
     "geometry": "1c645e854e89e590267c8b3404e7a709f521c054d7222002fa7023deb9054301",
     "dfm": "0fac2c348043540e2f812117d70a34b9e611acd41448f877a4c16facdd43b650",
-    "price": "0b00e9a7c26db5cddfdb7be3f2e4d469ab4159e1f8122509ba2971ae3b09c946"
+    "price": "75e66715aee0b2528d85f993e1424ba69659d68811a36c6bbc0c173d4d70e2a5"
    },
    "snapshot": true,
    "summary": {
@@ -6383,27 +6383,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 77,
+    "wallMs": 81,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 74,
-    "baseRssMb": 64.9,
-    "afterParseMs": 76,
+    "peakRssMb": 74.9,
+    "baseRssMb": 65.2,
+    "afterParseMs": 70,
     "load": 1.3
    },
    "stages": {
-    "mesh": 3,
-    "segment": 6,
+    "mesh": 4,
+    "segment": 5,
     "bvh": 3,
-    "shape": 12,
-    "outline": 4,
-    "features": 7,
-    "thickness": 4,
-    "access": 9,
+    "shape": 13,
+    "outline": 5,
+    "features": 9,
+    "thickness": 3,
+    "access": 12,
     "overhang": 0,
-    "selfIntersect": 14,
-    "total": 63
+    "selfIntersect": 15,
+    "total": 69
    }
   },
   "plate-1k-3mf": {
@@ -6418,7 +6418,7 @@
    "hash": {
     "geometry": "3e50dc6fae2bddb5d4b174cc02107083fc4d324ff735ad684905fe4e16d7763d",
     "dfm": "0fac2c348043540e2f812117d70a34b9e611acd41448f877a4c16facdd43b650",
-    "price": "0b00e9a7c26db5cddfdb7be3f2e4d469ab4159e1f8122509ba2971ae3b09c946"
+    "price": "75e66715aee0b2528d85f993e1424ba69659d68811a36c6bbc0c173d4d70e2a5"
    },
    "snapshot": true,
    "summary": {
@@ -6429,27 +6429,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 146,
+    "wallMs": 117,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 77.4,
-    "baseRssMb": 65.2,
-    "afterParseMs": 93,
-    "load": 1.4
+    "peakRssMb": 77.9,
+    "baseRssMb": 64.5,
+    "afterParseMs": 75,
+    "load": 1.3
    },
    "stages": {
-    "mesh": 3,
-    "segment": 6,
-    "bvh": 3,
-    "shape": 19,
-    "outline": 5,
-    "features": 6,
-    "thickness": 12,
-    "access": 16,
+    "mesh": 2,
+    "segment": 4,
+    "bvh": 4,
+    "shape": 23,
+    "outline": 4,
+    "features": 7,
+    "thickness": 6,
+    "access": 10,
     "overhang": 0,
-    "selfIntersect": 20,
-    "total": 91
+    "selfIntersect": 14,
+    "total": 75
    }
   },
   "plate-1k-ascii": {
@@ -6464,7 +6464,7 @@
    "hash": {
     "geometry": "bf7baf896f465402c29cde5913356779942fcd06ceeab980b9aec2c2fffccdd8",
     "dfm": "0fac2c348043540e2f812117d70a34b9e611acd41448f877a4c16facdd43b650",
-    "price": "0b00e9a7c26db5cddfdb7be3f2e4d469ab4159e1f8122509ba2971ae3b09c946"
+    "price": "75e66715aee0b2528d85f993e1424ba69659d68811a36c6bbc0c173d4d70e2a5"
    },
    "snapshot": true,
    "summary": {
@@ -6475,27 +6475,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 108,
+    "wallMs": 95,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.1,
+    "peakRssMb": 74.1,
     "baseRssMb": 65.3,
-    "afterParseMs": 82,
-    "load": 1.4
+    "afterParseMs": 58,
+    "load": 1.3
    },
    "stages": {
-    "mesh": 3,
+    "mesh": 2,
     "segment": 6,
-    "bvh": 3,
-    "shape": 15,
-    "outline": 6,
-    "features": 12,
-    "thickness": 2,
-    "access": 15,
+    "bvh": 4,
+    "shape": 16,
+    "outline": 5,
+    "features": 10,
+    "thickness": 5,
+    "access": 8,
     "overhang": 0,
-    "selfIntersect": 19,
-    "total": 81
+    "selfIntersect": 18,
+    "total": 74
    }
   },
   "plate-500k": {
@@ -6556,7 +6556,7 @@
    "hash": {
     "geometry": "32ada194ef1959e4e68d97855e07aad5e9f626af6596ad36ee4ac6d6eae8e952",
     "dfm": "8985c962b15f345e30e245e5e14a7329872a6a6e5911c0435668d9fd8e292099",
-    "price": "0b8458fe1024a1a59335a33ab0a3a52ebbf9931705373d2e7bd897b44a12683e"
+    "price": "a36e1bc4a29de5d35354ea36c5cd960b97dcc84d361c395f870775936b54c665"
    },
    "snapshot": true,
    "summary": {
@@ -6567,27 +6567,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 647,
+    "wallMs": 446,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 93.9,
+    "peakRssMb": 95.3,
     "baseRssMb": 65.6,
-    "afterParseMs": 114,
-    "load": 1.5
+    "afterParseMs": 97,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 23,
-    "segment": 96,
-    "bvh": 72,
-    "shape": 58,
-    "outline": 96,
-    "features": 70,
-    "thickness": 51,
-    "access": 70,
+    "mesh": 17,
+    "segment": 32,
+    "bvh": 31,
+    "shape": 64,
+    "outline": 55,
+    "features": 40,
+    "thickness": 47,
+    "access": 76,
     "overhang": 1,
-    "selfIntersect": 43,
-    "total": 581
+    "selfIntersect": 44,
+    "total": 407
    }
   },
   "plate-dense-100k": {
@@ -6602,7 +6602,7 @@
    "hash": {
     "geometry": "e88f20c1a3383a4205cc06955630e1ccb41aa50e1c21cad9ae6625f4f1f0efba",
     "dfm": "f6baa38ed091674f0c0d2a70addc7b2efef82a5c0b74f5450fee63ed52566778",
-    "price": "4d2db0b6e6542a34451a726aa5f0e36157bc54fd0df0af0aca2f9f04f6db3d8d"
+    "price": "64145502d6701d1307486c10477db3d8c1779f5cbacb4eace80662aa9e26555b"
    },
    "snapshot": true,
    "summary": {
@@ -6613,27 +6613,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1325,
+    "wallMs": 1358,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 150.8,
-    "baseRssMb": 68.1,
-    "afterParseMs": 101,
-    "load": 1.4
+    "peakRssMb": 153.3,
+    "baseRssMb": 67.9,
+    "afterParseMs": 104,
+    "load": 1.3
    },
    "stages": {
-    "mesh": 46,
-    "segment": 84,
-    "bvh": 71,
-    "shape": 75,
-    "outline": 244,
-    "features": 41,
-    "thickness": 139,
-    "access": 57,
+    "mesh": 41,
+    "segment": 104,
+    "bvh": 85,
+    "shape": 82,
+    "outline": 200,
+    "features": 42,
+    "thickness": 221,
+    "access": 67,
     "overhang": 3,
-    "selfIntersect": 408,
-    "total": 1168
+    "selfIntersect": 385,
+    "total": 1231
    }
   },
   "plate-dense-10k": {
@@ -6648,7 +6648,7 @@
    "hash": {
     "geometry": "12072ebe6e3ec5a3ffd0c00ad94fb42d0df41ec0874450404227d046a5d9fd0f",
     "dfm": "cf615473b767f12cae582bf3d5d95ccd8ca0e608ee06b2bf180c4e137ab92826",
-    "price": "c63aba5559c8be4a297613d58c4113579886f53360dec8419a7795c78cacd3cf"
+    "price": "b1760611b8d12a28460def88e5713286599242d057a393a8b7f264ef726510cd"
    },
    "snapshot": true,
    "summary": {
@@ -6659,27 +6659,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 308,
+    "wallMs": 365,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 90.3,
+    "peakRssMb": 89.6,
     "baseRssMb": 65.5,
-    "afterParseMs": 86,
-    "load": 1.4
+    "afterParseMs": 111,
+    "load": 1.3
    },
    "stages": {
-    "mesh": 13,
-    "segment": 23,
-    "bvh": 20,
-    "shape": 54,
-    "outline": 35,
-    "features": 21,
-    "thickness": 23,
-    "access": 51,
+    "mesh": 17,
+    "segment": 20,
+    "bvh": 39,
+    "shape": 47,
+    "outline": 57,
+    "features": 29,
+    "thickness": 32,
+    "access": 43,
     "overhang": 1,
-    "selfIntersect": 27,
-    "total": 268
+    "selfIntersect": 39,
+    "total": 325
    }
   },
   "plate-dense-500k": {
@@ -6740,7 +6740,7 @@
    "hash": {
     "geometry": "d2429db93468aab41943027eb292a2d75082b65c4126ea38833ae0e8afd9b41a",
     "dfm": "da9028d44de751862bc15a012818444829a9c69b3d195ad0dba997a38e365191",
-    "price": "5a74ad1dfaa1ee7e85c7d6a0a63abd4e4dd2a51dc5954fabffb84a2f4f785c6e"
+    "price": "293b86a8526afea1ea947345e3f8e9df2f9760a78ff13866d7ddee8caecd4ad4"
    },
    "snapshot": true,
    "summary": {
@@ -6751,27 +6751,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 582,
+    "wallMs": 692,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 98.1,
-    "baseRssMb": 65.9,
-    "afterParseMs": 97,
-    "load": 1.6
+    "peakRssMb": 102.2,
+    "baseRssMb": 65.6,
+    "afterParseMs": 103,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 26,
-    "segment": 88,
-    "bvh": 60,
-    "shape": 55,
-    "outline": 50,
-    "features": 40,
-    "thickness": 94,
-    "access": 53,
-    "overhang": 2,
-    "selfIntersect": 54,
-    "total": 523
+    "mesh": 29,
+    "segment": 111,
+    "bvh": 88,
+    "shape": 71,
+    "outline": 69,
+    "features": 73,
+    "thickness": 98,
+    "access": 61,
+    "overhang": 1,
+    "selfIntersect": 36,
+    "total": 637
    }
   },
   "plate-pockets-only-10k": {
@@ -6786,7 +6786,7 @@
    "hash": {
     "geometry": "1e8e21ffd53d6f2f27a93e684a51152b60d328ccf1fc46989be98a76a09f46f1",
     "dfm": "b6eafcd6cd5dffd2a0b25784e3e531cf76da2c2766c55eda3b4a43001c28e415",
-    "price": "63b128715f87708ca3bf370edbf84b929bb514b3eeb7dfe821be8c0e9e2ffab8"
+    "price": "12790134c3f67827d83cb6497cc46332f65a39cdd60e24dd75eb1b7b35f89146"
    },
    "snapshot": true,
    "summary": {
@@ -6797,27 +6797,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 422,
+    "wallMs": 554,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 98,
-    "baseRssMb": 65.8,
-    "afterParseMs": 83,
-    "load": 1.6
+    "peakRssMb": 94.7,
+    "baseRssMb": 65.6,
+    "afterParseMs": 100,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 16,
-    "segment": 39,
-    "bvh": 70,
-    "shape": 40,
-    "outline": 28,
-    "features": 63,
-    "thickness": 49,
-    "access": 41,
-    "overhang": 1,
+    "mesh": 27,
+    "segment": 87,
+    "bvh": 42,
+    "shape": 58,
+    "outline": 55,
+    "features": 86,
+    "thickness": 63,
+    "access": 44,
+    "overhang": 0,
     "selfIntersect": 35,
-    "total": 383
+    "total": 499
    }
   },
   "plate-tilted-10k": {
@@ -6832,7 +6832,7 @@
    "hash": {
     "geometry": "538ca5b686b3ad63ebd8539967cc91dea666abd983d238e72137597498938a98",
     "dfm": "fe9f4408d0041308cb3f1c6c28098009e73b3c8e0803ad6de11b458063a6da24",
-    "price": "5496f6ccc6fbe8e6de7b2b74d3c8721739d743f454fd17be4ebffe797ab9acf1"
+    "price": "fa150827a5fb3d53430e9dd459b2fe4bf52e8febea851e21119a8ed82f754b96"
    },
    "snapshot": true,
    "summary": {
@@ -6843,27 +6843,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 429,
+    "wallMs": 485,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 97.2,
-    "baseRssMb": 65.6,
-    "afterParseMs": 71,
-    "load": 1.6
+    "peakRssMb": 96.7,
+    "baseRssMb": 65.7,
+    "afterParseMs": 86,
+    "load": 1.5
    },
    "stages": {
     "mesh": 17,
-    "segment": 47,
-    "bvh": 47,
-    "shape": 49,
-    "outline": 53,
-    "features": 39,
-    "thickness": 47,
-    "access": 49,
-    "overhang": 8,
-    "selfIntersect": 29,
-    "total": 386
+    "segment": 73,
+    "bvh": 63,
+    "shape": 46,
+    "outline": 65,
+    "features": 50,
+    "thickness": 42,
+    "access": 48,
+    "overhang": 5,
+    "selfIntersect": 34,
+    "total": 443
    }
   },
   "relief-100k": {
@@ -6878,7 +6878,7 @@
    "hash": {
     "geometry": "97cd617bb8e124c26737f5bc31a4de681da13407241ab74fc03284c91ff4b710",
     "dfm": "7e92c5947ff1de406c3f068b7fde9dccd26beb85640d856e3616ccc5b982b4b4",
-    "price": "b84271b6e40c45701845f40e9ef6b9f69449a7f89814b8d6b9f11081507f019a"
+    "price": "ea1abaa1174e9dce6be1532ed54fa325bc45ebc5866ad1146e678ffb11e7798b"
    },
    "snapshot": true,
    "summary": {
@@ -6889,27 +6889,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1327,
+    "wallMs": 1803,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 218.5,
-    "baseRssMb": 74,
-    "afterParseMs": 97,
-    "load": 1.5
+    "peakRssMb": 216.1,
+    "baseRssMb": 73.9,
+    "afterParseMs": 142,
+    "load": 2.1
    },
    "stages": {
-    "mesh": 115,
-    "segment": 220,
-    "bvh": 169,
-    "shape": 125,
-    "outline": 56,
-    "features": 39,
-    "thickness": 97,
-    "access": 146,
-    "overhang": 15,
-    "selfIntersect": 107,
-    "total": 1090
+    "mesh": 141,
+    "segment": 361,
+    "bvh": 269,
+    "shape": 193,
+    "outline": 80,
+    "features": 54,
+    "thickness": 123,
+    "access": 185,
+    "overhang": 38,
+    "selfIntersect": 111,
+    "total": 1556
    }
   },
   "relief-10k": {
@@ -6924,7 +6924,7 @@
    "hash": {
     "geometry": "c49ce0cc9bc5d4865f9fc0f8733a985a92c6443f82fa47bed1d22a0f45a4a51b",
     "dfm": "892871869d7a6ba7fdc5371d4d6838873a135abfc2f3178f5dd6c4bf65361557",
-    "price": "cf946520f0d47fcd5bdab8d4537c3bdac4380385dff7453ce6f4b4b67a50fb82"
+    "price": "e7c149fe85e07a84dd8bb4ce5c198d5a0da6a5ccbac2ac081145c80f35eb04d0"
    },
    "snapshot": true,
    "summary": {
@@ -6935,27 +6935,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 631,
+    "wallMs": 586,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 101.7,
-    "baseRssMb": 66,
-    "afterParseMs": 69,
-    "load": 1.5
+    "peakRssMb": 97.6,
+    "baseRssMb": 65.6,
+    "afterParseMs": 103,
+    "load": 2.1
    },
    "stages": {
-    "mesh": 31,
-    "segment": 111,
-    "bvh": 59,
-    "shape": 85,
-    "outline": 40,
-    "features": 18,
-    "thickness": 69,
-    "access": 77,
-    "overhang": 8,
-    "selfIntersect": 51,
-    "total": 549
+    "mesh": 25,
+    "segment": 90,
+    "bvh": 50,
+    "shape": 74,
+    "outline": 37,
+    "features": 21,
+    "thickness": 57,
+    "access": 99,
+    "overhang": 12,
+    "selfIntersect": 54,
+    "total": 519
    }
   },
   "relief-1k": {
@@ -6970,7 +6970,7 @@
    "hash": {
     "geometry": "2f4302985f3d4088382c8db5de76f8cd6307a447e91fa0115504243ea1d700cb",
     "dfm": "4c2168808167f7ab6acd33b128a9d7e4fe72404734d75b4f7e616f302ec9f011",
-    "price": "1d570beeeb0be53559f87fdce23df0d80683f2a1b48cb656b2463137593a59b5"
+    "price": "c7353d291ef461a655ccd7c538ac2812f705316c70786c1ece1c763c6e209428"
    },
    "snapshot": true,
    "summary": {
@@ -6981,27 +6981,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 139,
+    "wallMs": 211,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 77.1,
-    "baseRssMb": 65.5,
-    "afterParseMs": 67,
-    "load": 1.5
+    "peakRssMb": 74.5,
+    "baseRssMb": 63.5,
+    "afterParseMs": 101,
+    "load": 2.1
    },
    "stages": {
-    "mesh": 5,
-    "segment": 11,
-    "bvh": 6,
-    "shape": 20,
-    "outline": 4,
-    "features": 10,
-    "thickness": 11,
-    "access": 20,
-    "overhang": 0,
-    "selfIntersect": 32,
-    "total": 119
+    "mesh": 10,
+    "segment": 19,
+    "bvh": 9,
+    "shape": 37,
+    "outline": 7,
+    "features": 20,
+    "thickness": 16,
+    "access": 27,
+    "overhang": 1,
+    "selfIntersect": 24,
+    "total": 170
    }
   },
   "relief-500k": {
@@ -7049,7 +7049,7 @@
    "hash": {
     "geometry": "a61bbd9285cae41e9367f780f5c341a65abca6e0bd976d54f01422011d6019dd",
     "dfm": "f57e45a2d68dd875c004379c7714677a580c5cf608c1ecf2198154d92eee3028",
-    "price": "890f755bdf573d9c1b4a9b32e5d0f85a9fb40aeba60e69b69a8d38c0dbc3274b"
+    "price": "93a8c68d1b25645bccaa8b03dee9f670137d8ee80a2af8d0dc57af7c0143dac7"
    },
    "snapshot": true,
    "summary": {
@@ -7060,27 +7060,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1092,
+    "wallMs": 964,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 195.4,
+    "peakRssMb": 194.5,
     "baseRssMb": 69.9,
-    "afterParseMs": 116,
-    "load": 1.3
+    "afterParseMs": 82,
+    "load": 1.4
    },
    "stages": {
     "mesh": 65,
-    "segment": 182,
-    "bvh": 90,
-    "shape": 62,
-    "outline": 71,
+    "segment": 164,
+    "bvh": 79,
+    "shape": 51,
+    "outline": 74,
     "features": 0,
-    "thickness": 132,
-    "access": 194,
+    "thickness": 115,
+    "access": 153,
     "overhang": 9,
-    "selfIntersect": 110,
-    "total": 915
+    "selfIntersect": 84,
+    "total": 795
    }
   },
   "roughblob-10k": {
@@ -7095,7 +7095,7 @@
    "hash": {
     "geometry": "3845c4b8e69b7c8a3d4315ab7d3c97082c39550f40ac1d71d63bee6e2c7db400",
     "dfm": "23aeee177c48548145280a94c89daf511e380a64390af82183677fe3e8d3eee4",
-    "price": "bf3162766ce2770e25646159c7af01e33c80f8f560325fb90469410d8969b066"
+    "price": "bdda216b3cb913d8e7fb367f3242d2567f370da5d7d620f312e300e21040eddb"
    },
    "snapshot": true,
    "summary": {
@@ -7106,27 +7106,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 409,
+    "wallMs": 350,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 95.5,
+    "peakRssMb": 92.5,
     "baseRssMb": 65.6,
-    "afterParseMs": 87,
-    "load": 1.3
+    "afterParseMs": 73,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 20,
-    "segment": 50,
-    "bvh": 43,
-    "shape": 48,
-    "outline": 27,
+    "mesh": 18,
+    "segment": 46,
+    "bvh": 35,
+    "shape": 39,
+    "outline": 26,
     "features": 0,
-    "thickness": 53,
-    "access": 84,
-    "overhang": 6,
+    "thickness": 41,
+    "access": 65,
+    "overhang": 3,
     "selfIntersect": 31,
-    "total": 362
+    "total": 304
    }
   },
   "roughblob-1k": {
@@ -7141,7 +7141,7 @@
    "hash": {
     "geometry": "81ec38881e5bb117a814298e8f51f4184fc8a74083176103f552cbc302cf27e4",
     "dfm": "d35e1bfd8a7d7436050a65237abb39a764c10db6522066f8d03305da63ad3178",
-    "price": "b0c3358c39e1bf2b3dd078f4ac07fe5851caa6cf82615c19a8a248f3aff6326a"
+    "price": "9a6ea1ba52592d4f009c5e8f2d461457b8bb3a564e8d19d130f8a960e5b79d30"
    },
    "snapshot": true,
    "summary": {
@@ -7152,27 +7152,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 80,
+    "wallMs": 76,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 74.5,
+    "peakRssMb": 74,
     "baseRssMb": 65.3,
-    "afterParseMs": 76,
-    "load": 1.3
+    "afterParseMs": 78,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 4,
+    "mesh": 3,
     "segment": 8,
     "bvh": 3,
-    "shape": 10,
+    "shape": 12,
     "outline": 5,
     "features": 0,
     "thickness": 10,
-    "access": 14,
-    "overhang": 1,
-    "selfIntersect": 11,
-    "total": 66
+    "access": 13,
+    "overhang": 0,
+    "selfIntersect": 10,
+    "total": 65
    }
   },
   "roughblob-500k": {
@@ -7233,7 +7233,7 @@
    "hash": {
     "geometry": "9c24a2a5c0c634246d66bf1c243ee0643f1f77eb0ada284b2e633e4fb23d8009",
     "dfm": "abf27e13b41fd60f690abd4386181d8863ec8993e8655592712af6822e32e918",
-    "price": "0ff55dd816d560c980a9e3032db83cd6541e64b3419ca0999292eb515962e884"
+    "price": "c137edd23560d1edb8be20aeca0a86d9d532d813280ef3574eb9255daffd86ae"
    },
    "snapshot": true,
    "summary": {
@@ -7244,27 +7244,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 2226,
+    "wallMs": 2363,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 182.2,
-    "baseRssMb": 70,
-    "afterParseMs": 109,
-    "load": 1.6
+    "peakRssMb": 185.7,
+    "baseRssMb": 69.9,
+    "afterParseMs": 117,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 60,
-    "segment": 70,
-    "bvh": 94,
-    "shape": 104,
-    "outline": 27,
-    "features": 101,
-    "thickness": 196,
-    "access": 282,
-    "overhang": 7,
-    "selfIntersect": 1119,
-    "total": 2060
+    "mesh": 68,
+    "segment": 107,
+    "bvh": 136,
+    "shape": 126,
+    "outline": 25,
+    "features": 221,
+    "thickness": 260,
+    "access": 324,
+    "overhang": 11,
+    "selfIntersect": 913,
+    "total": 2192
    }
   },
   "shaft-10k": {
@@ -7279,7 +7279,7 @@
    "hash": {
     "geometry": "deb65adaee1ff1f7eaeba72269aeae0e403fd015d77e26ebd964bd5d87d158e7",
     "dfm": "2112e45b3b8e07ed6bdfaac52c9d60467de9129b099229807691e1ef45feefa3",
-    "price": "056d0e16e0626f6864d9a4c6b4594d41595b5e97f3e4e4ee05e2fbb6966aa25f"
+    "price": "07e8d2f3af8f2bed0d4391422acb7608987802b9d9a8c426022020e47f627f0e"
    },
    "snapshot": true,
    "summary": {
@@ -7290,27 +7290,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 450,
+    "wallMs": 655,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 93.5,
-    "baseRssMb": 65.7,
-    "afterParseMs": 96,
-    "load": 1.6
+    "peakRssMb": 93.1,
+    "baseRssMb": 65.4,
+    "afterParseMs": 106,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 16,
-    "segment": 38,
-    "bvh": 31,
-    "shape": 45,
-    "outline": 49,
-    "features": 41,
-    "thickness": 56,
-    "access": 65,
-    "overhang": 6,
-    "selfIntersect": 57,
-    "total": 404
+    "mesh": 26,
+    "segment": 98,
+    "bvh": 45,
+    "shape": 56,
+    "outline": 104,
+    "features": 50,
+    "thickness": 69,
+    "access": 86,
+    "overhang": 7,
+    "selfIntersect": 68,
+    "total": 609
    }
   },
   "shaft-1k": {
@@ -7325,7 +7325,7 @@
    "hash": {
     "geometry": "333c057e3a3f6b51d98ba92d42652fe45d25504ed931da9146c705cde4cf72ba",
     "dfm": "303e02978b49ab4060944f77b715fa5233e95cfa3bfbad06feace295d0e0638c",
-    "price": "f0e918e98abb66f065162762dad07f97d9f98f24928874b2ba0cb471adc5caf5"
+    "price": "3b626145a23a757649f4a4f1962a45428e34bf87b7f5369b16fcafd2f3354f4d"
    },
    "snapshot": true,
    "summary": {
@@ -7336,27 +7336,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 101,
+    "wallMs": 139,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 76.2,
+    "peakRssMb": 76,
     "baseRssMb": 65.2,
-    "afterParseMs": 64,
-    "load": 1.6
+    "afterParseMs": 77,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 7,
-    "segment": 8,
-    "bvh": 3,
-    "shape": 15,
-    "outline": 9,
-    "features": 6,
-    "thickness": 9,
-    "access": 14,
-    "overhang": 1,
-    "selfIntersect": 15,
-    "total": 87
+    "mesh": 4,
+    "segment": 12,
+    "bvh": 2,
+    "shape": 31,
+    "outline": 10,
+    "features": 11,
+    "thickness": 15,
+    "access": 16,
+    "overhang": 0,
+    "selfIntersect": 19,
+    "total": 120
    }
   },
   "shattered-100k": {
@@ -7371,7 +7371,7 @@
    "hash": {
     "geometry": "647fd216ee8069aae727c1a3bffe56cbb677fbc518d5807392f2cf64f3ff2fc3",
     "dfm": "68104d7dd35dd3660f1847975e0658db366f4aaa4a9c473b3f6a91eed3898747",
-    "price": "4f84ba99ac21869605dd985bfcf355adf1077de5036e784219802d726772f021"
+    "price": "2df09c8a6648daf11e61a9795ce312fad4fe6b4b8b37946175c45eb71873be03"
    },
    "snapshot": true,
    "summary": {
@@ -7382,27 +7382,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1698,
+    "wallMs": 1992,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 327.2,
-    "baseRssMb": 70.1,
-    "afterParseMs": 94,
-    "load": 1.6
+    "peakRssMb": 326.5,
+    "baseRssMb": 69.9,
+    "afterParseMs": 129,
+    "load": 3.5
    },
    "stages": {
-    "mesh": 77,
-    "segment": 132,
-    "bvh": 95,
-    "shape": 202,
-    "outline": 592,
-    "features": 51,
-    "thickness": 140,
-    "access": 145,
-    "overhang": 14,
+    "mesh": 82,
+    "segment": 198,
+    "bvh": 129,
+    "shape": 244,
+    "outline": 701,
+    "features": 56,
+    "thickness": 133,
+    "access": 140,
+    "overhang": 22,
     "selfIntersect": 0,
-    "total": 1448
+    "total": 1706
    }
   },
   "shattered-10k": {
@@ -7417,7 +7417,7 @@
    "hash": {
     "geometry": "ddabd59c9ac7665155398aa697a29545710458dc06c8d2839038e25863981e0f",
     "dfm": "3b4010acb6b8a64b67934ff1a88192279ed1cbf635dffd6caf175ac3e52a6067",
-    "price": "0c4a0be9c6ca0050b9338633dc661cd3a1ee73f9f069274d30e5d60ee087d1ce"
+    "price": "0351036d7359c90401fa9bb126072f1ec48cf959665a6ca741274bf46cd7e834"
    },
    "snapshot": true,
    "summary": {
@@ -7428,27 +7428,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 395,
+    "wallMs": 555,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 117.3,
-    "baseRssMb": 65.6,
-    "afterParseMs": 83,
-    "load": 1.6
+    "peakRssMb": 117.2,
+    "baseRssMb": 65.2,
+    "afterParseMs": 90,
+    "load": 3.5
    },
    "stages": {
-    "mesh": 23,
-    "segment": 29,
-    "bvh": 28,
-    "shape": 85,
-    "outline": 77,
-    "features": 13,
-    "thickness": 38,
-    "access": 43,
-    "overhang": 4,
+    "mesh": 37,
+    "segment": 42,
+    "bvh": 34,
+    "shape": 102,
+    "outline": 135,
+    "features": 16,
+    "thickness": 48,
+    "access": 66,
+    "overhang": 7,
     "selfIntersect": 1,
-    "total": 341
+    "total": 488
    }
   },
   "shattered-1k": {
@@ -7463,7 +7463,7 @@
    "hash": {
     "geometry": "8a68769b683b2e1dc7c859a7ec187c91a2068d8733b3d90694b49686416ebc16",
     "dfm": "52398124b9cdc16062b87cb459a0972d7a836706faaab2e47faa2f1d4dcdabc9",
-    "price": "37139280bbf6d6ff4cb205fc0ecce7896bb8ad70744da718abd131ff2437e3ba"
+    "price": "83ee427b7843ea46e557470354b45b670350f9047ea359a3dabb5fb82eadc1c1"
    },
    "snapshot": true,
    "summary": {
@@ -7474,27 +7474,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 101,
+    "wallMs": 107,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 76.6,
-    "baseRssMb": 65.4,
-    "afterParseMs": 85,
-    "load": 1.6
+    "peakRssMb": 75.9,
+    "baseRssMb": 65,
+    "afterParseMs": 94,
+    "load": 3.5
    },
    "stages": {
     "mesh": 3,
     "segment": 5,
-    "bvh": 3,
-    "shape": 25,
-    "outline": 18,
-    "features": 8,
-    "thickness": 11,
-    "access": 12,
-    "overhang": 0,
-    "selfIntersect": 1,
-    "total": 86
+    "bvh": 5,
+    "shape": 29,
+    "outline": 19,
+    "features": 3,
+    "thickness": 15,
+    "access": 11,
+    "overhang": 1,
+    "selfIntersect": 0,
+    "total": 91
    }
   },
   "single-triangle": {
@@ -7519,14 +7519,14 @@
     "fullMessage": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 3,
+    "wallMs": 2,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65.2,
+    "baseRssMb": 65,
     "afterParseMs": 1,
-    "load": 1.5
+    "load": 1.4
    },
    "stages": null
   },
@@ -7553,27 +7553,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 2856,
+    "wallMs": 2889,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 326.9,
-    "baseRssMb": 70,
-    "afterParseMs": 117,
-    "load": 1.5
+    "peakRssMb": 314.4,
+    "baseRssMb": 69.9,
+    "afterParseMs": 102,
+    "load": 3.6
    },
    "stages": {
-    "mesh": 92,
-    "segment": 133,
-    "bvh": 131,
-    "shape": 278,
-    "outline": 721,
-    "features": 60,
-    "thickness": 352,
-    "access": 731,
-    "overhang": 60,
-    "selfIntersect": 3,
-    "total": 2562
+    "mesh": 108,
+    "segment": 174,
+    "bvh": 159,
+    "shape": 259,
+    "outline": 751,
+    "features": 56,
+    "thickness": 344,
+    "access": 714,
+    "overhang": 52,
+    "selfIntersect": 1,
+    "total": 2618
    }
   },
   "soup-10k": {
@@ -7599,27 +7599,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 573,
+    "wallMs": 712,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 123.2,
-    "baseRssMb": 65.8,
-    "afterParseMs": 83,
-    "load": 1.5
+    "peakRssMb": 123.3,
+    "baseRssMb": 65.2,
+    "afterParseMs": 106,
+    "load": 3.6
    },
    "stages": {
-    "mesh": 26,
-    "segment": 31,
-    "bvh": 28,
-    "shape": 107,
-    "outline": 126,
-    "features": 21,
-    "thickness": 44,
-    "access": 124,
-    "overhang": 6,
+    "mesh": 30,
+    "segment": 41,
+    "bvh": 34,
+    "shape": 94,
+    "outline": 182,
+    "features": 19,
+    "thickness": 64,
+    "access": 157,
+    "overhang": 9,
     "selfIntersect": 1,
-    "total": 514
+    "total": 631
    }
   },
   "soup-1k": {
@@ -7645,27 +7645,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 130,
+    "wallMs": 169,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 87.3,
-    "baseRssMb": 65.4,
-    "afterParseMs": 78,
-    "load": 1.5
+    "peakRssMb": 86.2,
+    "baseRssMb": 65.3,
+    "afterParseMs": 88,
+    "load": 3.6
    },
    "stages": {
     "mesh": 3,
-    "segment": 5,
-    "bvh": 4,
-    "shape": 24,
-    "outline": 26,
-    "features": 4,
-    "thickness": 20,
-    "access": 18,
+    "segment": 7,
+    "bvh": 7,
+    "shape": 35,
+    "outline": 44,
+    "features": 5,
+    "thickness": 17,
+    "access": 21,
     "overhang": 0,
-    "selfIntersect": 5,
-    "total": 109
+    "selfIntersect": 12,
+    "total": 151
    }
   },
   "soup-500k": {
@@ -7719,8 +7719,33 @@
    "family": "soup-wide",
    "ext": ".stl",
    "n": 100000,
-   "unfinished": "resource",
-   "note": "stopped by the machine (SIGKILL) — out of memory at 4.8 GB resident, heap limit lifted to 4096 MB"
+   "input": {
+    "bytes": 5000084,
+    "sha256": "f828c7206afc25a19b1a08bdbda4f7c3279f087fd1bce2437de6f0c87e3d6e4f"
+   },
+   "hash": {
+    "geometry": "bb20424b215850d68b5dc3cc9e46cb0cad5e9b340c4a24a5de764893de8d80f6",
+    "dfm": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "price": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+   },
+   "snapshot": true,
+   "summary": {
+    "status": "refused",
+    "code": "geometry-not-measurable",
+    "message": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no",
+    "fullMessage": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
+   },
+   "timing": {
+    "wallMs": 172723,
+    "cpuMs": null,
+    "peakHeapMb": 0,
+    "peakV8HeapMb": 0,
+    "peakRssMb": 300.6,
+    "baseRssMb": 70,
+    "afterParseMs": 1,
+    "load": 3.6
+   },
+   "stages": null
   },
   "soup-wide-10k": {
    "size": "small",
@@ -7744,14 +7769,14 @@
     "fullMessage": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 4553,
+    "wallMs": 4875,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 116.2,
-    "baseRssMb": 65.7,
+    "peakRssMb": 116.3,
+    "baseRssMb": 65.8,
     "afterParseMs": 0,
-    "load": 1.4
+    "load": 3.7
    },
    "stages": null
   },
@@ -7767,7 +7792,7 @@
    "hash": {
     "geometry": "f2b62a40a5b39e7ea5428169c3653f90a017220e981770d6d3c94f963bcb4144",
     "dfm": "7141509fdfa3117fb9ba72e50a35cdf3fc6881ef5444ce9d57094f98611a9c32",
-    "price": "c1b5415903f19a93d28590ee7475e0efa0c7c29fd4e89c43bf8e21188125ae17"
+    "price": "77d31b59d623739abcb4bdee9dd34b71c26db2eca16e1dcf7eb8c00416c7375e"
    },
    "snapshot": true,
    "summary": {
@@ -7778,27 +7803,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 148,
+    "wallMs": 285,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 78.4,
-    "baseRssMb": 65.3,
-    "afterParseMs": 83,
-    "load": 1.4
+    "peakRssMb": 77.4,
+    "baseRssMb": 65.1,
+    "afterParseMs": 135,
+    "load": 3.7
    },
    "stages": {
     "mesh": 3,
-    "segment": 4,
-    "bvh": 4,
-    "shape": 27,
-    "outline": 19,
-    "features": 5,
-    "thickness": 42,
-    "access": 23,
-    "overhang": 5,
+    "segment": 7,
+    "bvh": 12,
+    "shape": 49,
+    "outline": 41,
+    "features": 8,
+    "thickness": 79,
+    "access": 50,
+    "overhang": 13,
     "selfIntersect": 0,
-    "total": 132
+    "total": 262
    }
   },
   "soup-wide-500k": {
@@ -7821,7 +7846,7 @@
    "hash": {
     "geometry": "417eed0dafad18d691c821f48b39db0d1a86932f308ff26ebd855c362e929049",
     "dfm": "ccce74a00f1081c9ab83a206428f3c7564ba7ddee7af4b97327b959ed046ff27",
-    "price": "d2933f9919aa9ef8dae9343f20c88686759ae7cf0bb0d4660f9f9570e6e3b1e4"
+    "price": "7ade49109348d45f9a8c84b8cad053ceca408998dba333c7dc9cfcfb2d72658a"
    },
    "snapshot": true,
    "summary": {
@@ -7832,27 +7857,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 996,
+    "wallMs": 897,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 170.4,
-    "baseRssMb": 70,
-    "afterParseMs": 111,
-    "load": 1
+    "peakRssMb": 169.3,
+    "baseRssMb": 69.8,
+    "afterParseMs": 85,
+    "load": 1.5
    },
    "stages": {
     "mesh": 64,
-    "segment": 122,
-    "bvh": 111,
-    "shape": 108,
-    "outline": 44,
-    "features": 18,
-    "thickness": 108,
-    "access": 137,
-    "overhang": 13,
-    "selfIntersect": 101,
-    "total": 826
+    "segment": 135,
+    "bvh": 110,
+    "shape": 103,
+    "outline": 36,
+    "features": 16,
+    "thickness": 83,
+    "access": 107,
+    "overhang": 7,
+    "selfIntersect": 80,
+    "total": 741
    }
   },
   "sphere-100k-3mf": {
@@ -7867,7 +7892,7 @@
    "hash": {
     "geometry": "58e70378100748d71393fed73ce2394e2587e4a723cf877a6fe7a36092c0ae34",
     "dfm": "3da800ae94d7f9bcaaae8c1d3866b246b25bbe1780940db5a243424530bdbac3",
-    "price": "3fd12b0b919770050c37dc5b5f1464743b91887c97279ad698f55f85b36f919e"
+    "price": "3654e00b88d5664fbe6c082800eee49872d1c3e704b5bb1a0c9c001f06271f4c"
    },
    "snapshot": true,
    "summary": {
@@ -7878,27 +7903,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1951,
+    "wallMs": 1794,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 256,
-    "baseRssMb": 66.2,
-    "afterParseMs": 84,
+    "peakRssMb": 251.6,
+    "baseRssMb": 66.1,
+    "afterParseMs": 88,
     "load": 1.4
    },
    "stages": {
-    "mesh": 77,
-    "segment": 131,
-    "bvh": 111,
+    "mesh": 61,
+    "segment": 116,
+    "bvh": 97,
     "shape": 84,
-    "outline": 48,
-    "features": 18,
-    "thickness": 132,
-    "access": 154,
+    "outline": 42,
+    "features": 19,
+    "thickness": 111,
+    "access": 132,
     "overhang": 10,
-    "selfIntersect": 101,
-    "total": 866
+    "selfIntersect": 104,
+    "total": 776
    }
   },
   "sphere-10k": {
@@ -7913,7 +7938,7 @@
    "hash": {
     "geometry": "83ba97f8bf0d23862633707ef02590f88eeb4c5d7465d491bdaf74e24222d19f",
     "dfm": "60eec4e90c1344deae720d31efe23e5015b7b3a7452383b350f6d9d6d4a59246",
-    "price": "2907e1eecaa3bd6ab4d5cac86f5c8ccd1475bf8e4fdf1958fb335328512bb6cb"
+    "price": "63ca610ef5e84b1fe769181a5bbf97f9a71f67c0e22d008280e166b0f8400c69"
    },
    "snapshot": true,
    "summary": {
@@ -7928,23 +7953,23 @@
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 92.2,
+    "peakRssMb": 93.5,
     "baseRssMb": 65.5,
-    "afterParseMs": 87,
-    "load": 1
+    "afterParseMs": 76,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 17,
+    "mesh": 21,
     "segment": 38,
-    "bvh": 24,
-    "shape": 41,
-    "outline": 26,
+    "bvh": 29,
+    "shape": 43,
+    "outline": 23,
     "features": 0,
-    "thickness": 34,
-    "access": 42,
+    "thickness": 30,
+    "access": 41,
     "overhang": 3,
-    "selfIntersect": 24,
-    "total": 250
+    "selfIntersect": 21,
+    "total": 249
    }
   },
   "sphere-10k-3mf": {
@@ -7959,7 +7984,7 @@
    "hash": {
     "geometry": "e8c26b70607136b5cd394d32a663ec5edebce958b4377aebc7e8b7e3d272b7e8",
     "dfm": "a7d5cdc37025053e8291115f4d6b16be85bc39acef19a9d77e5a66ac1ee507cd",
-    "price": "4601ff8fca8373a50b7d5e1d54b3df2bc76ec83ea30c4dc22a53b8a0b7c99071"
+    "price": "c7789eb5b6ab19ea3f2fac6917bb6a03ebdc35603cea13c9ef51342ca6996553"
    },
    "snapshot": true,
    "summary": {
@@ -7970,27 +7995,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 488,
+    "wallMs": 613,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 116.4,
-    "baseRssMb": 65.4,
-    "afterParseMs": 83,
-    "load": 1
+    "peakRssMb": 116.2,
+    "baseRssMb": 65.3,
+    "afterParseMs": 84,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 31,
-    "segment": 40,
-    "bvh": 28,
-    "shape": 42,
-    "outline": 33,
+    "mesh": 28,
+    "segment": 55,
+    "bvh": 41,
+    "shape": 57,
+    "outline": 28,
     "features": 0,
-    "thickness": 36,
-    "access": 55,
-    "overhang": 6,
-    "selfIntersect": 29,
-    "total": 301
+    "thickness": 40,
+    "access": 64,
+    "overhang": 3,
+    "selfIntersect": 36,
+    "total": 352
    }
   },
   "sphere-10k-ascii": {
@@ -8005,7 +8030,7 @@
    "hash": {
     "geometry": "a3127d2b6b382389c8871d3bf7d5584dbe68ce7057b66959bfda6bfa78ddaa85",
     "dfm": "e3e5dbd84566e702b63878cf480c3aff8949206ee8270952f7fad9cc820de68d",
-    "price": "7aa3997193b4bdbf2654a1e4d5c393d0fd0ba0e8e17da8937b4bc4de4fea3dec"
+    "price": "fbad5ba0d59421fbc9e601b9cb9409bf3eaf4c3567194e8f88944f5bd467dea7"
    },
    "snapshot": true,
    "summary": {
@@ -8016,27 +8041,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 371,
+    "wallMs": 422,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 102.3,
-    "baseRssMb": 67.6,
-    "afterParseMs": 88,
-    "load": 1
+    "peakRssMb": 119.2,
+    "baseRssMb": 68.1,
+    "afterParseMs": 102,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 22,
-    "segment": 39,
-    "bvh": 29,
-    "shape": 43,
-    "outline": 25,
-    "features": 0,
-    "thickness": 36,
-    "access": 44,
-    "overhang": 5,
-    "selfIntersect": 23,
-    "total": 266
+    "mesh": 16,
+    "segment": 28,
+    "bvh": 23,
+    "shape": 44,
+    "outline": 28,
+    "features": 1,
+    "thickness": 53,
+    "access": 80,
+    "overhang": 3,
+    "selfIntersect": 51,
+    "total": 327
    }
   },
   "sphere-1k": {
@@ -8051,7 +8076,7 @@
    "hash": {
     "geometry": "87eb35a936aaffbb41604a147e78517e0eb9e84e6c680b50e9d4a90e51bd1470",
     "dfm": "3243894962969eb858ba50c9d7416514a48b3913ade4ee1fe3a011d87928c710",
-    "price": "fef070919ba33a896acf2a3e03c83360b60153443916f10521826797b3662e09"
+    "price": "b1018961adc7133b8cc1e483472bf95980481c89107fd9e79d3b3003a0d73845"
    },
    "snapshot": true,
    "summary": {
@@ -8062,27 +8087,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 79,
+    "wallMs": 73,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 72.9,
-    "baseRssMb": 65.3,
-    "afterParseMs": 76,
-    "load": 1
+    "peakRssMb": 74.4,
+    "baseRssMb": 65.1,
+    "afterParseMs": 60,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 4,
-    "segment": 9,
+    "mesh": 3,
+    "segment": 7,
     "bvh": 3,
-    "shape": 11,
-    "outline": 5,
+    "shape": 9,
+    "outline": 4,
     "features": 0,
-    "thickness": 11,
-    "access": 13,
+    "thickness": 8,
+    "access": 15,
     "overhang": 0,
-    "selfIntersect": 9,
-    "total": 66
+    "selfIntersect": 11,
+    "total": 60
    }
   },
   "sphere-1k-3mf": {
@@ -8097,7 +8122,7 @@
    "hash": {
     "geometry": "ab454ca1e1138e1643b09537903c24154e66b68efefa3f6219e7182a4c2d542c",
     "dfm": "356d2e3e2e064bdada0823c7a33f47a6ca34057cd7cf1dddebb9975654147f9c",
-    "price": "6e6926cab73d4b93dbf5662536e3e88a016ff45ab7eb0af1ca4c0945c6768e42"
+    "price": "d52f8803a5ff215a53338cbc8cc9cc75387d0af42c78138e0512a3d767e6e06f"
    },
    "snapshot": true,
    "summary": {
@@ -8108,27 +8133,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 112,
+    "wallMs": 164,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 77.6,
-    "baseRssMb": 65,
-    "afterParseMs": 76,
-    "load": 1
+    "peakRssMb": 78.2,
+    "baseRssMb": 65.3,
+    "afterParseMs": 110,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 3,
-    "segment": 5,
-    "bvh": 5,
-    "shape": 10,
-    "outline": 4,
-    "features": 0,
-    "thickness": 8,
-    "access": 12,
-    "overhang": 1,
-    "selfIntersect": 8,
-    "total": 56
+    "mesh": 2,
+    "segment": 12,
+    "bvh": 6,
+    "shape": 14,
+    "outline": 3,
+    "features": 1,
+    "thickness": 9,
+    "access": 22,
+    "overhang": 0,
+    "selfIntersect": 10,
+    "total": 79
    }
   },
   "sphere-1k-ascii": {
@@ -8143,7 +8168,7 @@
    "hash": {
     "geometry": "4203903d0967a8e86104e68e467b292c07dde863ba889613a1a0ff7dfda5b379",
     "dfm": "e5103ed38ff4eaa57354c03d9e68ffbb1e448cd72f0feebd8a743e32f265ea98",
-    "price": "13f88b55c712050425c5e3aed3155d93366ea2a6cc58dace94b63035c4334355"
+    "price": "179883959114611cce2aa4106b5763300c4dc4ba71b992890e9cfefc6b4eac26"
    },
    "snapshot": true,
    "summary": {
@@ -8154,27 +8179,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 95,
+    "wallMs": 87,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.9,
-    "baseRssMb": 65.6,
-    "afterParseMs": 75,
-    "load": 1
+    "peakRssMb": 75.8,
+    "baseRssMb": 65.3,
+    "afterParseMs": 76,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 5,
-    "segment": 6,
-    "bvh": 4,
-    "shape": 15,
+    "mesh": 3,
+    "segment": 5,
+    "bvh": 3,
+    "shape": 12,
     "outline": 3,
-    "features": 1,
-    "thickness": 10,
-    "access": 19,
-    "overhang": 0,
-    "selfIntersect": 10,
-    "total": 73
+    "features": 0,
+    "thickness": 8,
+    "access": 13,
+    "overhang": 1,
+    "selfIntersect": 8,
+    "total": 56
    }
   },
   "sphere-500k": {
@@ -8235,7 +8260,7 @@
    "hash": {
     "geometry": "8c9172584dec7846c8eaf10aeb7be15848ed0519f3dd583bf87f6a851afaf305",
     "dfm": "0e291e03b0dec21e0904ca62181a2a567eead267d389992f9f8c81aa0a8acb86",
-    "price": "a48dc9eb873e5de590d3a7992569be283eae0c4c86f469a8ce67faa1e879b725"
+    "price": "1d9830376039454a5caabd1eacf3f02eb1010da86d44b750dcd413650fe884b5"
    },
    "snapshot": true,
    "summary": {
@@ -8246,27 +8271,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 158,
+    "wallMs": 101,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 77.3,
-    "baseRssMb": 64.9,
-    "afterParseMs": 96,
-    "load": 2.1
+    "peakRssMb": 77.1,
+    "baseRssMb": 65,
+    "afterParseMs": 74,
+    "load": 1.4
    },
    "stages": {
     "mesh": 2,
     "segment": 5,
-    "bvh": 11,
-    "shape": 12,
-    "outline": 6,
+    "bvh": 2,
+    "shape": 9,
+    "outline": 3,
     "features": 0,
-    "thickness": 11,
-    "access": 20,
-    "overhang": 1,
-    "selfIntersect": 12,
-    "total": 80
+    "thickness": 15,
+    "access": 12,
+    "overhang": 0,
+    "selfIntersect": 8,
+    "total": 56
    }
   },
   "sphere-inverted-10k": {
@@ -8281,7 +8306,7 @@
    "hash": {
     "geometry": "39171625be53a01fe91ce50bb735f62a9ba8f411ba8c04fe31ccd64a60a2655c",
     "dfm": "5e315b4f34c1b088913c66875d49b5a30ef969c7cda58ec8d093254f5c157531",
-    "price": "307ffaacae4558bef1ba3a8f3aa085aadecaf4a380b314e5b28ec222765d900f"
+    "price": "29fd4dc5238c4d8bc52d1b9f5023aa7ea448f994dec65df2c9a4c4f92f9a18d5"
    },
    "snapshot": true,
    "summary": {
@@ -8292,27 +8317,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 418,
+    "wallMs": 320,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 93.2,
-    "baseRssMb": 65.7,
-    "afterParseMs": 110,
-    "load": 1.5
+    "peakRssMb": 91.3,
+    "baseRssMb": 65.5,
+    "afterParseMs": 65,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 31,
-    "segment": 68,
+    "mesh": 25,
+    "segment": 45,
     "bvh": 29,
-    "shape": 59,
-    "outline": 31,
+    "shape": 37,
+    "outline": 24,
     "features": 0,
-    "thickness": 16,
-    "access": 68,
-    "overhang": 19,
-    "selfIntersect": 32,
-    "total": 353
+    "thickness": 15,
+    "access": 57,
+    "overhang": 15,
+    "selfIntersect": 26,
+    "total": 274
    }
   },
   "stl-far-from-origin": {
@@ -8342,9 +8367,9 @@
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 64.9,
-    "afterParseMs": 1,
-    "load": 2.1
+    "baseRssMb": 65.1,
+    "afterParseMs": 0,
+    "load": 1.4
    },
    "stages": null
   },
@@ -8375,9 +8400,9 @@
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65.2,
+    "baseRssMb": 64.9,
     "afterParseMs": 0,
-    "load": 2.1
+    "load": 1.4
    },
    "stages": null
   },
@@ -8403,14 +8428,14 @@
     "fullMessage": "This model comes out smaller than anything we can hold or measure. Check the export units (millimetres or inches) and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 141,
+    "wallMs": 88,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75,
-    "baseRssMb": 64.9,
-    "afterParseMs": 0,
-    "load": 2.1
+    "peakRssMb": 74.9,
+    "baseRssMb": 65.2,
+    "afterParseMs": 1,
+    "load": 1.4
    },
    "stages": null
   },
@@ -8441,9 +8466,9 @@
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 65.6,
+    "baseRssMb": 65.1,
     "afterParseMs": 1,
-    "load": 2.1
+    "load": 1.4
    },
    "stages": null
   },
@@ -8459,7 +8484,7 @@
    "hash": {
     "geometry": "75b6283b744ca60a10966d5ef755895dfc29e2ba9b13bc09e1135f56e01bfe7f",
     "dfm": "ea4139abb4413054d26cf580301a23c558953d05bc4fc39dd79c59bb301ea3ba",
-    "price": "61570fdf73a8dc5531a026f2ad2568c9fec254f1cdad708a6248a70317bf58f1"
+    "price": "0f9b2393af36bee898b07df5116acbccf9366cfc1483f0065a3bceb0cfb3c3ef"
    },
    "snapshot": true,
    "summary": {
@@ -8470,27 +8495,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1171,
+    "wallMs": 1140,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 160.6,
+    "peakRssMb": 160.9,
     "baseRssMb": 70.2,
-    "afterParseMs": 88,
-    "load": 1.5
+    "afterParseMs": 97,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 77,
-    "segment": 104,
-    "bvh": 128,
+    "mesh": 78,
+    "segment": 93,
+    "bvh": 119,
     "shape": 99,
-    "outline": 75,
-    "features": 108,
-    "thickness": 186,
-    "access": 98,
-    "overhang": 4,
-    "selfIntersect": 119,
-    "total": 999
+    "outline": 69,
+    "features": 114,
+    "thickness": 190,
+    "access": 106,
+    "overhang": 5,
+    "selfIntersect": 97,
+    "total": 971
    }
   },
   "textplate-500k": {
@@ -8551,7 +8576,7 @@
    "hash": {
     "geometry": "33f5afce6ab8cd7d211ab16a4b0500a46593f34de4c7b172014e69d6aa59e4ac",
     "dfm": "177a65114bfa0f0345d9ab421ca23353752aec9b571382c3779f1fa8bce437f5",
-    "price": "3fa35d6c761a9b7f89f892a9f68632c8cb9506fcf188cfb6b48cec0bfcf264f1"
+    "price": "c029c75af595ef0fd1aefe3c0bb2a20e3303209d993c2366f560a428a6f49344"
    },
    "snapshot": true,
    "summary": {
@@ -8562,27 +8587,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 338,
+    "wallMs": 360,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 93.5,
-    "baseRssMb": 65.2,
-    "afterParseMs": 91,
-    "load": 1.5
+    "peakRssMb": 91.8,
+    "baseRssMb": 65.7,
+    "afterParseMs": 96,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 20,
-    "segment": 20,
-    "bvh": 28,
-    "shape": 51,
+    "mesh": 21,
+    "segment": 21,
+    "bvh": 38,
+    "shape": 47,
     "outline": 24,
-    "features": 32,
-    "thickness": 45,
-    "access": 37,
+    "features": 48,
+    "thickness": 30,
+    "access": 41,
     "overhang": 1,
-    "selfIntersect": 36,
-    "total": 294
+    "selfIntersect": 43,
+    "total": 314
    }
   },
   "textplate-engraved-100k": {
@@ -8608,27 +8633,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1004,
+    "wallMs": 1225,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 159.8,
+    "peakRssMb": 156.3,
     "baseRssMb": 70,
-    "afterParseMs": 101,
-    "load": 1.6
+    "afterParseMs": 135,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 63,
-    "segment": 81,
-    "bvh": 108,
-    "shape": 133,
-    "outline": 61,
-    "features": 91,
-    "thickness": 164,
-    "access": 47,
-    "overhang": 2,
-    "selfIntersect": 92,
-    "total": 842
+    "mesh": 84,
+    "segment": 110,
+    "bvh": 212,
+    "shape": 129,
+    "outline": 49,
+    "features": 67,
+    "thickness": 181,
+    "access": 51,
+    "overhang": 3,
+    "selfIntersect": 133,
+    "total": 1020
    }
   },
   "tjunction-box": {
@@ -8654,27 +8679,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 102,
+    "wallMs": 66,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 73.4,
-    "baseRssMb": 64.9,
-    "afterParseMs": 109,
-    "load": 1.5
+    "peakRssMb": 75.1,
+    "baseRssMb": 64.7,
+    "afterParseMs": 83,
+    "load": 1.4
    },
    "stages": {
-    "mesh": 4,
-    "segment": 2,
-    "bvh": 4,
-    "shape": 18,
-    "outline": 5,
-    "features": 1,
-    "thickness": 14,
-    "access": 15,
+    "mesh": 3,
+    "segment": 1,
+    "bvh": 2,
+    "shape": 11,
+    "outline": 2,
+    "features": 0,
+    "thickness": 9,
+    "access": 3,
     "overhang": 0,
-    "selfIntersect": 17,
-    "total": 80
+    "selfIntersect": 19,
+    "total": 51
    }
   },
   "torus-100k": {
@@ -8689,7 +8714,7 @@
    "hash": {
     "geometry": "e4e2085c34ea5bce5bf45305b9663c3b400fb1b8e224b6b50efd4308ac56a0d0",
     "dfm": "a8f0f2dab61c16c843f7d4d8fc958bba75bade8e9465dbaff907978892371cc3",
-    "price": "45c846e85f6c9858fa381e46fbc3453aa6fc7cb869348bd8be29becb91cca703"
+    "price": "d357b471aa70540c39bbccc2444cd3d783afa22f13d7ac07d93b9b21d7ce4686"
    },
    "snapshot": true,
    "summary": {
@@ -8700,27 +8725,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1065,
+    "wallMs": 957,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 181.4,
-    "baseRssMb": 70,
-    "afterParseMs": 105,
+    "peakRssMb": 170.8,
+    "baseRssMb": 70.1,
+    "afterParseMs": 107,
     "load": 1.4
    },
    "stages": {
-    "mesh": 69,
-    "segment": 156,
-    "bvh": 123,
-    "shape": 88,
-    "outline": 53,
-    "features": 12,
-    "thickness": 102,
-    "access": 165,
+    "mesh": 56,
+    "segment": 123,
+    "bvh": 125,
+    "shape": 92,
+    "outline": 57,
+    "features": 13,
+    "thickness": 96,
+    "access": 155,
     "overhang": 12,
-    "selfIntersect": 94,
-    "total": 874
+    "selfIntersect": 77,
+    "total": 806
    }
   },
   "torus-10k": {
@@ -8735,7 +8760,7 @@
    "hash": {
     "geometry": "731e7639b0805e9f09939403370eda0e727a068535ea1ea7ede9c96cc1952db2",
     "dfm": "b8d35ec4e8e10e815e630f7b600bff80e31aad0c0332ac5864e3ac1a802e0331",
-    "price": "ca457d99169caf55e1b78582b1f2f555dbd8a15ab07e94e15a3f5e7dad245e98"
+    "price": "fab4e683db4cd09196401d38ee58d1bf86cce401138ab6b23e062abee6c0c23d"
    },
    "snapshot": true,
    "summary": {
@@ -8746,27 +8771,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 341,
+    "wallMs": 299,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 91.3,
-    "baseRssMb": 65.5,
-    "afterParseMs": 86,
+    "peakRssMb": 93.3,
+    "baseRssMb": 65.6,
+    "afterParseMs": 78,
     "load": 1.4
    },
    "stages": {
-    "mesh": 21,
-    "segment": 40,
-    "bvh": 26,
-    "shape": 45,
-    "outline": 23,
-    "features": 5,
-    "thickness": 36,
-    "access": 59,
-    "overhang": 8,
-    "selfIntersect": 23,
-    "total": 286
+    "mesh": 19,
+    "segment": 41,
+    "bvh": 23,
+    "shape": 42,
+    "outline": 24,
+    "features": 4,
+    "thickness": 34,
+    "access": 44,
+    "overhang": 4,
+    "selfIntersect": 25,
+    "total": 260
    }
   },
   "torus-1k": {
@@ -8781,7 +8806,7 @@
    "hash": {
     "geometry": "20009e8cfa7c33c560cc5f7b76ff9dea90c35ab1d73cbb27d3265cdbdc80b146",
     "dfm": "84f0527059bf46203b0b181fe47df54712a9269c430aef9a06d915ea5968a8b8",
-    "price": "552dc1f17b58fd6b1d0cf2d1ed331039f6bf72b955442bb5ab5d2bb258b07028"
+    "price": "20b89597eb7317d09a7ff6ce208186e76117573eba360b83e3b93b187d33362f"
    },
    "snapshot": true,
    "summary": {
@@ -8792,27 +8817,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 94,
+    "wallMs": 83,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.5,
-    "baseRssMb": 65,
-    "afterParseMs": 78,
+    "peakRssMb": 74.8,
+    "baseRssMb": 64.7,
+    "afterParseMs": 86,
     "load": 1.4
    },
    "stages": {
-    "mesh": 6,
-    "segment": 9,
-    "bvh": 4,
-    "shape": 14,
-    "outline": 4,
+    "mesh": 3,
+    "segment": 7,
+    "bvh": 3,
+    "shape": 16,
+    "outline": 3,
     "features": 0,
-    "thickness": 11,
-    "access": 10,
-    "overhang": 1,
-    "selfIntersect": 17,
-    "total": 76
+    "thickness": 9,
+    "access": 13,
+    "overhang": 0,
+    "selfIntersect": 14,
+    "total": 68
    }
   },
   "torus-500k": {
@@ -8873,7 +8898,7 @@
    "hash": {
     "geometry": "0384db3b7fb042f62df0d722eb03faf11b0f6200e88fdf7074717565c0d11a9c",
     "dfm": "bf96b9ca1981ef1e726b6916ef7f5249811ce0810b83a3391e70df1704bf9372",
-    "price": "98118da254d7c48bc83ea82a3b972af5a7aa67d45a6c669e4215131aa328cad6"
+    "price": "44af40270b58951c46fda7cb74fa66b5b0980ae9f0c32c3b65c33a42fe5438cb"
    },
    "snapshot": true,
    "summary": {
@@ -8884,27 +8909,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 29,
+    "wallMs": 42,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 72.1,
-    "baseRssMb": 65.3,
-    "afterParseMs": 74,
-    "load": 1.6
+    "peakRssMb": 72.2,
+    "baseRssMb": 64.7,
+    "afterParseMs": 96,
+    "load": 1.8
    },
    "stages": {
     "mesh": 1,
     "segment": 1,
     "bvh": 0,
-    "shape": 6,
+    "shape": 11,
     "outline": 1,
-    "features": 1,
-    "thickness": 2,
-    "access": 2,
-    "overhang": 0,
-    "selfIntersect": 1,
-    "total": 16
+    "features": 0,
+    "thickness": 6,
+    "access": 6,
+    "overhang": 1,
+    "selfIntersect": 5,
+    "total": 32
    }
   },
   "vase-100k": {
@@ -8930,27 +8955,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1111,
+    "wallMs": 1449,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 183.6,
+    "peakRssMb": 178.5,
     "baseRssMb": 69.9,
-    "afterParseMs": 90,
-    "load": 1.6
+    "afterParseMs": 143,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 59,
-    "segment": 170,
-    "bvh": 140,
-    "shape": 87,
-    "outline": 52,
-    "features": 6,
-    "thickness": 92,
-    "access": 180,
-    "overhang": 3,
-    "selfIntersect": 138,
-    "total": 927
+    "mesh": 82,
+    "segment": 271,
+    "bvh": 176,
+    "shape": 104,
+    "outline": 93,
+    "features": 5,
+    "thickness": 106,
+    "access": 203,
+    "overhang": 4,
+    "selfIntersect": 189,
+    "total": 1234
    }
   },
   "vase-10k": {
@@ -8976,27 +9001,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 320,
+    "wallMs": 446,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 94.2,
-    "baseRssMb": 65.8,
-    "afterParseMs": 83,
-    "load": 1.6
+    "peakRssMb": 92.8,
+    "baseRssMb": 65.4,
+    "afterParseMs": 123,
+    "load": 1.8
    },
    "stages": {
-    "mesh": 21,
-    "segment": 33,
-    "bvh": 32,
-    "shape": 43,
-    "outline": 22,
+    "mesh": 30,
+    "segment": 84,
+    "bvh": 33,
+    "shape": 50,
+    "outline": 30,
     "features": 7,
-    "thickness": 32,
-    "access": 47,
-    "overhang": 1,
-    "selfIntersect": 38,
-    "total": 277
+    "thickness": 41,
+    "access": 56,
+    "overhang": 2,
+    "selfIntersect": 43,
+    "total": 377
    }
   },
   "waffle-100k": {
@@ -9011,7 +9036,7 @@
    "hash": {
     "geometry": "96de78bbe24a17dc259558aee2809847bb479425ba78391a3e7024fa4b94a8ce",
     "dfm": "f392da84ab2661fb9d9cbccbdbedb699097897c00bd3ee238e1107c1abbee97e",
-    "price": "eeec039de5228c6323571f139958594f8c5df9f184d237edad72173aa19ba0ff"
+    "price": "8ff78340acb49fd04b548f00a8859f7bfe0544d4270b32dff4468e6b8768909f"
    },
    "snapshot": true,
    "summary": {
@@ -9022,27 +9047,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 1027,
+    "wallMs": 1136,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 144.3,
-    "baseRssMb": 69.2,
-    "afterParseMs": 111,
-    "load": 1.6
+    "peakRssMb": 143.3,
+    "baseRssMb": 68.6,
+    "afterParseMs": 107,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 53,
-    "segment": 72,
-    "bvh": 103,
-    "shape": 118,
-    "outline": 67,
-    "features": 104,
-    "thickness": 147,
-    "access": 82,
-    "overhang": 3,
-    "selfIntersect": 88,
-    "total": 838
+    "mesh": 49,
+    "segment": 79,
+    "bvh": 115,
+    "shape": 93,
+    "outline": 88,
+    "features": 156,
+    "thickness": 200,
+    "access": 94,
+    "overhang": 2,
+    "selfIntersect": 94,
+    "total": 973
    }
   },
   "waffle-10k": {
@@ -9068,27 +9093,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 270,
+    "wallMs": 464,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 93.3,
-    "baseRssMb": 65.6,
-    "afterParseMs": 74,
-    "load": 1.6
+    "peakRssMb": 89.9,
+    "baseRssMb": 65.5,
+    "afterParseMs": 101,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 16,
-    "segment": 11,
-    "bvh": 26,
-    "shape": 37,
-    "outline": 22,
-    "features": 27,
-    "thickness": 33,
-    "access": 29,
+    "mesh": 33,
+    "segment": 23,
+    "bvh": 72,
+    "shape": 56,
+    "outline": 29,
+    "features": 61,
+    "thickness": 51,
+    "access": 38,
     "overhang": 1,
-    "selfIntersect": 30,
-    "total": 233
+    "selfIntersect": 31,
+    "total": 395
    }
   },
   "waffle-1k": {
@@ -9114,27 +9139,27 @@
     "recognised": true
    },
    "timing": {
-    "wallMs": 105,
+    "wallMs": 143,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
-    "peakRssMb": 75.2,
-    "baseRssMb": 65.2,
-    "afterParseMs": 67,
-    "load": 1.6
+    "peakRssMb": 73.3,
+    "baseRssMb": 63.8,
+    "afterParseMs": 88,
+    "load": 1.5
    },
    "stages": {
-    "mesh": 5,
+    "mesh": 6,
     "segment": 3,
-    "bvh": 5,
-    "shape": 20,
-    "outline": 4,
-    "features": 14,
-    "thickness": 10,
-    "access": 6,
+    "bvh": 11,
+    "shape": 25,
+    "outline": 6,
+    "features": 20,
+    "thickness": 14,
+    "access": 13,
     "overhang": 0,
     "selfIntersect": 17,
-    "total": 85
+    "total": 115
    }
   },
   "waffle-500k": {
@@ -9205,14 +9230,14 @@
     "fullMessage": "We couldn't measure this model: some of its coordinates are not real numbers, or it has no solid volume. Re-export it from your CAD program as a solid and upload again, or send it to us and we'll quote it by hand (quotes@straightedgemfg.com)."
    },
    "timing": {
-    "wallMs": 3,
+    "wallMs": 1,
     "cpuMs": null,
     "peakHeapMb": 0,
     "peakV8HeapMb": 0,
     "peakRssMb": 0,
-    "baseRssMb": 64.8,
+    "baseRssMb": 65,
     "afterParseMs": 0,
-    "load": 2.1
+    "load": 1.4
    },
    "stages": null
   }
