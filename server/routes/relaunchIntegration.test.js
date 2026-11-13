@@ -55,22 +55,30 @@ test("in the source: a Stripe session is created in one function, and an order r
   // 2. Order rows: inserted by the two instant routes and the firm-quote accept, nowhere else.
   const inserters = Object.fromEntries(files.map((f) => [rel(f), (code(f).match(/ordersDB\.insert\s*\(/g) || []).length]).filter(([, n]) => n > 0));
   assert.deepStrictEqual(inserters, { "server/routes/orders.js": 2, "server/routes/rfq.js": 1 });
-  // In orders.js every insert sits after the pricing check of its own route handler.
+  // In orders.js every insert sits after the pricing check of its own step.
+  // (2026-11-13) The checkout's read-price-compare-write is now one named function, orderStep(), which the
+  // pricing runner runs (re-review F-08); the admin phone order is still inside its route handler. So the
+  // pieces looked at are "each top-level function or route handler", and the refusal reads `return refuse(`
+  // in the step where it read `return res.status(` in the handler. What is held is unchanged.
   const orders = code(path.join(root, "server", "routes", "orders.js"));
-  const handlers = orders.split(/\nrouter\.(?:get|post|put|delete)\(/).slice(1);
+  const pieces = orders.split(/\n(?=router\.(?:get|post|put|delete)\(|function \w+\()/);
   let checked = 0;
-  for (const body of handlers) {
+  for (const body of pieces) {
     const insertAt = body.indexOf("ordersDB.insert(");
     if (insertAt < 0) continue;
     const checkAt = body.indexOf("verifyQuoteForOrder(");
-    assert.ok(checkAt >= 0 && checkAt < insertAt, "an order is inserted only after verifyQuoteForOrder in the same handler");
-    assert.ok(/if \(!checked\.ok\) return res\.status/.test(body.slice(checkAt, insertAt)), "and only when it passed");
+    assert.ok(checkAt >= 0 && checkAt < insertAt, "an order is inserted only after verifyQuoteForOrder in the same step");
+    assert.ok(/if \(!checked\.ok\) return (?:res\.status|refuse)\(/.test(body.slice(checkAt, insertAt)), "and only when it passed");
     checked++;
   }
   assert.strictEqual(checked, 2);
-  // The resume of an unpaid order (no insert) is in the checkout handler, after the same check.
-  const checkout = handlers.find((b) => b.startsWith('"/checkout-session"'));
-  assert.ok(checkout.indexOf("verifyQuoteForOrder(") < checkout.indexOf("checkoutGuard.sessionFor("), "a resumed order is re-checked before it is handed a payment page");
+  // The resume of an unpaid order (no insert) is in the same step, after the same check, and the checkout
+  // handler opens a payment page only for what that step returned.
+  const step = pieces.find((b) => b.startsWith("function orderStep("));
+  assert.ok(step.indexOf("verifyQuoteForOrder(") >= 0 && step.indexOf("verifyQuoteForOrder(") < step.indexOf("resumed: true"), "a resumed order is re-checked before it is handed on");
+  const checkout = pieces.find((b) => b.startsWith('router.post("/checkout-session"'));
+  assert.ok(checkout.indexOf("orderStep(req, quoteId)") >= 0 && checkout.indexOf("orderStep(req, quoteId)") < checkout.indexOf("checkoutGuard.sessionFor("), "a payment page is opened only after the step");
+  assert.ok(!/verifyQuoteForOrder\(|ordersDB\.insert\(/.test(checkout), "and the handler itself neither prices nor inserts");
   // The firm-quote accept charges the owner's amount: it must be a positive amount of money and the terms that were sent.
   const rfq = code(path.join(root, "server", "routes", "rfq.js"));
   const accept = rfq.slice(rfq.indexOf('router.post("/quote/:token/accept"'));
@@ -94,7 +102,10 @@ test("in the source: a Stripe session is created in one function, and an order r
   // Count every pass through the pricing check (the routes look the function up on the module each time).
   let verified = 0;
   const realVerify = api.verifyQuoteForOrder;
-  api.verifyQuoteForOrder = (...args) => { verified++; return realVerify(...args); };
+  // (2026-11-13) Checkout prices in pieces now (re-review F-08): the runner calls the check once per warm-up
+  // pass, which stops before anything is judged, and once more for the pass that judges and writes. That
+  // last one is what "passed the pricing check" means, so that is what is counted.
+  api.verifyQuoteForOrder = (...args) => { const r = realVerify(...args); if (!(r && r.warming)) verified++; return r; };
 
   const quote = async (quantity = 2) => {
     const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, quantity)], leadTimeSlug: "standard" }, buyer);

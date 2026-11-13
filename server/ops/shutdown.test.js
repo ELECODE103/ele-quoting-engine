@@ -215,7 +215,7 @@ const database = require(${JSON.stringify(path.join(__dirname, "..", "models", "
 })();
 `;
 
-function hammer({ hook, delayMs }) {
+function hammer({ hook, delayMs, signal = "SIGTERM" }) {
   return new Promise((resolve, reject) => {
     const dir = fs.mkdtempSync(path.join(tmp, "hammer-"));
     const out = path.join(dir, "stopped-at.txt");
@@ -223,7 +223,7 @@ function hammer({ hook, delayMs }) {
     const child = spawn(process.execPath, ["-e", HAMMER], { env, stdio: ["ignore", "pipe", "pipe"] });
     let err = "";
     child.stderr.on("data", (d) => { err += d; });
-    child.stdout.on("data", (d) => { if (String(d).includes("ready")) setTimeout(() => child.kill("SIGTERM"), delayMs); });
+    child.stdout.on("data", (d) => { if (String(d).includes("ready")) setTimeout(() => child.kill(signal), delayMs); });
     child.on("error", reject);
     child.on("exit", (code, signal) => resolve({ dir, code, signal, err, stoppedAt: fs.existsSync(out) ? Number(fs.readFileSync(out, "utf8")) : null }));
   });
@@ -266,6 +266,36 @@ test("without the ops handler the database's own stop handler still finishes the
     saves += n;
   }
   assert.ok(saves >= 6, `the loop was really saving while it was stopped (${saves} saves across the runs)`);
+});
+
+// (2026-11-13) Restored after the re-review's audit of changed tests: when the "no handler" case above was
+// rewritten to expect a clean exit, the suite lost its only case in which the process is KILLED HARD while it
+// is writing (SIGKILL: an out-of-memory kill, a host fault; no handler runs). That is the case writeDurably is
+// built for: the bytes go to quoting.db.tmp, are flushed, and are renamed over the database, so whatever
+// instant the process dies the database file is a whole one, the old or the new, never a short or empty one.
+test("SIGKILL during back-to-back saves of a 12 MB database: the file is always a whole database that passes SQLite's integrity check", async () => {
+  let saves = 0;
+  let tmpLeft = 0;
+  for (const delayMs of [3, 9, 17, 26, 38, 51, 67, 84, 105, 130, 170, 230]) {
+    const r = await hammer({ hook: false, delayMs, signal: "SIGKILL" });
+    assert.deepStrictEqual({ code: r.code, signal: r.signal }, { code: null, signal: "SIGKILL" }, `delay ${delayMs}: the process was killed, not stopped`);
+    const file = path.join(r.dir, "quoting.db");
+    const bytes = fs.statSync(file).size;
+    assert.ok(bytes > 12 * 1024 * 1024, `delay ${delayMs}: the database file is whole (${bytes} bytes), not short and not empty`);
+    assert.ok(isSqlite(file), `delay ${delayMs}: a SQLite file`);
+    const [[check]] = await readDb(file, "PRAGMA integrity_check");
+    assert.strictEqual(check, "ok", `delay ${delayMs}: integrity check`);
+    const [[n]] = await readDb(file, "SELECT n FROM hammer_marker WHERE id = 1");
+    assert.ok(Number.isInteger(n) && n >= 0, `delay ${delayMs}: the marker is a completed write (${n})`);
+    const [[bulk]] = await readDb(file, "SELECT COUNT(*) FROM hammer_bulk");
+    assert.strictEqual(bulk, 12);
+    // A kill inside a save can leave the temporary file behind. It is never read as the database:
+    // the next start opens quoting.db (models/database.js) and the next save writes over the leftover.
+    if (fs.existsSync(`${file}.tmp`)) tmpLeft++;
+    saves += n;
+  }
+  assert.ok(saves >= 12, `the loop was really saving while it was killed (${saves} completed saves across the runs)`);
+  assert.ok(tmpLeft >= 1, `at least one kill landed inside a save (a temporary file was left ${tmpLeft} times of 12): the case this test is for was really exercised`);
 });
 
 run(() => fs.rmSync(tmp, { recursive: true, force: true }));

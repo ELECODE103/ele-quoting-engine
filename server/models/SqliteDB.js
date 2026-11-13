@@ -2,7 +2,7 @@
  * Drop-in replacement for JsonDB that uses sql.js SQLite backend.
  * Exposes the exact same interface with JSON column auto-serialization.
  */
-const { getDatabase, saveToDisk } = require("./database");
+const { getDatabase, saveToDisk, inTransaction } = require("./database");
 const { randomUUID: uuidv4 } = require("crypto"); // RFC 4122 v4, same format the uuid package produced
 const orderLifecycle = require("./orderLifecycleMigration"); // order lifecycle (2026-11-11): tables, columns and their names in one place
 const auditTable = require("./auditMigration"); // the admin change log: one table, one definition
@@ -185,6 +185,16 @@ function idValue(id) {
   return null;
 }
 
+/**
+ * How many writes each table has had in this process. A reader that worked something out from a
+ * table a moment ago (the pricing runner prices in pieces, with other requests served in between)
+ * asks this to know whether the table has changed since: services/pricingMemo.js.
+ */
+const revisions = Object.create(null);
+function tableRevision(tableName) {
+  return revisions[tableName] || 0;
+}
+
 class SqliteDB {
   constructor(tableName) {
     if (!IDENTIFIER.test(String(tableName)) || !Object.prototype.hasOwnProperty.call(JSON_COLUMNS, tableName)) {
@@ -328,9 +338,13 @@ class SqliteDB {
       // Read the count before the save: exporting the database (which a save does) resets it to 0,
       // which is why delete() used to answer "nothing deleted" for a row it had just removed.
       const changed = db.getRowsModified();
+      revisions[this.tableName] = (revisions[this.tableName] || 0) + 1;
       saveToDisk();
       return changed;
     } catch (err) {
+      // Inside database.transaction() a failed write stops the whole change (it is rolled back);
+      // it is never logged and stepped over, which would commit an order with a line missing.
+      if (inTransaction()) throw err;
       console.error(`SqliteDB run error [${this.tableName}]:`, err.message);
       return 0;
     }
@@ -407,4 +421,4 @@ class SqliteDB {
   }
 }
 
-module.exports = { SqliteDB, IDENTIFIER, toSqlValue };
+module.exports = { SqliteDB, IDENTIFIER, toSqlValue, tableRevision };

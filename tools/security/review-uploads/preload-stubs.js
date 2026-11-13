@@ -11,11 +11,17 @@ if (isMainThread && process.env.REVIEW_STUBS === "1") {
   const root = path.join(__dirname, "..", "..", "..");
   const created = [];
   const sessions = {};
+  // (2026-11-13) Session ids used to restart at cs_test_review_1 every time the server process started. Stripe
+  // never hands out an id twice, and a script that stops the server and starts it again on the same database
+  // (checkout-hold.js, between its database sizes) then got an id that was already on record for another order.
+  // Until 2026-11-13 the server logged that failed insert and carried on with a broken session record; it now
+  // refuses. A tag per process keeps the stand-in's ids unique across restarts, as Stripe's are.
+  const run = require("crypto").randomBytes(4).toString("hex");
   require(path.join(root, "server", "services", "stripeClient")).setForTests({
     checkout: {
       sessions: {
         create: async (args) => {
-          const id = `cs_test_review_${created.length + 1}`;
+          const id = `cs_test_review_${run}_${created.length + 1}`;
           created.push(args);
           // (2026-11-12, second integration pass) The session says what Stripe's would: its amount, currency and state.
           // The order lifecycle settles a payment only against those, so a stand-in without them could never show a

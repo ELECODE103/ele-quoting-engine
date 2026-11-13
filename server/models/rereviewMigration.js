@@ -13,6 +13,10 @@
  *                           key as on parts and quotes, never the address), for the ceiling on
  *                           unpaid orders per address (security/orderCaps.js).
  *
+ *   orders.line_count       how many lines the order was written with, in the same change as the
+ *                           lines themselves. NULL on an order from before this: the start-up check
+ *                           (services/orderRepair.js) looks at those once and fills it in.
+ *
  * Indexes: the questions the order routes ask on every request ("the lines of this order",
  * "is this part on an order", "this account's orders") are answered from an index, not by
  * reading every row of the table.
@@ -20,6 +24,7 @@
 const COLUMNS = [
   ["parts", "geometry_rev", "INTEGER DEFAULT 0"],
   ["orders", "client_tag", "TEXT"],
+  ["orders", "line_count", "INTEGER"],
 ];
 
 const INDEXES = [
@@ -35,6 +40,7 @@ const INDEXES = [
 const FIELD_MAP = {
   geometryRev: "geometry_rev",
   // (orders.client_tag is written and read as `clientTag`, which the field map already has.)
+  lineCount: "line_count",
 };
 
 // Table, column and index names and the column types are the only interpolated parts of these

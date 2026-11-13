@@ -273,9 +273,19 @@ async function start() {
     } catch { /* the size is only for this message */ }
   }
 
+  // Orders an earlier version left only partly written when it was killed (services/orderRepair.js):
+  // an unpaid one is closed out and can never be paid for; a paid one is flagged for the owner.
+  // Before the server takes a request; the calls to Stripe and the email follow once it is up.
+  let orderCheck = null;
+  if (require("./models").USE_SQLITE) {
+    try { orderCheck = require("./services/orderRepair").checkOrders(); }
+    catch (err) { console.error("Order check error:", err.message); }
+  }
+
   // Unpaid orders whose checkout session has lapsed are closed out as expired (and one that was
   // paid without our hearing of it is settled). At startup and every ten minutes.
   require("./services/orderLifecycle").startSweep();
+  if (orderCheck && (orderCheck.closed.length || orderCheck.flagged.length)) require("./services/orderRepair").closeLeftovers(orderCheck).catch(() => {});
 
   // Say at startup what is switched off, so a missing setting is found in the
   // deploy log and not by a customer.

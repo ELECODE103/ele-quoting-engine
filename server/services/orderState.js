@@ -80,6 +80,8 @@ const ATTENTION = {
   "refund-problem": "Refund problem",
   // A line's part file is not the file that was priced (services/partLock.js). The order keeps its state.
   "part-changed": "Part file changed after it was priced",
+  // Fewer lines than its quote: written only in part before a crash of an earlier version (services/orderRepair.js).
+  "order-incomplete": "Order is missing lines",
 };
 
 /** How an order marked paid by hand was paid. */

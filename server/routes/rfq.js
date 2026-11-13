@@ -742,9 +742,14 @@ router.post("/quote/:token/accept", async (req, res) => {
     }
     if (method === "card" && !stripeClient.get()) return res.status(503).json({ error: `Card payment isn't available right now. Call ${brand.phone}.`, code: "card-unavailable" });
 
-    // ── The claim. Everything from here to the end of this block is synchronous. ──
+    // ── The claim. Everything from here to the end of this block is synchronous, and ONE change to
+    // the database (models/database.js transaction()): the order, its lines and the quote's
+    // acceptance reach the file together or not at all (re-review 2026-11-12, F-02). ──
     const days = rfq.quotedLeadDays;
+    const lineRows = orderItemsFor(rfq);
+    const claim = require("../models/database").transaction(() => {
     let order = ordersDB.insert({
+      lineCount: lineRows.length, // how many lines it is written with (services/orderRepair.js)
       userId: rfq.userId || null,
       quoteId: rfq.quoteId || null,
       rfqId: rfq.id,
@@ -775,7 +780,7 @@ router.post("/quote/:token/accept", async (req, res) => {
     });
     // The carrier account number is sealed to this order's id, so it is stored once the id exists.
     if (firm.carrier) order = ordersDB.update(order.id, { shipAccountEnc: shippingService.sealAccount(firm.carrier.account, order.id) });
-    const items = orderItemsFor(rfq).map((it) => orderItemsDB.insert({ orderId: order.id, ...it }));
+    const items = lineRows.map((it) => orderItemsDB.insert({ orderId: order.id, ...it }));
     const accepted = rfqsDB.update(rfq.id, {
       status: "accepted",
       acceptedAt: new Date().toISOString(),
@@ -783,6 +788,9 @@ router.post("/quote/:token/accept", async (req, res) => {
       poNumber,
       orderId: order.id,
     });
+    return { order, items, accepted };
+    });
+    const { order, items, accepted } = claim;
     // ── Claimed. ──
 
     let session = null;
@@ -795,9 +803,11 @@ router.post("/quote/:token/accept", async (req, res) => {
         const nowRfq = rfqsDB.getById(rfq.id);
         const nowOrder = ordersDB.getById(order.id);
         if (nowOrder && nowOrder.status === "pending_payment" && nowRfq && nowRfq.status === "accepted" && nowRfq.orderId === order.id) {
-          for (const it of items) orderItemsDB.delete(it.id);
-          ordersDB.delete(order.id);
-          rfqsDB.update(rfq.id, { status: "quoted", acceptedAt: null, acceptedVia: null, poNumber: "", orderId: null });
+          require("../models/database").transaction(() => {
+            for (const it of items) orderItemsDB.delete(it.id);
+            ordersDB.delete(order.id);
+            rfqsDB.update(rfq.id, { status: "quoted", acceptedAt: null, acceptedVia: null, poNumber: "", orderId: null });
+          });
         }
         // Stripe could not place the address for sales tax: the buyer corrects it and accepts again.
         if (err.code === "tax-address") return res.status(400).json({ error: err.message, code: "tax-address" });

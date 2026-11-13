@@ -321,21 +321,141 @@ async function openSession(orderRef, opts) {
     expires_at: Math.floor(expiresAt.getTime() / 1000),
     allow_promotion_codes: promo,
   });
-  paymentSessionsDB.insert({
-    id: session.id, orderId: order.id, status: "open", amountCents: expected, currency: currencyOf(order),
-    promoAllowed: promo, url: session.url, returnKey: key, expiresAt: expiresAt.toISOString(),
-  });
-
+  // Stripe never hands out a session id twice. If this one is already on record for ANOTHER order
+  // something is badly wrong (a Stripe stand-in that restarts its numbering, two sites on one
+  // database): nothing is recorded over the other order's page, and this page is closed again.
+  const known = paymentSessionsDB.getById(session.id);
+  if (known && known.orderId !== order.id) {
+    console.error(`[lifecycle] Stripe returned a checkout session id that is already on record for another order (${String(known.orderId).slice(0, 8)}); no payment page was opened for order ${String(order.id).slice(0, 8)}`);
+    try { if (typeof stripe.checkout.sessions.expire === "function") await stripe.checkout.sessions.expire(session.id); } catch { /* it is not handed to anybody either way */ }
+    throw refusal(502, "payment-session-busy", "We couldn't start the card payment just now. Try again in a minute.");
+  }
+  // The record of the page and the order's pointer to it: one change to the database, one write of the file.
   // And once more after the call to Stripe: an order cancelled or settled while the session
   // was being made must not be left with a payable page.
-  const after = ordersDB.getById(order.id);
-  if (!after || after.status !== "pending_payment") {
+  const stillWaiting = require("../models/database").transaction(() => {
+    const record = { orderId: order.id, status: "open", amountCents: expected, currency: currencyOf(order), promoAllowed: promo, url: session.url, returnKey: key, expiresAt: expiresAt.toISOString() };
+    if (known) paymentSessionsDB.update(session.id, record); else paymentSessionsDB.insert({ id: session.id, ...record });
+    const after = ordersDB.getById(order.id);
+    if (!after || after.status !== "pending_payment") return false;
+    ordersDB.update(order.id, { stripeSessionId: session.id, sessionExpiresAt: expiresAt.toISOString(), currency: currencyOf(order) });
+    return true;
+  });
+  if (!stillWaiting) {
     const rec = paymentSessionsDB.getById(session.id);
     try { if (rec) await closeSession(rec, "replaced"); } catch { /* the sweep and the late-payment path cover it */ }
     throw refusal(409, "order-not-payable", "This order is not waiting for a card payment.");
   }
-  ordersDB.update(order.id, { stripeSessionId: session.id, sessionExpiresAt: expiresAt.toISOString(), currency: currencyOf(order) });
   return session;
+}
+
+/** Is a payment page open for this order, or being opened right now? */
+function sessionsOpenFor(orderId) {
+  if (inFlight.has(orderId) || openSessionsFor(orderId).length > 0) return true;
+  // An order made before sessions were recorded has only the id on its row.
+  const order = ordersDB.getById(orderId);
+  return Boolean(order && order.stripeSessionId && !paymentSessionsDB.getById(order.stripeSessionId));
+}
+
+/**
+ * Would writing `updates` to this unpaid order leave an open payment page that is no longer the
+ * page for the order (independent re-review 2026-11-12, F-06)? True when a page is open and the
+ * change alters what the order should be charged, or anything else a page is made from (its lines,
+ * the delivery choice, the tax address). The order route then asks Stripe first (closeForChange)
+ * and changes nothing until the page is settled or closed.
+ * @param {object} opts  what the page is opened with: itemCount, description, successUrl, cancelUrl
+ */
+function changeNeedsClosedSessions(order, updates, opts) {
+  if (!order || !sessionsOpenFor(order.id)) return false;
+  const after = { ...order, ...updates };
+  if (expectedCents(after) !== expectedCents(order)) return true;
+  try {
+    const rules = require("./checkout").currentRules();
+    return sessionKey(opts, after, rules) !== sessionKey(opts, order, rules);
+  } catch { return true; }
+}
+
+/**
+ * Before an unpaid order is changed: every payment page that is open for it is asked about at
+ * Stripe. One that was paid settles the order AS IT STANDS (the buyer paid for what that page
+ * showed) and the answer is `paid`. One that was not is closed at Stripe, so it can no longer take
+ * money, and only then may the order be changed. A page that cannot be confirmed closed stops the
+ * change with `payment-session-busy`: an order is never changed under a page that might still be paid.
+ * @returns {Promise<{paid: true} | {closed: true}>}
+ */
+async function closeForChange(orderId, { base } = {}) {
+  const flying = inFlight.get(orderId);
+  if (flying) { try { await flying.work; } catch { /* that request answers for its own failure */ } }
+  const order = ordersDB.getById(orderId);
+  if (!order) return { closed: true };
+  if (order.status !== "pending_payment") return { paid: true }; // settled (or closed) while this request waited: its page says which
+  if (order.stripeSessionId && !paymentSessionsDB.getById(order.stripeSessionId)) {
+    paymentSessionsDB.insert({ id: order.stripeSessionId, orderId: order.id, status: "open", amountCents: null, currency: currencyOf(order), promoAllowed: true, expiresAt: null });
+  }
+  for (const rec of openSessionsFor(orderId)) {
+    const closed = await closeSession(rec, "replaced");
+    if (closed.paid) {
+      await settleFromSession(orderId, closed.paid, { base, source: "checkout" });
+      return { paid: true };
+    }
+  }
+  const after = ordersDB.getById(orderId);
+  return after && after.status !== "pending_payment" ? { paid: true } : { closed: true };
+}
+
+/**
+ * Close an unpaid order whose lines are not the lines of its quote (F-02: an order an earlier
+ * version left part-written when the process was killed between two of its saves). Never payable:
+ * it is shown as "not paid, closed", its payment pages are marked closed here (the caller closes
+ * them at Stripe), and its quote is given back so the buyer can check out again and get a whole
+ * order. One change to the database. Synchronous.
+ */
+function closePartialOrder(orderId, cause) {
+  const order = ordersDB.getById(orderId);
+  if (!order || order.status !== "pending_payment") return null;
+  return require("../models/database").transaction(() => {
+    const closed = ordersDB.update(order.id, { status: "expired", expiredAt: now() });
+    for (const rec of openSessionsFor(order.id)) markSession(rec.id, { status: "expired", closedAt: now() });
+    releaseSource(closed);
+    recordEvent({ kind: "order-expired", order: closed, sessionId: order.stripeSessionId, detail: String(cause || "closed: the order was only partly written") });
+    return closed;
+  });
+}
+
+/**
+ * Close an unpaid card order because the file store is full (services/storagePressure.js; re-review
+ * 2026-11-12, F-12). Every payment page that is open for it is closed AT STRIPE first: one that
+ * turns out to be paid settles the order (which then keeps its files for good); one that cannot be
+ * confirmed closed leaves the order alone. Only then is the order closed ("not paid, closed"), its
+ * quote given back, and the buyer told, once, that nothing was charged and what to do.
+ * Firm-quote orders, phone orders and orders flagged for the owner are never closed here.
+ * @returns {Promise<{outcome: "closed"|"paid"|"kept"|"busy", order?: object}>}
+ */
+async function closeUnderPressure(orderId, { base } = {}) {
+  const order = ordersDB.getById(orderId);
+  if (!order || order.status !== "pending_payment" || order.attention || order.rfqId || (order.paymentMethod && order.paymentMethod !== "card")) return { outcome: "kept" };
+  if (inFlight.has(orderId)) return { outcome: "busy" };
+  if (order.stripeSessionId && !paymentSessionsDB.getById(order.stripeSessionId)) {
+    paymentSessionsDB.insert({ id: order.stripeSessionId, orderId: order.id, status: "open", amountCents: null, currency: currencyOf(order), promoAllowed: true, expiresAt: null });
+  }
+  try {
+    for (const rec of openSessionsFor(orderId)) {
+      const closed = await closeSession(rec, "expired");
+      if (closed.paid) {
+        await settleFromSession(orderId, closed.paid, { base, source: "pressure" });
+        return { outcome: "paid" };
+      }
+    }
+  } catch { return { outcome: "busy" }; }
+  const expired = expireOrder(orderId, "closed to make room: the file store was full and this order had not been paid for");
+  if (!expired) return { outcome: "kept" };
+  try {
+    const orderEvents = require("./orderEvents");
+    const to = orderEvents.customerEmail(expired);
+    const url = `${base || orderEvents.baseUrl()}/quote`;
+    if (to) await mailer.send({ to, replyTo: mailer.shopNotifyAddress(), confirmedRecipient: true, ...require("../emails/templates").orderClosedBuyer({ order: expired, quoteUrl: url }) });
+  } catch (err) { console.error(`[lifecycle] could not tell the buyer of order ${String(orderId).slice(0, 8)} that it was closed: ${err.name || "Error"}`); }
+  return { outcome: "closed", order: expired };
 }
 
 /** Close every open session of an order (cancelled, paid another way, settled by another session). */
@@ -859,6 +979,7 @@ function paymentView(order) {
 module.exports = {
   sessionMinutes, promotionCodesAllowed, paymentSettings, expectedCents, currencyOf,
   checkoutSession, closeOpenSessions, settleFromSession, confirmPayment, checkSession,
+  sessionsOpenFor, changeNeedsClosedSessions, closeForChange, closePartialOrder, closeUnderPressure,
   expireOrder, releaseSource, handleSessionExpired, sweepExpired, startSweep,
   handleChargeRefunded, handleRefundUpdated, handleDispute,
   manualMove, resolveAttention, paymentView,

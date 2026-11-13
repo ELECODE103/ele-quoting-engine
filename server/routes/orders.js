@@ -93,205 +93,245 @@ function requireShipToLines(req, res, next) {
 //   2. the one place a Stripe session is made: orderEvents.createCheckoutSession →
 //      orderLifecycle.checkoutSession → openSession, at expectedCharge(order).
 // Order of the guards: who is asking, their per-account checkout limit, then the shape of what they sent.
-router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGuard.limiter, requireShipToLines, async (req, res) => {
-  try {
-    if (!stripeClient.get()) {
-      // The code the session layer uses for the same state (services/orderLifecycle.js), so the page words it once.
-      return res.status(503).json({ error: "Payment processing is not configured", code: "payments-unavailable" });
-    }
+//
+// HOW THE STEP IS MADE (independent re-review 2026-11-12, F-08, F-02, F-01, F-06)
+//
+//   orderStep() below is one synchronous function: it reads the quote and the buyer's unpaid order,
+//   prices the quote again, compares, and writes the order. It is run by the site's one pricing
+//   runner (services/pricingMemo.js), like a new quote:
+//
+//     warm-up passes   the pricing is done in pieces, with every other request served between
+//                      them. A warm-up pass stops right after the pricing (verifyQuoteForOrder
+//                      answers `warming`), before anything is judged or written.
+//     the final pass   runs in one piece with everything priced already in the runner's memo, and
+//                      only after the runner has checked, in the same step, that every part and
+//                      catalog table the memo holds is still what the database holds. It reads the
+//                      quote and the order afresh, judges, and writes. So the read, the re-pricing,
+//                      the fingerprint check and the write are one indivisible step relative to
+//                      any change to a part, exactly as when it was all done in one go; the long
+//                      part of the work just no longer holds the thread.
+//
+//   The write is ONE change to the database (models/database.js transaction()): the order, all its
+//   lines, the claims on its parts and its quote's new status reach the file in one atomic
+//   replacement of the file, or none of them does. It used to be one whole-file save per row: a
+//   100-line checkout held the site 0.6 s on a new database and 4.2 s at 12 MB, and a kill part
+//   way through left an order with some of its lines, which the buyer then paid for in full.
+//
+//   The pricing time, the final pass and its one save are charged to the sender (the address and
+//   the account) by the runner, like any other pricing.
+// ═══════════════════════════════════════════════════════════════
 
-    const { quoteId } = req.body;
+const refuse = (status, body, headers = {}) => ({ refusal: { status, body, headers } });
 
-    if (!quoteId) {
-      return res.status(400).json({ error: "Quote ID is required" });
-    }
+/**
+ * Do the lines of this order say what its quote, as just priced, says? An order made by this
+ * route always does (they are written in one change). One that does not was left by a crash of an
+ * earlier version part way through its lines, or was changed by hand: it must never be handed a
+ * payment page (F-02).
+ */
+function linesMatchQuote(items, lineItems) {
+  if (!Array.isArray(lineItems) || items.length !== lineItems.length) return false;
+  return lineItems.every((li, i) => {
+    const it = items[i];
+    return it && it.partId === li.partId && Number(it.quantity) === Number(li.quantity || 1) && Math.abs((Number(it.lineTotal) || 0) - (Number(li.lineTotal) || 0)) < 0.011;
+  });
+}
 
-    // Retrieve the quote
-    let quote = typeof quoteId === "string" ? quotesDB.getById(quoteId) : null;
-    if (!quote) {
-      return res.status(404).json({ error: "Quote not found" });
-    }
+/**
+ * The checkout step (see the block above). Synchronous; run by the pricing runner, several times.
+ * @returns {null | {refusal} | {closeFirst, orderId} | {order, resumed, itemCount, description, quoteWas}}
+ *   null: a warm-up pass (nothing judged, nothing written).
+ */
+function orderStep(req, quoteId) {
+  let quote = quotesDB.getById(quoteId);
+  if (!quote) return refuse(404, { error: "Quote not found" });
 
-    // Security: verify quote belongs to requesting user
-    if (quote.userId && quote.userId !== req.user.userId && req.user.role !== "admin") {
-      return res.status(403).json({ error: "Access denied" });
-    }
+  // Security: verify quote belongs to requesting user
+  if (quote.userId && quote.userId !== req.user.userId && req.user.role !== "admin") {
+    return refuse(403, { error: "Access denied" });
+  }
 
-    // One quote, one order (payments review 2026-11-11, F-04): an order that is paid, or waiting to
-    // be paid, has used this quote up. The buyer's own unpaid order is resumed further down; anything
-    // else is refused. (To buy the same parts again there is Reorder, which prices them at today's rules.)
-    // Which orders still hold their quote is the state machine's call (services/orderState.js holdsQuote):
-    // every order except one that lapsed unpaid ("expired" — its quote was given back when it lapsed).
-    // A cancelled order keeps its quote: the owner can still mark a cancelled order paid.
-    const taken = orderQueries.ordersOfQuote(quoteId).filter((o) => orderState.holdsQuote(o));
-    // (Its total is not compared with the quote's here: the delivery choice may differ, or change on the
-    // way back from the card page. Its amounts are brought up to date below, from this same check.)
-    const resumable = taken.find((o) => o.userId === req.user.userId && o.status === "pending_payment" && !o.rfqId);
-    if (taken.length > 0 && !resumable) {
-      const mine = taken.find((o) => o.userId === req.user.userId);
-      return res.status(409).json({
-        error: "This quote has already been ordered. To order the same parts again, open that order and choose Reorder.",
-        code: "quote-already-ordered",
-        ...(mine ? { orderId: mine.id } : {}),
-      });
-    }
-
-    // The quote's own total, and only that: a quote without one is not charged from another field.
-    const orderTotal = Number(quote.orderTotal);
-    if (!Number.isFinite(orderTotal) || orderTotal <= 0) {
-      return res.status(400).json({ error: "Invalid order total" });
-    }
-
-    // Prices hold for 30 days from the last time the quote was priced. A quote
-    // saved before the hold existed has no date: count from when it was last touched.
-    const expiresAt = quote.expiresAt
-      || new Date(new Date(quote.updatedAt || quote.createdAt || 0).getTime() + QUOTE_VALID_DAYS * 864e5).toISOString();
-    if (new Date(expiresAt) < new Date()) {
-      return res.status(410).json({
-        error: "This price has expired. Reopen the quote to get today's price.",
-        code: "quote-expired",
-      });
-    }
-
-    // Quotes the gate routed to RFQ can't be bought online — a person prices them first.
-    if (quote.gate?.requiresRfq && req.user.role !== "admin") {
-      return res.status(409).json({
-        error: "This quote needs a firm quote from us before it can be ordered",
-        code: "rfq-required",
-        reasons: quote.gate.reasons || [],
-      });
-    }
-
-    // The promised ship date is counted from today now and re-counted from the
-    // payment day when the payment clears.
-    const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === quote.leadTimeSlug) || null;
-    // A lead time that is no longer offered (switched off, or not confirmed by
-    // the owner) cannot be bought from an old quote either.
-    if (quote.leadTimeSlug && (!leadTime || !leadTime.active || !shopFacts.leadTimeListed(leadTime)) && req.user.role !== "admin") {
-      return res.status(409).json({
-        error: "The lead time on this quote is no longer offered. Reopen the quote and pick a lead time to get today's price.",
-        code: "lead-time-unavailable",
-      });
-    }
-    // PRICE INTEGRITY (independent review 2026-11-11, F2). The stored total is not charged on
-    // trust: the saved configuration is priced again here, through the same choke point as a new
-    // quote, from each part's CURRENT geometry under the CURRENT rules, and the gate is run again.
-    // The buyer is charged only when that agrees with the stored total to the cent, or when the
-    // quote is inside its price hold and its parts, configuration and gate result are exactly what
-    // was priced. Otherwise: 409 `quote-changed` with today's price for the buyer to confirm.
-    // An order of the buyer's that is still waiting for payment gets the same check before it is
-    // handed a payment page again (payments review F-04): its parts have been locked since it was
-    // made, but the rate card, the catalog and the gate have not. If it no longer passes, the quote
-    // has to be reopened (it is not a draft any more, so the builder makes a new one from it).
-    // That re-pricing is real work on the one thread, and it has to be done in one step with the order
-    // it guards (nothing may change between the check and the order), so it cannot be handed to the
-    // pricing runner in pieces. What can be done is done: a sender who has used the hour's pricing
-    // allowance is told when to come back before any of it starts, each part is loaded and measured
-    // once however many lines name it (the memo inside verifyQuoteForOrder), and the time it takes is
-    // charged to the address and the account like any other pricing (security/pricingGate.js).
-    const spent = pricingGate.overBudget(req);
-    if (spent) {
-      res.set("Retry-After", String(spent.retryAfterSeconds));
-      return res.status(spent.status).json(spent.body);
-    }
-    // How the order is delivered and what that comes to (services/checkout.js). The request says
-    // which choice (and, for the buyer's own carrier, the account); no amount is read from it.
-    // Shipping is worked out here, now, from the lines as they have just been priced again under the
-    // settings in force: the shipping figure stored on the quote is never the charge. The parts are
-    // charged at the quote's own subtotal (today's price, or the held one), so that is the subtotal a
-    // "free over" threshold is judged on. A choice that is switched off is refused.
-    let resolved = null;
-    const resolveDelivery = (current, priced) => checkout.resolve(current, req.body, {
-      certificate: current.taxCertPath ? { fileName: current.taxCertFileName || "certificate", path: current.taxCertPath } : null,
-      // (`parts`: the records those lines were just priced from, so they are not read a second time.)
-      priced: { lineItems: priced.quote.lineItems, subtotal: current.subtotal, parts: priced.parts },
+  // One quote, one order (payments review 2026-11-11, F-04): an order that is paid, or waiting to
+  // be paid, has used this quote up. The buyer's own unpaid order is resumed further down; anything
+  // else is refused. (To buy the same parts again there is Reorder, which prices them at today's rules.)
+  // Which orders still hold their quote is the state machine's call (services/orderState.js holdsQuote):
+  // every order except one that lapsed unpaid ("expired" — its quote was given back when it lapsed).
+  // A cancelled order keeps its quote: the owner can still mark a cancelled order paid.
+  const taken = orderQueries.ordersOfQuote(quoteId).filter((o) => orderState.holdsQuote(o));
+  // (Its total is not compared with the quote's here: the delivery choice may differ, or change on the
+  // way back from the card page. Its amounts are brought up to date below, from this same check.)
+  const resumable = taken.find((o) => o.userId === req.user.userId && o.status === "pending_payment" && !o.rfqId);
+  if (taken.length > 0 && !resumable) {
+    const mine = taken.find((o) => o.userId === req.user.userId);
+    return refuse(409, {
+      error: "This quote has already been ordered. To order the same parts again, open that order and choose Reorder.",
+      code: "quote-already-ordered",
+      ...(mine ? { orderId: mine.id } : {}),
     });
-    const pricingStarted = Date.now();
-    const checked = require("./api").verifyQuoteForOrder(quote, req.user, {
-      confirmedTotal: req.body.confirmedTotal,
-      // The total the buyer's page was showing is the total for the delivery choice they made.
-      totalShown: (current, priced) => { resolved = resolveDelivery(current, priced); return resolved.ok ? resolved.total : null; },
+  }
+
+  // The quote's own total, and only that: a quote without one is not charged from another field.
+  const orderTotal = Number(quote.orderTotal);
+  if (!Number.isFinite(orderTotal) || orderTotal <= 0) {
+    return refuse(400, { error: "Invalid order total" });
+  }
+
+  // Prices hold for 30 days from the last time the quote was priced. A quote
+  // saved before the hold existed has no date: count from when it was last touched.
+  const expiresAt = quote.expiresAt
+    || new Date(new Date(quote.updatedAt || quote.createdAt || 0).getTime() + QUOTE_VALID_DAYS * 864e5).toISOString();
+  if (new Date(expiresAt) < new Date()) {
+    return refuse(410, {
+      error: "This price has expired. Reopen the quote to get today's price.",
+      code: "quote-expired",
     });
-    pricingGate.charge(req, Date.now() - pricingStarted);
-    if (!checked.ok) return res.status(checked.status).json(resumable ? { ...checked.body, reopen: true, orderId: resumable.id } : checked.body);
-    quote = checked.quote;
-    if (!resolved) resolved = resolveDelivery(quote, checked.priced);
-    if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error, code: resolved.code });
+  }
 
-    // An order is never taken (or paid for) for a part whose file the shop no longer has. Retention keeps
-    // the files of a quote that can still be ordered, so this should not fire; it is the check that it did.
-    const files = require("../services/fileRetention").partFilesPresent((quote.lineItems || []).map((li) => li.partId));
-    if (!files.ok) return res.status(409).json({ error: files.message, code: files.code, reopen: true, ...(resumable ? { orderId: resumable.id } : {}) });
-
-    const leadDays = leadTime ? shipBy.leadDays(leadTime) : null;
-    const account = usersDB.getById(req.user.userId);
-    const shipping = resolved.address;
-    const delivery = checkout.orderFields(resolved);
-    const sealed = (orderId) => (resolved.carrier ? { shipAccountEnc: shippingService.sealAccount(resolved.carrier.account, orderId) } : {});
-
-    const baseUrl = orderEvents.baseUrl(req);
-    const stripeUrls = (orderId) => ({
-      successUrl: `${baseUrl}/orders/${orderId}?paid=true`,
-      cancelUrl: `${baseUrl}/checkout/${quoteId}?cancelled=true`,
-      metadata: { quoteId, userId: req.user.userId },
+  // Quotes the gate routed to RFQ can't be bought online — a person prices them first.
+  if (quote.gate?.requiresRfq && req.user.role !== "admin") {
+    return refuse(409, {
+      error: "This quote needs a firm quote from us before it can be ordered",
+      code: "rfq-required",
+      reasons: quote.gate.reasons || [],
     });
-    const describe = (items) => {
-      const names = items.map((i) => i.fileName || "custom part").join(", ");
-      return names.length > 200 ? names.substring(0, 197) + "..." : names;
-    };
+  }
 
-    // Back from a cancelled or abandoned Stripe page: pay for the same order
-    // (with the address as now entered) instead of stacking a second one.
-    // The delivery choice may have changed on the way back too (ship → pickup, say): the same order
-    // is brought up to date, amounts included, never left behind for a second one.
-    // Only while it is still waiting: it is read again here, in the same step as the write.
-    const pending = resumable ? ordersDB.getById(resumable.id) : null;
-    if (resumable && (!pending || pending.status !== "pending_payment")) {
-      return res.status(409).json({ error: "This order is not waiting for a card payment.", code: "order-not-payable", orderId: resumable.id });
-    }
-    if (pending) {
-      const reused = ordersDB.update(pending.id, {
+  // The promised ship date is counted from today now and re-counted from the
+  // payment day when the payment clears.
+  const leadTime = leadTimesDB.getAll().find((lt) => lt.slug === quote.leadTimeSlug) || null;
+  // A lead time that is no longer offered (switched off, or not confirmed by
+  // the owner) cannot be bought from an old quote either.
+  if (quote.leadTimeSlug && (!leadTime || !leadTime.active || !shopFacts.leadTimeListed(leadTime)) && req.user.role !== "admin") {
+    return refuse(409, {
+      error: "The lead time on this quote is no longer offered. Reopen the quote and pick a lead time to get today's price.",
+      code: "lead-time-unavailable",
+    });
+  }
+  // PRICE INTEGRITY (independent review 2026-11-11, F2). The stored total is not charged on
+  // trust: the saved configuration is priced again here, through the same choke point as a new
+  // quote, from each part's CURRENT geometry under the CURRENT rules, and the gate is run again.
+  // The buyer is charged only when that agrees with the stored total to the cent, or when the
+  // quote is inside its price hold and its parts, configuration and gate result are exactly what
+  // was priced. Otherwise: 409 `quote-changed` with today's price for the buyer to confirm.
+  // An order of the buyer's that is still waiting for payment gets the same check before it is
+  // handed a payment page again (payments review F-04): its parts have been locked since it was
+  // made, but the rate card, the catalog and the gate have not. If it no longer passes, the quote
+  // has to be reopened (it is not a draft any more, so the builder makes a new one from it).
+
+  // How the order is delivered and what that comes to (services/checkout.js). The request says
+  // which choice (and, for the buyer's own carrier, the account); no amount is read from it.
+  // Shipping is worked out here, now, from the lines as they have just been priced again under the
+  // settings in force: the shipping figure stored on the quote is never the charge. The parts are
+  // charged at the quote's own subtotal (today's price, or the held one), so that is the subtotal a
+  // "free over" threshold is judged on. A choice that is switched off is refused.
+  let resolved = null;
+  const resolveDelivery = (current, priced) => checkout.resolve(current, req.body, {
+    certificate: current.taxCertPath ? { fileName: current.taxCertFileName || "certificate", path: current.taxCertPath } : null,
+    // (`parts`: the records those lines were just priced from, so they are not read a second time.)
+    priced: { lineItems: priced.quote.lineItems, subtotal: current.subtotal, parts: priced.parts },
+  });
+  const checked = require("./api").verifyQuoteForOrder(quote, req.user, {
+    confirmedTotal: req.body.confirmedTotal,
+    // The total the buyer's page was showing is the total for the delivery choice they made.
+    totalShown: (current, priced) => { resolved = resolveDelivery(current, priced); return resolved.ok ? resolved.total : null; },
+    // In a warm-up pass the shipment is measured too (a drawing is put at its stock thickness once
+    // per line), so the final pass finds that worked out as well.
+    warmUp: (current, priced) => { resolveDelivery(current, priced); },
+  });
+  if (checked.warming) return null;
+  if (!checked.ok) return refuse(checked.status, resumable ? { ...checked.body, reopen: true, orderId: resumable.id } : checked.body);
+  quote = checked.quote;
+  if (!resolved) resolved = resolveDelivery(quote, checked.priced);
+  if (!resolved.ok) return refuse(resolved.status, { error: resolved.error, code: resolved.code });
+
+  // An order is never taken (or paid for) for a part whose file the shop no longer has. Retention keeps
+  // the files of a quote that can still be ordered, so this should not fire; it is the check that it did.
+  const files = require("../services/fileRetention").partFilesPresent((quote.lineItems || []).map((li) => li.partId));
+  if (!files.ok) return refuse(409, { error: files.message, code: files.code, reopen: true, ...(resumable ? { orderId: resumable.id } : {}) });
+
+  const leadDays = leadTime ? shipBy.leadDays(leadTime) : null;
+  const account = usersDB.getById(req.user.userId);
+  const shipping = resolved.address;
+  const delivery = checkout.orderFields(resolved);
+  const sealed = (orderId) => (resolved.carrier ? { shipAccountEnc: shippingService.sealAccount(resolved.carrier.account, orderId) } : {});
+  const describe = (items) => {
+    const names = items.map((i) => i.fileName || "custom part").join(", ");
+    return names.length > 200 ? names.substring(0, 197) + "..." : names;
+  };
+  const lineItems = quote.lineItems || [];
+
+  // Back from a cancelled or abandoned Stripe page: pay for the same order
+  // (with the address as now entered) instead of stacking a second one.
+  // The delivery choice may have changed on the way back too (ship → pickup, say): the same order
+  // is brought up to date, amounts included, never left behind for a second one.
+  // Only while it is still waiting: it is read again here, in the same step as the write.
+  let pending = resumable ? ordersDB.getById(resumable.id) : null;
+  if (resumable && (!pending || pending.status !== "pending_payment")) {
+    return refuse(409, { error: "This order is not waiting for a card payment.", code: "order-not-payable", orderId: resumable.id });
+  }
+  if (pending) {
+    const items = orderQueries.itemsOf(pending.id);
+    if (!linesMatchQuote(items, lineItems)) {
+      // Not the order this quote makes (F-02: an order an earlier version left part-written when the
+      // process was killed). It is never handed a payment page: it is closed here, in this same
+      // change, and a whole order is made below. If a payment page of its own is still open, that is
+      // closed at Stripe first (the caller does it and comes back).
+      if (lifecycle.sessionsOpenFor(pending.id)) return { closeFirst: true, orderId: pending.id };
+      lifecycle.closePartialOrder(pending.id, `closed at checkout: it holds ${items.length} of the ${lineItems.length} lines of its quote`);
+      pending = null;
+    } else {
+      const updates = {
         ...delivery, ...sealed(pending.id),
         shippingCost: resolved.shippingCost, leadTimeSurcharge: resolved.leadTimeSurcharge, subtotal: resolved.subtotal,
         tax: 0, total: resolved.total,
         shipBy: leadDays !== null ? shipBy.shipByDate(leadDays) : pending.shipBy,
-      });
-      const items = orderQueries.itemsOf(reused.id);
-      // The session this order already has, while it is still open for the same amount; a new one only when it is not.
-      const again = await checkoutGuard.sessionFor(reused, { itemCount: items.length, description: describe(items), ...stripeUrls(reused.id) });
-      return res.json({ sessionUrl: again.paid ? stripeUrls(reused.id).successUrl : again.session.url, orderId: reused.id });
+      };
+      const stripe = { itemCount: items.length, description: describe(items), ...stripeUrls(req, pending.id, quoteId) };
+      // A payment page is open for this order and the change would make it a page for another
+      // amount, another delivery choice or another tax address (F-06): nothing about the order is
+      // changed while that page can still be paid. The caller asks Stripe first: paid → the order is
+      // settled as it stands; not paid → the page is closed at Stripe, then this step runs again.
+      if (lifecycle.changeNeedsClosedSessions(pending, updates, stripe)) return { closeFirst: true, orderId: pending.id };
+      const reused = ordersDB.update(pending.id, updates);
+      return { order: reused, resumed: true, itemCount: items.length, description: describe(items) };
     }
+  }
 
-    // A NEW order from here on. One sender may hold only so many unpaid orders, at once and in a day
-    // (security/orderCaps.js): pressing "pay" is free, and each unpaid order holds database rows and files.
-    const clientTag = require("../security/uploadGuards").clientTag(require("../security/clientKey").clientKey(req));
-    if (req.user.role !== "admin") {
-      const capped = require("../security/orderCaps").refusalFor({ userId: req.user.userId, clientTag, sessionMinutes: lifecycle.sessionMinutes() });
-      if (capped) {
-        res.set("Retry-After", String(capped.retryAfterSeconds));
-        return res.status(capped.status).json(capped.body);
-      }
-    }
+  // A NEW order from here on. One sender may hold only so many unpaid orders, at once and in a day
+  // (security/orderCaps.js): pressing "pay" is free, and each unpaid order holds database rows and files.
+  const clientTag = require("../security/uploadGuards").clientTag(require("../security/clientKey").clientKey(req));
+  if (req.user.role !== "admin") {
+    const capped = require("../security/orderCaps").refusalFor({ userId: req.user.userId, clientTag, sessionMinutes: lifecycle.sessionMinutes() });
+    if (capped) return refuse(capped.status, capped.body, { "Retry-After": String(capped.retryAfterSeconds) });
+  }
 
-    // What the total is made of, so the order page, emails and documents can show it: each in
-    // whole cents, as the customer saw them on the quote, with the shipping of the delivery choice
-    // (services/checkout.js: shipping as worked out above when we ship; none on the buyer's
-    // carrier account or for a pickup).
-    // Inspection paperwork (first-article report + certificate of conformance) rides on the
-    // stored quote, which the server priced: the request body cannot switch it on or change
-    // the fee. A quote saved before the option existed has neither column and reads as "no".
-    const paperwork = resolved.paperwork;
-    const paperworkFee = resolved.paperworkFee;
-    if (paperworkFee > orderTotal + 0.005) {
-      return res.status(409).json({ error: "This quote's total does not add up. Reopen the quote to get today's price.", code: "quote-inconsistent" });
-    }
+  // What the total is made of, so the order page, emails and documents can show it: each in
+  // whole cents, as the customer saw them on the quote, with the shipping of the delivery choice
+  // (services/checkout.js: shipping as worked out above when we ship; none on the buyer's
+  // carrier account or for a pickup).
+  // Inspection paperwork (first-article report + certificate of conformance) rides on the
+  // stored quote, which the server priced: the request body cannot switch it on or change
+  // the fee. A quote saved before the option existed has neither column and reads as "no".
+  const paperwork = resolved.paperwork;
+  const paperworkFee = resolved.paperworkFee;
+  if (paperworkFee > orderTotal + 0.005) {
+    return refuse(409, { error: "This quote's total does not add up. Reopen the quote to get today's price.", code: "quote-inconsistent" });
+  }
 
+  const inputs = Object.fromEntries((quote.config?.parts || []).map((c) => [c.partId, c]));
+  // The engine's line items carry slugs; orders and emails show names.
+  const materialNames = Object.fromEntries(materialsDB.getAll().map((m) => [m.slug, m.name]));
+  const finishNames = Object.fromEntries(finishesDB.getAll().map((f) => [f.slug, f.name]));
+
+  // ONE CHANGE: the order, every line, the part claims and the quote's status (see the block above).
+  const order = require("../models/database").transaction(() => {
     // Create the order with pending_payment status
-    let order = ordersDB.insert({
+    let row = ordersDB.insert({
       userId: req.user.userId,
       quoteId,
       status: "pending_payment",
       clientTag, // which address it was made from (a keyed hash), for the ceiling on unpaid orders per address
+      lineCount: lineItems.length, // how many lines it was written with: a start-up check compares (services/orderRepair.js)
       // Ship-to, delivery choice ("standard" = we ship it), carrier account (masked), tax mode, exemption.
       ...delivery,
       // When the parts, the lead-time fee and shipping add up to the total they are
@@ -320,19 +360,14 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
       drawingPath: quote.drawingPath || "",
     });
     // The carrier account number is sealed to this order's id, so it is stored once the id exists.
-    if (resolved.carrier) order = ordersDB.update(order.id, sealed(order.id));
+    if (resolved.carrier) row = ordersDB.update(row.id, sealed(row.id));
 
     // Create order items from quote line items
-    const lineItems = quote.lineItems || [];
-    const inputs = Object.fromEntries((quote.config?.parts || []).map((c) => [c.partId, c]));
-    // The engine's line items carry slugs; orders and emails show names.
-    const materialNames = Object.fromEntries(materialsDB.getAll().map((m) => [m.slug, m.name]));
-    const finishNames = Object.fromEntries(finishesDB.getAll().map((f) => [f.slug, f.name]));
     for (const [index, item] of lineItems.entries()) {
       // Map from the pricing-engine line-item shape: per-unit price lives at
       // perUnit.final and material/finish/process live under meta.
       orderItemsDB.insert({
-        orderId: order.id,
+        orderId: row.id,
         partId: item.partId,
         fileName: item.fileName,
         process: item.meta?.process || "",
@@ -356,22 +391,118 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
     if (req.user.role !== "admin") for (const part of checked.priced.parts) partAccess.claim(part, req.user, partsDB);
 
     // The quote is now an order: bind it to the buyer and stop the builder re-pricing it in place.
-    // Done here, in the same step as the order, and not after the call to Stripe: a re-price that
+    // Done here, in the same change as the order, and not after the call to Stripe: a re-price that
     // arrives while that call is in flight then makes a new quote instead of changing this one.
     quotesDB.update(quoteId, { status: "ordered", userId: quote.userId || req.user.userId });
+    return row;
+  }, { save: "soon" }); // committed here, in this step; the file is written on the next turn (the route waits for it)
+
+  return { order, resumed: false, itemCount: lineItems.length, description: describe(lineItems), quoteWas: { status: quote.status || "draft", userId: quote.userId || null } };
+}
+
+/** The return pages and the metadata of an order's payment page. */
+function stripeUrls(req, orderId, quoteId) {
+  const baseUrl = orderEvents.baseUrl(req);
+  return {
+    successUrl: `${baseUrl}/orders/${orderId}?paid=true`,
+    cancelUrl: `${baseUrl}/checkout/${quoteId}?cancelled=true`,
+    metadata: { quoteId, userId: req.user.userId },
+  };
+}
+
+router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGuard.limiter, requireShipToLines, async (req, res) => {
+  try {
+    if (!stripeClient.get()) {
+      // The code the session layer uses for the same state (services/orderLifecycle.js), so the page words it once.
+      return res.status(503).json({ error: "Payment processing is not configured", code: "payments-unavailable" });
+    }
+
+    const { quoteId } = req.body;
+
+    if (!quoteId) {
+      return res.status(400).json({ error: "Quote ID is required" });
+    }
+
+    // Retrieve the quote (it is read again, afresh, inside the step: this is for who may ask and how heavy the pricing is)
+    const first = typeof quoteId === "string" ? quotesDB.getById(quoteId) : null;
+    if (!first) {
+      return res.status(404).json({ error: "Quote not found" });
+    }
+
+    // Security: verify quote belongs to requesting user
+    if (first.userId && first.userId !== req.user.userId && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // A sender who has used the hour's pricing allowance is told when to come back before any of
+    // the work starts; the work itself is charged to the address and the account by the runner.
+    const spent = pricingGate.overBudget(req);
+    if (spent) {
+      res.set("Retry-After", String(spent.retryAfterSeconds));
+      return res.status(spent.status).json(spent.body);
+    }
+
+    const job = pricingGate.job(req, (first.config && Array.isArray(first.config.parts) ? first.config.parts : first.lineItems) || []);
+    const base = orderEvents.baseUrl(req);
+    let outcome = null;
+    // At most three rounds: a payment page that is open for another amount or delivery choice is
+    // settled or closed at Stripe first, and then the step runs again on the order as it is then.
+    for (let round = 0; round < 3; round++) {
+      try {
+        outcome = await pricingMemo.run(() => orderStep(req, quoteId), job);
+      } catch (err) {
+        // The runner's own refusals (the site is pricing a lot; this quote took too long to price) and
+        // any refusal the pricing itself raises: answered as they are, with their Retry-After.
+        if (err && err.expose === true && err.status) {
+          if (err.retryAfterSeconds) res.set("Retry-After", String(err.retryAfterSeconds));
+          return res.status(err.status).json({ error: err.message, ...(err.extra || {}), ...(err.code && !(err.extra && err.extra.code) ? { code: err.code } : {}) });
+        }
+        throw err;
+      }
+      if (!outcome || !outcome.closeFirst) break;
+      const closed = await lifecycle.closeForChange(outcome.orderId, { base });
+      if (closed.paid) return res.json({ sessionUrl: stripeUrls(req, outcome.orderId, quoteId).successUrl, orderId: outcome.orderId });
+    }
+    if (!outcome || outcome.closeFirst) {
+      return res.status(502).json({ error: "We couldn't start the card payment just now. Try again in a minute.", code: "payment-session-busy" });
+    }
+    if (outcome.refusal) {
+      for (const [name, value] of Object.entries(outcome.refusal.headers || {})) res.set(name, value);
+      return res.status(outcome.refusal.status).json(outcome.refusal.body);
+    }
+
+    const { order } = outcome;
+    const urls = stripeUrls(req, order.id, quoteId);
+    // The order was committed in the step above; its one write of the file happens now, on its own
+    // turn of the event loop, so pricing-and-judging and rewriting the file do not hold the thread
+    // back to back. Nothing is acknowledged before it is on the disk: no payment page is opened at
+    // Stripe and no answer goes to the buyer until this resolves. (A process killed before the write
+    // leaves no order at all, and nobody was told there was one.)
+    await require("../models/database").whenSaved();
+    // And once more before the payment page is opened and recorded (a second write of the file):
+    // whatever else is waiting is served in between, however quickly Stripe answers.
+    await new Promise((resolve) => setImmediate(resolve));
+    if (outcome.resumed) {
+      // The session this order already has, while it is still open for the same amount; a new one only when it is not.
+      const again = await checkoutGuard.sessionFor(order, { itemCount: outcome.itemCount, description: outcome.description, ...urls });
+      return res.json({ sessionUrl: again.paid ? urls.successUrl : again.session.url, orderId: order.id });
+    }
 
     let session;
     try {
-      session = await orderEvents.createCheckoutSession(order, { itemCount: lineItems.length, description: describe(lineItems), ...stripeUrls(order.id) });
+      session = await orderEvents.createCheckoutSession(order, { itemCount: outcome.itemCount, description: outcome.description, ...urls });
     } catch (err) {
       // No session, no order: don't leave an unpayable order behind for every failed try, and
       // give the quote back. Only while the order is still unpaid and no session exists for it.
+      // One change, like the one that made it: the order, its lines and the quote go back together.
       const now = ordersDB.getById(order.id);
       if (now && now.status === "pending_payment" && lifecycle.sessionsFor(order.id).length === 0) {
-        for (const it of orderQueries.itemsOf(order.id)) orderItemsDB.delete(it.id);
-        ordersDB.delete(order.id);
-        const q = quotesDB.getById(quoteId);
-        if (q && q.status === "ordered" && orderQueries.ordersOfQuote(quoteId).length === 0) quotesDB.update(quoteId, { status: quote.status || "draft", userId: quote.userId || null });
+        require("../models/database").transaction(() => {
+          for (const it of orderQueries.itemsOf(order.id)) orderItemsDB.delete(it.id);
+          ordersDB.delete(order.id);
+          const q = quotesDB.getById(quoteId);
+          if (q && q.status === "ordered" && orderQueries.ordersOfQuote(quoteId).length === 0) quotesDB.update(quoteId, { status: outcome.quoteWas.status, userId: outcome.quoteWas.userId });
+        });
       }
       throw err;
     }
@@ -435,11 +566,15 @@ router.post("/", authenticate, requireAdmin, requireShipToLines, (req, res) => {
     // Sanitize all user-provided shipping fields
     const cleanShippingCost = nonNegativeNumber(shippingCost, 0);
 
-    // Create the order
+    // Create the order, its lines and the quote's new status as ONE change to the database
+    // (models/database.js transaction(): all of it reaches the file, or none of it).
+    const lineItems = quote.lineItems || [];
+    const order = require("../models/database").transaction(() => {
     const order = ordersDB.insert({
       userId: req.user.userId,
       quoteId,
       status: "pending_payment",
+      lineCount: lineItems.length, // how many lines it is written with (services/orderRepair.js)
       shippingName: sanitizeString(shippingName || "", 200),
       shippingAddress: sanitizeString(shippingAddress || "", 500),
       shippingCity: sanitizeString(shippingCity || "", 100),
@@ -458,7 +593,6 @@ router.post("/", authenticate, requireAdmin, requireShipToLines, (req, res) => {
     });
 
     // Create order items from quote line items
-    const lineItems = quote.lineItems || [];
     // Same mapping as the Stripe checkout path: the pricing-engine line item
     // keeps per-unit price at perUnit.final and process/material under meta.
     // `config` (= meta) carries the engine's time estimate for calibration.
@@ -481,6 +615,8 @@ router.post("/", authenticate, requireAdmin, requireShipToLines, (req, res) => {
 
     // Update quote status
     quotesDB.update(quoteId, { status: "ordered" });
+    return order;
+    });
 
     res.status(201).json({
       orderId: order.id,

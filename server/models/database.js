@@ -405,6 +405,40 @@ function saveToDisk() {
 }
 
 /**
+ * A promise that settles when everything that is in the database NOW is in the file. If nothing is
+ * waiting to be written it resolves at once; otherwise the file is written on the next turn of the
+ * event loop (unless another write has taken it there first), and the promise resolves after that,
+ * or rejects if the write fails.
+ *
+ * For a change made with transaction(fn, { save: "soon" }): the change is committed in memory in one
+ * step and written in the next, so the two halves (working the change out, and rewriting the whole
+ * file) do not hold the thread back to back. NOTHING may be acknowledged, to a customer or to
+ * Stripe, before this promise has resolved.
+ */
+let saveWaiters = [];
+let soonTimer = null;
+function whenSaved() {
+  if (!dbInstance || !dirty) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    saveWaiters.push({ resolve, reject });
+    if (soonTimer) return;
+    soonTimer = setImmediate(() => {
+      soonTimer = null;
+      const waiting = saveWaiters;
+      saveWaiters = [];
+      // Still waiting for the file: write it now, whatever is marked "may wait". (If another write has
+      // saved since, `dirty` is false and everything these callers wrote went to the file with it.)
+      if (dirty) {
+        const depth = deferDepth;
+        deferDepth = 0;
+        try { saveToDisk(); } catch (err) { for (const w of waiting) w.reject(err); return; } finally { deferDepth = depth; }
+      }
+      for (const w of waiting) w.resolve();
+    });
+  });
+}
+
+/**
  * Replace `file` with `buffer` so that neither a crash of this process nor a loss of power can
  * leave a short, empty or half-written database:
  *
@@ -454,6 +488,70 @@ function batch(fn) {
     batchDepth--;
     if (batchDepth === 0 && dirty) saveToDisk();
   }
+}
+
+/**
+ * Run `fn` as ONE change to the database: all of its writes reach the file together, in one
+ * atomic replacement of the file, or none of them does (independent re-review 2026-11-12, F-02 and
+ * F-08).
+ *
+ * Before this an order was written as one save for the order row, one per line, one per part
+ * claimed and one for its quote, and each save rewrote the whole file. A process killed between two
+ * of them left an order with some of its lines on the disk, which the buyer then paid for in full;
+ * and a 100-line checkout was more than a hundred whole-file saves in one uninterrupted step
+ * (4.2 s at 12 MB).
+ *
+ *   - Inside `fn` nothing is written to the file (the same holding-back as batch()).
+ *   - `fn` runs inside a SQLite transaction. If it throws, the transaction is rolled back, so the
+ *     database in memory is exactly what it was before, the error is passed on, and nothing of the
+ *     half-done change is ever saved.
+ *   - A write that fails inside `fn` THROWS (models/SqliteDB.js normally logs a failed statement
+ *     and carries on, which inside a transaction would commit a change with a hole in it).
+ *   - When `fn` returns, the transaction is committed and the file is written once
+ *     (writeDurably: temporary file, flush, rename, flush). A kill before the rename leaves the old
+ *     file whole; a kill after it leaves the new one whole.
+ *
+ * `fn` must be synchronous. A transaction inside a transaction is part of the outer one.
+ *
+ * `{ save: "soon" }`: commit in memory now and write the file on the next turn of the event loop
+ * (see whenSaved()). All or nothing still holds: the file is replaced whole, with the whole change in
+ * it or without any of it. The caller must await whenSaved() before it acknowledges anything.
+ */
+let transactionDepth = 0;
+function transaction(fn, { save = "now" } = {}) {
+  if (!dbInstance) throw new Error("database: not open");
+  if (transactionDepth > 0) return fn();
+  dbInstance.run("BEGIN");
+  transactionDepth++;
+  batchDepth++;
+  let committed = false;
+  try {
+    const out = fn();
+    if (out && typeof out.then === "function") throw new Error("database.transaction: the function must be synchronous");
+    dbInstance.run("COMMIT");
+    committed = true;
+    dirty = true;
+    return out;
+  } catch (err) {
+    if (!committed) { try { dbInstance.run("ROLLBACK"); } catch (_) { /* nothing was open to roll back */ } }
+    throw err;
+  } finally {
+    transactionDepth--;
+    batchDepth--;
+    // Written at once, whatever is waiting (a transaction is never a "may wait" write) — or, with
+    // { save: "soon" }, on the next turn of the event loop: the caller then awaits whenSaved() and
+    // acknowledges nothing before it resolves.
+    if (batchDepth === 0 && committed && save !== "soon") {
+      const depth = deferDepth;
+      deferDepth = 0;
+      try { saveToDisk(); } finally { deferDepth = depth; }
+    }
+  }
+}
+
+/** Is a transaction() in progress? (models/SqliteDB.js: a failed write then throws.) */
+function inTransaction() {
+  return transactionDepth > 0;
 }
 
 /**
@@ -552,4 +650,4 @@ process.on("SIGTERM", () => onStop("SIGTERM"));
 process.on("SIGINT", () => onStop("SIGINT"));
 process.once("beforeExit", () => { try { flush(); } catch { /* nothing more to do */ } });
 
-module.exports = { getDatabase, saveToDisk, writeDurably, batch, deferred, flush, pending, compact, vacuum, fileSize, liveSize, usedSize, ready, DB_PATH, payloadMigration: () => payloadMigration };
+module.exports = { getDatabase, saveToDisk, writeDurably, batch, transaction, inTransaction, whenSaved, deferred, flush, pending, compact, vacuum, fileSize, liveSize, usedSize, ready, DB_PATH, payloadMigration: () => payloadMigration };

@@ -840,11 +840,21 @@ function repriceStoredQuote(quote, user) {
  *   not ok: the refusal to send — `quote-changed` (with the quote at today's price, already
  *   saved for the buyer to confirm), `quote-needs-update`, `rfq-required`, `price-check-failed`.
  */
-function verifyQuoteForOrder(quote, user, { confirmedTotal, totalShown } = {}) {
+function verifyQuoteForOrder(quote, user, { confirmedTotal, totalShown, warmUp } = {}) {
   let priced;
   try {
     priced = repriceStoredQuote(quote, user);
+    // Run by the pricing runner in pieces (routes/orders.js orderStep): a warm-up pass stops here,
+    // with the pricing in the runner's memo and nothing judged or written. `warmUp` lets the caller
+    // work out, in the same pass, whatever else the final pass will need (the shipment).
+    if (pricingMemo.warming()) {
+      if (typeof warmUp === "function") warmUp(quote, priced);
+      return { ok: false, warming: true };
+    }
   } catch (err) {
+    // Not a failure: the runner stopping this pass to let other requests run.
+    if (err && err.pricingInterrupt) throw err;
+    if (pricingMemo.warming() && err && err.expose) return { ok: false, warming: true };
     if (!err.expose) throw err;
     const code = err.extra?.code || err.code || "";
     if (code === "price-check-failed" || code === "pricing-unavailable") {

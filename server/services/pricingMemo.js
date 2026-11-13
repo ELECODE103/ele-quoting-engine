@@ -44,6 +44,7 @@
  */
 const { limits } = require("../security/limits");
 const brand = require("../../shared/brand.json");
+const { tableRevision } = require("../models/SqliteDB");
 
 class Interrupt extends Error {
   constructor() { super("pricing interrupted to let other requests run"); this.name = "PricingInterrupt"; this.pricingInterrupt = true; }
@@ -62,6 +63,9 @@ function createMemo() {
     extruded: new WeakMap(),   // stored 2D geometry → Map(thickness → the geometry at that thickness)
     ids: new WeakMap(),        // object → small integer, for keys
     nextId: 1,
+    partRevs: new Map(),       // part id → the revision of its measurements when it was loaded (null: there was no such part)
+    partSource: null,          // the parts store those were loaded from
+    tableRevs: new Map(),      // table name → [the table, its write count when it was read]
     interruptible: false,
     interrupted: false,
     warming: false,
@@ -107,6 +111,7 @@ function wrapModel(db, name) {
     if (memo.tables.has(name)) { memo.stats.hits++; return memo.tables.get(name); }
     const rows = compute(memo, () => db.getAll());
     memo.tables.set(name, rows);
+    memo.tableRevs.set(name, [db, tableRevision(db.tableName)]);
     return rows;
   };
   wrapped.getById = function getById(id, opt) {
@@ -117,9 +122,44 @@ function wrapModel(db, name) {
     if (memo.parts.has(key)) { memo.stats.hits++; return memo.parts.get(key); }
     const row = compute(memo, () => db.getById(id));
     memo.parts.set(key, row);
+    if (name === "partsDB") { memo.partRevs.set(id, row ? Number(row.geometryRev) || 0 : null); memo.partSource = db; }
     return row;
   };
   return wrapped;
+}
+
+/**
+ * Is anything this memo holds no longer what the database holds? (Independent re-review 2026-11-12,
+ * F-01 and F-08.)
+ *
+ * The runner prices in pieces and serves other requests between them, so by the time the final pass
+ * runs (the one that judges and writes) a part's measurements may have been replaced (a DXF read
+ * again at another scale) or the owner may have saved a material, a finish or a lead time. The final
+ * pass must judge what the database holds NOW, in the same uninterrupted step as its write. So the
+ * runner asks this immediately before the final pass, in the same step: every part the memo loaded
+ * is still there at the same revision (one indexed query; no file is read), and no catalog table it
+ * read has been written since. If not, everything is priced again from the start with a new memo.
+ * (The rate card needs no check here: prices are memoised under the identity of the rules object,
+ * so a new rule set is simply priced again by the final pass.)
+ */
+function memoStale(memo) {
+  for (const [, [db, rev]] of memo.tableRevs) if (tableRevision(db.tableName) !== rev) return true;
+  if (memo.partRevs.size === 0 || !memo.partSource) return false;
+  const table = memo.partSource.table || memo.partSource;
+  const ids = [...memo.partRevs.keys()];
+  const now = new Map();
+  if (typeof table._query === "function") {
+    for (let i = 0; i < ids.length; i += 400) {
+      const chunk = ids.slice(i, i + 400);
+      for (const r of table._query(`SELECT id, geometry_rev FROM parts WHERE id IN (${chunk.map(() => "?").join(", ")})`, chunk)) now.set(r.id, Number(r.geometry_rev) || 0);
+    }
+  } else {
+    for (const id of ids) { const row = table.getById(id); if (row) now.set(id, Number(row.geometryRev) || 0); }
+  }
+  for (const [id, rev] of memo.partRevs) {
+    if (rev === null ? now.has(id) : now.get(id) !== rev) return true;
+  }
+  return false;
 }
 
 /** @param {object} models { materialsDB, finishesDB, leadTimesDB, partsDB } @returns the same keys, wrapped */
@@ -279,7 +319,7 @@ const usage = new UsageWindow();             // sender key → ms of pricing wor
 const lanes = { light: { active: null, queue: [] }, heavy: { active: null, queue: [] } };
 let scheduled = false;
 let lastLane = "heavy";
-const counters = { started: 0, finished: 0, refusedSlow: 0, refusedBusy: 0, demoted: 0, pieces: 0, longestPieceMs: 0 };
+const counters = { started: 0, finished: 0, refusedSlow: 0, refusedBusy: 0, demoted: 0, restarted: 0, pieces: 0, longestPieceMs: 0 };
 
 const usedBy = (job, now) => Math.max(0, ...job.keys.map((k) => usage.total(k, now)));
 
@@ -339,6 +379,22 @@ function step(lane, job) {
   const memo = job.memo;
   const t0 = Date.now();
   if (job.final) {
+    // What the memo holds must still be what the database holds, asked in the same step as the pass
+    // that judges and writes (memoStale above). If a part or a catalog table changed while this quote
+    // was being priced in pieces, it is priced again from the start; a quote that keeps being
+    // overtaken is told to try again rather than judged on stale figures.
+    if (memoStale(memo)) {
+      counters.restarted++;
+      job.restarts = (job.restarts || 0) + 1;
+      if (job.restarts > 3) { finish(lane, job); job.reject(busy()); return 0; }
+      const fresh = createMemo();
+      fresh.stats = memo.stats;
+      fresh.warming = true;
+      fresh.interruptible = true;
+      job.memo = fresh;
+      job.final = false;
+      return 0;
+    }
     // Everything the pricing function needs is in the memo: this pass is lookups, then the save.
     memo.warming = false;
     memo.interruptible = false;
@@ -472,4 +528,4 @@ function resetForTests() {
   for (const k of Object.keys(counters)) counters[k] = 0;
 }
 
-module.exports = { run, sync, within, warming, wrapModels, wrapModel, wrapDfm, wrapEngine, wrapPure, materialize, createMemo, Interrupt, usedMs, retryAfterSeconds, stats, resetForTests, usage };
+module.exports = { run, sync, within, warming, memoStale, wrapModels, wrapModel, wrapDfm, wrapEngine, wrapPure, materialize, createMemo, Interrupt, usedMs, retryAfterSeconds, stats, resetForTests, usage };

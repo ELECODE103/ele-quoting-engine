@@ -257,6 +257,7 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'pricing-busy': {
       '*': { text: `We are pricing a lot of quotes right now, so this one is waiting its turn. Nothing is wrong with your parts. The price updates by itself in a few seconds; if it doesn't, change anything on the quote or call ${PHONE}.`, action: 'retry' },
       order: { text: `We are pricing a lot of quotes right now, so the order was not re-quoted yet and nothing was changed. Press Reorder again in a few seconds, or call ${PHONE}.`, action: 'retry' },
+      checkout: { text: `We check the price once more before we charge, and we are pricing a lot of quotes right now, so we have not charged you. Your quote is saved: press the pay button again in a few seconds, or call ${PHONE} and we'll take the order by phone.`, action: 'retry' },
     },
     'pricing-in-progress': {
       '*': { text: 'We are still pricing your last change. The price updates by itself in a few seconds.', action: 'retry' },
@@ -265,6 +266,7 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'quote-too-slow': {
       '*': { text: `This quote is taking longer to price than the instant quote allows, so it was not priced. Ask for a firm quote and a person prices it${within}, or split it into smaller quotes. Questions: ${PHONE}.`, action: 'rfq' },
       order: { text: `This order has more in it than the instant quote can re-price in one go, so it was not re-quoted and nothing was changed. Start a new quote with fewer lines, or ${REACH} and a person prices it.` },
+      checkout: { text: `We check the price once more before we charge, and this quote took longer to price than the instant quote allows, so we have not charged you. Ask for a firm quote and a person prices it${within}, or call ${PHONE} and we'll take the order by phone.`, action: 'rfq' },
     },
     'reprice-limit': { '*': { text: ({ minutes }) => `This quote has been changed a great many times in the last hour, so this change was not priced. It prices again in ${minutes ? `about ${plural(minutes, 'minute')}` : 'a few minutes'}, or ask for a firm quote and a person prices it${within}.`, action: 'rfq' } },
     'quote-limit': {
