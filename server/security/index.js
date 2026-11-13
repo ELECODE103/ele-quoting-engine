@@ -62,9 +62,9 @@ function partEditGate(req, res, next) {
   if (!part || !partAccess.canUse(part, { user: req.user, key })) {
     return res.status(404).json({ error: "Part not found" });
   }
-  const ordered = orderItemsDB.query((i) => i.partId === partId).length > 0
-    || rfqsDB.query((r) => (r.parts || []).some((p) => p.partId === partId)).length > 0;
-  if (ordered) return res.status(409).json(PART_LOCKED);
+  // One rule (services/partLock.js): an order line, a firm-quote request, or a quote that is no longer
+  // a draft. The route asks again in the same step as its write, after its file has been read.
+  if (require("../services/partLock").locked(partId)) return res.status(409).json(PART_LOCKED);
   next();
 }
 

@@ -546,6 +546,10 @@ function partSnapshot(part, line, hash) {
     },
     volumeMm3: line.is2D ? null : Number(g.volume) || 0,
     is2D: Boolean(line.is2D),
+    // Which revision of the part's stored measurements this is (models/partsStore.js geometryRev): an
+    // order line keeps it, and "is this still the part that was priced" is then one number against
+    // another (services/partLock.js). Not part of the fingerprint: the hash above already is.
+    partRev: Number(part.geometryRev) || 0,
   };
 }
 

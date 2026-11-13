@@ -72,9 +72,13 @@ class PartsStore {
       const row = this.table.update(id, updates);
       return row ? this._hydrate(row) : row;
     }
-    if (!this.table.getById(id)) return null;
+    const before = this.table.getById(id);
+    if (!before) return null;
     const stored = updates.geometry && typeof updates.geometry === "object" ? this._store(id, updates.geometry) : { geometry: updates.geometry, meshBytes: 0, detailBytes: 0 };
-    const row = this.table.update(id, { ...updates, geometry: stored.geometry, meshBytes: stored.meshBytes, detailBytes: stored.detailBytes });
+    // Every replacement of a part's measurements is counted (geometryRev). A price, a quote line and an
+    // order line each keep the number they were worked out at, so "is this still the part that was
+    // priced" is answered without reading or hashing the measurements again (services/partLock.js).
+    const row = this.table.update(id, { ...updates, geometry: stored.geometry, meshBytes: stored.meshBytes, detailBytes: stored.detailBytes, geometryRev: (Number(before.geometryRev) || 0) + 1 });
     return row ? this._hydrate(row) : row;
   }
 

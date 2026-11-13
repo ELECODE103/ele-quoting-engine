@@ -445,7 +445,10 @@ function applySession(orderId, session, { eventId, source } = {}) {
       if (!paid) return { order, changed: false, outcome: "replay" };
       closeRec("settled");
       recordEvent({ ...base, order: paid, kind: "order-paid", detail: `${source || "stripe"}${check.discount ? `; discount ${check.discount} cents` : ""}${check.tax ? `; sales tax ${check.tax} cents` : ""}`, notified: true });
-      return { order: paid, changed: true, outcome: "paid", after: { emails: "paid", closeOthers: sid } };
+      // Paid, and a line's part file is not the file that was priced (services/partLock.js): the shop is told at once.
+      const partNotice = paid.attention === "part-changed" && order.attention !== "part-changed"
+        ? { notice: { kind: "part-changed", note: paid.attentionNote, amountCents: check.total, sessionId: sid, paymentIntent: pi } } : {};
+      return { order: paid, changed: true, outcome: "paid", after: { emails: "paid", closeOthers: sid, ...partNotice } };
     }
     // Nothing collected (a 100% promotion code): never released without the owner.
     const nothingCollected = (check.zero || noPaymentNeeded) && check.problems.length === 0;
@@ -530,7 +533,7 @@ function releaseSource(order) {
     return;
   }
   if (!order.quoteId) return;
-  const others = ordersDB.query((o) => o.quoteId === order.quoteId && o.id !== order.id && orderState.holdsQuote(o));
+  const others = require("../models/orderQueries").ordersOfQuote(order.quoteId).filter((o) => o.id !== order.id && orderState.holdsQuote(o));
   if (others.length > 0) return;
   const quote = quotesDB.getById(order.quoteId);
   if (quote && quote.status === "ordered") quotesDB.update(quote.id, { status: "draft" });
@@ -571,7 +574,7 @@ function handleSessionExpired(session, { eventId } = {}) {
 async function sweepExpired({ now: at = Date.now(), base } = {}) {
   const stripe = stripeClient.get();
   const result = { checked: 0, expired: 0, settled: 0, skipped: 0 };
-  const pending = ordersDB.query((o) => o.status === "pending_payment" && !o.attention);
+  const pending = require("../models/orderQueries").ordersInStatus("pending_payment").filter((o) => !o.attention);
   for (const candidate of pending) {
     const recs = sessionsFor(candidate.id);
     if (!candidate.stripeSessionId && recs.length === 0) continue; // a phone order: no card session to lapse
@@ -805,6 +808,8 @@ function manualMove(orderId, to, { actor, reason, paidVia, extra = {} } = {}) {
   }
   if (to === "cancelled") updates.cancelledAt = now();
   if (to === "refunded") Object.assign(updates, { refundedAt: now(), refundedAmount: order.refundedAmount || paidCentsOf(order) / 100 });
+  // Marked paid by hand: the same look at the parts as a card payment gets (services/partLock.js).
+  if (to === "paid" && !order.attention) Object.assign(updates, require("./partLock").attentionFor(order.id) || {});
   const updated = ordersDB.update(order.id, updates);
   audit.record({
     actor, area: "order", action: to === "paid" && move.needsReason ? "order.mark-paid" : to === "cancelled" ? "order.cancel" : "order.status",

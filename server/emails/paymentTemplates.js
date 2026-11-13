@@ -26,6 +26,7 @@ const WHAT_TO_DO = {
   "payment-mismatch": "The order has NOT been marked paid. Look at the payment in Stripe: refund it, or, if you are satisfied, mark the order paid by hand in admin and say why.",
   "zero-payment": "A checkout was completed with nothing to pay (a promotion code covered the whole amount). The order has NOT been released to the queue. If the discount was meant, mark the order paid by hand in admin; if not, cancel it.",
   "refund-problem": "A refund on this order did not go through or was reversed. Check the payment in Stripe before doing anything else with the order.",
+  "part-changed": "The payment is in order and the order is in the queue. Before cutting, open the job traveler: it shows the size that was priced beside the size of the file as it is stored now. Confirm with the customer which one they want, then clear this flag in admin with a note.",
 };
 
 /** To the shop: a payment arrived that the site would not settle on its own. */

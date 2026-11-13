@@ -472,13 +472,12 @@ router.post("/parts/:partId/units", async (req, res) => {
     const part = isValidUUID(req.params.partId) ? partsDB.getById(req.params.partId) : null;
     if (!part) return res.status(404).json({ error: "Part not found" });
     if (!dxf.is2D(part.geometry)) return res.status(400).json({ error: "Units can only be chosen for a DXF. STEP, IGES and 3MF carry their own units; STL is read as millimetres." });
-    // The shop builds from the stored geometry of an ordered part. Once a part is on an order
-    // its units are settled: changing them here would change the size on the traveler.
-    // (The gate in security/index.js makes the same check, and covers firm-quote requests too, before
-    // this route is reached; it is repeated here so the route is safe wherever the router is mounted.)
-    if (orderItemsDB.getAll().some((it) => it.partId === part.id)) {
-      return res.status(409).json(require("../security").PART_LOCKED);
-    }
+    // The shop builds from the stored geometry of an ordered part. Once a part is on an order, a
+    // firm-quote request or a quote that is no longer a draft, its units are settled: changing them
+    // here would change the size on the traveler (services/partLock.js; the gate in security/index.js
+    // makes the same check before this route is reached).
+    const partLock = require("../services/partLock");
+    if (partLock.locked(part.id)) return res.status(409).json(require("../security").PART_LOCKED);
     const safeName = path.basename(part.storedName || "");
     const filePath = path.join(uploadDir, safeName);
     if (!safeName || !fs.existsSync(filePath)) return res.status(410).json({ error: "The uploaded file is no longer on our server. Upload it again." });
@@ -501,6 +500,13 @@ router.post("/parts/:partId/units", async (req, res) => {
       const failure = parseFailure(part.fileName, err);
       return res.status(422).json({ error: failure.error, ...(failure.code ? { code: failure.code } : {}) });
     }
+    // ASKED AGAIN, in the same uninterrupted step as the write (re-review 2026-11-12, F-01). The file
+    // was read in a worker and this request waited for it; a checkout or a firm-quote request that
+    // arrived in that wait has made its order from the measurements as they were. From here to the
+    // write below nothing else runs, so either that order exists now and the change is refused, or the
+    // new measurements are stored before any later checkout prices the part.
+    if (!partsDB.getRow(part.id)) return res.status(404).json({ error: "Part not found" });
+    if (partLock.locked(part.id)) return res.status(409).json(require("../security").PART_LOCKED);
     const updated = partsDB.update(part.id, { geometry: parsed.geometry, dfm: parsed.dfm }) || { ...part, geometry: parsed.geometry };
     // The part is not the part that was priced any more: every draft quote that holds it is priced
     // again now (or marked stale when it cannot be), so no stored total outlives the size it was for.
@@ -1462,7 +1468,11 @@ router.post("/admin/pricing/reset", authenticate, requireAdmin, (req, res) => {
 
 router.get("/admin/calibration", authenticate, requireAdmin, (req, res) => {
   try {
-    const rows = calibration.buildRows(ordersDB.getAll(), orderItemsDB.getAll());
+    // Only the orders the work has been done on, and only their lines (by index): the table never reads
+    // the lines of orders that were never paid for, however many of those there are.
+    const orderQueries = require("../models/orderQueries");
+    const done = calibration.COMPLETED_STATUSES.flatMap((st) => orderQueries.ordersInStatus(st));
+    const rows = calibration.buildRows(done, done.flatMap((o) => orderQueries.itemsOf(o.id)));
     const summary = calibration.summarize(rows, pricingAdmin.currentRules());
     res.json({ items: rows, summary, minSamples: calibration.MIN_SAMPLES, statuses: calibration.COMPLETED_STATUSES });
   } catch (err) {
@@ -1570,44 +1580,52 @@ router.get("/admin/audit", authenticate, requireAdmin, (req, res) => {
 
 router.get("/admin/stats", authenticate, requireAdmin, (req, res) => {
   try {
+    // Counted by the database, not by loading every quote, part and order into memory to count them
+    // here (which unpacked every quote's priced lines on each load of the admin panel).
     const { ordersDB } = require("../models");
-    const quotes = quotesDB.getAll();
-    const parts = partsDB.getAll();
-    const orders = ordersDB.getAll();
-
     // Fulfilled order statuses — money we actually got (or will get on shipment)
     const PAID_STATUSES = ["paid", "received", "in_production", "quality_check", "packing", "shipped", "delivered"];
-    const paidOrders = orders.filter((o) => PAID_STATUSES.includes(o.status));
-    // What was collected, not what was listed: after a promotion code (amountPaid) and less anything refunded.
-    const collected = (o) => (o.amountPaid !== null && o.amountPaid !== undefined ? Number(o.amountPaid) || 0 : o.total || 0) - (Number(o.refundedAmount) || 0);
-    const paidRevenue = paidOrders.reduce((sum, o) => sum + Math.max(0, collected(o)), 0);
-
-    // Open pipeline: draft quotes waiting to be purchased
-    const openQuotes = quotes.filter((q) => q.status === "draft").length;
-
-    // Activity: parts uploaded in the last 30 days
-    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const uploads30d = parts.filter((p) => {
-      const t = p.createdAt ? new Date(p.createdAt).getTime() : 0;
-      return t >= cutoff;
-    }).length;
+    const table = (db) => db.table || db;
+    const one = (db, sql, params = []) => { const r = table(db)._query(sql, params); return r.length ? r[0] : {}; };
+    let paidCount, paidRevenue, openQuotes, uploads30d, totalQuotes, totalParts, quotesToday;
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    if (typeof table(ordersDB)._query === "function") {
+      // What was collected, not what was listed: after a promotion code (amount_paid) and less anything refunded.
+      const paid = one(ordersDB, `SELECT COUNT(*) AS n, COALESCE(SUM(MAX(0, COALESCE(amount_paid, total, 0) - COALESCE(refunded_amount, 0))), 0) AS revenue FROM orders WHERE status IN (${PAID_STATUSES.map(() => "?").join(", ")})`, PAID_STATUSES);
+      paidCount = Number(paid.n) || 0;
+      paidRevenue = Number(paid.revenue) || 0;
+      openQuotes = Number(one(quotesDB, "SELECT COUNT(*) AS n FROM quotes WHERE status = 'draft'").n) || 0;
+      totalQuotes = Number(one(quotesDB, "SELECT COUNT(*) AS n FROM quotes").n) || 0;
+      quotesToday = Number(one(quotesDB, "SELECT COUNT(*) AS n FROM quotes WHERE created_at >= ?", [midnight.toISOString()]).n) || 0;
+      totalParts = Number(one(partsDB, "SELECT COUNT(*) AS n FROM parts").n) || 0;
+      uploads30d = Number(one(partsDB, "SELECT COUNT(*) AS n FROM parts WHERE created_at >= ?", [cutoff]).n) || 0;
+    } else {
+      const quotes = quotesDB.getAll();
+      const parts = partsDB.getAll();
+      const paidOrders = ordersDB.getAll().filter((o) => PAID_STATUSES.includes(o.status));
+      const collected = (o) => (o.amountPaid !== null && o.amountPaid !== undefined ? Number(o.amountPaid) || 0 : o.total || 0) - (Number(o.refundedAmount) || 0);
+      paidCount = paidOrders.length;
+      paidRevenue = paidOrders.reduce((sum, o) => sum + Math.max(0, collected(o)), 0);
+      openQuotes = quotes.filter((q) => q.status === "draft").length;
+      totalQuotes = quotes.length;
+      quotesToday = quotes.filter((q) => String(q.createdAt || "") >= midnight.toISOString()).length;
+      totalParts = parts.length;
+      uploads30d = parts.filter((p) => String(p.createdAt || "") >= cutoff).length;
+    }
 
     res.json({
       // New, real metrics
-      totalOrders: paidOrders.length,
+      totalOrders: paidCount,
       paidRevenue,
       openQuotes,
       uploads30d,
       // Legacy fields kept for backwards compatibility
-      totalQuotes: quotes.length,
-      totalParts: parts.length,
+      totalQuotes,
+      totalParts,
       totalRevenue: paidRevenue,
-      avgOrderValue: paidOrders.length > 0 ? paidRevenue / paidOrders.length : 0,
-      quotesToday: quotes.filter((q) => {
-        const d = new Date(q.createdAt);
-        const today = new Date();
-        return d.toDateString() === today.toDateString();
-      }).length,
+      avgOrderValue: paidCount > 0 ? paidRevenue / paidCount : 0,
+      quotesToday,
     });
   } catch (err) {
     console.error("Stats error:", err);
@@ -1615,12 +1633,21 @@ router.get("/admin/stats", authenticate, requireAdmin, (req, res) => {
   }
 });
 
-// ADMIN — Parts / All Uploads (newest first, filters orphans)
+// ADMIN — Parts / All Uploads: the newest uploads, as the list shows them. ?limit= up to 1000; default 200.
+// X-Total-Count says how many there are. Only the listed rows are read (the newest n, by SQL).
 router.get("/admin/parts", authenticate, requireAdmin, (req, res) => {
   try {
-    const parts = partsDB.getAll();
-    // Sort newest first
-    parts.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    const n = Math.max(1, Math.min(1000, Math.floor(Number(req.query.limit) || 200)));
+    const table = partsDB.table || partsDB;
+    let parts;
+    if (typeof table._query === "function") {
+      res.set("X-Total-Count", String(Number(table._query("SELECT COUNT(*) AS n FROM parts")[0].n) || 0));
+      parts = table._query("SELECT id, file_name, stored_name, file_size, created_at, geometry_json FROM parts ORDER BY created_at DESC, rowid DESC LIMIT ?", [n]).map((r) => table._deserialize(r));
+    } else {
+      const all = partsDB.getAll();
+      res.set("X-Total-Count", String(all.length));
+      parts = all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, n);
+    }
     // Only the list's own columns (rows hold no mesh; this keeps dfm and detail out too)
     const slim = parts.map((p) => ({
       id: p.id,

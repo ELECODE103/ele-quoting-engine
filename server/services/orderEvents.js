@@ -7,6 +7,7 @@
  * the email env vars are set.
  */
 const { ordersDB, orderItemsDB, usersDB, rfqsDB } = require("../models");
+const orderQueries = require("../models/orderQueries"); // an order's lines, read by index
 const brand = require("../../shared/brand.json");
 const mailer = require("./mailer");
 const templates = require("../emails/templates");
@@ -34,7 +35,7 @@ function baseUrl(req) {
 }
 
 function itemsFor(order) {
-  return orderItemsDB.query((i) => i.orderId === order.id);
+  return orderQueries.itemsOf(order.id);
 }
 
 function customerEmail(order) {
@@ -110,6 +111,11 @@ function transitionToPaid(order, updates = {}) {
   if (!fresh || fresh.status !== "pending_payment") return null;
   const next = { ...updates, status: "paid", paidAt: new Date().toISOString() };
   if (fresh.leadDays !== null && fresh.leadDays !== undefined) next.shipBy = shipBy.shipByDate(Number(fresh.leadDays));
+  // A line whose part file is not the file that was priced: the order is still paid (the payment was
+  // right), and it is flagged for the owner in the same write (services/partLock.js). A flag the order
+  // already carries is kept; the note is added to it.
+  const partFlag = require("./partLock").attentionFor(fresh.id);
+  if (partFlag) Object.assign(next, fresh.attention ? { attentionNote: `${fresh.attentionNote || ""} ${partFlag.attentionNote}`.trim().slice(0, 1000) } : partFlag);
   return ordersDB.update(fresh.id, next);
 }
 

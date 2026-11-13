@@ -7,6 +7,7 @@ const { randomUUID: uuidv4 } = require("crypto"); // RFC 4122 v4, same format th
 const orderLifecycle = require("./orderLifecycleMigration"); // order lifecycle (2026-11-11): tables, columns and their names in one place
 const auditTable = require("./auditMigration"); // the admin change log: one table, one definition
 const taxShipping = require("./taxShippingMigration"); // shipping and tax fields (2026-11-11): columns and their names in one place
+const rereview = require("./rereviewMigration"); // re-review fixes (2026-11-13): columns and their names in one place
 
 // Mapping of JS field names → SQLite JSON column names per table
 const JSON_COLUMNS = {
@@ -143,6 +144,8 @@ const FIELD_TO_COLUMN = {
   ownerId: "owner_id",
   // Shipping method, carrier account, tax and exemption fields (2026-11-11)
   ...taxShipping.FIELD_MAP,
+  // Re-review fixes (2026-11-13)
+  ...rereview.FIELD_MAP,
 };
 
 // 0/1 columns that read back as booleans (SQLite has no boolean type).

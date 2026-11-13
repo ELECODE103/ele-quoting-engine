@@ -78,6 +78,8 @@ const ATTENTION = {
   "zero-payment": "Nothing was collected",
   dispute: "Payment disputed",
   "refund-problem": "Refund problem",
+  // A line's part file is not the file that was priced (services/partLock.js). The order keeps its state.
+  "part-changed": "Part file changed after it was priced",
 };
 
 /** How an order marked paid by hand was paid. */

@@ -47,11 +47,14 @@ function pricedSnapshot(priced, index, basis) {
  * Does the part, as stored now, still match what this order line was priced from?
  * @returns {null | {matches: boolean, priced: object}} null when the line has no snapshot (an older order, a firm quote)
  */
-function checkAgainst(item, part) {
+function checkAgainst(item, part, hashes) {
   const priced = item && item.config && item.config.priced;
   if (!priced || !priced.geometryHash) return null;
   if (!part || !part.geometry) return { matches: false, priced };
-  return { matches: quoteIntegrity.geometryHash(part.geometry) === priced.geometryHash, priced };
+  // `hashes` (a Map, optional): the caller's memo of part id → hash, so a part on many lines is hashed once.
+  let hash = hashes && hashes.get(part.id);
+  if (!hash) { hash = quoteIntegrity.geometryHash(part.geometry); if (hashes) hashes.set(part.id, hash); }
+  return { matches: hash === priced.geometryHash, priced };
 }
 
 /**
