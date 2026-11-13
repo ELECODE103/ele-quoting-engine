@@ -5,7 +5,7 @@ read another customer's data or get an order marked paid for less than it was ch
 a paid order whose part can be swapped for a larger one after pricing (F-01), an admin panel one customer
 can blank without paying (F-09), a default shipping rule that sells freight-only sheets for $25 (F-03),
 and a checkout that stops the whole site for seconds once the database has grown (F-08, F-02).
-The author's write-up measured the best case on three of these.
+The author's write-up gives the best case for two of these (the checkout time, the shipping example).
 
 **The conditions.**
 1. F-01 is fixed in code (the units of a drawing cannot change under an order).
