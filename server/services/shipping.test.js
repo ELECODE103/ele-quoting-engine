@@ -96,12 +96,52 @@ test("default settings: the shipping line is base + kg × rate, the same number 
   assert.strictEqual(q.orderTotal, cents(Math.max(q.subtotal + cents(q.leadTimeSurcharge) + cents(q.shippingEstimate), d.minimumOrderTotal)));
 });
 
-test("the formula never goes manual: an oversize sheet or a material with no density is priced as it always was", () => {
+// (2026-11-13, re-review F-03.) This case used to assert "the formula never goes manual: an oversize
+// sheet is priced as it always was, and has no destination rule". That was the finding: a 58 x 94 in
+// sheet was sold with $25.63 of shipping to any address on earth. The formula now has the rate
+// table's limits; inside them it charges what it always did.
+test("the formula has the parcel limits too: over the longest side, over the parcel weight, not measurable, or outside the contiguous states is 'freight to be confirmed'; inside them the charge is the old expression", () => {
   const engine = new PricingEngine(rules());
-  const big = engine.calculateOrderQuote({ parts: [part(block(2400, 1200, 12.7), hdpeSheet, 1, { thicknessMm: 12.7 })], leadTimeMultiplier: 1 });
-  assert.strictEqual(big.shipping.manual, false);
-  assert.ok(big.shippingEstimate > 12);
-  assert.strictEqual(shipping.atDestination(shipping.storedFor({ shipping: big.shipping, shippingEstimate: big.shippingEstimate }), { country: "CA", state: "ON" }, rules()).manual, false, "and has no destination rule");
+  const d = schema.defaultRules();
+  const quote = (geometry, qty, extra) => engine.calculateOrderQuote({ parts: [part(geometry, hdpeSheet, qty, extra)], leadTimeMultiplier: 1 });
+  // 94 in long, 12 lb: over the longest side.
+  const long = quote(block(2387.6, 1473.2, 1.6), 1, { thicknessMm: 1.6 });
+  assert.deepStrictEqual([long.shipping.mode, long.shipping.manual, long.shipping.reasonCode, long.shippingEstimate], ["formula", true, "oversize", 0]);
+  assert.ok(/94 in on its longest side, over the 48 in we ship by parcel/.test(long.shipping.reason), long.shipping.reason);
+  // 48 x 48 x 1 in of HDPE: 80 lb, over the parcel weight.
+  const heavy = quote(block(1219.2, 1219.2, 25.4), 1, { thicknessMm: 25.4 });
+  assert.deepStrictEqual([heavy.shipping.manual, heavy.shipping.reasonCode], [true, "overweight"]);
+  // Exactly at the longest side, and light: priced, by the expression the formula has always used.
+  const ok = quote(block(1219.2, 1219.2, 1.6), 1, { thicknessMm: 1.6 });
+  assert.strictEqual(ok.shipping.manual, false);
+  assert.strictEqual(ok.shippingEstimate, d.shippingBaseRate + ok.totalWeight * d.shippingPerKg, "bit-for-bit the old expression");
+  // The part prices are not touched by any of this.
+  const withoutLimits = new PricingEngine(rules({ shippingOversizeLongestIn: 240, shippingMaxParcelLb: 2000 }));
+  for (const [g, t] of [[block(2387.6, 1473.2, 1.6), 1.6], [block(1219.2, 1219.2, 25.4), 25.4], [block(1219.2, 1219.2, 1.6), 1.6]]) {
+    const a = engine.calculateOrderQuote({ parts: [part(g, hdpeSheet, 1, { thicknessMm: t })], leadTimeMultiplier: 1 });
+    const b = withoutLimits.calculateOrderQuote({ parts: [part(g, hdpeSheet, 1, { thicknessMm: t })], leadTimeMultiplier: 1 });
+    assert.deepStrictEqual(a.lineItems.map((li) => [li.perUnit.final, li.lineTotal]), b.lineItems.map((li) => [li.perUnit.final, li.lineTotal]), "line prices are the same with and without the limits");
+    assert.strictEqual(a.subtotal, b.subtotal);
+  }
+  // The limits are the admin's settings, the same two the rate table reads.
+  const wide = new PricingEngine(rules({ shippingOversizeLongestIn: 100 })).calculateOrderQuote({ parts: [part(block(2387.6, 1473.2, 1.6), hdpeSheet, 1, { thicknessMm: 1.6 })], leadTimeMultiplier: 1 });
+  assert.strictEqual(wide.shipping.manual, false);
+  // Destination: the contiguous United States only, in the formula as in the table.
+  const stored = shipping.storedFor({ shipping: ok.shipping, shippingEstimate: ok.shippingEstimate });
+  assert.strictEqual(shipping.atDestination(stored, { country: "US", state: "IL" }, rules()).manual, false);
+  for (const dest of [{ country: "CA", state: "ON" }, { country: "US", state: "HI" }, { country: "US", state: "AK" }, { country: "DE", state: "" }, { country: "US", state: "PR" }, { country: "zz!", state: "IL" }]) {
+    const at = shipping.atDestination(stored, dest, rules());
+    assert.deepStrictEqual([at.manual, at.reasonCode, at.amount], [true, "destination", 0], JSON.stringify(dest));
+    assert.ok(/contiguous United States/.test(at.reason));
+  }
+  // A part that cannot be measured is not guessed at.
+  const unknown = shipping.priceShipment({ v: null, subtotal: 100, formulaKg: 2 }, rules());
+  assert.deepStrictEqual([unknown.manual, unknown.reasonCode], [true, "unknown-size"]);
+});
+
+test("the country is a two-letter code or nothing: what is stored on an order is never free text", () => {
+  for (const [typed, code] of [[undefined, "US"], ["", "US"], ["us", "US"], [" USA ", "US"], ["United States", "US"], ["ca", "CA"], ["MX", "MX"], ["DE", "DE"]]) assert.strictEqual(shipping.countryCode(typed), code, String(typed));
+  for (const typed of ["Germany", "U", "USAA", "C4", "<b>", "US;DROP", "🇺🇸", 12, {}]) assert.strictEqual(shipping.countryCode(typed), null, String(typed));
 });
 
 // ─── Rate table ─────────────────────────────────────────────────
@@ -179,9 +219,12 @@ test("free over a threshold: zero at or above it, charged below it, never for a 
   assert.strictEqual(priced(3, 60, free, 5000).manual, true, "an oversize order is not free freight");
   assert.strictEqual(priced(3, 10, { shippingFreeOverSubtotal: 0 }, 1e6).amount, 14.5, "0 is off");
   // The formula honours it too, once the owner sets it.
-  const f = shipping.priceShipment({ v: null, subtotal: 300, formulaKg: 2 }, rules(free));
+  // (2026-11-13: the formula is given a size and a packed weight like the other modes; with none it is "to be confirmed".)
+  const small = { packedLb: 3, longestIn: 10, unknown: [] };
+  const f = shipping.priceShipment({ v: small, subtotal: 300, formulaKg: 2 }, rules(free));
   assert.deepStrictEqual([f.amount, f.freeApplied], [0, true]);
-  assert.strictEqual(shipping.priceShipment({ v: null, subtotal: 100, formulaKg: 2 }, rules(free)).amount, 12 + 2 * 2.5);
+  assert.strictEqual(shipping.priceShipment({ v: small, subtotal: 100, formulaKg: 2 }, rules(free)).amount, 12 + 2 * 2.5);
+  assert.strictEqual(shipping.priceShipment({ v: { packedLb: 3, longestIn: 60, unknown: [] }, subtotal: 5000, formulaKg: 2 }, rules(free)).manual, true, "an oversize order is not free freight under the formula either");
 });
 
 // ─── Stored quotes ──────────────────────────────────────────────
@@ -310,8 +353,21 @@ test("shippingFor: a line with no weight, a part that is gone or a material that
   assert.strictEqual(shipping.shippingFor(q, table, lookupFor([])).manual, true, "the part record is gone");
   assert.strictEqual(shipping.shippingFor(q, table, lookupFor(parts, [])).manual, true, "the material is gone");
   assert.strictEqual(shipping.shippingFor(q, table, {}).manual, true, "no lookup at all");
-  // Under the formula the lines' own weights are enough, as they always were.
-  assert.strictEqual(shipping.shippingFor(q, rules(), {}).amount, q.shippingEstimate);
+  // (2026-11-13, F-03.) Under the formula the charge is still worked out from the lines' own weights, and
+  // it is the quote's own figure; but the size and the packed weight now decide whether there IS a charge,
+  // so a part that is gone is "to be confirmed" here too.
+  assert.strictEqual(shipping.shippingFor(q, rules(), lookupFor(parts)).amount, q.shippingEstimate);
+  assert.deepStrictEqual([shipping.shippingFor(q, rules(), {}).manual, shipping.shippingFor(q, rules(), {}).reasonCode], [true, "unknown-size"]);
+  // A page that only shows the line hands in what the quote was priced with, and no part is read.
+  let read = 0;
+  const counting = { part: (id) => { read++; return lookupFor(parts).part(id); }, material: (slug) => lookupFor(parts).material(slug) };
+  const shown = shipping.shippingFor(q, rules(), counting, { measure: false, known: { packedLb: q.shipping.packedLb, longestIn: q.shipping.longestIn } });
+  assert.deepStrictEqual([shown.amount, shown.manual, read], [q.shippingEstimate, false, 0]);
+  const shownBig = shipping.shippingFor(q, rules(), counting, { measure: false, known: { packedLb: 12, longestIn: 94 } });
+  assert.deepStrictEqual([shownBig.manual, shownBig.reasonCode, read], [true, "oversize", 0]);
+  // A quote stored without them (older) is measured after all.
+  const older = shipping.shippingFor(q, rules(), counting, { measure: false, known: { packedLb: null, longestIn: null } });
+  assert.ok(older.amount === q.shippingEstimate && read > 0);
 });
 
 test("shippingFor: a DXF line is measured at the stock thickness the line was priced at", () => {

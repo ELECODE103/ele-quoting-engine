@@ -10,7 +10,11 @@
  *
  *   formula   (default: the behaviour before this file existed)
  *             shippingBaseRate + part weight in kg × shippingPerKg, exactly as the pricing engine
- *             computed it before. No size or destination rule.
+ *             computed it before, for an order inside the parcel limits below.
+ *   IN EVERY MODE (since 2026-11-13, re-review F-03): no shipping price is given online to an order
+ *             with a part longer than shippingOversizeLongestIn, a packed weight over
+ *             shippingMaxParcelLb, a size or weight that cannot be worked out, or an address outside
+ *             the contiguous United States. Such an order is "freight to be confirmed": a firm quote.
  *   included  no shipping line; part prices carry the freight.
  *   table     the row of `shippingRateTable` the packed order weight falls in.
  *

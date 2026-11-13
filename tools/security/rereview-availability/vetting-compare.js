@@ -48,7 +48,20 @@ function vet(base, out) {
     const strip = (line) => line.slice(0, line.lastIndexOf(",")); // the last column is the quote id
     const differ = [];
     for (let i = 0; i < Math.max(a.rows.length, b.rows.length); i++) if (strip(a.rows[i] || "") !== strip(b.rows[i] || "")) differ.push(i);
+    // (Added 2026-11-13.) Every differing row, summed up: which columns differ, and for each the change
+    // itself with how many rows have it, so that every row can be explained and not only the first three.
+    // VET_KEEP=<folder> keeps the two results.csv files there.
+    const header = (a.rows[0] || "").split(",");
+    const kinds = {};
+    for (const i of differ) {
+      const x = (a.rows[i] || "").split(","); const y = (b.rows[i] || "").split(",");
+      const cols = header.filter((h, k) => h !== "quoteId" && x[k] !== y[k]);
+      const key = cols.map((h) => { const k = header.indexOf(h); return /price|total|unit|subtotal|shipping/i.test(h) ? h : `${h}: ${x[k] || "(none)"} -> ${y[k] || "(none)"}`; }).join(" | ");
+      kinds[key] = (kinds[key] || 0) + 1;
+    }
+    if (process.env.VET_KEEP) { fs.mkdirSync(process.env.VET_KEEP, { recursive: true }); fs.copyFileSync(path.join(outBase, "results.csv"), path.join(process.env.VET_KEEP, "base.csv")); fs.copyFileSync(path.join(outFix, "results.csv"), path.join(process.env.VET_KEEP, "this.csv")); }
     c.result({
+      differencesByKind: kinds, columns: header,
       test: "vetting-compare", base: `${baseRef} (${commit})`, baseRun: { exit: a.exit, quotes: a.rows.length - 1, summary: a.summary }, thisBranchRun: { exit: b.exit, quotes: b.rows.length - 1, summary: b.summary },
       rowsThatDiffer: differ.length,
       firstDifferences: differ.slice(0, 3).map((i) => { const x = (a.rows[i] || "").split(","); const y = (b.rows[i] || "").split(","); const header = a.rows[0].split(","); const cols = header.filter((h, k) => h !== "quoteId" && x[k] !== y[k]); return { row: i, part: x[0], columns: cols.slice(0, 6) }; }),
