@@ -173,8 +173,8 @@ the worst case is the sheet just inside the bed, 58 x 94 in, which is larger.
 
 **The exposure, in words.** The rule charges by weight alone. Heavy orders are charged enough or more
 than enough ($2.50 a kg is about $1.13 a pound). The loss is on **large, light** parts: one thin sheet
-over about 4 ft on a side is charged $13 to $32 and has to travel as freight or as an oversize parcel. I did not call a carrier.
-My working assumption, which you should check against your own freight quotes, is $250 to $600 for a
+over about 4 ft on a side is charged $13 to $32 and has to travel as freight or as an oversize parcel.
+I did not call a carrier. My working assumption, which you should check against your own freight quotes, is $250 to $600 for a
 single oversize flat sheet by LTL freight inside the contiguous states, more with a residential or
 lift-gate delivery, and much more to Hawaii, Alaska or abroad. On that assumption **each such order
 loses roughly $200 to $550 on a sale of $120 to $280**, and nothing limits how many are placed.
@@ -238,11 +238,12 @@ out-of-memory kill, a host fault; not a deploy, which lets the step finish), the
 total, the lines are not re-made (line 257 reads whatever lines exist), and Stripe is asked for the full
 amount under the name "Order - 19 parts".
 
-**Measured** (`RR_ONLY=C durability-kill.js 8 20`: a 20-line quote, killed 4 to 124 ms after the request
-is sent, 8 rounds, three separate runs): a partial order was left on disk in 6 of 8 rounds each time (0,
-4, 7, 7, 8, 9, 11, 11, 12, 18, 19, 19 of 20 lines among them). In two of the three runs the buyer's second
-checkout was followed through to payment: **paid $4,403.88 in full; the paid order holds 7 of 20 lines in
-one run and 19 of 20 in the other.** Nothing flags it. The window was about 100 ms for 20 lines on a
+**Measured** (`durability-kill.js 8 20`, section C: a 20-line quote, killed 4 to 124 ms after the request
+is sent, 8 rounds, four separate runs): a partial order was left on disk in 6, 6, 6 and 5 of the 8 rounds
+(anything from 0 to 19 of the 20 lines). In three of the runs the script followed a short order through:
+the buyer presses pay again and pays. **Paid $4,403.88 in full each time; the paid order holds 7, 19 and
+12 of its 20 lines.** Nothing flags it. (In the fourth run the script picked an order that happened to
+have all 20 lines and only its quote left as a draft; that one was not sold short.) The window was about 100 ms for 20 lines on a
 database of 0.2 MB; each line costs one whole-file save, so it grows with the number of lines (up to 100)
 and with the size of the database (the author's own figure: 5 ms a save at 16 MB, plus the flushes).
 
@@ -294,7 +295,7 @@ At the least: on/off, and the fields the price is computed from.
 
 **Where.** `server/services/rowRetention.js` lines 100 to 108 (`unpaidOrderIsPayable`): a file on an
 unpaid order is held outright ("never removed") until the later of 48 hours after the order was made and
-30 minutes after its payment page lapses. `server/services/storagePressure.js` line 367 skips every part
+30 minutes after its payment page lapses. `server/services/storagePressure.js` line 368 skips every part
 held outright. Each account may store 150 MB and the store's ceiling is 2,048 MB, so fourteen accounts'
 worth of unpaid orders is the whole store.
 
@@ -369,11 +370,12 @@ is not usable. A production start that finds no database where one is expected s
 **Where.** `server/services/orderLifecycle.js` lines 438 to 448 and 487 to 491. `applySession` marks the
 order paid and records the event as handled (`notified: true`) in one step; the confirmation to the buyer
 and the new-order notice to the shop are sent after it (line 491). `server/routes/stripeWebhook.js`
-line 101 answers a retried event "duplicate" when its id is on record, and a replay sends nothing.
+line 123 answers a retried event "duplicate" when its id is on record, and a replay sends nothing.
 
 **Measured** (`RR_ONLY=D durability-kill.js 8`): control without a kill: buyer 1 email, shop 1. Killed 1
 to 26 ms into the webhook, then the same event sent again as Stripe does: every order was paid after the
-retry (no payment lost, none flagged), and in **5 of 8** rounds neither email was ever written. With the
+retry (no payment lost, none flagged), and in **5 of 8** rounds (7 of 8 in a second run) neither email
+was ever written. With the
 real mail provider the window is the length of its API call, which is longer than here.
 
 The order is in the admin list as paid, so it is found by looking; it is not found by waiting for the
@@ -409,7 +411,7 @@ the next start logs "seed v1 → v4", replaces every material and finish and kee
 $123.45 back to $1.10). With the marker "4" as text, "abc", 4.5 or 99 nothing is touched; with 3 the
 prices are carried correctly. The owner's own buttons do not move the marker (save, reset, restore: still
 4, same script section 5), so this needs a damaged or hand-edited rules row. If the rules row itself is
-lost the same thing happens.
+lost the same thing happens (read, not run).
 
 **What a fix must achieve.** An unreadable marker must never be read as "the oldest version"; the
 catalogue must not be replaced when the version it came from cannot be established.
@@ -490,8 +492,9 @@ c7221a0:server/routes/taxShipping.test.js`): see the changed-tests audit.
 - A re-priced draft killed at once: the last re-price is lost (the disk held $206.86, the browser had
   been told $396.19), and only that. A re-price followed by a checkout and a kill: both are on disk.
 - A half-written `quoting.db.tmp` beside a good database: the good one is loaded.
-- Read, not run: `deferred()` is used in four places, all of them drafts (`api.js` 777 and 1007,
-  `quotesStore.js` 212, `quoteGuards.js` 151, `storagePressure.js` 165); none wraps an order, a payment,
+- Read, not run: `deferred()` is used in five places: a draft's re-price and its "reopened" mark
+  (`api.js` 777 and 1007), a backfill of a draft column (`quotesStore.js` 212), draft deletions
+  (`quoteGuards.js` 151) and the clean-up pass (`storagePressure.js` 165). None wraps an order, a payment,
   an account or an admin edit, and any ordinary write takes waiting changes to disk with it
   (`database.js` `saveToDisk`).
 
@@ -555,7 +558,8 @@ two cores (load average 3.5 to 4.7), the same load the author used.
 | Another visitor's one-line re-price: priced | 13 of 13 each phase | 13 of 13 each phase | 13, 13, 12 of 12, 13 | 12 of 12, 13, 13, 12 of 12 |
 | That visitor: median; worst | 14 to 17 ms; 80 to 227 ms | 12 to 15 ms; 89 to 245 ms | 35 to 76 ms; 148 to 259 ms | 38 to 94 ms; 178 to 382 ms |
 
-The author's figures for this test are right, and so is his statement that it is worse than
+(One short script of mine overlapped the first seconds of the quiet run.) The author's figures for this
+test are right, and so is his statement that it is worse than
 availability-fixes alone. A real visitor is never refused and never waits more than 0.4 s for a price,
 quiet or loaded, with eight addresses pricing the heaviest quotes there are.
 
@@ -572,13 +576,13 @@ quiet or loaded, with eight addresses pricing the heaviest quotes there are.
 
 **Can one upload put the site into "busy" on purpose?** (`memory-poison.js`, memory budget at its 1,024 MB
 default.) One address sent 500,000 random triangles (25 MB): refused `parse-memory` after 13 s, with the
-server at 963 MB while it worked. Sent again after one more large file: `busy` after 11 s, and the log
+server at 963 MB when it answered. Sent again after one more large file: `busy` after 11 s, and the log
 printed its "SHORT OF MEMORY" line. So yes: one sender, two uploads of 25 MB, about 25 seconds of its
 180 seconds of parsing an hour, and the state the author describes is reached. **But it is the sender's
 own heavy file that is refused. Ordinary customers were not touched:** before, right after, after three
 large files, and 30 seconds later, four customers from four addresses each had a cube, a 76,800-triangle
 block (3.8 MB), a 101,568-triangle block (5 MB) and a 248,832-triangle block (12.4 MB) read in 0.1 to
-1.7 s, 16 of 16 after the attack. The server settled at 373 to 426 MB between parses. What I could not
+1.7 s: 12 of 12 after the attack, as the 4 of 4 before it. The server settled at 373 to 426 MB between parses. What I could not
 test: this machine has 7.8 GB, so nothing here shows what Railway's own 1 GB limit does when the process
 really reaches it (a hard kill, which is the trigger for F-02 and F-05).
 
@@ -598,9 +602,9 @@ were then run against the merged code where that could tell me something (copied
 name, run, removed; nothing of it is committed). "Original wrong" means the old test could not pass on a
 correct merged site; "finding edited away" would mean it failed for a real fault that the edit hides.
 
-**No finding was edited away. Two changes removed coverage that nothing else in the suite replaces, and
-one adapted script measures a much lighter case than the one it was written for.** Those three are
-marked.
+**No finding was edited away.** Three rows are marked in bold: one change removed coverage that nothing
+else in the suite replaces, one follows a real change of behaviour, and one adapted script measures a much
+lighter case than the one it was written for.
 
 | Test or script | What changed | Original run on the merged code | Judgement |
 |---|---|---|---|
@@ -609,12 +613,12 @@ marked.
 | ... case "a material with no density" | was: priced, shipping "unknown weight"; now: not priced at all | Fails: the material is refused by the whitelist | Original wrong; the merged rule is stricter |
 | ... case "promo code and tax" | codes switched on for the first half; a wrong amount is now "unpaid and flagged", not "paid, under review"; a third case added (tax on an order checked out with tax off) | Not reached | Stricter. Confirmed independently (`money-attacks.js` section 7) |
 | ... case "firm quotes" | the guest uploads their own part | Not reached | Ownership; read only |
-| `pricingAvailability.test.js` | requests carry the part key; the eight-address share is read when the 6-second window closes, with a second bound over the whole run | see the availability section | Original wrong (it read the figure after an 8-second tail). The bound itself (a burst plus 60 % of the clock) is unchanged and a second one was added |
+| `pricingAvailability.test.js` | requests carry the part key; the eight-address share is read when the 6-second window closes, with a second bound over the whole run | 4 pass, 4 fail, every failure on `part-not-found` (no part key). The eight-address case fails on that before it reaches its timing check, so the original cannot say anything about the tail | Original wrong for the key. On the timing I have only the author's account (the figure was read after an 8-second tail) and my own run of `pricing-eight.js`, which agrees with his. The bound itself (a burst plus 60 % of the clock) is unchanged and a second one was added |
 | `senderQuotas.test.js` | allowance used by the test 96 → 128 kB; the abandoned order now has a lapsed payment page | 7 pass, 2 fail: "2 re-prices accepted, 28 refused" and "a file on an order nobody paid for in three days is cleared" | First: original wrong (a stored draft grew from 2.3 to 2.8 kB at one line and from 5.9 to 7.8 kB at 25, so the test's own allowance was too small; the product default is 512 kB). Second: **a real change of behaviour that the edit follows**: an unpaid order with no payment page now holds its files for ever. A customer cannot normally make one (I looked: a failed session start deletes the order), so I accept it; F-02's partial orders are the exception |
 | `storagePressure.test.js` | the customer prices their own parts; the levelling check allows the last holder to be partly cut | 8 pass; the first failure is "a visitor can still change the quote they have open: 400"; the four after it are knock-on (the database is left "nearly full") | Original wrong: the test had a signed-in customer price the visitor's part, which now makes it the customer's. The looser levelling check accepts "6 6 6 6 6 6 6 10": equal senders are not cut equally; the last one reached keeps more. Harmless among flood senders, noted |
 | `databaseDurability.test.js` | a source-text check widened | Not run separately | Harmless. It only checks that `saveToDisk` ends in `writeDurably` |
 | `shutdown.test.js` | the "no handler" case rewritten to expect a clean exit; a live-server case added | Not run separately | **Coverage removed.** The old case killed the process at six delays and checked the file was whole even when the kill landed inside a save. The new case checks a graceful stop. The suite now has no case in which the process is killed hard while it is writing. My `durability-kill.js` does that about 60 times per full run (integrity `ok` every time), so the property holds; the suite no longer proves it |
-| `reorder-block.js` | makes "the largest order a customer can" (3 lines of the 4,900-hole drawing), pays it, reorders that | Original cannot run: the 100-line order is over $5,000 and an unpaid order cannot be reordered | **Lighter case.** The script was written to reorder 100 lines; it now reorders 3. A 100-line order under $5,000 exists (100 printed cubes, $1,654, see F-08), so "the largest order a customer can make" is not the heaviest reorder. Measured below |
+| `reorder-block.js` | makes "the largest order a customer can" (3 lines of the 4,900-hole drawing), pays it, reorders that | Original cannot run: the 100-line order is over $5,000 and an unpaid order cannot be reordered | **Lighter case.** The script was written to reorder 100 lines; it now reorders 3. A 100-line order under $5,000 exists (100 printed cubes, $1,654, see F-08), so "the largest order a customer can make" is not the heaviest reorder. The adapted script reproduces the author's figures (availability section). I did not measure the reorder of a 100-line order: it goes through the yielding runner and writes one row, so I expect it to be mild, and that is an expectation, not a measurement |
 | `memo-check.js` | pays the order before reordering; prices its last step as the owner | Not run | Original wrong (ownership, paid-only reorder). One check changed meaning and the author says so: "memo against no memo" is now compared in `pricingAvailability.test.js`, not here |
 | `encryption.js`, `migration.js`, `retention-encryption.js` | carry part keys over a restart, or take them from the old quote | Not run | Original wrong: each priced its own part without the key the browser would hold |
 | `authorization.test.js` | follows routers mounted without a path; inventory gains five routes | Compared with my own walk of the routers (`route-inventory.js`: 98 routes, 50 owner routes, 0 without `authenticate` then `requireAdmin`) | The change makes the test see more, not less |
