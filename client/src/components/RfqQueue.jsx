@@ -18,7 +18,9 @@ export default function RfqQueue() {
   const [open, setOpen] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const load = () => api.getAdminRfqs().then(setRfqs).catch(() => {});
+  // A list that did not load says so, with a way to try again (it used to stay empty without a word).
+  const [loadError, setLoadError] = useState('');
+  const load = () => api.getAdminRfqs().then((rows) => { setRfqs(rows); setLoadError(''); }).catch((e) => setLoadError((e && e.message) || 'The server did not answer.'));
   useEffect(() => { load(); }, []);
 
   const [notice, setNotice] = useState(null); // { id, text } — result of the last "Send quote"
@@ -75,6 +77,14 @@ export default function RfqQueue() {
 
   const hoursOpen = (r) => Math.round((Date.now() - new Date(r.createdAt).getTime()) / 36e5);
 
+  if (loadError) {
+    return (
+      <div role="alert" className="card" data-testid="section-error" style={{ padding: '14px 16px', fontSize: 13, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', borderLeft: '3px solid var(--error-text, #B42318)' }}>
+        <span style={{ flex: '1 1 240px', minWidth: 0, overflowWrap: 'anywhere' }}><b>The quote requests did not load.</b>{' '}{loadError}{' '}The other tabs are not affected.</span>
+        <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px' }} onClick={load}>Try again</button>
+      </div>
+    );
+  }
   if (rfqs.length === 0) {
     return <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-dim)' }}>No quote requests yet.</div>;
   }

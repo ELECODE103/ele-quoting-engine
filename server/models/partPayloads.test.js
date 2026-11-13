@@ -378,12 +378,18 @@ test("reopening a quote brings the 3D preview back from its file; if the file is
   const oq = await h.post("/api/quote", { parts: [up, cube].map((p) => ({ partId: p.partId, materialSlug: cnc.slug, quantity: 1, process: "cnc", subProcess: "milling" })) }, buyer);
   const co = await h.post("/api/orders/checkout-session", { quoteId: oq.body.quoteId, shippingName: "A Buyer", shippingAddress: "1 Test St", shippingCity: "Elgin", shippingState: "IL", shippingZip: "60120" }, buyer);
   assert.strictEqual(co.status, 200, co.text);
+  // (2026-11-13, re-review F-09.) This used to assert that the order LIST carried every line's part
+  // measurements without the mesh. Carrying the measurements in the list at all was the fault: one
+  // account's unpaid orders made the list too large to send, for itself and for the owner. The list is
+  // now a page of summaries with a line count; the lines are on the single-order route, and neither
+  // carries a part's measurements or its mesh.
   const list = await h.get("/api/orders", buyer);
-  assert.strictEqual(list.body[0].items.length, 2);
-  for (const it of list.body[0].items) {
-    assert.ok(it.geometry && it.geometry.boundingBox && !("meshData" in it.geometry), `${it.fileName}: geometry without a mesh`);
-  }
-  assert.ok(!/"positions"/.test(list.text) && list.text.length < 40000, `the order list is ${list.text.length} bytes`);
+  assert.strictEqual(list.body[0].itemCount, 2);
+  assert.strictEqual(list.body[0].items, undefined, "the list carries no lines");
+  assert.ok(!/"positions"|"geometry"|"dfm"/.test(list.text) && list.text.length < 4000, `the order list is ${list.text.length} bytes`);
+  const one = await h.get(`/api/orders/${list.body[0].id}`, buyer);
+  assert.strictEqual(one.body.items.length, 2);
+  assert.ok(one.body.items.every((it) => it.storedName && !it.geometry) && !/"positions"/.test(one.text), "the order's own page lists its lines, without measurements or a mesh");
   fs.unlinkSync(path.join(payloadDir, `${up.partId}.mesh.json`));
   // (As the buyer from here on: the part became theirs when they priced it signed in, a few lines up, so the
   // visitor who uploaded it no longer opens it with the key alone: security/partAccess.js.)

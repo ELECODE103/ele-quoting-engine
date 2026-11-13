@@ -66,8 +66,9 @@ export function OrderFlags({ order }) {
 /** One line above the order list: how many orders are waiting for the owner, and what is switched on. */
 export function PaymentStatus({ orders = [] }) {
   const [settings, setSettings] = useState(null);
-  useEffect(() => { api.getPaymentSettings().then(setSettings).catch(() => setSettings(null)); }, []);
-  const waiting = orders.filter((o) => o.attention).length;
+  // Asked again whenever the list changes: the count is of ALL orders, and the list shows one page of them.
+  useEffect(() => { api.getPaymentSettings().then(setSettings).catch(() => setSettings(null)); }, [orders]);
+  const waiting = settings && Number.isFinite(Number(settings.needsAttention)) ? Number(settings.needsAttention) : orders.filter((o) => o.attention).length;
   return (
     <div className="card" data-testid="payment-status" style={{ padding: '10px 14px', marginBottom: 12, fontSize: 12, display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center' }}>
       <span style={{ fontWeight: 700, color: waiting ? 'var(--error-text, #B42318)' : 'var(--text-secondary)' }} data-testid="attention-count">

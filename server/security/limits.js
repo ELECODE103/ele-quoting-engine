@@ -29,6 +29,18 @@ const limits = {
   // ── Checkout (POST /api/orders/checkout-session) ──────────────
   /** Checkout requests one ACCOUNT may make in 15 minutes (each may create a Stripe session). */
   get rateCheckoutPerAccount15Min() { return envInt("CHECKOUT_PER_ACCOUNT_15MIN", 12, 1, 1000); },
+  /**
+   * Orders one account, and one address, may have waiting for a card payment at the same time
+   * (re-review 2026-11-12, F-09 and F-12). Pressing "pay" costs nothing, and every unpaid order holds
+   * its lines in the database and its files in the store: without a ceiling thirteen accounts held the
+   * whole file store. A buyer normally has one; three leaves room for separate jobs. Firm-quote orders
+   * and phone orders are not counted, and neither is going back to pay for an order that already exists.
+   */
+  get ordersUnpaidPerAccount() { return envInt("ORDERS_UNPAID_PER_ACCOUNT", 3, 1, 100000); },
+  get ordersUnpaidPerClient() { return envInt("ORDERS_UNPAID_PER_CLIENT", 5, 1, 100000); },
+  /** New orders that were started and not paid for, per account and per address, in a rolling 24 hours (each one lapses when its payment page does). */
+  get ordersUnpaidNewPerAccountDay() { return envInt("ORDERS_UNPAID_NEW_PER_ACCOUNT_DAY", 8, 1, 100000); },
+  get ordersUnpaidNewPerClientDay() { return envInt("ORDERS_UNPAID_NEW_PER_CLIENT_DAY", 16, 1, 100000); },
 
   // ── Memory (the one setting the parse pool's limits derive from) ──
   /**

@@ -189,6 +189,9 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
 
     // Paying for an order, and the firm-quote link (codes from the order-lifecycle fixes, 2026-11-11)
     'payment-session-busy': { '*': { text: `The card page that was opened for this order earlier is still closing, so we couldn't open a new one yet. Nothing was charged. Give it a minute and press the button again, or call ${PHONE}.`, action: 'retry' } },
+    // One sender may hold only so many unpaid orders (server/security/orderCaps.js). The server's sentence names the count and how long a payment page stays open.
+    'unpaid-orders-limit': { '*': { text: `You already have orders waiting for payment, which is the most we keep open at once. Pay for one of them from Your orders, or wait for it to close, then check out again. To place this order by phone, call ${PHONE}.`, keep: true } },
+    'unpaid-orders-daily-limit': { '*': { text: `That is more checkouts started and not paid for than we take in one day. Nothing was charged. Pay for an order that is waiting in Your orders, try again tomorrow, or call ${PHONE} and we'll take the order by phone.` } },
     'order-not-payable': { '*': { text: `This order can no longer be paid for from this page: it has been paid, cancelled or closed since the page was opened. Reload the page to see where it stands, or call ${PHONE}.`, action: 'reload' } },
     'payments-unavailable': { '*': { text: `Card payment isn't available right now. That is a fault on our side, and nothing was charged. Try again in a few minutes, or call ${PHONE} and we'll take the order by phone.`, action: 'retry' } },
     'card-unavailable': { '*': { text: `We couldn't open the card page. That is a fault on our side, and nothing was charged. Try again in a few minutes, or call ${PHONE} and we'll take the order by phone.`, action: 'retry' } },
@@ -359,7 +362,12 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
 
   // ─── No code: by status and place ───────────────────────────
   const BY_STATUS = {
-    0: { '*': `We couldn't reach our server. Check your connection and try again; what you typed is still here.` },
+    0: {
+      '*': `We couldn't reach our server. Check your connection and try again; what you typed is still here.`,
+      // A list on the owner's pages or on "Your orders": nothing was typed.
+      admin: `We couldn't reach our server. Check your connection and try again.`,
+      order: `We couldn't reach our server. Check your connection and try again.`,
+    },
     400: { '*': `That didn't go through as sent. Check what you entered and try again, or ${REACH}.` },
     401: { '*': BY_CODE['session-ended']['*'].text },
     403: { '*': 'This account can\'t open that. If it is yours, sign in with the account that made it.' },

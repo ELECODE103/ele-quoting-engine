@@ -38,6 +38,28 @@ function itemCounts(orderIds) {
   return out;
 }
 
+/**
+ * What the production queue shows of each order's lines (file, process, material, quantity), for
+ * many orders in one query and without reading a line's configuration: { orderId: [line, …] }.
+ */
+function lineSummaries(orderIds) {
+  const out = {};
+  const ids = [...new Set((orderIds || []).filter((id) => typeof id === "string" && id))];
+  for (const id of ids) out[id] = [];
+  if (ids.length === 0) return out;
+  if (hasSql(orderItemsDB)) {
+    for (let i = 0; i < ids.length; i += 400) {
+      const chunk = ids.slice(i, i + 400);
+      for (const r of orderItemsDB._query(`SELECT order_id, file_name, process, material_name, quantity FROM order_items WHERE order_id IN (${chunk.map(() => "?").join(", ")}) ORDER BY rowid`, chunk)) {
+        out[r.order_id].push({ fileName: r.file_name, process: r.process, materialName: r.material_name, quantity: r.quantity });
+      }
+    }
+    return out;
+  }
+  for (const it of orderItemsDB.getAll()) if (out[it.orderId]) out[it.orderId].push({ fileName: it.fileName, process: it.process, materialName: it.materialName, quantity: it.quantity });
+  return out;
+}
+
 /** Every order made from this quote. */
 function ordersOfQuote(quoteId) {
   if (typeof quoteId !== "string" || !quoteId) return [];
@@ -83,4 +105,4 @@ function flaggedCount() {
   return ordersDB.query((o) => Boolean(o.attention)).length;
 }
 
-module.exports = { itemsOf, itemCounts, ordersOfQuote, ordersInStatus, page, flaggedCount, hasSql, rows };
+module.exports = { itemsOf, itemCounts, lineSummaries, ordersOfQuote, ordersInStatus, page, flaggedCount, hasSql, rows };

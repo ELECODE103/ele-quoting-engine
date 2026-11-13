@@ -419,8 +419,33 @@ function adminView(rfq, base) {
 // ─── Admin queue (declared before /:id so "admin" isn't read as an id) ───
 router.get("/admin/list", authenticate, requireAdmin, (req, res) => {
   const base = orderEvents.baseUrl(req);
-  const all = rfqsDB.getAll().map(expireIfDue).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-  res.json(all.map((r) => adminView(r, base)));
+  // The newest requests (?limit= up to 500, default 200), and never more of them than fits in one
+  // answer: a request carries a snapshot of each of its lines, so the answer is built newest first and
+  // stops before it would pass half of the site's answer ceiling. What is left out is older, and the
+  // headers say so (X-Total-Count, X-Listed-Count). No number of requests turns this list into an error.
+  const n = Math.max(1, Math.min(500, Math.floor(Number(req.query.limit) || 200)));
+  let newest;
+  let total;
+  if (typeof rfqsDB._query === "function") {
+    total = Number(rfqsDB._query("SELECT COUNT(*) AS n FROM rfqs")[0].n) || 0;
+    newest = rfqsDB._query("SELECT * FROM rfqs ORDER BY created_at DESC, rowid DESC LIMIT ?", [n]).map((r) => rfqsDB._deserialize(r));
+  } else {
+    const all = rfqsDB.getAll().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    total = all.length;
+    newest = all.slice(0, n);
+  }
+  const budget = Math.floor(require("../security/limits").limits.jsonAnswerMaxBytes / 2);
+  const listed = [];
+  let bytes = 2;
+  for (const row of newest) {
+    const view = adminView(expireIfDue(row), base);
+    const size = Buffer.byteLength(JSON.stringify(view), "utf8") + 1;
+    if (listed.length > 0 && bytes + size > budget) break;
+    bytes += size;
+    listed.push(view);
+  }
+  res.set({ "X-Total-Count": String(total), "X-Listed-Count": String(listed.length) });
+  res.json(listed);
 });
 
 router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {

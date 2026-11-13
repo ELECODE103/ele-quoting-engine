@@ -23,6 +23,7 @@ const orderState = require("../services/orderState");
 const { singleLine, singleLines, SHIPPING_RULES } = require("../middleware/singleLine");
 const checkout = require("../services/checkout");   // delivery choices, totals and tax settings for a quote
 const shippingService = require("../services/shipping");
+const orderQueries = require("../models/orderQueries"); // an order's lines, a page of orders: from an index, not a pass over every row
 
 const QUOTE_VALID_DAYS = 30; // same hold as routes/api.js
 
@@ -50,7 +51,8 @@ function requireConfirmedEmail(req, res, next) {
  * account number is opened only for the admin's view of one order (`account`).
  */
 function orderView(order, { admin = false, account = false } = {}) {
-  const { drawingPath, notes, attention, attentionNote, attentionAt, manualPaidReason, manualPaidBy, disputeStatus, disputeAt, ...safe } = checkout.orderView(order, { admin: admin && account });
+  // (`clientTag`, the keyed hash of the address an order was made from, is the server's own bookkeeping.)
+  const { drawingPath, notes, attention, attentionNote, attentionAt, manualPaidReason, manualPaidBy, disputeStatus, disputeAt, clientTag, ...safe } = checkout.orderView(order, { admin: admin && account });
   if (admin && !account) safe.taxExemptionLine = require("../services/tax").exemptionLine(order);
   const payment = lifecycle.paymentView(order);
   return {
@@ -121,7 +123,7 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
     // Which orders still hold their quote is the state machine's call (services/orderState.js holdsQuote):
     // every order except one that lapsed unpaid ("expired" — its quote was given back when it lapsed).
     // A cancelled order keeps its quote: the owner can still mark a cancelled order paid.
-    const taken = ordersDB.query((o) => o.quoteId === quoteId && orderState.holdsQuote(o));
+    const taken = orderQueries.ordersOfQuote(quoteId).filter((o) => orderState.holdsQuote(o));
     // (Its total is not compared with the quote's here: the delivery choice may differ, or change on the
     // way back from the card page. Its amounts are brought up to date below, from this same check.)
     const resumable = taken.find((o) => o.userId === req.user.userId && o.status === "pending_payment" && !o.rfqId);
@@ -254,10 +256,21 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
         tax: 0, total: resolved.total,
         shipBy: leadDays !== null ? shipBy.shipByDate(leadDays) : pending.shipBy,
       });
-      const items = orderItemsDB.query((i) => i.orderId === reused.id);
+      const items = orderQueries.itemsOf(reused.id);
       // The session this order already has, while it is still open for the same amount; a new one only when it is not.
       const again = await checkoutGuard.sessionFor(reused, { itemCount: items.length, description: describe(items), ...stripeUrls(reused.id) });
       return res.json({ sessionUrl: again.paid ? stripeUrls(reused.id).successUrl : again.session.url, orderId: reused.id });
+    }
+
+    // A NEW order from here on. One sender may hold only so many unpaid orders, at once and in a day
+    // (security/orderCaps.js): pressing "pay" is free, and each unpaid order holds database rows and files.
+    const clientTag = require("../security/uploadGuards").clientTag(require("../security/clientKey").clientKey(req));
+    if (req.user.role !== "admin") {
+      const capped = require("../security/orderCaps").refusalFor({ userId: req.user.userId, clientTag, sessionMinutes: lifecycle.sessionMinutes() });
+      if (capped) {
+        res.set("Retry-After", String(capped.retryAfterSeconds));
+        return res.status(capped.status).json(capped.body);
+      }
     }
 
     // What the total is made of, so the order page, emails and documents can show it: each in
@@ -278,6 +291,7 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
       userId: req.user.userId,
       quoteId,
       status: "pending_payment",
+      clientTag, // which address it was made from (a keyed hash), for the ceiling on unpaid orders per address
       // Ship-to, delivery choice ("standard" = we ship it), carrier account (masked), tax mode, exemption.
       ...delivery,
       // When the parts, the lead-time fee and shipping add up to the total they are
@@ -354,10 +368,10 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
       // give the quote back. Only while the order is still unpaid and no session exists for it.
       const now = ordersDB.getById(order.id);
       if (now && now.status === "pending_payment" && lifecycle.sessionsFor(order.id).length === 0) {
-        for (const it of orderItemsDB.query((i) => i.orderId === order.id)) orderItemsDB.delete(it.id);
+        for (const it of orderQueries.itemsOf(order.id)) orderItemsDB.delete(it.id);
         ordersDB.delete(order.id);
         const q = quotesDB.getById(quoteId);
-        if (q && q.status === "ordered" && ordersDB.query((o) => o.quoteId === quoteId).length === 0) quotesDB.update(quoteId, { status: quote.status || "draft", userId: quote.userId || null });
+        if (q && q.status === "ordered" && orderQueries.ordersOfQuote(quoteId).length === 0) quotesDB.update(quoteId, { status: quote.status || "draft", userId: quote.userId || null });
       }
       throw err;
     }
@@ -479,38 +493,42 @@ router.post("/", authenticate, requireAdmin, requireShipToLines, (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// GET /api/orders — List orders for authenticated user
+// GET /api/orders — the order list: one page of summaries, newest first
+//
+//   ?page=1&pageSize=50   (pageSize 1 to 100)
+//   ?attention=1          admin: only orders that are flagged for the owner
+//
+// A summary is the order's own row as its reader may see it (routes orderView) and how many lines
+// it has. It carries NO lines, no part measurements and no DFM results: those are on the
+// single-order route, GET /api/orders/:id. The list used to load every line's part (reading its
+// measurement file from disk, once per line) and put the measurements in the answer; one account
+// with a detailed drawing on four unpaid orders made that answer larger than the site will send,
+// for itself and for the owner, whose admin panel then showed nothing (re-review 2026-11-12, F-09).
+//
+// Now the cost of the list does not depend on what the orders hold: one indexed query for the
+// page's rows, one for their line counts, one count. The body is still a JSON array (of the page);
+// how many orders there are in all, and which page this is, are in the headers
+// X-Total-Count, X-Page, X-Page-Size and X-Page-Count.
 // ═══════════════════════════════════════════════════════════════
+const LIST_PAGE_DEFAULT = 50;
+const LIST_PAGE_MAX = 100;
+
 router.get("/", authenticate, (req, res) => {
   try {
-    let orders;
-    if (req.user.role === "admin") {
-      orders = ordersDB.getAll();
-    } else {
-      orders = ordersDB.query((o) => o.userId === req.user.userId);
-    }
-
-    // Sort newest first
-    orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    // Attach item count
-    const result = orders.map((order) => {
-      const items = orderItemsDB.query((i) => i.orderId === order.id);
-      const enrichedItems = items.map((it) => {
-        const part = it.partId ? partsDB.getById(it.partId) : null;
-        // The part's measurements, never its preview mesh: an order list has no 3D view.
-        const { meshData, ...geometry } = part?.geometry || {};
-        return {
-        ...it,
-        storedName: part?.storedName || null,
-        geometry: part?.geometry ? geometry : null,
-        dfm: part?.dfm || null,
-      };
-      });
-      return { ...orderView(order, { admin: req.user.role === "admin" }), items: enrichedItems, itemCount: items.length };
+    const admin = req.user.role === "admin";
+    const whole = (v, fallback) => { const n = Number.parseInt(String(v === undefined ? "" : v), 10); return Number.isFinite(n) && n > 0 ? n : fallback; };
+    const pageSize = Math.min(LIST_PAGE_MAX, whole(req.query.pageSize, LIST_PAGE_DEFAULT));
+    const flagged = admin && ["1", "true", "yes"].includes(String(req.query.attention || "").toLowerCase());
+    const found = orderQueries.page({ userId: admin ? null : req.user.userId, flagged, page: whole(req.query.page, 1), pageSize });
+    const counts = orderQueries.itemCounts(found.rows.map((o) => o.id));
+    res.set({
+      "X-Total-Count": String(found.total),
+      "X-Page": String(found.page),
+      "X-Page-Size": String(pageSize),
+      "X-Page-Count": String(found.pages),
+      "Cache-Control": "no-store",
     });
-
-    res.json(result);
+    res.json(found.rows.map((order) => ({ ...orderView(order, { admin }), itemCount: counts[order.id] || 0 })));
   } catch (err) {
     console.error("Orders list error:", err);
     res.status(500).json({ error: "Failed to retrieve orders" });
@@ -529,10 +547,13 @@ router.get("/:id", authenticate, (req, res) => {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const items = orderItemsDB.query((i) => i.orderId === order.id);
+    const items = orderQueries.itemsOf(order.id);
+    // "Is the file still here" is answered from the part's row: its measurement file is not read
+    // (getById would read and parse it, once per line).
+    const storedNames = new Map();
     const enrichedItems = items.map((it) => {
-      const part = it.partId ? partsDB.getById(it.partId) : null;
-      return { ...it, storedName: part?.storedName || null };
+      if (it.partId && !storedNames.has(it.partId)) storedNames.set(it.partId, (partsDB.getRow(it.partId) || {}).storedName || null);
+      return { ...it, storedName: it.partId ? storedNames.get(it.partId) : null };
     });
     const admin = req.user.role === "admin";
     res.json({
@@ -687,7 +708,7 @@ router.post("/:id/reorder", authenticate, pricingGate.admit(), async (req, res) 
         status: order.status,
       });
     }
-    const items = orderItemsDB.query((i) => i.orderId === order.id);
+    const items = orderQueries.itemsOf(order.id);
     const configs = items
       // getRow: "is the part still there" is answered from its row. getById reads the part's whole
       // measurement file, once per line, before any pricing has started (0.7 s of held thread for 100
@@ -783,14 +804,18 @@ router.get("/:id/traveler", authenticate, requireAdmin, (req, res) => {
     const order = ordersDB.getById(req.params.id);
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    const items = orderItemsDB.query((i) => i.orderId === order.id);
+    const items = orderQueries.itemsOf(order.id);
 
-    // Enrich items with part geometry data
+    // Enrich items with part geometry data. Each part is read once, and compared with what was priced
+    // once, however many lines name it (reading a detailed part means reading its measurement file).
+    const partOf = new Map();
+    const hashOf = new Map();
     const enrichedItems = items.map((item) => {
-      const part = item.partId ? partsDB.getById(item.partId) : null;
+      if (item.partId && !partOf.has(item.partId)) partOf.set(item.partId, partsDB.getById(item.partId));
+      const part = item.partId ? partOf.get(item.partId) : null;
       // What was charged for, and whether the stored part is still that part (it is locked once
       // ordered, so `false` means something is wrong and the job must not be cut from this file).
-      const check = checkoutGuard.checkAgainst(item, part);
+      const check = checkoutGuard.checkAgainst(item, part, hashOf);
       return {
         ...item,
         geometry: part?.geometry || null,
@@ -826,10 +851,9 @@ router.get("/:id/traveler", authenticate, requireAdmin, (req, res) => {
 // and how many orders are waiting for the owner. Read-only: the switches are host variables.
 // ═══════════════════════════════════════════════════════════════
 router.get("/admin/payment-settings", authenticate, requireAdmin, (req, res) => {
-  const orders = ordersDB.getAll();
   res.json({
     ...lifecycle.paymentSettings(),
-    needsAttention: orders.filter((o) => o.attention).length,
+    needsAttention: orderQueries.flaggedCount(),
     manualPaidMethods: orderState.MANUAL_PAID_METHODS,
     manualMoves: orderState.MANUAL,
   });
@@ -844,28 +868,23 @@ router.get("/admin/queue", authenticate, requireAdmin, (req, res) => {
 
     // Work to build: refunded, expired and cancelled orders are not in it; a flagged or disputed
     // order stays (nothing is cancelled automatically) and carries its flag.
-    let orders = ordersDB.getAll().filter((o) => orderState.isWork(o));
+    let orders = orderState.WORK_QUEUE.flatMap((st) => orderQueries.ordersInStatus(st)).filter((o) => orderState.isWork(o));
 
     if (status) {
       orders = orders.filter((o) => o.status === status);
     }
 
-    // Sort by date, oldest first (FIFO production)    orders.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    // Sort by date, oldest first (FIFO production).
+    // (This line had been joined to the comment above it, so the queue was never sorted; it came out in
+    // the order the rows happened to be read. Found while fixing the order lists, 2026-11-13.)
+    orders.sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
 
-    // Enrich with items
+    // Enrich with items: the four columns the queue shows, for all the orders in one indexed query.
+    const linesOf = orderQueries.lineSummaries(orders.map((o) => o.id));
     const result = orders.map((order) => {
-      const items = orderItemsDB.query((i) => i.orderId === order.id);
-      const { shipAccountEnc, taxCertPath, ...row } = order; // the sealed account number and the certificate's path stay on the server
-      return {
-        ...row,
-        items: items.map((item) => ({
-          fileName: item.fileName,
-          process: item.process,
-          materialName: item.materialName,
-          quantity: item.quantity,
-        })),
-        itemCount: items.length,
-      };
+      const items = linesOf[order.id] || [];
+      const { shipAccountEnc, taxCertPath, clientTag, ...row } = order; // the sealed account number, the certificate's path and the address tag stay on the server
+      return { ...row, items, itemCount: items.length };
     });
 
     // Optionally filter by manufacturing process

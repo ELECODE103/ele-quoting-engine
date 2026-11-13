@@ -212,6 +212,10 @@ protection that is off until you do.)
 | `STRIPE_PROMOTION_CODES` | off | `on` shows the promotion-code box on Stripe's page, for every order and firm quote. Leave it off until you have decided to run codes (step 2a, item 3). The startup log and Admin → System say which way it is set |
 | `CHECKOUT_SESSION_MINUTES` | 120 | How long a buyer has to finish paying on Stripe's page (30 to 1440). After that the unpaid order closes as "Not paid, closed" and the quote can be ordered again |
 | `CHECKOUT_PER_ACCOUNT_15MIN` | 12 | How many times one account may press pay in 15 minutes before it is asked to wait a few minutes |
+| `ORDERS_UNPAID_PER_ACCOUNT` | 3 | Orders one account may have waiting for a card payment at the same time. The next press of pay is refused with "You have 3 orders waiting for payment…" until one is paid or its payment page closes. Firm-quote orders and phone orders are not counted |
+| `ORDERS_UNPAID_PER_CLIENT` | 5 | The same, counted per address (an office behind one connection shares it) |
+| `ORDERS_UNPAID_NEW_PER_ACCOUNT_DAY` | 8 | Checkouts one account may start and leave unpaid in 24 hours |
+| `ORDERS_UNPAID_NEW_PER_CLIENT_DAY` | 16 | The same, per address |
 | `MEMORY_BUDGET_MB` | 1024 | The memory limit of the Railway service, in MB. The site sizes its file-reading limits from it. **Set it in step 3** to match the service: the recommended service size is 2 GB with `MEMORY_BUDGET_MB=2048` |
 | `DB_MAX_MB` | 16 | The most the database file may grow to. Past it the site stops saving new quotes and uploads until room is made. **Check it in step 9**: if the database is already more than half of this on the first day, raise it |
 | `QUOTE_DRAFT_KB_PER_CLIENT`, `QUOTE_DRAFT_KB_PER_ACCOUNT` | 512 each | How much unsaved-quote data one visitor, or one account, may have stored at once: roughly 180 one-part quotes, or 23 quotes of 100 parts. Orders, requests and quotes on them are never counted |

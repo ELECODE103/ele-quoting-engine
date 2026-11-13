@@ -3,6 +3,7 @@
  * Endpoints for generating and serving PDF documents (job travelers, packing lists)
  */
 const express = require("express");
+const orderQueries = require("../models/orderQueries"); // an order's lines, read by index
 const { ordersDB, orderItemsDB, partsDB, quotesDB, rfqsDB, usersDB, materialsDB, finishesDB } = require("../models");
 const { authenticate, requireAdmin } = require("./auth");
 const { generateJobTraveler, generatePackingList } = require("../services/pdfGenerator");
@@ -24,19 +25,22 @@ router.get("/traveler/:orderId", authenticate, requireAdmin, async (req, res) =>
     }
 
     // Fetch order items
-    const items = orderItemsDB.query((i) => i.orderId === orderId);
+    const items = orderQueries.itemsOf(orderId);
     if (!items || items.length === 0) {
       return res.status(400).json({ error: "Order has no items" });
     }
 
-    // Enrich items with part geometry/DFM data
+    // Enrich items with part geometry/DFM data. Each part is read and compared once, however many lines name it.
+    const partOf = new Map();
+    const hashOf = new Map();
     const enrichedItems = items.map((item) => {
       let part = null;
       let geometry = null;
       let dfm = null;
 
       if (item.partId) {
-        part = partsDB.getById(item.partId);
+        if (!partOf.has(item.partId)) partOf.set(item.partId, partsDB.getById(item.partId));
+        part = partOf.get(item.partId);
         if (part) {
           geometry = part.geometry || null;
           dfm = part.dfm || null;
@@ -45,7 +49,7 @@ router.get("/traveler/:orderId", authenticate, requireAdmin, async (req, res) =>
 
       // Is the part on file still the part that was priced? (It is locked once ordered; `false` is printed
       // on the traveler in capitals. null: an order from before the snapshot existed, or a firm quote.)
-      const check = require("../services/checkoutGuard").checkAgainst(item, part);
+      const check = require("../services/checkoutGuard").checkAgainst(item, part, hashOf);
       return {
         ...item,
         geometry,
@@ -84,7 +88,7 @@ router.get("/packing-list/:orderId", authenticate, requireAdmin, async (req, res
     }
 
     // Fetch order items
-    const items = orderItemsDB.query((i) => i.orderId === orderId);
+    const items = orderQueries.itemsOf(orderId);
     if (!items || items.length === 0) {
       return res.status(400).json({ error: "Order has no items" });
     }
@@ -136,7 +140,7 @@ function customerOf(userId) {
 function loadOrder(req, res) {
   const order = ordersDB.getById(req.params.orderId);
   if (!order) { res.status(404).json({ error: "Order not found" }); return null; }
-  const items = orderItemsDB.query((i) => i.orderId === order.id).map(withNames);
+  const items = orderQueries.itemsOf(order.id).map(withNames);
   if (!items.length) { res.status(400).json({ error: "Order has no items" }); return null; }
   return { order, items, customer: customerOf(order.userId) };
 }
@@ -189,7 +193,7 @@ router.get("/fai", authenticate, requireAdmin, documentRoute("FAI report", async
   if (req.query.orderId) {
     const order = ordersDB.getById(String(req.query.orderId));
     if (!order) return res.status(404).json({ error: "Order not found" });
-    const items = orderItemsDB.query((i) => i.orderId === order.id).map(withNames);
+    const items = orderQueries.itemsOf(order.id).map(withNames);
     const item = items[Math.max(0, (parseInt(req.query.line, 10) || 1) - 1)];
     if (!item) return res.status(404).json({ error: "Order line not found" });
     const customer = customerOf(order.userId);

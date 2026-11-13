@@ -9,19 +9,23 @@ export default function CustomerDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        const data = await api.getOrders();
-        setOrders(Array.isArray(data) ? data : (data.orders || []));
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchOrders();
-  }, []);
+  // The list comes a page at a time (50 orders, newest first); an order's lines are on its own page.
+  const [paging, setPaging] = useState({ page: 1, pages: 1, total: 0, pageSize: 50 });
+
+  const fetchOrders = async (page = 1) => {
+    setLoading(true);
+    setError('');
+    try {
+      const r = await api.getOrdersPage({ page });
+      setOrders(r.rows);
+      setPaging({ page: r.page, pages: r.pages, total: r.total, pageSize: r.pageSize });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { fetchOrders(1); }, []);
 
   const getStatusColor = (status) => {
     const colors = {
@@ -56,12 +60,13 @@ export default function CustomerDashboard() {
         )}
 
         {error && (
-          <div role="alert" className="auth-error" style={{ padding: 16, marginBottom: 24 }}>
-            {error}
+          <div role="alert" className="auth-error" style={{ padding: 16, marginBottom: 24, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ flex: '1 1 220px', minWidth: 0 }}>{error}</span>
+            <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px' }} onClick={() => fetchOrders(paging.page)}>Try again</button>
           </div>
         )}
 
-        {!loading && orders.length === 0 ? (
+        {error && orders.length === 0 ? null : !loading && orders.length === 0 ? (
           <div style={{
             background: 'var(--bg-card)',
             border: '1px solid var(--border-primary)',
@@ -121,6 +126,14 @@ export default function CustomerDashboard() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {paging.pages > 1 && (
+          <div data-testid="orders-pager" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginTop: 16, fontSize: 12, color: 'var(--text-muted)' }}>
+            <span>Orders {(paging.page - 1) * paging.pageSize + 1} to {Math.min(paging.total, paging.page * paging.pageSize)} of {paging.total}, newest first</span>
+            <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px' }} disabled={loading || paging.page <= 1} onClick={() => fetchOrders(paging.page - 1)}>Newer</button>
+            <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px' }} disabled={loading || paging.page >= paging.pages} onClick={() => fetchOrders(paging.page + 1)}>Older</button>
           </div>
         )}
       </div>

@@ -77,6 +77,24 @@ async function request(path, options = {}) {
   return res.json();
 }
 
+/**
+ * A list the server sends one page at a time: the body is the page's rows, and the headers say how
+ * many rows there are in all and which page this is (X-Total-Count, X-Page, X-Page-Size, X-Page-Count).
+ */
+async function requestPage(path, context) {
+  const res = await send(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...baseHeaders('GET') } }, context);
+  const rows = await res.json();
+  const list = Array.isArray(rows) ? rows : [];
+  const header = (name, fallback) => { const n = Number(res.headers.get(name)); return Number.isFinite(n) && n > 0 ? n : fallback; };
+  return {
+    rows: list,
+    total: header('X-Total-Count', list.length),
+    page: header('X-Page', 1),
+    pageSize: header('X-Page-Size', Math.max(1, list.length)),
+    pages: header('X-Page-Count', 1),
+  };
+}
+
 /** A multipart POST (files). `headers` are added to the usual ones. */
 async function postForm(path, form, headers = {}, context) {
   const res = await send(path, { method: 'POST', body: form, credentials: 'same-origin', headers: { ...baseHeaders('POST'), ...headers } }, context);
@@ -281,7 +299,18 @@ export const api = {
   async verifyHuman(turnstileToken) { return request('/human/verify', { method: 'POST', body: JSON.stringify({ turnstileToken, action: 'quote' }) }); },
 
   // Orders
+  /** The newest orders (the first page), as an array. */
   async getOrders() { return request('/orders'); },
+  /**
+   * One page of the order list: { rows, total, page, pageSize, pages }. A row is a summary (no lines);
+   * the lines of an order come from getOrderById. `attention` (admin): only flagged orders.
+   */
+  async getOrdersPage({ page = 1, pageSize, attention = false } = {}) {
+    const q = new URLSearchParams({ page: String(page) });
+    if (pageSize) q.set('pageSize', String(pageSize));
+    if (attention) q.set('attention', '1');
+    return requestPage(`/orders?${q}`);
+  },
   async getOrderById(id) { return request(`/orders/${id}`); },
   /** Ask the server to check with Stripe whether a just-placed order has been paid. */
   async confirmOrderPayment(id) { return request(`/orders/${id}/confirm-payment`, { method: 'POST', body: '{}' }); },

@@ -9,12 +9,17 @@
  *                           it was priced at, so "is this still the part that was priced" is one
  *                           integer compared with another (services/partLock.js).
  *
+ *   orders.client_tag       which address an order was made from (the same keyed hash of the client
+ *                           key as on parts and quotes, never the address), for the ceiling on
+ *                           unpaid orders per address (security/orderCaps.js).
+ *
  * Indexes: the questions the order routes ask on every request ("the lines of this order",
  * "is this part on an order", "this account's orders") are answered from an index, not by
  * reading every row of the table.
  */
 const COLUMNS = [
   ["parts", "geometry_rev", "INTEGER DEFAULT 0"],
+  ["orders", "client_tag", "TEXT"],
 ];
 
 const INDEXES = [
@@ -24,10 +29,12 @@ const INDEXES = [
   ["idx_orders_quote", "orders", "quote_id"],
   ["idx_orders_status", "orders", "status"],
   ["idx_orders_created", "orders", "created_at"],
+  ["idx_orders_client", "orders", "client_tag"],
 ];
 
 const FIELD_MAP = {
   geometryRev: "geometry_rev",
+  // (orders.client_tag is written and read as `clientTag`, which the field map already has.)
 };
 
 // Table, column and index names and the column types are the only interpolated parts of these

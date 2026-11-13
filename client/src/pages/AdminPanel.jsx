@@ -39,6 +39,21 @@ function EnrolmentGate({ onDone }) {
   );
 }
 
+/**
+ * One section of the admin panel did not load. Said on that section's own tab, in words, with a way
+ * to try again; every other section is on the screen as usual.
+ */
+function SectionNotice({ what, error, onRetry }) {
+  return (
+    <div role="alert" className="card" data-testid="section-error" style={{ padding: '14px 16px', marginBottom: 12, fontSize: 13, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', borderLeft: '3px solid var(--error-text, #B42318)' }}>
+      <span style={{ flex: '1 1 240px', minWidth: 0, overflowWrap: 'anywhere' }}>
+        <b>{what} did not load.</b>{' '}{error}{' '}The other tabs are not affected.
+      </span>
+      <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: '6px 12px' }} onClick={onRetry}>Try again</button>
+    </div>
+  );
+}
+
 export default function AdminPanel() {
   const { user } = useAuth();
   // Held open through the "save your recovery codes" step, which comes after the account is already enrolled.
@@ -64,30 +79,51 @@ function AdminConsole() {
   // A rule change suggested by the Calibration tab, carried into the pricing console as a draft edit.
   const [pendingRuleChange, setPendingRuleChange] = useState(null);
 
+  // Which page of the order list is showing, how many orders there are, and whether only flagged ones are listed.
+  const [orderPage, setOrderPage] = useState({ page: 1, pages: 1, total: 0, pageSize: 50 });
+  const [attentionOnly, setAttentionOnly] = useState(false);
+  // Sections that did not load, by name: { orders: "what the server said", ... }. One failed request
+  // leaves the others on the screen; its own tab says so and offers "Try again".
+  const [loadErrors, setLoadErrors] = useState({});
+
   useEffect(() => { loadData(); }, []);
 
-  async function loadData() {
+  // Each section is its own request with its own outcome. They used to be one Promise.all: when the
+  // order list failed, none of the seven was shown and the only sign was a line in the browser console.
+  const loaders = {
+    materials: async () => setMaterials(await api.getAdminMaterials()),
+    finishes: async () => setFinishes(await api.getAdminFinishes()),
+    leadTimes: async () => setLeadTimes(await api.getAdminLeadTimes()),
+    quotes: async () => setQuotes(await api.getAdminQuotes()),
+    stats: async () => setStats(await api.getAdminStats()),
+    parts: async () => setParts(await api.getAdminParts()),
+    orders: async (opt = {}) => {
+      const flagged = opt.attention !== undefined ? opt.attention : attentionOnly;
+      const r = await api.getOrdersPage({ page: opt.page || orderPage.page, attention: flagged });
+      // The rows, the count and which list this is change together, when the answer is in.
+      setOrders(r.rows);
+      setOrderPage({ page: r.page, pages: r.pages, total: r.total, pageSize: r.pageSize });
+      setAttentionOnly(flagged);
+    },
+  };
+
+  async function loadSection(key, opt) {
     try {
-      const [mats, fins, lts, qs, st, ord, prt] = await Promise.all([
-        api.getAdminMaterials(),
-        api.getAdminFinishes(),
-        api.getAdminLeadTimes(),
-        api.getAdminQuotes(),
-        api.getAdminStats(),
-        api.getOrders(),
-        api.getAdminParts(),
-      ]);
-      setMaterials(mats);
-      setFinishes(fins);
-      setLeadTimes(lts);
-      setQuotes(qs);
-      setStats(st);
-      setOrders(ord);
-      setParts(prt);
+      await loaders[key](opt);
+      setLoadErrors((e) => { if (!(key in e)) return e; const { [key]: _gone, ...rest } = e; return rest; });
     } catch (err) {
-      console.error('Admin load error:', err);
+      console.error(`Admin: ${key} did not load:`, err);
+      setLoadErrors((e) => ({ ...e, [key]: (err && err.message) || 'The server did not answer.' }));
     }
   }
+
+  /** Load every section (or the ones named). Never throws: a section that fails is recorded in loadErrors. */
+  async function loadData(only) {
+    const keys = Array.isArray(only) ? only : Object.keys(loaders);
+    await Promise.all(keys.map((key) => loadSection(key)));
+  }
+
+  const showOrders = (opt) => loadSection('orders', opt);
 
   async function saveFinish(id, updates) {
     setSaving(true);
@@ -142,7 +178,7 @@ function AdminConsole() {
           { label: 'Paid Revenue', value: formatCurrency(stats.paidRevenue || 0) },
           { label: 'Open Quotes', value: stats.openQuotes || 0 },
           { label: 'Uploads (30d)', value: stats.uploads30d || 0 },
-        ].map((s, i) => (
+        ].map((s) => (loadErrors.stats ? { ...s, value: '—' } : s)).map((s, i) => (
           <div key={i} className="card fade-up" style={{ padding: 20, animationDelay: `${i * 60}ms` }}>
             <div style={{ fontSize: 10, color: 'var(--text-dim)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
               {s.label}
@@ -153,6 +189,8 @@ function AdminConsole() {
           </div>
         ))}
       </div>
+
+      {loadErrors.stats && <SectionNotice what="The figures above" error={loadErrors.stats} onRetry={() => loadSection('stats')} />}
 
       {/* Tabs */}
       <div className="admin-tabs" role="group" aria-label="Admin sections">
@@ -171,17 +209,32 @@ function AdminConsole() {
 
       {/* ─── ORDERS TAB ─── */}
       {tab === 'orders' && <PaymentStatus orders={orders} />}
-      {tab === 'orders' && (
+      {tab === 'orders' && loadErrors.orders && <SectionNotice what="The order list" error={loadErrors.orders} onRetry={() => loadSection('orders')} />}
+      {tab === 'orders' && !loadErrors.orders && (
+        <div className="card" data-testid="orders-pager" style={{ padding: '8px 14px', marginBottom: 12, fontSize: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span data-testid="orders-count">
+            {orderPage.total === 0
+              ? (attentionOnly ? 'No orders need attention' : 'No orders yet')
+              : `Orders ${(orderPage.page - 1) * orderPage.pageSize + 1} to ${Math.min(orderPage.total, orderPage.page * orderPage.pageSize)} of ${orderPage.total}${attentionOnly ? ' that need attention' : ''}, newest first`}
+          </span>
+          <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }} disabled={orderPage.page <= 1} onClick={() => showOrders({ page: orderPage.page - 1 })}>Newer</button>
+          <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }} disabled={orderPage.page >= orderPage.pages} onClick={() => showOrders({ page: orderPage.page + 1 })}>Older</button>
+          <button type="button" className="btn btn-ghost" aria-pressed={attentionOnly} style={{ fontSize: 11, padding: '4px 10px' }} onClick={() => showOrders({ page: 1, attention: !attentionOnly })}>
+            {attentionOnly ? 'Show all orders' : 'Only orders that need attention'}
+          </button>
+        </div>
+      )}
+      {tab === 'orders' && !loadErrors.orders && (
         <div className="card table-scroll" tabIndex={0} role="region" aria-label="Orders table" style={{ overflow: 'hidden' }}>
           {orders.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-dim)' }}>
-              No orders yet. Orders appear here when customers complete Stripe checkout.
+              {attentionOnly ? 'No orders need attention.' : 'No orders yet. Orders appear here when customers complete Stripe checkout.'}
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)' }}>
-                  {['Date', 'Order ID', 'Customer', 'Items', 'Total', 'Status', 'Files', 'Action'].map((h) => (
+                  {['Date', 'Order ID', 'Customer', 'Lines', 'Total', 'Status', 'Action'].map((h) => (
                     <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                       {h}
                     </th>
@@ -238,22 +291,8 @@ function AdminConsole() {
                         {o.taxExempt && <div style={{ marginTop: 4 }}><span className="tag tag-warn" title={o.taxExemptionLine || 'The customer declared a tax exemption'}>Tax exempt?</span></div>}
                       </td>
                       <td style={{ padding: '10px 14px' }}>{o.shippingName || '—'}</td>
+                      {/* The lines themselves, with their files to download, are on the order: open the row. */}
                       <td style={{ padding: '10px 14px' }}>{o.itemCount}</td>
-                      <td style={{ padding: '10px 14px' }}>
-                        {(o.items || []).filter(it => it.storedName).map((it, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => api.downloadPart(it.partId, it.fileName).catch(e => alert('Download failed: ' + e.message))}
-                            title={it.fileName}
-                            style={{ fontSize: '11px', padding: '4px 8px', marginRight: '4px', marginBottom: '2px', cursor: 'pointer', border: '1px solid #1D4ED8', background: '#fff', color: '#1D4ED8', borderRadius: '3px', minHeight: 28 }}
-                          >
-                            {(it.fileName || 'file').length > 18 ? (it.fileName || 'file').slice(0, 15) + '...' : (it.fileName || 'file')}
-                          </button>
-                        ))}
-                        {(!o.items || o.items.filter(it => it.storedName).length === 0) && (
-                          <span style={{ color: '#999', fontSize: '11px' }}>—</span>
-                        )}
-                      </td>
                       <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--accent)' }}>
                         {formatCurrency(o.total)}
                       </td>
@@ -285,11 +324,12 @@ function AdminConsole() {
       )}
 
       {/* ─── PARTS TAB ─── */}
-      {tab === 'parts' && (
+      {tab === 'parts' && loadErrors.parts && <SectionNotice what="The list of uploaded parts" error={loadErrors.parts} onRetry={() => loadSection('parts')} />}
+      {tab === 'parts' && !loadErrors.parts && (
           <div className="table-scroll" tabIndex={0} role="region" aria-label="Uploaded parts table">
-            <h2 style={{ marginBottom: '16px' }}>All Uploaded Parts ({parts.length})</h2>
+            <h2 style={{ marginBottom: '16px' }}>Uploaded Parts (newest {parts.length})</h2>
             <p style={{ color: '#666', marginBottom: '16px', fontSize: '13px' }}>
-              Every CAD file uploaded by customers, including parts that never became orders. Newest first.
+              The newest CAD files uploaded by customers, including parts that never became orders. An order's own files are on the order.
             </p>
             {parts.length === 0 ? (
               <p style={{ color: 'var(--text-muted)' }}>No uploads yet.</p>
@@ -337,10 +377,12 @@ function AdminConsole() {
         )}
 
       {/* ─── MATERIALS TAB ─── */}
-      {tab === 'materials' && <MaterialsEditor materials={materials} onChanged={loadData} />}
+      {tab === 'materials' && loadErrors.materials && <SectionNotice what="The materials" error={loadErrors.materials} onRetry={() => loadSection('materials')} />}
+      {tab === 'materials' && !loadErrors.materials && <MaterialsEditor materials={materials} onChanged={() => loadData(['materials'])} />}
 
       {/* ─── FINISHES TAB ─── */}
-      {tab === 'finishes' && (
+      {tab === 'finishes' && loadErrors.finishes && <SectionNotice what="The finishes" error={loadErrors.finishes} onRetry={() => loadSection('finishes')} />}
+      {tab === 'finishes' && !loadErrors.finishes && (
         <div className="card table-scroll" tabIndex={0} role="region" aria-label="Finishes table" style={{ overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
@@ -386,7 +428,8 @@ function AdminConsole() {
       )}
 
       {/* ─── LEAD TIMES TAB ─── */}
-      {tab === 'lead-times' && (
+      {tab === 'lead-times' && loadErrors.leadTimes && <SectionNotice what="The lead times" error={loadErrors.leadTimes} onRetry={() => loadSection('leadTimes')} />}
+      {tab === 'lead-times' && !loadErrors.leadTimes && (
         <div className="card table-scroll" tabIndex={0} role="region" aria-label="Lead times table" style={{ overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
@@ -472,7 +515,8 @@ function AdminConsole() {
       {tab === 'system' && <SystemTab />}
 
       {/* ─── QUOTES TAB ─── */}
-      {tab === 'quotes' && (
+      {tab === 'quotes' && loadErrors.quotes && <SectionNotice what="The quote list" error={loadErrors.quotes} onRetry={() => loadSection('quotes')} />}
+      {tab === 'quotes' && !loadErrors.quotes && (
         <div className="card table-scroll" tabIndex={0} role="region" aria-label="Quotes table" style={{ overflow: 'hidden' }}>
           <div style={{ padding: '10px 14px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid var(--border-subtle)', fontSize: 12 }}>
             <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}
