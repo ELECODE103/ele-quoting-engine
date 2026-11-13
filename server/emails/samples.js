@@ -101,4 +101,5 @@ module.exports = {
   "new-order-shop-paperwork": () => templates.newOrderShop({ order: orderWithPaperwork, items, adminUrl: `${base}/admin` }),
   "order-shipped": () => templates.orderShipped({ order: { ...order, carrier: "UPS", trackingNumber: "1Z999AA10123456784", shippedAt: "2026-11-23T20:15:00.000Z" }, items, orderUrl: `${base}/orders/${order.id}` }),
   "order-shipped-no-tracking": () => templates.orderShipped({ order: { ...order, shippedAt: "2026-11-23T20:15:00.000Z" }, items, orderUrl: `${base}/orders/${order.id}` }),
+  "order-closed-buyer": () => templates.orderClosedBuyer({ order: { ...order, status: "expired" }, quoteUrl: `${base}/quote` }),
 };

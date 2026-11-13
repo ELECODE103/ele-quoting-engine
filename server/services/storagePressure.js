@@ -36,8 +36,11 @@
  *                            2. uploads only a no-account draft refers to (the draft goes with them)
  *                            3. what is held softly — files on a request nobody at the shop has
  *                               taken up, on a saved quote, on an order that was never paid for
- *                               (after ORDER_UNPAID_PROTECT_HOURS), or on one that is cancelled or
+ *                               once its payment page has closed, or on one that is cancelled or
  *                               expired — beyond the holder's UPLOAD_PROTECTED_MB_PER_HOLDER
+ *                            4. still over the line: unpaid orders are closed, heaviest holder
+ *                               first (payment page closed at Stripe, buyer emailed), and their
+ *                               files then go by rule 3 (relieveUnpaidOrders below)
  *     at the anonymous share (85 %)   new uploads from visitors without a confirmed account refused
  *     at 100 %               everyone's new uploads refused
  *     never removed          a file on an order that was paid for or is being worked on, or on a
@@ -173,8 +176,85 @@ async function inPieces(items, work, { budgetMs = 40, sync = false } = {}) {
 
 // ─── Database ────────────────────────────────────────────────
 
+// ─── Orders that were never paid, in the database ─────────────
+//
+// An order line is about 3 kB (its configuration, its cost build-up and the snapshot of what was
+// priced). An order that lapsed unpaid keeps its lines for good, and nothing stops an account from
+// starting more (within the ceilings of security/orderCaps.js): a few accounts could walk the
+// database to its ceiling with checkouts they never paid for. So, under pressure only:
+//
+//   lapsed   the LINES of orders that closed unpaid (lapsed, or cancelled before any payment) more
+//            than an hour ago are removed, from whoever
+//            holds the most first. The order's own row stays (a few hundred bytes), marked
+//            linesClearedAt: it is still in the lists as "not paid, closed", and a payment that
+//            arrives for it is still flagged for the owner. Its quote went back to the buyer as a
+//            draft when it lapsed, so nothing a buyer can still use is lost. Never: an order that
+//            was paid, refunded or flagged, a firm-quote order, or one with any money event on record.
+//   unpaid   if the database is still at the line where visitors are turned away, unpaid card orders
+//            are closed, heaviest holder first, exactly as the file pass does it (payment page
+//            closed at Stripe first, buyer emailed), and their lines go the same way.
+const LAPSED_LINES_KEEP_MS = 60 * MIN;
+const LINE_BYTES_SQL = "(SELECT COALESCE(SUM(200 + COALESCE(OCTET_LENGTH(i.config_json), 0) + COALESCE(OCTET_LENGTH(i.geometry_json), 0) + COALESCE(OCTET_LENGTH(i.dfm_json), 0)), 0) FROM order_items i WHERE i.order_id = o.id)";
+const NEVER_PAID_SQL = "o.paid_at IS NULL AND (o.amount_paid IS NULL OR o.amount_paid = 0) AND (o.refunded_amount IS NULL OR o.refunded_amount = 0) AND (o.attention IS NULL OR o.attention = '') AND (o.rfq_id IS NULL OR o.rfq_id = '') AND (o.payment_method IS NULL OR o.payment_method = 'card')";
+
+/** Orders that closed unpaid and still hold lines: [{ id, holder, bytes, lapsed }]. */
+function lapsedOrderLines(models) {
+  if (!models.ordersDB || typeof models.ordersDB._query !== "function") return [];
+  return models.ordersDB._query(`
+    SELECT o.id, o.user_id, o.client_tag, COALESCE(o.expired_at, o.cancelled_at, o.updated_at, o.created_at) AS lapsed, ${LINE_BYTES_SQL} AS bytes
+      FROM orders o
+     WHERE o.status IN ('expired', 'cancelled') AND o.lines_cleared_at IS NULL AND ${NEVER_PAID_SQL}
+       AND NOT EXISTS (SELECT 1 FROM payment_events e WHERE e.order_id = o.id AND e.kind NOT IN ('order-expired', 'order-cancelled', 'event'))`)
+    .filter((r) => Number(r.bytes) > 0)
+    .map((r) => ({ id: r.id, holder: rowRetention.holderOf(r.user_id, r.client_tag), bytes: Number(r.bytes), lapsed: time(r.lapsed) || 0 }));
+}
+
+/** Remove the lines of one order that closed unpaid; its row stays. Returns the number of lines removed. */
+function clearOrderLines(models, orderId) {
+  const order = models.ordersDB.getById(orderId);
+  if (!order || !["expired", "cancelled"].includes(order.status) || order.paidAt || order.attention || order.rfqId || order.linesClearedAt) return 0;
+  return require("../models/database").transaction(() => {
+    const removed = models.orderItemsDB._run("DELETE FROM order_items WHERE order_id = ?", [orderId]);
+    models.ordersDB.update(orderId, { linesClearedAt: new Date().toISOString(), lineCount: 0 });
+    return removed;
+  }, { save: "soon" }); // the pass writes the file once, at its end
+}
+
+/**
+ * The database is still at the line where visitors are turned away: close unpaid card orders,
+ * from whoever holds the most bytes of order lines first, until `need` bytes of lines have gone.
+ * @returns {Promise<{ closed: number, settled: number, left: number, clearedOrders: number }>}
+ */
+async function relieveUnpaidOrderLines(models, { need, sync = false } = {}) {
+  const out = { closed: 0, settled: 0, left: 0, clearedOrders: 0 };
+  if (!(need > 0) || typeof models.ordersDB._query !== "function") return out;
+  const waiting = models.ordersDB._query(`SELECT o.id, o.user_id, o.client_tag, o.created_at, ${LINE_BYTES_SQL} AS bytes FROM orders o WHERE o.status = 'pending_payment' AND ${NEVER_PAID_SQL}`).filter((r) => Number(r.bytes) > 0);
+  const holders = new Map();
+  for (const o of waiting) {
+    const holder = rowRetention.holderOf(o.user_id, o.client_tag);
+    if (!holders.has(holder)) holders.set(holder, { bytes: 0, orders: [] });
+    const h = holders.get(holder);
+    h.bytes += Number(o.bytes);
+    h.orders.push(o);
+  }
+  const lifecycle = require("./orderLifecycle");
+  let freed = 0;
+  for (const h of [...holders.values()].sort((x, y) => y.bytes - x.bytes)) {
+    for (const o of h.orders.sort((x, y) => String(x.created_at || "").localeCompare(String(y.created_at || "")))) {
+      let r;
+      try { r = await lifecycle.closeUnderPressure(o.id, { reason: "database" }); } catch (err) { r = { outcome: "busy" }; console.error(`Database: could not close unpaid order ${String(o.id).slice(0, 8)}: ${err.code || err.name || "Error"}`); }
+      if (r.outcome === "closed") { out.closed++; if (clearOrderLines(models, o.id)) { out.clearedOrders++; freed += Number(o.bytes); } }
+      else if (r.outcome === "paid") out.settled++; else out.left++;
+      if (!sync) await turn();
+    }
+    if (freed >= need) break;
+  }
+  return out;
+}
+
 /**
  * What a database pressure pass would remove. Pure.
+ *   - the lines of orders that closed unpaid more than an hour ago (see above), heaviest holder first
  *   - lapsed drafts (their hold is over): all of them
  *   - from each sender, heaviest first: uploaded parts nothing refers to (except its newest
  *     LOOSE_PARTS_KEEP_PER_HOLDER, and never a signed-in customer's part in its first hour), then
@@ -187,6 +267,12 @@ function planDatabaseRelief(models, { need, now = Date.now(), refs = rowRetentio
   // Rows spared only for being new: when the first of them stops being new, a pass has work again.
   let nextMatureAt = Infinity;
   const sparedUntil = (at) => { if (at > now && at < nextMatureAt) nextMatureAt = at; };
+
+  // The lines of orders that closed unpaid: first to go from each holder (nothing a buyer can still use).
+  for (const o of lapsedOrderLines(models)) {
+    if (now - o.lapsed < LAPSED_LINES_KEEP_MS) { sparedUntil(o.lapsed + LAPSED_LINES_KEEP_MS); continue; }
+    add(o.holder, { kind: "order-lines", id: o.id, bytes: o.bytes, created: o.lapsed });
+  }
 
   // Parts nothing refers to.
   const customerKeepMs = limits.customerPartKeepMinutes * MIN;
@@ -229,6 +315,7 @@ function planDatabaseRelief(models, { need, now = Date.now(), refs = rowRetentio
   return {
     quoteIds: [...refs.expiredQuotes, ...chosen.filter((c) => c.kind === "draft").map((c) => c.id)],
     partIds: chosen.filter((c) => c.kind === "part").map((c) => c.id),
+    orderIds: chosen.filter((c) => c.kind === "order-lines").map((c) => c.id),
     lapsed: refs.expiredQuotes.length,
     holders: byHolder.size,
     nextMatureAt: Number.isFinite(nextMatureAt) ? nextMatureAt : null,
@@ -257,27 +344,42 @@ async function relieveDatabase(models, opt = {}) {
   const target = max * Math.max(0.1, limits.dbSweepFraction - 0.2);
   let removedDrafts = 0;
   let removedParts = 0;
+  let clearedOrders = 0;
+  let closedUnpaidOrders = 0;
   let longest = 0;
   let nextMatureAt = null;
+  const usedNow = () => (typeof database.usedSize === "function" ? database.usedSize() : size());
   // Up to three rounds: removing drafts leaves their parts with nothing referring to them.
   for (let round = 0; round < 3; round++) {
-    const used = typeof database.usedSize === "function" ? database.usedSize() : size();
-    const need = used - target;
+    const need = usedNow() - target;
     if (need <= 0 && round > 0) break;
     const t0 = Date.now();
     const plan = planDatabaseRelief(models, { need, now });
     longest = Math.max(longest, Date.now() - t0);
     nextMatureAt = plan.nextMatureAt;
-    if (plan.quoteIds.length === 0 && plan.partIds.length === 0) break;
+    const orderIds = plan.orderIds || [];
+    if (plan.quoteIds.length === 0 && plan.partIds.length === 0 && orderIds.length === 0) break;
     if (!opt.sync) await turn();
+    longest = Math.max(longest, await inPieces(orderIds, (id) => { if (clearOrderLines(models, id)) clearedOrders++; }, opt));
     longest = Math.max(longest, await inPieces(plan.quoteIds, (id) => models.quotesDB.delete(id), opt));
     longest = Math.max(longest, await inPieces(plan.partIds, (id) => { const row = models.partsDB.getRow(id); if (row) evictPart(models, row); }, opt));
     removedDrafts += plan.quoteIds.length;
     removedParts += plan.partIds.length;
   }
-  if (removedDrafts === 0 && removedParts === 0) {
+  // Still at the line where visitors without an account are turned away: unpaid orders are closed,
+  // heaviest holder first, until the database is a little under the line the clean-up starts at.
+  {
+    const used = usedNow();
+    if (used >= max * (1 - limits.dbReservedFraction)) {
+      const unpaid = await relieveUnpaidOrderLines(models, { need: used - max * Math.max(0.1, limits.dbSweepFraction - 0.05), sync: opt.sync });
+      closedUnpaidOrders = unpaid.closed;
+      clearedOrders += unpaid.clearedOrders;
+      if (unpaid.closed || unpaid.settled) console.warn(`Database: ${unpaid.closed} unpaid order(s) closed to make room, from whoever held the most first (each buyer was emailed; nothing was charged)${unpaid.settled ? `; ${unpaid.settled} turned out to be paid and were settled` : ""}${unpaid.left ? `; ${unpaid.left} left as they were` : ""}.`);
+    }
+  }
+  if (removedDrafts === 0 && removedParts === 0 && clearedOrders === 0) {
     state.databaseQuietUntil = quietUntil(nextMatureAt, now);
-    const result = { removedDrafts: 0, removedParts: 0, bytesBefore, bytesAfter: bytesBefore, longestPieceMs: longest };
+    const result = { removedDrafts: 0, removedParts: 0, clearedOrders: 0, closedUnpaidOrders, bytesBefore, bytesAfter: bytesBefore, longestPieceMs: longest };
     state.lastDatabaseRelief = { at: new Date(now).toISOString(), ...result };
     return result;
   }
@@ -298,9 +400,9 @@ async function relieveDatabase(models, opt = {}) {
   }
   if (removedParts) guards().storage.invalidate();
   const bytesAfter = size();
-  const result = { removedDrafts, removedParts, bytesBefore, bytesAfter, longestPieceMs: longest };
+  const result = { removedDrafts, removedParts, clearedOrders, closedUnpaidOrders, bytesBefore, bytesAfter, longestPieceMs: longest };
   state.lastDatabaseRelief = { at: new Date(now).toISOString(), ...result };
-  console.warn(`Database at ${Math.round((bytesBefore / max) * 100)}% of its ceiling: removed ${removedParts} uploaded part(s) that nothing refers to and ${removedDrafts} draft quote(s), from whoever held the most first; ${mb(bytesBefore)} MB → ${mb(bytesAfter)} MB (longest piece of work ${longest} ms).`);
+  console.warn(`Database at ${Math.round((bytesBefore / max) * 100)}% of its ceiling: removed ${removedParts} uploaded part(s) that nothing refers to, ${removedDrafts} draft quote(s) and the lines of ${clearedOrders} order(s) that closed unpaid, from whoever held the most first; ${mb(bytesBefore)} MB → ${mb(bytesAfter)} MB (longest piece of work ${longest} ms).`);
   return result;
 }
 
@@ -393,9 +495,83 @@ function planStorageRelief(models, { need, now = Date.now(), refs = rowRetention
 }
 
 /**
+ * When removing what nobody paid for or answered was not enough: the unpaid orders (independent
+ * re-review 2026-11-12, F-12).
+ *
+ * A file on an unpaid order whose payment page is still open is held outright, so that an order
+ * cannot be paid for after its file has gone. That made "press pay and never pay" a way to hold the
+ * store: thirteen accounts did it. So when the store is still over its line after everything softer
+ * has been taken, unpaid card orders are CLOSED, from whoever holds the most bytes under them first:
+ * the payment page is closed at Stripe (an order that turns out to be paid is settled and keeps its
+ * files; one whose page cannot be confirmed closed is left alone), the order becomes "not paid,
+ * closed", its quote is given back, and the buyer is emailed that nothing was charged. Its files are
+ * then held softly, like a saved quote's, and the ordinary rules decide what goes.
+ *
+ * Never closed here: an order that was paid for or is being worked on, a firm-quote order, an order
+ * the owner took by phone, an order flagged for the owner. Never removed afterwards: a file in its
+ * first STORAGE_EVICT_MIN_AGE_MINUTES, a signed-in customer's part in its first
+ * CUSTOMER_PART_KEEP_MINUTES, and each holder's protected share (UPLOAD_PROTECTED_MB_PER_HOLDER).
+ *
+ * Holders are taken one at a time, heaviest first, and the pass stops as soon as what may now be
+ * removed covers the need: a customer with one unpaid order is the last to be touched.
+ * @returns {Promise<{ closed: number, settled: number, left: number, plan: object|null, refs: object|null }>}
+ */
+async function relieveUnpaidOrders(models, { need, now = Date.now(), graceMs = limits.storageEvictMinAgeMinutes * MIN, sync = false } = {}) {
+  const out = { closed: 0, settled: 0, left: 0, plan: null, refs: null, nextMatureAt: null };
+  if (!(need > 0) || typeof models.ordersDB._query !== "function") return out;
+  const waiting = models.ordersDB._query("SELECT id, user_id, client_tag, created_at FROM orders WHERE status = 'pending_payment' AND (rfq_id IS NULL OR rfq_id = '') AND (attention IS NULL OR attention = '') AND (payment_method IS NULL OR payment_method = 'card')");
+  if (waiting.length === 0) return out;
+  const candidate = new Map(waiting.map((o) => [o.id, o]));
+  // What would still be held outright if every one of them were closed: a part that is ALSO on a paid
+  // order or a request the shop has taken up frees nothing, and is not counted against its holder.
+  const ifClosed = rowRetention.references(models, { now, treatAsSoft: new Set(candidate.keys()) });
+  const customerKeepMs = limits.customerPartKeepMinutes * MIN;
+  const freeable = new Map(); // part id → bytes, for parts closing could free now
+  const matures = new Map();  // part id → when it stops being too new to remove
+  for (const p of models.partsDB.rowSizes()) {
+    if (ifClosed.partsHard.has(p.id)) continue;
+    const created = time(p.createdAt) || 0;
+    const keep = Math.max(graceMs, p.ownerId ? customerKeepMs : 0);
+    if (now - created < keep) { matures.set(p.id, created + keep); continue; }
+    freeable.set(p.id, p.fileBytes);
+  }
+  const holders = new Map(); // holder → { bytes, parts: Set, orders: [] }
+  const ids = [...candidate.keys()];
+  for (let i = 0; i < ids.length; i += 400) {
+    const chunk = ids.slice(i, i + 400);
+    for (const it of models.orderItemsDB._query(`SELECT order_id, part_id FROM order_items WHERE part_id IS NOT NULL AND order_id IN (${chunk.map(() => "?").join(", ")})`, chunk)) {
+      const o = candidate.get(it.order_id);
+      const holder = rowRetention.holderOf(o.user_id, o.client_tag);
+      if (!holders.has(holder)) holders.set(holder, { bytes: 0, parts: new Set(), orders: new Map() });
+      const h = holders.get(holder);
+      h.orders.set(o.id, o);
+      if (freeable.has(it.part_id) && !h.parts.has(it.part_id)) { h.parts.add(it.part_id); h.bytes += freeable.get(it.part_id); }
+      // Too new to remove yet: the pass must look again when it stops being new, not after the
+      // back-off (a flood's files are all a minute old when the first refusal asks for a pass).
+      if (matures.has(it.part_id)) out.nextMatureAt = out.nextMatureAt == null ? matures.get(it.part_id) : Math.min(out.nextMatureAt, matures.get(it.part_id));
+    }
+  }
+  const lifecycle = require("./orderLifecycle");
+  const heaviest = [...holders.values()].filter((h) => h.bytes > 0).sort((x, y) => y.bytes - x.bytes);
+  for (const h of heaviest) {
+    for (const o of [...h.orders.values()].sort((x, y) => String(x.created_at || "").localeCompare(String(y.created_at || "")))) {
+      let r;
+      try { r = await lifecycle.closeUnderPressure(o.id); } catch (err) { r = { outcome: "busy" }; console.error(`Storage: could not close unpaid order ${String(o.id).slice(0, 8)}: ${err.code || err.name || "Error"}`); }
+      if (r.outcome === "closed") out.closed++; else if (r.outcome === "paid") out.settled++; else out.left++;
+    }
+    if (!sync) await turn();
+    // Is what may be removed now enough? Then nobody lighter is touched.
+    out.refs = rowRetention.references(models, { now });
+    out.plan = planStorageRelief(models, { need, now, refs: out.refs, graceMs });
+    if (out.plan.chosen.reduce((sum, it) => sum + it.bytes, 0) >= need) break;
+  }
+  return out;
+}
+
+/**
  * Evict uploads until the folders are back under the warning line less a margin, taking from
  * whoever holds the most first. In pieces, like the database pass.
- * @returns {Promise<null | { removedUploads, removedDrafts, removedAttachments, bytesBefore, bytesAfter }>}
+ * @returns {Promise<null | { removedUploads, removedDrafts, removedAttachments, closedUnpaidOrders, bytesBefore, bytesAfter }>}
  */
 async function relieveStorage(models, opt = {}) {
   const g = guards();
@@ -414,24 +590,47 @@ async function relieveStorage(models, opt = {}) {
   let removedUploads = 0;
   let removedAttachments = 0;
   const removedDraftIds = new Set();
-  const draftsByPart = new Map();
-  for (const d of refs.drafts) for (const id of d.partIds) { if (!draftsByPart.has(id)) draftsByPart.set(id, []); draftsByPart.get(id).push(d.id); }
-  await inPieces(plan.chosen, (it) => {
-    if (it.kind === "attachment") {
-      if (deleteRequestAttachment(models, it.id).attachmentRemoved) removedAttachments++;
-      return;
+  const evict = async (chosen, from) => {
+    const draftsByPart = new Map();
+    for (const d of from.drafts) for (const id of d.partIds) { if (!draftsByPart.has(id)) draftsByPart.set(id, []); draftsByPart.get(id).push(d.id); }
+    await inPieces(chosen, (it) => {
+      if (it.kind === "attachment") {
+        if (deleteRequestAttachment(models, it.id).attachmentRemoved) removedAttachments++;
+        return;
+      }
+      // A draft whose file is gone cannot be priced or ordered: it goes with the file.
+      for (const quoteId of draftsByPart.get(it.id) || []) {
+        if (!removedDraftIds.has(quoteId)) { removedDraftIds.add(quoteId); models.quotesDB.delete(quoteId); }
+      }
+      const row = models.partsDB.getRow(it.id);
+      if (row) { evictPart(models, row); removedUploads++; }
+    }, opt);
+  };
+  await evict(plan.chosen, refs);
+  // Still over the line: what is left is held by unpaid orders. They are closed, heaviest holder
+  // first (the payment page closed at Stripe before anything is touched, the buyer told), and what
+  // that leaves softly held goes by the same rules as above.
+  // Only when the store is still at or over the line where a visitor is turned away
+  // (UPLOAD_DIR_RESERVED_PERCENT, 85 %), and only until it is a little under the line at which the
+  // clean-up starts (80 %, less 5 points so the next upload does not start it again): unpaid orders
+  // are not closed to make room nobody is waiting for.
+  let closedUnpaidOrders = 0;
+  const freedSoFar = plan.chosen.reduce((sum, it) => sum + it.bytes, 0);
+  const leftAfter = bytesBefore - freedSoFar;
+  const stillNeeded = leftAfter >= max * (1 - limits.storageReservedFraction) ? leftAfter - max * Math.max(0.1, limits.storageWarnFraction - 0.05) : 0;
+  if (stillNeeded > 0) {
+    const unpaid = await relieveUnpaidOrders(models, { need: stillNeeded, now, sync: opt.sync, ...(opt.minAgeMs !== undefined ? { graceMs: opt.minAgeMs } : {}) });
+    closedUnpaidOrders = unpaid.closed;
+    if (unpaid.plan && unpaid.plan.chosen.length) await evict(unpaid.plan.chosen, unpaid.refs);
+    for (const at of [unpaid.plan ? unpaid.plan.nextMatureAt : null, unpaid.nextMatureAt]) {
+      if (at != null) plan.nextMatureAt = plan.nextMatureAt == null ? at : Math.min(plan.nextMatureAt, at);
     }
-    // A draft whose file is gone cannot be priced or ordered: it goes with the file.
-    for (const quoteId of draftsByPart.get(it.id) || []) {
-      if (!removedDraftIds.has(quoteId)) { removedDraftIds.add(quoteId); models.quotesDB.delete(quoteId); }
-    }
-    const row = models.partsDB.getRow(it.id);
-    if (row) { evictPart(models, row); removedUploads++; }
-  }, opt);
+    if (unpaid.closed || unpaid.settled) console.warn(`File storage: ${unpaid.closed} unpaid order(s) closed to make room, from whoever held the most first (each buyer was emailed; nothing was charged)${unpaid.settled ? `; ${unpaid.settled} turned out to be paid and were settled` : ""}${unpaid.left ? `; ${unpaid.left} left as they were` : ""}.`);
+  }
   if (removedUploads || removedAttachments) { const database = opt.database || require("../models/database"); if (database.flush) database.flush(); }
   g.storage.invalidate();
   const bytesAfter = g.storage.scan();
-  const result = { removedUploads, removedDrafts: removedDraftIds.size, removedAttachments, bytesBefore, bytesAfter };
+  const result = { removedUploads, removedDrafts: removedDraftIds.size, removedAttachments, closedUnpaidOrders, bytesBefore, bytesAfter };
   state.lastStorageRelief = { at: new Date(now).toISOString(), ...result };
   if (removedUploads || removedAttachments) console.warn(`File storage at ${Math.round((bytesBefore / max) * 100)}% of its ceiling: removed ${removedUploads} upload(s) and ${removedAttachments} request attachment(s) that nothing paid for or answered refers to, from whoever held the most first; ${mb(bytesBefore)} MB → ${mb(bytesAfter)} MB.`);
   else state.storageQuietUntil = quietUntil(plan.nextMatureAt, now);
@@ -594,7 +793,7 @@ function status() {
 }
 
 module.exports = {
-  relieveDatabase, relieveStorage, purgeAnonymousDrafts, planDatabaseRelief, planStorageRelief, levelFor, levelDown,
+  relieveDatabase, relieveStorage, relieveUnpaidOrders, relieveUnpaidOrderLines, lapsedOrderLines, clearOrderLines, purgeAnonymousDrafts, planDatabaseRelief, planStorageRelief, levelFor, levelDown,
   sweepOrphanUploads, sweepClosedRequestAttachments,
   deleteRequest, deleteRequestAttachment,
   tick, nudge, start, status, state,

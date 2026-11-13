@@ -286,6 +286,13 @@ export default function OrderDetailDrawer({ orderId, onClose, onUpdated }) {
 
             {/* Line items */}
             <Section title={`Line Items (${order.items?.length || 0})`}>
+              {order.linesClearedAt && (
+                <div style={{ fontSize: 12, color: '#555', padding: '6px 0 10px', lineHeight: 1.5 }}>
+                  This order closed without payment. Its lines were cleared on {new Date(order.linesClearedAt).toLocaleDateString()} to
+                  keep the database inside its ceiling; the order itself and its total are kept. If the customer still wants the
+                  parts, take the order again.
+                </div>
+              )}
               {(order.items || []).map((it, idx) => (
                 <div key={idx} style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',

@@ -431,7 +431,7 @@ function closePartialOrder(orderId, cause) {
  * Firm-quote orders, phone orders and orders flagged for the owner are never closed here.
  * @returns {Promise<{outcome: "closed"|"paid"|"kept"|"busy", order?: object}>}
  */
-async function closeUnderPressure(orderId, { base } = {}) {
+async function closeUnderPressure(orderId, { base, reason = "files" } = {}) {
   const order = ordersDB.getById(orderId);
   if (!order || order.status !== "pending_payment" || order.attention || order.rfqId || (order.paymentMethod && order.paymentMethod !== "card")) return { outcome: "kept" };
   if (inFlight.has(orderId)) return { outcome: "busy" };
@@ -447,7 +447,7 @@ async function closeUnderPressure(orderId, { base } = {}) {
       }
     }
   } catch { return { outcome: "busy" }; }
-  const expired = expireOrder(orderId, "closed to make room: the file store was full and this order had not been paid for");
+  const expired = expireOrder(orderId, `closed to make room: the ${reason === "database" ? "database" : "file store"} was full and this order had not been paid for`);
   if (!expired) return { outcome: "kept" };
   try {
     const orderEvents = require("./orderEvents");
@@ -928,6 +928,11 @@ function manualMove(orderId, to, { actor, reason, paidVia, extra = {} } = {}) {
   }
   if (to === "cancelled") updates.cancelledAt = now();
   if (to === "refunded") Object.assign(updates, { refundedAt: now(), refundedAmount: order.refundedAmount || paidCentsOf(order) / 100 });
+  // An order whose lines were removed after it closed unpaid (services/storagePressure.js) has nothing
+  // left to build from: it cannot be made a live order again. The owner takes the order afresh.
+  if (order.linesClearedAt && (to === "paid" || orderState.FULFILMENT.includes(to))) {
+    return { ok: false, status: 409, code: "order-lines-cleared", error: "This order closed unpaid and its lines have since been cleared to keep the database inside its ceiling, so it cannot be marked paid. Take the order again: have the customer check out their quote, or enter it as a phone order." };
+  }
   // Marked paid by hand: the same look at the parts as a card payment gets (services/partLock.js).
   if (to === "paid" && !order.attention) Object.assign(updates, require("./partLock").attentionFor(order.id) || {});
   const updated = ordersDB.update(order.id, updates);

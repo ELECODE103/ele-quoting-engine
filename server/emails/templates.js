@@ -765,10 +765,31 @@ function twoFactorChanged({ change }) {
 
 // Every message carries the name of its template (`template`), which is all
 // the mailer writes to the log about it.
+/**
+ * To the customer: an order of theirs that was waiting for payment was closed by the site to make
+ * room in the file store (services/storagePressure.js: the store was full and the heaviest holders
+ * of unpaid orders are cleared first). Nothing was charged. Says what to do next.
+ */
+function orderClosedBuyer({ order, quoteUrl }) {
+  return layout({
+    subject: `${brand.name}: your unpaid order ${shortId(order.id)} was closed`,
+    preheader: "Nothing was charged. Upload the files again to order.",
+    heading: "Your unpaid order was closed",
+    paragraphs: [
+      greeting(order.customerName || order.shippingName),
+      `Order ${shortId(order.id)} was waiting for payment. We needed the room for new uploads, so we closed it, and its files may have been removed. Nothing was charged.`,
+      "To order these parts, upload the files again and check out. The price is worked out again at today's rates, and it takes a few minutes.",
+    ],
+    facts: [["Order", shortId(order.id)], ["Status", "Not paid, closed"]],
+    cta: quoteUrl ? { label: "Start a new quote", url: quoteUrl } : undefined,
+    after: [`Questions? Reply to this email or call ${brand.phone}.`],
+  });
+}
+
 const MESSAGES = {
   verifyEmail, passwordResetRequested, passwordChanged, signInAttempts, twoFactorChanged,
   rfqReceivedBuyer, partRequestBuyer, rfqReceivedShop, rfqQuoted, rfqAcceptedShop,
-  orderConfirmation, newOrderShop, orderShipped,
+  orderConfirmation, newOrderShop, orderShipped, orderClosedBuyer,
 };
 const named = {};
 for (const [name, build] of Object.entries(MESSAGES)) {

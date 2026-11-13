@@ -79,32 +79,46 @@ const AFTER_SESSION_MS = 30 * 60 * 1000;
 // A payment page made before expiries were recorded: Stripe's own default (orderLifecycle.js LEGACY_SESSION_MS).
 const LEGACY_SESSION_MS = 24 * HOUR;
 
+// A card checkout whose payment page is still being opened (the order is written, then Stripe is asked).
+const PAGE_OPENING_MS = 10 * 60 * 1000;
+
 /**
- * Can this unpaid order still be paid? While it can, its files are never removed.
+ * Can this unpaid order still be paid? While it can, a scheduled sweep never removes its files.
  *
- *   - no payment page at all (an order the owner took by phone and will mark paid when the cheque
- *     or the wire arrives), or flagged for the owner (a payment under review): yes, until the
- *     owner settles it. Only the owner makes or resolves these, so nobody can use them to pin files.
- *   - a payment page: until that page stops being payable (orders.session_expires_at, set from
- *     CHECKOUT_SESSION_MINUTES each time a page is opened or the order is resumed), plus the time
- *     the server may still take to settle or close the order — and never less than
- *     ORDER_UNPAID_PROTECT_HOURS from the order's creation, which was the whole rule before.
+ *   - flagged for the owner (a payment under review): yes, until the owner settles it.
+ *   - an order the owner took by phone (no payment page, not a card checkout): yes, until the owner
+ *     marks it paid or cancels it. Only the owner makes these.
+ *   - a card checkout with a payment page: until that page stops being payable
+ *     (orders.session_expires_at, set from CHECKOUT_SESSION_MINUTES each time a page is opened or
+ *     the order is resumed), plus the half hour the server may still take to settle or close it.
+ *   - a card checkout that never got a payment page: for the few minutes one may still be on its
+ *     way, and no longer.
  *
- * After that the order is "unpaid and past paying": the lifecycle sweep closes it (expired) and
- * gives the quote back. If the sweep could not (Stripe unreachable), the order is still
- * `pending_payment` and its files are held softly; a buyer who comes back to pay it is checked
- * for the files first (routes/orders.js, partFilesPresent), so an order is never paid for without them.
+ * After that the order is "unpaid and past paying", on the same clock as an order that has
+ * expired: it holds its files softly at most, like the saved quote it came from. (Until
+ * 2026-11-13 an unpaid order held its files outright for at least 48 hours whatever became of its
+ * payment page, and one with no page held them for good: thirteen accounts that pressed "pay" and
+ * never paid held the whole file store, re-review F-12.) The lifecycle sweep closes such an order
+ * and gives the quote back; a buyer who comes back to pay is checked for the files first
+ * (routes/orders.js, partFilesPresent), so an order is never paid for without them.
  *
- * @param {{ created_at?: string, session_expires_at?: string, stripe_session_id?: string, attention?: string }} o
+ * And while it CAN still be paid it is not untouchable either: when the store is full, the pressure
+ * pass closes unpaid orders, heaviest holder first, with the payment page closed at Stripe before
+ * anything is removed and the buyer told (services/storagePressure.js relieveUnpaidOrders).
+ *
+ * @param {{ created_at?: string, session_expires_at?: string, stripe_session_id?: string, attention?: string, payment_method?: string, rfq_id?: string }} o
  */
-function unpaidOrderIsPayable(o, now = Date.now(), protectMs = limits.orderUnpaidProtectHours * HOUR) {
+function unpaidOrderIsPayable(o, now = Date.now()) {
   if (o.attention) return true;
   const hasPage = Boolean(o.stripe_session_id || o.session_expires_at);
-  if (!hasPage) return true;
   const created = time(o.created_at);
+  if (!hasPage) {
+    if (o.payment_method !== "card") return true; // a phone order: the owner's to settle
+    return created == null ? false : now < created + PAGE_OPENING_MS;
+  }
   if (created == null) return true; // no usable date: left alone rather than guessed at
   const pageEnds = time(o.session_expires_at) ?? created + LEGACY_SESSION_MS;
-  return now < Math.max(created + protectMs, pageEnds + AFTER_SESSION_MS);
+  return now < pageEnds + AFTER_SESSION_MS;
 }
 
 /** A request the shop has not opened yet. */
@@ -125,8 +139,8 @@ const holderOf = (userId, clientTag) => (userId ? `user:${userId}` : `tag:${clie
  * How strongly a part is held, strongest first:
  *   hard   on an order that is being worked on or was paid for, on an unpaid order that can still
  *          be paid (unpaidOrderIsPayable: its payment page is open, or the owner has yet to settle
- *          it; never less than ORDER_UNPAID_PROTECT_HOURS), or on a request the shop has taken up.
- *          Never removed.
+ *          it), or on a request the shop has taken up. Never removed by a scheduled sweep; an
+ *          unpaid order is closed first if the store is full (storagePressure.js).
  *   soft   nothing paid, nothing answered: on a request nobody at the shop has opened, on an
  *          account's saved quote or a reopened draft, on the quote an order came from, on an order
  *          never paid for once it can no longer be paid. Kept by every scheduled sweep; under storage pressure kept only inside the
@@ -151,22 +165,24 @@ function references({ ordersDB, orderItemsDB, rfqsDB, quotesDB }, opts = {}) {
   const now = opts.now || Date.now();
   const quoteMaxAge = (opts.quoteDays || 30) * DAY;
   const anonMaxAge = (opts.anonDraftHours || limits.anonDraftHours) * HOUR;
-  const unpaidHardMs = limits.orderUnpaidProtectHours * HOUR;
+  // Unpaid orders a pressure pass has decided to close (storagePressure.js): counted as held softly,
+  // so the pass can see what closing them would free before it closes anything.
+  const asSoft = opts.treatAsSoft instanceof Set ? opts.treatAsSoft : null;
 
   const partsHard = new Set();
   const partsSoft = new Set();
   const keepQuotes = new Set();
   const referenced = new Set(); // quotes an order or a request came from
 
-  const orders = light(ordersDB, "SELECT id, quote_id, status, created_at, session_expires_at, stripe_session_id, attention FROM orders",
-    (o) => ({ id: o.id, quote_id: o.quoteId, status: o.status, created_at: o.createdAt, session_expires_at: o.sessionExpiresAt, stripe_session_id: o.stripeSessionId, attention: o.attention }));
+  const orders = light(ordersDB, "SELECT id, quote_id, status, created_at, session_expires_at, stripe_session_id, attention, payment_method FROM orders",
+    (o) => ({ id: o.id, quote_id: o.quoteId, status: o.status, created_at: o.createdAt, session_expires_at: o.sessionExpiresAt, stripe_session_id: o.stripeSessionId, attention: o.attention, payment_method: o.paymentMethod }));
   const orderClass = new Map(); // order id → "hard" | "soft"
   for (const o of orders) {
     if (o.quote_id) referenced.add(o.quote_id);
     if (ORDER_OVER.includes(o.status)) continue;
     // An unpaid order holds its files outright while it can still be paid; a state this file does not
     // know is held outright too (never the other way round).
-    orderClass.set(o.id, ORDER_UNPAID.includes(o.status) && !unpaidOrderIsPayable(o, now, unpaidHardMs) ? "soft" : "hard");
+    orderClass.set(o.id, ORDER_UNPAID.includes(o.status) && ((asSoft && asSoft.has(o.id)) || !unpaidOrderIsPayable(o, now)) ? "soft" : "hard");
   }
   for (const it of light(orderItemsDB, "SELECT order_id, part_id FROM order_items WHERE part_id IS NOT NULL", (i) => ({ order_id: i.orderId, part_id: i.partId }))) {
     const cls = orderClass.get(it.order_id);
@@ -253,4 +269,4 @@ function sweepRows(models, opts = {}) {
   return { quotes: expiredQuotes.length, parts: staleParts.length, bytesBefore, bytesAfter };
 }
 
-module.exports = { plan, sweepRows, references, quotePartIds, holderOf, unpaidOrderIsPayable, OPEN_RFQ, ORDER_OVER, ORDER_UNPAID, ORDER_HELD, RFQ_UNANSWERED, AFTER_SESSION_MS };
+module.exports = { plan, sweepRows, references, quotePartIds, holderOf, unpaidOrderIsPayable, OPEN_RFQ, ORDER_OVER, ORDER_UNPAID, ORDER_HELD, RFQ_UNANSWERED, AFTER_SESSION_MS, PAGE_OPENING_MS };

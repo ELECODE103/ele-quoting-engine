@@ -204,6 +204,12 @@ export default function OrderTrackingPage() {
             {/* Line items */}
             <div style={card}>
               <h2 style={h2}>Parts ({order.items?.length || 0})</h2>
+              {order.linesClearedAt && (
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 8px' }}>
+                  This order closed without payment and nothing was charged. Its part list is no longer kept. To order these
+                  parts, upload the files again and check out.
+                </p>
+              )}
               {(order.items || []).map((it) => (
                 <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '10px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 13 }}>
                   <div style={{ minWidth: 0 }}>

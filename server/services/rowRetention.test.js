@@ -4,7 +4,7 @@
  * Run: `node server/services/rowRetention.test.js`
  */
 const assert = require("assert");
-const { plan, sweepRows, references, unpaidOrderIsPayable, ORDER_OVER, ORDER_UNPAID, ORDER_HELD, AFTER_SESSION_MS } = require("./rowRetention");
+const { plan, sweepRows, references, unpaidOrderIsPayable, ORDER_OVER, ORDER_UNPAID, ORDER_HELD, AFTER_SESSION_MS, PAGE_OPENING_MS } = require("./rowRetention");
 
 let passed = 0;
 const test = (name, fn) => { fn(); passed++; console.log(`  ok   ${name}`); };
@@ -134,37 +134,47 @@ test("every order state the state machine can set is decided here: over, unpaid,
   assert.ok(references(unknown, { now: NOW }).partsHard.has("p"));
 });
 
-test("an unpaid order holds its files outright for as long as it can still be paid: its payment page, a resumed page, a phone order, a flagged payment", () => {
-  const PROTECT = 48 * HOUR;
-  const o = (over) => ({ created_at: at(-72 * HOUR), stripe_session_id: "cs_1", ...over });
+// (2026-11-13, re-review F-12.) This case used to assert "never less than 48 hours from creation, whatever the
+// payment page says" and "an order with no payment page holds its files for good". Those two rules were the
+// finding: thirteen accounts that pressed pay and never paid held the whole file store. An unpaid order now
+// holds its files outright only while it can really still be paid, on the same clock as its payment page.
+test("an unpaid order holds its files outright only while it can still be paid: its payment page, a resumed page, a phone order, a flagged payment", () => {
+  const o = (over) => ({ created_at: at(-72 * HOUR), stripe_session_id: "cs_1", payment_method: "card", ...over });
   // The page is still open, although the order is three days old (the buyer keeps coming back to the same order).
-  assert.strictEqual(unpaidOrderIsPayable(o({ session_expires_at: at(90 * MINUTE) }), NOW, PROTECT), true, "a page that is still payable");
-  assert.strictEqual(unpaidOrderIsPayable(o({ session_expires_at: at(-1 * MINUTE) }), NOW, PROTECT), true, "a page that ran out a minute ago: the payment may still be arriving");
-  assert.strictEqual(unpaidOrderIsPayable(o({ session_expires_at: at(-AFTER_SESSION_MS + MINUTE) }), NOW, PROTECT), true);
-  assert.strictEqual(unpaidOrderIsPayable(o({ session_expires_at: at(-AFTER_SESSION_MS - MINUTE) }), NOW, PROTECT), false, "past the page and the time the server takes to close the order");
-  // Never less than the protect hours from creation, whatever the page says.
-  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-47 * HOUR), stripe_session_id: "cs_1", session_expires_at: at(-45 * HOUR) }, NOW, PROTECT), true);
-  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-49 * HOUR), stripe_session_id: "cs_1", session_expires_at: at(-47 * HOUR) }, NOW, PROTECT), false);
-  // The protect hours set BELOW the life of a payment page (CHECKOUT_SESSION_MINUTES can be 24 h): the page wins.
-  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-3 * HOUR), stripe_session_id: "cs_1", session_expires_at: at(21 * HOUR) }, NOW, 1 * HOUR), true, "ORDER_UNPAID_PROTECT_HOURS=1 does not expose an open 24-hour page");
+  assert.strictEqual(unpaidOrderIsPayable(o({ session_expires_at: at(90 * MINUTE) }), NOW), true, "a page that is still payable");
+  assert.strictEqual(unpaidOrderIsPayable(o({ session_expires_at: at(-1 * MINUTE) }), NOW), true, "a page that ran out a minute ago: the payment may still be arriving");
+  assert.strictEqual(unpaidOrderIsPayable(o({ session_expires_at: at(-AFTER_SESSION_MS + MINUTE) }), NOW), true);
+  assert.strictEqual(unpaidOrderIsPayable(o({ session_expires_at: at(-AFTER_SESSION_MS - MINUTE) }), NOW), false, "past the page and the time the server takes to close the order");
+  // No floor of 48 hours any more: an order made three hours ago whose page closed two hours ago is past paying.
+  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-3 * HOUR), stripe_session_id: "cs_1", payment_method: "card", session_expires_at: at(-2 * HOUR) }, NOW), false, "the same clock as an order that has expired");
+  // A long payment page (CHECKOUT_SESSION_MINUTES can be 24 h) is honoured for as long as it is open.
+  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-3 * HOUR), stripe_session_id: "cs_1", payment_method: "card", session_expires_at: at(21 * HOUR) }, NOW), true);
   // A page made before expiries were recorded: Stripe's own 24 hours.
-  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-23 * HOUR), stripe_session_id: "cs_old" }, NOW, 1 * HOUR), true);
-  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-25 * HOUR), stripe_session_id: "cs_old" }, NOW, 1 * HOUR), false);
-  // No payment page at all: an order the owner took by phone, paid by cheque or wire when it arrives. Held until the owner settles it.
-  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-90 * 24 * HOUR) }, NOW, PROTECT), true, "a phone order, ninety days old");
+  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-23 * HOUR), stripe_session_id: "cs_old" }, NOW), true);
+  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-25 * HOUR - AFTER_SESSION_MS), stripe_session_id: "cs_old" }, NOW), false);
+  // No payment page and not a card checkout: an order the owner took by phone, paid by cheque or wire when it arrives. Held until the owner settles it.
+  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-90 * 24 * HOUR) }, NOW), true, "a phone order, ninety days old");
+  // A CARD checkout that never got a payment page: for the few minutes one may still be on its way, and no longer.
+  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-2 * MINUTE), payment_method: "card" }, NOW), true, "its page is being opened");
+  assert.strictEqual(unpaidOrderIsPayable({ created_at: at(-PAGE_OPENING_MS - MINUTE), payment_method: "card" }, NOW), false, "a card checkout with no page is not a way to hold files");
   // A payment the owner has to look at (late, duplicate, mismatched): held until it is resolved.
-  assert.strictEqual(unpaidOrderIsPayable(o({ session_expires_at: at(-60 * HOUR), attention: "late-payment" }), NOW, PROTECT), true);
+  assert.strictEqual(unpaidOrderIsPayable(o({ session_expires_at: at(-60 * HOUR), attention: "late-payment" }), NOW), true);
   // No usable date: left alone.
-  assert.strictEqual(unpaidOrderIsPayable({ stripe_session_id: "cs_1" }, NOW, PROTECT), true);
+  assert.strictEqual(unpaidOrderIsPayable({ stripe_session_id: "cs_1" }, NOW), true);
 
   // And through references(): the same order, hard while payable and soft after.
-  const model = (order) => ({ partsDB: table([{ id: "p", createdAt: daysAgo(5) }]), ordersDB: table([{ id: "o", status: "pending_payment", ...order }]), orderItemsDB: table([{ id: "i", orderId: "o", partId: "p" }]), rfqsDB: table([]), quotesDB: table([]) });
+  const model = (order) => ({ partsDB: table([{ id: "p", createdAt: daysAgo(5) }]), ordersDB: table([{ id: "o", status: "pending_payment", paymentMethod: "card", ...order }]), orderItemsDB: table([{ id: "i", orderId: "o", partId: "p" }]), rfqsDB: table([]), quotesDB: table([]) });
   const open = references(model({ createdAt: at(-72 * HOUR), stripeSessionId: "cs_1", sessionExpiresAt: at(30 * MINUTE) }), { now: NOW });
   assert.ok(open.partsHard.has("p"), "resumed: three days old, page open");
-  const lapsed = references(model({ createdAt: at(-72 * HOUR), stripeSessionId: "cs_1", sessionExpiresAt: at(-2 * HOUR) }), { now: NOW });
-  assert.ok(!lapsed.partsHard.has("p") && lapsed.partsProtected.has("p"), "abandoned: held softly, so a scheduled sweep keeps it and only pressure beyond the holder's share clears it");
-  const phone = references(model({ createdAt: at(-90 * 24 * HOUR) }), { now: NOW });
+  const lapsed = references(model({ createdAt: at(-3 * HOUR), stripeSessionId: "cs_1", sessionExpiresAt: at(-2 * HOUR) }), { now: NOW });
+  assert.ok(!lapsed.partsHard.has("p") && lapsed.partsProtected.has("p"), "abandoned three hours ago: held softly, so a scheduled sweep keeps it and only pressure beyond the holder's share clears it");
+  const phone = references(model({ createdAt: at(-90 * 24 * HOUR), paymentMethod: "" }), { now: NOW });
   assert.ok(phone.partsHard.has("p"), "a phone order awaiting its cheque");
+  const pageless = references(model({ createdAt: at(-1 * HOUR) }), { now: NOW });
+  assert.ok(!pageless.partsHard.has("p") && pageless.partsProtected.has("p"), "a card checkout that never got a payment page: softly, like the quote it came from");
+  // What a pressure pass asks before it closes anything: "if these unpaid orders were closed, what would still be held outright?"
+  const asked = references(model({ createdAt: at(-72 * HOUR), stripeSessionId: "cs_1", sessionExpiresAt: at(30 * MINUTE) }), { now: NOW, treatAsSoft: new Set(["o"]) });
+  assert.ok(!asked.partsHard.has("p") && asked.partsProtected.has("p"));
 });
 
 console.log(`\n${passed} checks passed`);

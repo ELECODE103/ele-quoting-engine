@@ -17,6 +17,10 @@
  *                           lines themselves. NULL on an order from before this: the start-up check
  *                           (services/orderRepair.js) looks at those once and fills it in.
  *
+ *   orders.lines_cleared_at when the lines of an order that closed unpaid were removed to keep the
+ *                           database inside its ceiling (services/storagePressure.js). The order's
+ *                           own row stays: a payment that still arrives for it is flagged as before.
+ *
  * Indexes: the questions the order routes ask on every request ("the lines of this order",
  * "is this part on an order", "this account's orders") are answered from an index, not by
  * reading every row of the table.
@@ -25,6 +29,7 @@ const COLUMNS = [
   ["parts", "geometry_rev", "INTEGER DEFAULT 0"],
   ["orders", "client_tag", "TEXT"],
   ["orders", "line_count", "INTEGER"],
+  ["orders", "lines_cleared_at", "TEXT"],
 ];
 
 const INDEXES = [
@@ -41,6 +46,7 @@ const FIELD_MAP = {
   geometryRev: "geometry_rev",
   // (orders.client_tag is written and read as `clientTag`, which the field map already has.)
   lineCount: "line_count",
+  linesClearedAt: "lines_cleared_at",
 };
 
 // Table, column and index names and the column types are the only interpolated parts of these

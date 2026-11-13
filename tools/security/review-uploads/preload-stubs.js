@@ -36,6 +36,19 @@ if (isMainThread && process.env.REVIEW_STUBS === "1") {
           if (session && process.env.REVIEW_STUB_PAY === "1" && session.status === "open") Object.assign(session, { status: "complete", payment_status: "paid", payment_intent: `pi_${id}` });
           return session;
         },
+        // (2026-11-13) Stripe can close a payment page that is still open (checkout.sessions.expire) and refuses
+        // for one that is complete or already expired. The stand-in had no such call, so the server could never
+        // confirm a page closed, and it (rightly) leaves an order alone when it cannot: nothing that depends on
+        // closing a page (an order changed while its page is open, unpaid orders closed to make room) could be
+        // shown with it. With REVIEW_STUB_PAY=1 an open session counts as paid, as in retrieve above.
+        expire: async (id) => {
+          const session = sessions[id];
+          if (!session) throw Object.assign(new Error(`No such checkout.session: ${id}`), { code: "resource_missing", statusCode: 404, type: "StripeInvalidRequestError" });
+          if (process.env.REVIEW_STUB_PAY === "1" && session.status === "open") Object.assign(session, { status: "complete", payment_status: "paid", payment_intent: `pi_${id}` });
+          if (session.status !== "open") throw Object.assign(new Error("Only Checkout Sessions with a status in [\"open\"] can be expired."), { statusCode: 400, type: "StripeInvalidRequestError" });
+          session.status = "expired";
+          return session;
+        },
       },
     },
   });

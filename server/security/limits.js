@@ -127,8 +127,6 @@ const limits = {
     const derived = Math.max(1, Math.floor(this.uploadStoredBytesPerClient / MB / 3));
     return envInt("UPLOAD_PROTECTED_MB_PER_HOLDER", derived, 0, 1000000) * MB;
   },
-  /** An order that was never paid protects its files outright for this many hours; after that only inside the sender's protected share. */
-  get orderUnpaidProtectHours() { return envInt("ORDER_UNPAID_PROTECT_HOURS", 48, 1, 24 * 365); },
   /** Share of the file-storage ceiling kept for customers with a confirmed email: visitors without one stop at 100 − this. */
   get storageReservedFraction() { return envInt("UPLOAD_DIR_RESERVED_PERCENT", 15, 0, 50) / 100; },
   /** An upload is not evicted under storage pressure in its first minutes (it may still be being read or priced). Who loses files after that is decided by who holds the most. */
