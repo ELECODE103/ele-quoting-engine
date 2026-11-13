@@ -145,6 +145,9 @@ async function send(message) {
       headers: {
         Authorization: `Bearer ${process.env.EMAIL_API_KEY}`,
         "Content-Type": "application/json",
+        // A message that may be sent again after a crash (services/owedEmails.js) carries a key the
+        // provider uses to drop the second copy.
+        ...(typeof (message && message.idempotencyKey) === "string" && /^[A-Za-z0-9_-]{8,200}$/.test(message.idempotencyKey) ? { "Idempotency-Key": message.idempotencyKey } : {}),
       },
       body: JSON.stringify({
         from: process.env.EMAIL_FROM,

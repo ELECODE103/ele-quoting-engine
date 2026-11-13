@@ -119,9 +119,20 @@ function recordEvent({ eventId, kind, order, sessionId, paymentIntent, amountCen
       notified: Boolean(notified),
     });
   } catch (err) {
+    // Inside a database change that is all-or-nothing (a payment being applied), a record that
+    // cannot be written fails the whole change: the payment is then not half applied, and Stripe
+    // sends the event again.
+    if (require("../models/database").inTransaction()) throw err;
     console.error(`[lifecycle] could not record a ${kind} event: ${err.name || "Error"}`);
     return null;
   }
+}
+
+/** The order a handled Stripe event was about, or null. */
+function orderOfEvent(eventId) {
+  if (!eventId) return null;
+  const row = paymentEventsDB.query((e) => e.eventId === eventId && e.orderId)[0];
+  return row ? row.orderId : null;
 }
 
 /** Has this Stripe event been handled already? (Stripe delivers an event more than once.) */
@@ -518,7 +529,30 @@ function checkSession(order, session, rec) {
  * Decide what a reported session means for its order and write it, in one synchronous step.
  * Returns what to do afterwards (emails, closing other sessions); does none of it itself.
  */
-function applySession(orderId, session, { eventId, source } = {}) {
+/**
+ * Apply a Stripe Checkout session to its order. Synchronous, and ONE database change: the order's
+ * new state, the session's record, the event, and a row for every email that is now owed
+ * (services/owedEmails.js) are written together or not at all (re-review 2026-11-12, F-05). Until
+ * 2026-11-13 they were separate writes and the emails were sent from memory afterwards: a process
+ * killed in between left a paid order nobody had been told about.
+ */
+function applySession(orderId, session, { eventId, source, base } = {}) {
+  return require("../models/database").transaction(() => {
+    const result = applySessionNow(orderId, session, { eventId, source });
+    const after = result.after;
+    if (after && result.order) {
+      const owed = require("./owedEmails");
+      if (after.emails === "paid") {
+        if (require("./orderEvents").customerEmail(result.order)) owed.owe(result.order.id, "order-paid-buyer", { base });
+        owed.owe(result.order.id, "order-paid-shop", { base });
+      }
+      if (after.notice) owed.owe(result.order.id, "payment-notice-shop", { base, data: after.notice });
+    }
+    return result;
+  });
+}
+
+function applySessionNow(orderId, session, { eventId, source } = {}) {
   const order = ordersDB.getById(orderId);
   if (!order) return { order: null, changed: false, outcome: "no-order" };
   const sid = idOf(session.id);
@@ -609,12 +643,12 @@ function applySession(orderId, session, { eventId, source } = {}) {
  */
 async function settleFromSession(orderRef, session, { base, eventId, source } = {}) {
   const orderId = typeof orderRef === "string" ? orderRef : orderRef && orderRef.id;
-  const result = applySession(orderId, session || {}, { eventId, source });
+  const result = applySession(orderId, session || {}, { eventId, source, base });
   const after = result.after;
-  if (after && after.emails === "paid") await require("./orderEvents").sendPaidEmails(result.order, { base });
-  if (after && after.notice) {
-    await tellShop(paymentTemplates.paymentAttentionShop({ order: result.order, ...after.notice, adminUrl: adminUrl(base) }));
-  }
+  // What the order is owed by email was written down with the payment (applySession). It is sent
+  // here; and when this is the second time the payment is reported (Stripe's retry, the return page
+  // after the webhook), whatever an earlier, interrupted attempt left owed is sent now.
+  if (result.order) await require("./owedEmails").deliver({ orderId: result.order.id });
   if (after && after.closeOthers) await closeOpenSessions(result.order.id, { except: after.closeOthers, base });
   return { order: result.order, changed: result.changed, outcome: result.outcome, ...(result.warning ? { warning: result.warning } : {}) };
 }
@@ -983,11 +1017,11 @@ function paymentView(order) {
 
 module.exports = {
   sessionMinutes, promotionCodesAllowed, paymentSettings, expectedCents, currencyOf,
-  checkoutSession, closeOpenSessions, settleFromSession, confirmPayment, checkSession,
+  checkoutSession, closeOpenSessions, applySession, settleFromSession, confirmPayment, checkSession,
   sessionsOpenFor, changeNeedsClosedSessions, closeForChange, closePartialOrder, closeUnderPressure,
   expireOrder, releaseSource, handleSessionExpired, sweepExpired, startSweep,
   handleChargeRefunded, handleRefundUpdated, handleDispute,
   manualMove, resolveAttention, paymentView,
-  recordEvent, eventSeen, eventsFor, sessionsFor, tellShop,
+  recordEvent, eventSeen, orderOfEvent, eventsFor, sessionsFor, tellShop,
   SWEEP_GRACE_MS, LEGACY_SESSION_MS,
 };

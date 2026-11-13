@@ -315,6 +315,9 @@ async function start() {
   // paid without our hearing of it is settled). At startup and every ten minutes.
   require("./services/orderLifecycle").startSweep();
   if (orderCheck && (orderCheck.closed.length || orderCheck.flagged.length)) require("./services/orderRepair").closeLeftovers(orderCheck).catch(() => {});
+  // Emails a stopped process left owed (a payment was written and the process ended before its
+  // confirmation and its shop notice went): sent now, and looked at again every few minutes.
+  if (require("./models").USE_SQLITE) require("./services/owedEmails").start();
 
   // Say at startup what is switched off, so a missing setting is found in the
   // deploy log and not by a customer.

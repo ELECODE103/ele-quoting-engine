@@ -119,15 +119,24 @@ function transitionToPaid(order, updates = {}) {
   return ordersDB.update(fresh.id, next);
 }
 
-/** The confirmation to the customer and the new-order notice to the shop, for an order just paid. */
-async function sendPaidEmails(paid, { base } = {}) {
+/**
+ * The two messages a paid order is owed: the confirmation to the customer (null when the order
+ * has no address to write to) and the new-order notice to the shop.
+ */
+function paidMessages(paid, { base } = {}) {
   const items = itemsFor(paid);
   const url = base || baseUrl();
   const to = customerEmail(paid);
-  await Promise.all([
-    to ? mailer.send({ to, replyTo: mailer.shopNotifyAddress(), ...templates.orderConfirmation({ order: paid, items, orderUrl: orderUrl(paid, url) }) }) : null,
-    mailer.send({ to: mailer.shopNotifyAddress(), replyTo: to || undefined, ...templates.newOrderShop({ order: paid, items, adminUrl: `${url}/admin` }) }),
-  ]);
+  return {
+    buyer: to ? { to, replyTo: mailer.shopNotifyAddress(), ...templates.orderConfirmation({ order: paid, items, orderUrl: orderUrl(paid, url) }) } : null,
+    shop: { to: mailer.shopNotifyAddress(), replyTo: to || undefined, ...templates.newOrderShop({ order: paid, items, adminUrl: `${url}/admin` }) },
+  };
+}
+
+/** The confirmation to the customer and the new-order notice to the shop, for an order just paid. */
+async function sendPaidEmails(paid, { base } = {}) {
+  const m = paidMessages(paid, { base });
+  await Promise.all([m.buyer ? mailer.send(m.buyer) : null, mailer.send(m.shop)]);
 }
 
 /**
@@ -177,4 +186,4 @@ async function notifyStatusChange(before, after, { base } = {}) {
   return true;
 }
 
-module.exports = { baseUrl, itemsFor, customerEmail, orderUrl, stripeLineItems, orderLines, createCheckoutSession, transitionToPaid, sendPaidEmails, markPaid, settleFromSession, confirmPayment, notifyStatusChange };
+module.exports = { baseUrl, itemsFor, customerEmail, orderUrl, stripeLineItems, orderLines, createCheckoutSession, transitionToPaid, paidMessages, sendPaidEmails, markPaid, settleFromSession, confirmPayment, notifyStatusChange };

@@ -21,6 +21,11 @@
  *                           database inside its ceiling (services/storagePressure.js). The order's
  *                           own row stays: a payment that still arrives for it is flagged as before.
  *
+ *   emails_owed (table)     one row per email an order is owed (the buyer's confirmation, the shop's
+ *                           new-order notice, the shop's notice about a payment that needs a look),
+ *                           written in the same change as the payment and closed when the mail
+ *                           provider has taken the message (services/owedEmails.js).
+ *
  * Indexes: the questions the order routes ask on every request ("the lines of this order",
  * "is this part on an order", "this account's orders") are answered from an index, not by
  * reading every row of the table.
@@ -32,6 +37,23 @@ const COLUMNS = [
   ["orders", "lines_cleared_at", "TEXT"],
 ];
 
+const TABLES = {
+  emails_owed: `CREATE TABLE IF NOT EXISTS emails_owed (
+    id TEXT PRIMARY KEY,
+    order_id TEXT,
+    kind TEXT,
+    base_url TEXT,
+    data_json TEXT,
+    attempts INTEGER DEFAULT 0,
+    last_tried_at TEXT,
+    done_at TEXT,
+    result TEXT,
+    created_at TEXT
+  )`,
+};
+/** For models/SqliteDB.js: which fields of the new table are stored as JSON text. */
+const JSON_FIELDS = { emails_owed: { data: "data_json" } };
+
 const INDEXES = [
   ["idx_order_items_order", "order_items", "order_id"],
   ["idx_order_items_part", "order_items", "part_id"],
@@ -40,6 +62,8 @@ const INDEXES = [
   ["idx_orders_status", "orders", "status"],
   ["idx_orders_created", "orders", "created_at"],
   ["idx_orders_client", "orders", "client_tag"],
+  ["idx_emails_owed_order", "emails_owed", "order_id"],
+  ["idx_emails_owed_done", "emails_owed", "done_at"],
 ];
 
 const FIELD_MAP = {
@@ -47,6 +71,10 @@ const FIELD_MAP = {
   // (orders.client_tag is written and read as `clientTag`, which the field map already has.)
   lineCount: "line_count",
   linesClearedAt: "lines_cleared_at",
+  // emails_owed
+  baseUrl: "base_url",
+  lastTriedAt: "last_tried_at",
+  doneAt: "done_at",
 };
 
 // Table, column and index names and the column types are the only interpolated parts of these
@@ -67,6 +95,7 @@ function columnsOf(db, table) {
 
 function apply(db) {
   const added = [];
+  for (const sql of Object.values(TABLES)) db.run(sql);
   for (const [table, name, type] of COLUMNS) {
     vetted(table, name);
     if (!COLUMN_TYPES.has(type)) throw new Error("rereviewMigration: not a known column type");
@@ -82,4 +111,4 @@ function apply(db) {
   return added;
 }
 
-module.exports = { apply, COLUMNS, INDEXES, FIELD_MAP };
+module.exports = { apply, COLUMNS, INDEXES, TABLES, FIELD_MAP, JSON_FIELDS };

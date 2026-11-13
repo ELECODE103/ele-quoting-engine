@@ -28,6 +28,7 @@ const rfqsDB = new DBClass("rfqs");
 const pricingAuditDB = new DBClass("pricing_audit");
 const revokedSessionsDB = new DBClass("revoked_sessions");
 const adminAuditDB = new DBClass("admin_audit"); // append-only admin change log (services/audit.js; table: models/auditMigration.js)
+const emailsOwedDB = new DBClass("emails_owed"); // emails an order is owed, until the provider has taken them (services/owedEmails.js; table: models/rereviewMigration.js)
 
 module.exports = {
   // Export instances
@@ -45,6 +46,7 @@ module.exports = {
   pricingAuditDB,
   revokedSessionsDB,
   adminAuditDB,
+  emailsOwedDB,
 
   // Also export classes for advanced use
   SqliteDB,

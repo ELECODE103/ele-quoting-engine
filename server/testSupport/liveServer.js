@@ -206,8 +206,11 @@ async function start({ env = {}, production = true, prepare, tmpDir } = {}) {
       const dir = childEnv.EMAIL_OUTBOX_DIR;
       let names = [];
       try { names = fs.readdirSync(dir).sort(); } catch { /* nothing sent yet */ }
-      return names.map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")))
-        .filter((m) => (!to || (Array.isArray(m.to) ? m.to.includes(to) : m.to === to)) && (!re || re.test(m.subject)));
+      // (A server killed while it was writing an outbox file leaves that file empty or cut short. Such a
+      // message never went anywhere: it is not counted, and it must not stop the reader. Seen once in 30
+      // kill rounds of durability-kill.js section D, 2026-11-13.)
+      return names.map((f) => { try { return JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); } catch { return null; } })
+        .filter((m) => m && (!to || (Array.isArray(m.to) ? m.to.includes(to) : m.to === to)) && (!re || re.test(m.subject)));
     },
     /**
      * Create an account the way a person does: the form open a few seconds, then the emailed

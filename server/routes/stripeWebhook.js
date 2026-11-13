@@ -121,6 +121,10 @@ router.post("/", async (req, res) => {
 
   // Stripe delivers an event at least once. One that has been handled is acknowledged, not run again.
   if (typeof event.id === "string" && lifecycle.eventSeen(event.id)) {
+    // Handled before: nothing is run again. But if the first handling was cut short after the
+    // payment was written and before its emails went (a kill, a provider fault), they are still on
+    // record as owed, and this second delivery is when they are sent (services/owedEmails.js).
+    try { await require("../services/owedEmails").deliver({ orderId: lifecycle.orderOfEvent(event.id) || undefined }); } catch (err) { console.error(`Stripe webhook ${logId(event.id)}: owed emails: ${err.name || "Error"}`); }
     return res.json({ received: true, duplicate: true });
   }
 

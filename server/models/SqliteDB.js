@@ -26,6 +26,7 @@ const JSON_COLUMNS = {
   pricing_audit: { diff: "diff_json", rules: "rules_json" },
   ...orderLifecycle.JSON_FIELDS, // payment_sessions, payment_events
   ...auditTable.JSON_FIELDS, // admin_audit: the one admin change log (models/auditMigration.js)
+  ...rereview.JSON_FIELDS, // emails_owed (models/rereviewMigration.js)
 };
 
 // Map camelCase JS names → snake_case SQL column names
