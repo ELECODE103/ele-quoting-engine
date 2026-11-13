@@ -599,6 +599,17 @@ function applySessionNow(orderId, session, { eventId, source } = {}) {
       if (!paid) return { order, changed: false, outcome: "replay" };
       closeRec("settled");
       recordEvent({ ...base, order: paid, kind: "order-paid", detail: `${source || "stripe"}${check.discount ? `; discount ${check.discount} cents` : ""}${check.tax ? `; sales tax ${check.tax} cents` : ""}`, notified: true });
+      // Stripe does not promise the order its events arrive in. A refund of this payment that was
+      // reported BEFORE the payment itself is already on the order (handleChargeRefunded stored the
+      // amount while the order was still waiting). The order ends where it would have ended had the
+      // two arrived the usual way round: refunded in full means "refunded", not "paid" and in the
+      // work queue (re-review 2026-11-12, F-07). The shop was told of the refund when it arrived.
+      const refundedCents = Math.round((Number(paid.refundedAmount) || 0) * 100);
+      if (refundedCents > 0 && check.total > 0 && refundedCents >= check.total) {
+        const refundedOrder = ordersDB.update(paid.id, { status: "refunded" });
+        recordEvent({ ...base, order: refundedOrder, kind: "refund", amountCents: refundedCents, detail: "refunded in full; Stripe reported the refund before it reported the payment", notified: true });
+        return { order: refundedOrder, changed: true, outcome: "paid", after: { closeOthers: sid } };
+      }
       // Paid, and a line's part file is not the file that was priced (services/partLock.js): the shop is told at once.
       const partNotice = paid.attention === "part-changed" && order.attention !== "part-changed"
         ? { notice: { kind: "part-changed", note: paid.attentionNote, amountCents: check.total, sessionId: sid, paymentIntent: pi } } : {};
