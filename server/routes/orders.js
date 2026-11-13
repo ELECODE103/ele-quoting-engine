@@ -580,7 +580,8 @@ router.post("/", authenticate, requireAdmin, requireShipToLines, (req, res) => {
       shippingCity: sanitizeString(shippingCity || "", 100),
       shippingState: sanitizeString(shippingState || "", 100),
       shippingZip: sanitizeString(shippingZip || "", 20),
-      shippingCountry: sanitizeString(shippingCountry || "US", 5),
+      // (The owner's own phone order: a two-letter code, or the United States when it is not one.)
+      shippingCountry: require("../services/shipping").countryCode(shippingCountry) || "US",
       shippingMethod: sanitizeString(shippingMethod || "standard", 50),
       shippingCost: cleanShippingCost,
       // The quote's total with the paperwork fee taken out, so the fee stays its own line.

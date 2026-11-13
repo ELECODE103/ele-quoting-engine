@@ -37,6 +37,8 @@ const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const money = (n) => "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** The current rule set (schema defaults with the admin's stored values laid over them). */
+const COUNTRY_ERROR = "Choose the country from the list: we could not read the one that was sent.";
+
 function currentRules() {
   const row = pricingDB.getAll()[0];
   return ruleSchema.mergeRules(row && row.rules && typeof row.rules === "object" ? row.rules : {});
@@ -68,7 +70,10 @@ function dbLookup(loaded = null) {
  */
 function shipmentFor(quote, rules = currentRules(), priced = null, opt = {}) {
   const lines = priced && Array.isArray(priced.lineItems) ? priced : quote;
-  const block = shipping.shippingFor({ lineItems: lines.lineItems, subtotal: lines.subtotal }, rules, dbLookup(priced && priced.parts), { measure: opt.measure !== false });
+  // A page that only shows the line (opt.measure === false) is given the packed weight and longest
+  // side the quote was priced with, so the parcel limits are applied without reading a part.
+  const stored = opt.measure === false ? shipping.storedFor(quote) : null;
+  const block = shipping.shippingFor({ lineItems: lines.lineItems, subtotal: lines.subtotal }, rules, dbLookup(priced && priced.parts), { measure: opt.measure !== false, known: stored ? { packedLb: stored.packedLb, longestIn: stored.longestIn } : null });
   // Whole cents, as the pricing engine settles the same figure into the quote's total.
   return { ...block, amount: Math.max(0, cents(block.amount)) };
 }
@@ -199,8 +204,10 @@ function resolve(quote, body = {}, { rules = currentRules(), certificate = null,
     shippingCity: sanitizeString(body.shippingCity || "", 100),
     shippingState: sanitizeString(body.shippingState || "", 100),
     shippingZip: sanitizeString(body.shippingZip || "", 20),
-    shippingCountry: sanitizeString(body.shippingCountry || "US", 5),
+    shippingCountry: shipping.countryCode(body.shippingCountry),
   };
+  // The country is one of a list on the page: a two-letter code. Anything else is not stored.
+  if (method !== "pickup" && !address.shippingCountry) return { ok: false, status: 400, code: "ship-country", error: COUNTRY_ERROR };
 
   let carrier = null;
   if (method === "carrier-account") {
@@ -273,8 +280,9 @@ function resolveFirm(body = {}, { rules = currentRules(), certificate = null } =
     shippingCity: sanitizeString(body.shippingCity || "", 100),
     shippingState: sanitizeString(body.shippingState || "", 100),
     shippingZip: sanitizeString(body.shippingZip || "", 20),
-    shippingCountry: sanitizeString(body.shippingCountry || "US", 5),
+    shippingCountry: shipping.countryCode(body.shippingCountry),
   };
+  if (method !== "pickup" && !address.shippingCountry) return { ok: false, status: 400, code: "ship-country", error: COUNTRY_ERROR };
   let carrier = null;
   if (method === "carrier-account") {
     carrier = shipping.cleanCarrierAccount({ carrier: body.carrier, account: body.carrierAccount, service: body.carrierService });

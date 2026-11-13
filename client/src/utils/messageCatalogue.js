@@ -321,6 +321,7 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'shipping-option': { '*': { text: 'Choose how you want the order delivered, then continue.', keep: true } },
     'carrier-account': { '*': { text: 'Check the carrier and the account number: the number is 5 to 20 letters and digits. Then continue.', keep: true } },
     'pickup-name': { '*': { text: 'Tell us who is picking the order up, then continue.' } },
+    'ship-country': { '*': { text: 'Choose the country from the list, then try again. Nothing was charged.' } },
     'shipping-manual': { '*': { text: `We can't give this order a shipping price online, so nothing was charged. Choose another delivery option if one is offered, or ask for a firm quote and we price the freight${within}.`, keep: true, action: 'rfq' } },
     'tax-address': { '*': { text: `We couldn't work out sales tax for that address, so nothing was charged. Check the street, city, state and ZIP code and try again, or call ${PHONE}.` } },
     'exemption-reason': { '*': { text: 'Choose the reason this order is tax-exempt, then continue.' } },

@@ -189,17 +189,22 @@ function priceShipment({ v, subtotal = 0, formulaKg = 0 }, rules = {}) {
   const base = { mode: s.mode, method: "ship", manual: false, reasonCode: "", reason: "", packedLb: v ? v.packedLb : null, longestIn: v ? v.longestIn : null, freeApplied: false };
   const free = s.freeOver > 0 && Number(subtotal) >= s.freeOver;
 
-  if (s.mode === "formula") {
-    // The expression the pricing engine has always used, unrounded, so the default is not a cent different.
-    const amount = s.baseRate + formulaKg * s.perKg;
-    return free ? { ...base, amount: 0, freeApplied: true } : { ...base, amount };
-  }
-
-  // "included" and "table": nothing is priced that cannot go in a parcel, and nothing is guessed.
+  // In EVERY mode: nothing is given a shipping price online that cannot go in a parcel, and nothing
+  // is guessed. Until 2026-11-13 the weight formula (the default) had no such rule: a 58 x 94 in
+  // sheet was sold with $25.63 of shipping and has to travel as freight (re-review 2026-11-12, F-03).
+  // The limits are the ones the rate table has always had (shippingOversizeLongestIn,
+  // shippingMaxParcelLb), and what is over them goes the same way: to a firm quote.
   if (!v || v.longestIn === null) return manual(s.mode, "unknown-size", v || { packedLb: null, longestIn: null }, s);
   if (v.longestIn > s.oversizeIn) return manual(s.mode, "oversize", v, s);
   if (v.packedLb === null || !(v.packedLb > 0)) return manual(s.mode, "unknown-weight", v, s);
   if (v.packedLb > s.maxParcelLb) return manual(s.mode, "overweight", v, s);
+
+  if (s.mode === "formula") {
+    // The expression the pricing engine has always used, unrounded: an order inside the limits is
+    // charged what it always was, to the cent.
+    const amount = s.baseRate + formulaKg * s.perKg;
+    return free ? { ...base, amount: 0, freeApplied: true } : { ...base, amount };
+  }
 
   if (s.mode === "included") return { ...base, amount: 0 };
 
@@ -217,7 +222,8 @@ function priceShipment({ v, subtotal = 0, formulaKg = 0 }, rules = {}) {
  */
 function forQuote({ parts = [], totalWeightKg = 0, subtotal = 0 }, rules = {}) {
   const s = settings(rules);
-  // The formula needs no measuring (and must not start failing on parts it has always priced).
+  // Under the formula a part that cannot be measured does not fail the pricing of the quote: its
+  // shipment comes back "to be confirmed" (unknown size or weight), like any other the limits stop.
   const v = s.mode === "formula" ? softMeasure(parts, rules) : measure(parts, rules);
   return priceShipment({ v, subtotal, formulaKg: totalWeightKg }, rules);
 }
@@ -258,26 +264,29 @@ function partsFromLines(lineItems = [], lookup = {}) {
  * is the pricing engine's `totalWeight` to the last bit. A line with no weight makes the order
  * manual: an unknown weight is never zero, in any mode.
  *
- * `opt.measure: false` is for a page that only shows the line (services/checkout.js viewFor). The
- * weight formula charges from the lines' weights alone; the parts are measured there only to print
- * a packed weight on the order. So under the formula such a call reads no part and no material (a
- * quote of a hundred detailed parts is not loaded from disk every time it is looked at), and the
- * block comes back with the same amount and no packed weight or size. A rate table or "included"
- * always measures: there the weight and the size decide the price.
+ * `opt.measure: false` is for a page that only shows the line (services/checkout.js viewFor). Under
+ * the weight formula such a call reads no part and no material (a quote of a hundred detailed parts
+ * is not loaded from disk every time it is looked at): the packed weight and the longest side the
+ * quote was priced with are handed in as `opt.known` ({ packedLb, longestIn }, from the block stored
+ * with the quote) and the parcel limits are applied to those. A quote stored without them (made
+ * before 2026-11) is measured after all. A rate table or "included" always measures.
  */
 const NOT_MEASURED = Object.freeze({ partsLb: null, packedLb: null, longestIn: null, pieces: 0, unknown: Object.freeze(["not measured"]) });
 function shippingFor(priced = {}, rules = {}, lookup = {}, opt = {}) {
   const lines = Array.isArray(priced.lineItems) ? priced.lineItems : [];
   const s = settings(rules);
-  const measured = s.mode !== "formula" || opt.measure !== false;
+  const k = opt.known || null;
+  const known = k && Number.isFinite(Number(k.packedLb)) && Number(k.packedLb) > 0 && Number.isFinite(Number(k.longestIn)) && Number(k.longestIn) > 0
+    ? { partsLb: null, packedLb: Number(k.packedLb), longestIn: Number(k.longestIn), pieces: 0, unknown: [] } : null;
+  const measured = s.mode !== "formula" || opt.measure !== false || !known;
   const parts = measured ? partsFromLines(lines, lookup) : null;
   const weights = lines.map((li) => Number(li && li.weight && li.weight.total));
   if (!lines.length || weights.some((w) => !Number.isFinite(w) || w < 0)) {
-    return manual(s.mode, "unknown-weight", parts ? softMeasure(parts, rules) : NOT_MEASURED, s);
+    return manual(s.mode, "unknown-weight", parts ? softMeasure(parts, rules) : (known || NOT_MEASURED), s);
   }
   const totalWeightKg = weights.reduce((sum, w) => sum + w, 0);
   const subtotal = Number(priced.subtotal) || 0;
-  if (!parts) return priceShipment({ v: NOT_MEASURED, subtotal, formulaKg: totalWeightKg }, rules);
+  if (!parts) return priceShipment({ v: known, subtotal, formulaKg: totalWeightKg }, rules);
   return forQuote({ parts, totalWeightKg, subtotal }, rules);
 }
 
@@ -308,18 +317,30 @@ function stateCode(state) {
 
 /** Is this ship-to address one a table or "included" price covers (the contiguous United States)? */
 function destinationCovered({ country, state } = {}) {
-  const c = String(country || "US").trim().toUpperCase();
-  return (c === "US" || c === "USA") && CONTIGUOUS.has(stateCode(state));
+  return countryCode(country) === "US" && CONTIGUOUS.has(stateCode(state));
 }
 
 /**
- * Apply the destination to a stored "we ship it" line. The formula has no destination rule (it
- * never had one); table and included prices stand only inside the contiguous United States.
+ * Apply the destination to a "we ship it" line. In every mode a shipping price stands only inside
+ * the contiguous United States; anywhere else the freight is confirmed first (a firm quote). Until
+ * 2026-11-13 the weight formula had no destination rule: the same $13 to $30 was charged to Honolulu
+ * and to Hamburg (re-review 2026-11-12, F-03).
  */
 function atDestination(stored, destination, rules = {}) {
-  if (stored.manual || stored.mode === "formula") return stored;
+  if (stored.manual) return stored;
   if (destinationCovered(destination)) return stored;
   return manual(stored.mode, "destination", stored, settings(rules));
+}
+
+/**
+ * The ship-to country as the order keeps it: a two-letter code, upper case. Nothing typed, "US",
+ * "USA" and the country's name are "US". Anything that is not two letters is not a country here:
+ * null (the routes refuse it in words).
+ */
+function countryCode(value) {
+  const t = String(value === undefined || value === null ? "" : value).trim().toUpperCase();
+  if (t === "" || t === "US" || t === "USA" || t === "U.S." || t === "U.S.A." || t === "UNITED STATES" || t === "UNITED STATES OF AMERICA") return "US";
+  return /^[A-Z]{2}$/.test(t) ? t : null;
 }
 
 // ─── What the buyer is shown ─────────────────────────────────────────────────
@@ -443,7 +464,7 @@ module.exports = {
   shippingFor, partsFromLines, stripeShippingCents, stripeShippingLine,
   METHODS, CARRIERS, LB_PER_KG,
   settings, densityGcm3, longestSideMm, measure, priceShipment, forQuote, storedFor,
-  stateCode, destinationCovered, atDestination, describe, methodLine,
+  stateCode, countryCode, destinationCovered, atDestination, describe, methodLine,
   cleanCarrierAccount, sealAccount, openAccount, maskAccount,
   pickupAddress, pickupLocality, preview,
 };
