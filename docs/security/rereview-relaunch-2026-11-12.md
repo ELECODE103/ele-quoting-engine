@@ -1,13 +1,24 @@
 # Independent re-review of the relaunch merge
 
-**STATE OF THIS DOCUMENT: IN PROGRESS.** Areas 1 (money), 2 (access), 3 (durability), 6 (catalogue), 7 (what a
-customer sees) and 8 (the rest of the diff) are written up below. Area 5 (availability) is partly written;
-area 4 (the changed-tests audit) is not finished. The verdict line will change when they are.
+**Verdict: NO as merged. YES once the five conditions below are met.** Nothing I found lets a stranger
+read another customer's data or get an order marked paid for less than it was charged. What I found is:
+a paid order whose part can be swapped for a larger one after pricing (F-01), an admin panel one customer
+can blank without paying (F-09), a default shipping rule that sells freight-only sheets for $25 (F-03),
+and a checkout that stops the whole site for seconds once the database has grown (F-08, F-02).
+The author's write-up measured the best case on three of these.
 
-2026-11-12. Reviewer: independent (did not write any of the code under review). Change reviewed:
+**The conditions.**
+1. F-01 is fixed in code (the units of a drawing cannot change under an order).
+2. F-09 is fixed in code (the order lists load whatever the orders hold; one failed request does not empty the admin panel).
+3. F-03: before the site takes an order, shipping is either on your own rate table (which has the size, weight and destination limits) or the default rule gets those limits.
+4. F-08 and F-02 (one cause): an order and its lines are written together. If you launch without it, launch knowing a 100-line checkout stops the site for 0.6 s today and for 2 to 4 s once the database is 6 to 12 MB, and that a crash mid-checkout can leave a short order that is then charged in full.
+5. F-10: straight after the first deploy, before the site is opened, go through Admin → Materials and Finishes and put back everything you had switched off or changed other than a price. The upgrade resets all of it and tells you about none of it.
+
+2026-11-12. Reviewer: independent (wrote none of the code under review). Change reviewed:
 `git diff 97f57f3..dce1e38` on `relaunch-2026-11-12` (101 commits). Machine: 2 cores, 7.8 GB, Node
 v20.20.0 (`/opt/node20/bin/node`) for every run. Nothing was pushed, no product code was changed, no
-call left the machine for Stripe, Resend, Turnstile or Railway.
+call left the machine for Stripe, Resend, Turnstile or Railway. All eight areas of the brief are covered;
+what could not be judged here is in the last two sections.
 
 Every script named below is in `tools/security/rereview-relaunch/` and runs with one command from the
 repository root, against a fresh server it starts itself:
@@ -16,29 +27,39 @@ repository root, against a fresh server it starts itself:
 env -u HTTPS_PROXY -u HTTP_PROXY NO_PROXY=localhost,127.0.0.1 /opt/node20/bin/node tools/security/rereview-relaunch/<script>.js
 ```
 
-A script exits 1 when it prints a `FINDING` line.
+A script exits 1 when it shows a finding. "Verified by running" below means one of these scripts printed
+it on this machine; "read" means I read the code and did not run it; the last section lists what is
+neither.
 
-## Verdict (provisional, three of eight areas done)
+## Findings
 
-**Not yet. Yes with conditions is reachable; the conditions so far are F-01 and F-03 below.**
+| # | Severity | What | Proof | From this merge? |
+|---|---|---|---|---|
+| F-01 | **High** | A DXF's units can be switched while its order is being made: the order is paid at the millimetre price and the shop is left holding the same drawing at inch size (25.4 times larger). The order carries no flag; only one line on the printed traveler says so | `units-race.js` (3 of 3) | No (the hole was there; the merge kept it) |
+| F-09 | **High** | One confirmed account, without paying anything, makes the order list too large to send: the customer's "My orders" answers 500, and so does the owner's order list, which the admin panel loads together with everything else. The admin panel then shows nothing | `order-list-hold.js` | Yes (the answer ceiling met the order list) |
+| F-03 | **Medium (business)** | The default shipping rule sells a 58 x 94 inch sheet with $25.63 shipping, to any state or country. That sheet cannot go by parcel at all | `shipping-exposure.js` | Yes (the default the merge chose) |
+| F-08 | **Medium** | One press of "pay" on a 100-line quote stops the whole site for 0.6 s on a new database, 2.2 s at 6 MB and 4.2 s at 12 MB (the ceiling is 16 MB). The author's figure (0.51 to 0.59 s) is the new-database case | `checkout-hold.js` | Partly (the flushed saves and the re-pricing are the merge's) |
+| F-02 | **Medium** | A hard kill (out of memory, host crash) during checkout leaves an order on disk with only some of its lines. The buyer comes back, is charged the full total, and the paid order lists fewer parts than were paid for | `durability-kill.js` section C | Partly (same cause as F-08) |
+| F-10 | **Medium** | The catalogue upgrade switches back ON every material and finish the owner had switched off, and resets machinability, waste factor, thickness lists and grades, without a line in the log for any of them | `catalogue-upgrade.js` | Yes (disclosed by the author as Low) |
+| F-12 | **Medium** | Thirteen confirmed accounts that press "pay" and never pay hold the file store full: after the clean-up no visitor and no customer can upload. The same accounts with saved quotes only are cleared | `storage-pin-orders.js` | Yes (the retention rule the merge wrote) |
+| F-13 | **Medium** | Changing a drawing's units re-prices every draft that holds it in one step: 0.6 to 0.75 s of the whole site per change at the default draft allowance, repeatable | `units-flip-hold.js` | Disclosed by the author as an estimate; measured here |
+| F-04 | **Medium** | The server starts, and answers its health check "ok", on a database file it cannot read; a zero-length file is silently replaced by a new empty database | `durability-kill.js` section E | No |
+| F-05 | Low | A hard kill during the "paid" webhook leaves the order paid and nobody emailed: not the buyer, not the shop. Stripe's retry is answered "already seen" | `durability-kill.js` section D | No |
+| F-06 | Low | Changing the delivery choice in a second tab overwrites the order before Stripe is asked whether the first tab's payment went through; a correct payment is then flagged as a wrong amount | `money-attacks.js` section 2 | Yes |
+| F-11 | Low | A database whose version marker is missing, null, 0 or negative is treated as version 1: at the next start every material and finish is replaced and no hand-edited price is kept | `catalogue-upgrade.js` section 4 | Partly |
+| F-07 | Low | A refund event that arrives before the "completed" event leaves a fully refunded order in "paid" | `money-attacks.js` section 4 | No |
 
-## Findings so far
+Where the author's write-up and my runs differ:
 
-| # | Severity | What | Proof |
-|---|---|---|---|
-| F-01 | **High** | A DXF's units can be switched while its order is being made: the order is paid at the millimetre price and the shop is left holding the same drawing at inch size (25.4 times larger). The order carries no flag; only one line on the printed traveler says so | `units-race.js` |
-| F-02 | **Medium** | A hard kill (out-of-memory, host crash) during checkout leaves an order on disk with only some of its lines. The buyer comes back, is charged the full total, and the paid order lists fewer parts than were paid for | `durability-kill.js` section C |
-| F-03 | **Medium (business)** | The default shipping rule sells a 58 x 94 inch sheet with $25.63 shipping, to any state or country. That sheet cannot go by parcel at all | `shipping-exposure.js` |
-| F-04 | **Medium** | The server starts, and answers its health check "ok", on a database file it cannot read; a zero-length file is silently replaced by a new empty database. Not introduced by this merge | `durability-kill.js` section E |
-| F-05 | Low | A hard kill during the "paid" webhook leaves the order paid and nobody emailed: not the buyer, not the shop. Stripe's retry is answered "already seen" | `durability-kill.js` section D |
-| F-06 | Low | Changing the delivery choice in a second tab overwrites the order before Stripe is asked whether the first tab's payment went through; a correct payment is then flagged as a wrong amount | `money-attacks.js` section 2 |
-| F-07 | Low | A refund event that arrives before the "completed" event leaves a fully refunded order in "paid". Not introduced by this merge | `money-attacks.js` section 4 |
-| F-08 | **Medium** | One press of "pay" on a 100-line quote stops the whole site for 0.6 s on an empty database, 2.2 s at 6 MB and 4.2 s at 12 MB (the ceiling is 16 MB). The author's figure (0.51 to 0.59 s) is the empty-database case | `checkout-hold.js` |
-| F-09 | **High** | One confirmed account, without paying anything, makes the order list too large to send: the customer's own "My orders" answers 500, and so does the owner's order list, which the admin panel loads together with everything else. The admin panel then shows nothing | `order-list-hold.js` |
-| F-10 | **Medium** | The catalogue upgrade switches back ON every material and finish the owner had switched off, and resets machinability, waste factor, thickness lists and grades, without a line in the log for any of them | `catalogue-upgrade.js` |
-| F-12 | **Medium** | Thirteen confirmed accounts that press "pay" and never pay hold the file store full: after the clean-up no visitor and no customer can upload. The same accounts with saved quotes only are cleared | `storage-pin-orders.js` |
-| F-13 | **Medium** | Changing a drawing's units re-prices every draft that holds it in one step: 0.6 to 0.75 s of the whole site per change at the default draft allowance, repeatable | `units-flip-hold.js` |
-| F-11 | Low | A database whose version marker is missing, null, 0 or negative is treated as version 1: at the next start every material and finish is replaced and no hand-edited price is kept | `catalogue-upgrade.js` section 4 |
+| The write-up says | I measured |
+|---|---|
+| "Nothing below loses money, charges a wrong amount or exposes another customer's data" (section 10) | F-01: a paid order whose part is not the part that was priced. F-02: a buyer charged in full for an order with lines missing. F-03: orders sold at a shipping loss. No data exposure found |
+| Checkout holds the thread 0.51 to 0.59 s for a 100-line quote (open item 1) | 0.6 s on a new database, 2.2 s at 6 MB, 4.2 s at 12 MB, 3.9 s at 12 MB under load |
+| "a 4 ft by 8 ft routed sheet is charged about $12 plus weight" (decision 5) | A full 4 x 8 sheet is sent to a firm quote by the router-bed check. The largest sheet sold online is 58 x 94 in, charged $25.63 |
+| A units change holds "about 0.8 s, an estimate" (open item 2) | 0.6 to 0.75 s per change at the full default allowance: the estimate was fair. It can be repeated |
+| Prices changed by hand survive the upgrade; other changes are "not carried" (Low) | True for prices. On/off, machinability, waste factor, thicknesses and grades are reset with no report |
+| Fairness under `pricing-eight.js`, quiet and loaded (7.5) | Reproduced; see the availability section |
+| 88 of 88 suites | 88 of 88 here |
 
 ## F-01 (High): the units of a drawing can be changed under an order while it is being made
 
@@ -83,6 +104,125 @@ the same uninterrupted step as the write, after the file has been read; and an o
 the owner (not only on the traveler) if its part ever differs from what was priced. The same holds for a
 firm-quote request sent during the wait.
 
+## F-09 (High): one customer can blank the owner's admin panel
+
+**Where.** `server/routes/orders.js` lines 484 to 513 (`GET /api/orders`): for every order, every line's
+part is loaded with `partsDB.getById` and its measurements and DFM result are put in the answer. For the
+admin this is every order of every customer. `server/security/answerCeiling.js` (new with this merge)
+refuses any JSON answer over `JSON_ANSWER_MAX_MB` (16) with 500 `answer-too-large`.
+`client/src/pages/AdminPanel.jsx` lines 68 to 88: the admin panel loads materials, finishes, lead times,
+quotes, statistics, **orders** and parts in one `Promise.all`; if one of the seven fails, the `catch`
+logs to the browser console and none of the seven is shown.
+
+The order list has carried the measurements since before this merge; the ceiling arrived with it. Each
+is reasonable alone. Together a list that used to be slow is now refused.
+
+**Measured** (`order-list-hold.js 6000 4`, twice): one confirmed account uploads a 100 mm disc drawn as
+6,000 short segments (a 138 kB DXF), prices 49 lines of it ($4,924.76, open for checkout) and presses
+"pay" four times on four quotes. Nothing is paid. Then:
+
+| Request | Answer | Time | Thread held |
+|---|---|---|---|
+| `GET /api/orders` as that customer | **500 `answer-too-large`** | 626 to 756 ms | 621 to 754 ms |
+| `GET /api/orders` as the owner (what the admin panel loads) | **500 `answer-too-large`** | 580 ms | not sampled |
+| `GET /api/orders/admin/queue`, `/api/admin/quotes`, `/api/admin/parts` as the owner | 200 | 3 to 4 ms | |
+
+Read, not run in a browser: with that 500 the admin panel's `loadData` sets nothing, so the Orders tab,
+the materials and finishes tables, the quote list and the statistics are all empty, and the only sign is
+a line in the browser console. The production queue page uses its own route and still works.
+
+The orders do not go away by themselves: an unpaid order lapses to "expired" after its payment window,
+and expired orders stay in the list. There is no button in the admin panel that deletes an order, and
+the panel that would hold it is the one that is blank. The cure is a change to the database by hand.
+
+It needs no bad intent. Each line of an ordinary part adds 5 to 8 kB to the list (measured on seven of
+the repository's sample parts: 1.9 to 4.5 kB of measurements plus 2.4 to 3.3 kB of DFM result), so the
+owner's list passes 16 MB at roughly two to three thousand order lines; a few customers with detailed
+drawings bring that much nearer.
+
+Every call also reads each line's measurement file again on the one thread (0.6 to 0.75 s here for 196
+lines of a 93 kB file), limited only by the general 200 requests per 15 minutes per address.
+
+**What a fix must achieve.** The owner's order list and a customer's order list must load however many
+orders and lines there are and however detailed their parts: bounded in size (no per-line measurements,
+or pages), with no file read per line. One failed request must not empty the rest of the admin panel.
+
+## F-03 (Medium, a business finding): what the default shipping rule sells
+
+**Where.** `server/services/shipping.js` line 192 to 196 (the `formula` mode: `shippingBaseRate +
+kg x shippingPerKg`, "No size or destination rule") and `atDestination`, line 320 (the formula has no
+destination rule). The defaults are $12.00 and $2.50 per kg (`server/config/ruleSchema.js` lines 78, 79).
+
+**What the instant quote will sell at the defaults** (`shipping-exposure.js`; every row was priced by the
+site and not sent to a firm quote; each one-piece row was then taken through checkout to a Honolulu
+address and to an address in Germany, and both were accepted at the same shipping charge):
+
+| Order | Parts | Shipping charged | Weight | Why it matters |
+|---|---|---|---|---|
+| 1 sheet 58 x 94 in, 1/16 in HDPE | $186.75 | **$25.63** | 12 lb | Length plus girth is about 212 in. UPS and FedEx Ground stop at 165 in and 108 in long. It can only go by freight |
+| 1 sheet 58 x 94 in, 1/16 in acrylic | $248.26 | **$28.75** | 15 lb | The same, and acrylic that size needs a crate |
+| 1 sheet 48 x 48 in, 1/16 in HDPE | $139.81 | **$17.76** | 5 lb | Length plus girth about 148 in: inside the parcel limit, with the carrier's large-package surcharge and its minimum billable weight |
+| 1 strip 6 x 94 in, 1/16 in HDPE | $117.73 | **$13.41** | 1.2 lb | Long and light: an additional-handling or large-package charge |
+| 100 sheets 48 x 48 in, 1/16 in HDPE | $4,839.19 | $588.03 | 508 lb | A pallet. Here the per-kg rate roughly covers freight |
+| 10 sheets 48 x 48 in, 1 in HDPE | $4,880.02 | $926.44 | 806 lb | A pallet. Covered |
+| 10 sheets 24 x 48 in, 1 in acrylic | $4,450.04 | $573.73 | 495 lb | A pallet. Covered |
+
+A full 48 x 96 sheet is **not** sold online: the router-bed check sends it to a firm quote. The author's
+example ("a 4 ft by 8 ft routed sheet is charged about $12 plus weight") is therefore not the worst case;
+the worst case is the sheet just inside the bed, 58 x 94 in, which is larger.
+
+**The exposure, in words.** The rule charges by weight alone. Heavy orders are charged enough or more
+than enough ($2.50 a kg is about $1.13 a pound). The loss is on **large, light** parts: one thin sheet
+over about 4 ft on a side is charged $13 to $32 and has to travel as freight or as an oversize parcel. I did not call a carrier.
+My working assumption, which you should check against your own freight quotes, is $250 to $600 for a
+single oversize flat sheet by LTL freight inside the contiguous states, more with a residential or
+lift-gate delivery, and much more to Hawaii, Alaska or abroad. On that assumption **each such order
+loses roughly $200 to $550 on a sale of $120 to $280**, and nothing limits how many are placed.
+
+Destination: with the formula, checkout accepted every one-piece row to Honolulu and to Hamburg, Germany
+(status 200, the same shipping charge). The country field is free text of up to five characters.
+
+**What a fix must achieve.** Before launch, no order may be given a shipping price online that the shop
+cannot ship for roughly that price: a longest-side limit, a weight limit and a destination rule have to
+apply in whatever mode is the default. The rate-table mode already has all three (`shippingOversizeLongestIn`
+48 in, `shippingMaxParcelLb` 50 lb, contiguous states only) and sends the rest to a firm quote; it held
+in every test here. This is the author's decision 5; I am saying it is a launch condition, not a
+preference.
+
+## F-08 (Medium): one checkout stops the site for seconds once the database has grown
+
+**Where.** `server/routes/orders.js` lines 208 to 347: the re-pricing and every write of the order are
+one uninterrupted step, and each `ordersDB.insert`, `orderItemsDB.insert`, part claim and quote update is
+a separate save of the whole database file (`server/models/SqliteDB.js` line 328), each with two flushes.
+A 100-line order is more than 100 whole-file saves in that one step. Same cause as F-02.
+
+**Measured** (`checkout-hold.js 100 0,6,12`: one confirmed account, one press of "pay", quiet machine;
+the quote is 100 lines of a 12 mm cube in the first printing material, $1,654.36, open for checkout; the
+database is padded while the server is stopped, to stand in for a shop that has been running a while):
+
+| Database file | Checkout took | Longest wait of another visitor's health request |
+|---|---|---|
+| 0.2 MB (new) | 609 ms | 610 ms |
+| 6.1 MB | 2,183 ms | 2,183 ms |
+| 12.1 MB | 4,248 ms | 4,229 ms |
+
+With 25 lines of a machined cube ($4,831.65): 194 ms, 511 ms and 992 ms at the same three sizes. With the
+machine loaded (four busy loops) the 100-line checkout at 12.2 MB took 3,918 ms.
+Nothing dense or clever is needed; the part is a cube. The author's open item 1 gives 0.51 to 0.59 s for
+a 100-line quote. That is the first row: a new database. The default ceiling is 16 MB and the runbook
+tells you to raise it if the database passes half of it, so 6 and 12 MB are sizes the site is expected to
+reach. The time spent writing is not charged to the sender's pricing allowance (`orders.js` line 213
+charges the pricing only), so the limit is the 12 checkouts per account per 15 minutes: at 12 MB one
+account can stop the site for about 50 seconds in every 15 minutes, in 4-second pieces, and each further
+account adds the same. During each piece no page, price or payment answer is served to anyone.
+
+An ordinary order is not affected much: about nine saves for a 5-line order, well under half a second at
+12 MB.
+
+**What a fix must achieve.** The time one checkout holds the thread must not grow with the number of
+lines times the size of the database: an order and its lines have to be one write. Whatever time
+remains must be charged to the sender.
+
 ## F-02 (Medium): a partial order after a hard kill, then paid in full
 
 **Where.** `server/routes/orders.js` lines 277 to 347. The order row is inserted (line 277), then each
@@ -116,47 +256,89 @@ The same writes are why checkout holds the one thread: 100 lines are 100 or more
 must reach the disk together or not at all. An order whose lines do not match its quote must never be
 handed a payment page.
 
-## F-03 (Medium, a business finding): what the default shipping rule sells
+## F-10 (Medium): the catalogue upgrade undoes what the owner switched off
 
-**Where.** `server/services/shipping.js` line 192 to 196 (the `formula` mode: `shippingBaseRate +
-kg x shippingPerKg`, "No size or destination rule") and `atDestination`, line 320 (the formula has no
-destination rule). The defaults are $12.00 and $2.50 per kg (`server/config/ruleSchema.js` lines 78, 79).
+**Where.** `server/config/seed.js` lines 63 to 69 delete every material, finish and process row when the
+catalogue version goes up; `server/config/seedCarry.js` puts back prices only
+(`server/config/seedHistory.js` line 132: `pricePerKg`, `pricePerCm3`, `pricePerPart`, `pricePerSqIn`).
 
-**What the instant quote will sell at the defaults** (`shipping-exposure.js`, and the size probe quoted
-in the same script's header; every row was priced by the site, not sent to a firm quote, and the checkout
-was taken to a Honolulu address where shown):
+**Measured** (`catalogue-upgrade.js`, a version-3 database edited the way the owner edits it, then the
+real seed):
 
-| Order | Parts | Shipping charged | Weight | Why it matters |
+| What the owner had done | After the upgrade | Said in the log |
+|---|---|---|
+| Changed a price (mild steel to $99.50 a kg; a finish) | kept | yes |
+| Changed a price on a resin that leaves the catalogue | not brought back | yes |
+| Switched a material off (stainless 304) | **back on** | no |
+| Switched a finish off (deburr) | **back on** | no |
+| Set machinability 0.2 and a waste factor on a material | **back at the default** | no |
+| Cut a thickness list down to what is stocked; renamed a grade | **back at the default (8 thicknesses)** | no |
+| Priced a material through "cost per kg" with "price per kg" empty (the admin form allows it) | **back at the default price** | a line that reads as if nothing had been set |
+| Added a material by hand | deleted | yes |
+
+The author lists this as open item 10, Low ("carry `active` the same way, if wanted") and the owner
+checklist asks you to write such changes down first. I rate it Medium because of what it does on the day:
+the default catalogue ships with three machining metals and five finishes switched off and everything else
+on. If on the live site you have switched off anything you do not stock or do not want to sell online, the
+upgrade puts it back on sale and nothing in the log or on the Pricing page names it. Machinability, waste
+factor, thicknesses and grade densities are all inputs to the price, so those materials are also priced
+differently from what you set.
+
+The upgrade from the live site's version 3 to version 4 is the first thing the deploy does.
+
+**What a fix must achieve.** Everything the owner changed on a catalogue row that still exists must
+survive the upgrade or be listed, row by row, where the owner will see it before the site takes an order.
+At the least: on/off, and the fields the price is computed from.
+
+## F-12 (Medium): unpaid orders hold the file store full
+
+**Where.** `server/services/rowRetention.js` lines 100 to 108 (`unpaidOrderIsPayable`): a file on an
+unpaid order is held outright ("never removed") until the later of 48 hours after the order was made and
+30 minutes after its payment page lapses. `server/services/storagePressure.js` line 367 skips every part
+held outright. Each account may store 150 MB and the store's ceiling is 2,048 MB, so fourteen accounts'
+worth of unpaid orders is the whole store.
+
+**Measured** (`storage-pin-orders.js pin` and `control`, scaled 1:10 like the author's own
+`storage-pin.js`: ceiling 200 MB, 15 MB per address and per account; the two "minimum age" settings set
+to one minute, which favours the defender):
+
+| | Accounts | Store after the flood | After the pressure pass | Two minutes on |
 |---|---|---|---|---|
-| 1 sheet 58 x 94 in, 1/16 in HDPE | $186.75 | **$25.63** | 12 lb | Length plus girth is about 212 in. UPS and FedEx Ground stop at 165 in and 108 in long. It can only go by freight |
-| 1 sheet 58 x 94 in, 1/8 in acrylic | $376.01 | **$45.49** | 30 lb | The same, and acrylic that size needs a crate |
-| 1 strip 6 x 94 in, 1/16 in HDPE | $117.73 | **$13.41** | 1.2 lb | Under the parcel limits but over 96 in: carriers add a large-package or additional-handling charge |
-| 100 sheets 48 x 48 in, 1/16 in HDPE | $4,839.19 | $588.03 | 508 lb | A pallet. Here the per-kg rate roughly covers freight |
-| 10 sheets 48 x 48 in, 1 in HDPE | $4,880.02 | $926.44 | 806 lb | A pallet. Covered |
-| 10 sheets 24 x 48 in, 1 in acrylic | $4,450.04 | $573.73 | 495 lb | A pallet. Covered |
+| `pin`: each account prices its uploads and presses "pay", never pays | 13 (31 seconds) | 100 % | 100 %; visitor `storage-full`, new customer `storage-full` | the same |
+| `control`: the same uploads and quotes, no checkout | 13 | 100 % | 63 %; visitor accepted, new customer accepted | the same |
 
-A full 48 x 96 sheet is **not** sold online: the router-bed check sends it to a firm quote. The author's
-example ("a 4 ft by 8 ft routed sheet is charged about $12 plus weight") is therefore not the worst case;
-the worst case is the sheet just inside the bed, 58 x 94 in, which is larger.
+(An earlier pair of runs without the second "minimum age" setting showed no difference between the two
+modes: a signed-in customer's new part is spared by every pass for its first hours, so in that window
+saved quotes hold the store just as well. The table is the run that separates the two.)
 
-**The exposure, in words.** The rule charges by weight alone. Heavy orders are charged enough or more
-than enough ($2.50 a kg is about $1.13 a pound). The loss is on **large, light** parts: one thin sheet
-over about 4 ft on a side is charged $15 to $45 and has to travel as freight. I did not call a carrier.
-My working assumption, which you should check against your own freight quotes, is $250 to $600 for a
-single oversize flat sheet by LTL freight inside the contiguous states, more with a residential or
-lift-gate delivery, and much more to Hawaii, Alaska or abroad. On that assumption **each such order
-loses roughly $200 to $550 on a sale of $120 to $380**, and nothing limits how many are placed.
+While it lasts every upload is answered "We can't take new files right now. Email them to
+quotes@... or call ... and we'll quote them by hand." It lasts 48 hours by itself, and an account can
+press "pay" again on the quote it gets back (12 checkouts per 15 minutes), so in practice until the owner
+cancels those orders by hand. Each account needs a confirmed email address and its own network address
+(a /64 counts as one). That is a real cost and a small one.
 
-Destination: with the formula, checkout accepted the same orders to Honolulu (status 200, same shipping)
-and the country field is free text of up to five characters, so an order to another country is charged
-the same $12 plus weight.
+The rule is the author's deliberate answer to "a file must never be removed while its order can still be
+paid", and that half holds (checkout checks the files are present). The other half is this.
 
-**What a fix must achieve.** Before launch, no order may be given a shipping price online that the shop
-cannot ship for roughly that price: a longest-side limit, a weight limit and a destination rule have to
-apply in whatever mode is the default. The rate-table mode already has all three (`shippingOversizeLongestIn`
-48 in, `shippingMaxParcelLb` 50 lb, contiguous states only) and sends the rest to a firm quote; it held
-in every test here. This is the author's decision 5; I am saying it is a launch condition, not a
-preference.
+**What a fix must achieve.** What unpaid orders can hold, summed over all senders, must stay well short
+of the store, so that paying customers can always upload; or an unpaid order's files must be allowed to
+go under pressure, with the order closed and its buyer told, before the store is refused to everyone.
+
+## F-13 (Medium): a units change re-prices every draft in one step
+
+**Where.** `server/routes/api.js` lines 901 to 925 (`refreshDraftQuotesFor`): every draft that holds the
+part is priced again inside the units request, with no yielding.
+
+**Measured** (`units-flip-hold.js`): one confirmed account holds 25 drafts of 100 lines of a 40-hole
+plate, which is what the default 512 kB allowance takes (the 26th is refused `drafts-full`). Six unit
+changes in a row: each request took 621 to 846 ms and held the thread 592 to 753 ms. The author's open
+item 2 estimated "about 0.8 s"; the estimate was honest. What he did not say is that the change can be
+repeated back and forth: here the site was stopped for about two thirds of six seconds, and the limits
+that apply are the general 200 requests per 15 minutes and the sender's parse seconds, not the pricing
+allowance.
+
+**What a fix must achieve.** A units change must cost the thread no more than the one part's own
+re-reading; the drafts that hold it are priced when they are next opened, or in pieces.
 
 ## F-04 (Medium, not from this merge): starting on a database that cannot be read
 
@@ -219,6 +401,19 @@ a closed pickup session that is paid late does not release the ship order).
 **What a fix must achieve.** An unpaid order's open session must be checked at Stripe before anything
 about the order is changed.
 
+## F-11 (Low): a missing version marker means "replace everything"
+
+`server/config/seed.js` line 62: `existingRules?.rules?.seedVersion || 1`. `catalogue-upgrade.js`
+section 4, on a version-4 database with two hand-edited prices: with the marker missing, null, 0 or -1
+the next start logs "seed v1 → v4", replaces every material and finish and keeps no price (mild steel
+$123.45 back to $1.10). With the marker "4" as text, "abc", 4.5 or 99 nothing is touched; with 3 the
+prices are carried correctly. The owner's own buttons do not move the marker (save, reset, restore: still
+4, same script section 5), so this needs a damaged or hand-edited rules row. If the rules row itself is
+lost the same thing happens.
+
+**What a fix must achieve.** An unreadable marker must never be read as "the oldest version"; the
+catalogue must not be replaced when the version it came from cannot be established.
+
 ## F-07 (Low, not from this merge): refund before "completed"
 
 `money-attacks.js` section 4: a `charge.refunded` for the full amount delivered before
@@ -227,11 +422,13 @@ flag. In the usual order of events the same refund moves the order to `refunded`
 (`orderLifecycle.js` line 693). Stripe does not promise delivery order. A refund is something the owner
 does himself, so he knows; the order would still sit in the work queue.
 
-## What held (areas 1 to 3)
+## What held
 
-Every line is a run of the named script on this machine.
+`npm test` on Node v20.20.0 in this worktree after `npm ci`: **88 of 88 suites passed**.
 
-**Money** (`money-attacks.js`: 62 checks held, 0 findings)
+Every line is a run of the named script on this machine unless it says "read".
+
+**Money** (`money-attacks.js`: 66 checks held, 0 findings)
 
 - 48 combinations of shipping mode (weight formula, rate table, included, free over a threshold) x tax
   off / Stripe Tax on x ship / pickup / buyer's carrier account x paperwork on / off. In every one: the
@@ -250,6 +447,12 @@ Every line is a run of the named script on this machine.
   what is left must equal the expected charge).
 - Stored line weights tampered with (zero, negative, missing, absurd): checkout prices again and charges
   the real total in both the formula and the table mode.
+- Three presses of "pay" at once: one order, one payment page. After payment the quote cannot be checked
+  out again (409). The same payment reported again by webhook and by the return page changes nothing and
+  emails nobody. A second press with the same amount is handed the same page.
+- A drawing's units changed in one tab and "pay" pressed in another, one after the other: the buyer is
+  asked (409 `quote-changed`, $177.83 against $114.68), and once the order exists the units are locked.
+  (F-01 is the same two requests sent together.)
 
 **The four rewritten tax-shipping cases** were read against the originals (`git show
 c7221a0:server/routes/taxShipping.test.js`): see the changed-tests audit.
@@ -266,6 +469,13 @@ c7221a0:server/routes/taxShipping.test.js`): see the changed-tests audit.
 - `GET /api/admin/storage`, the draft purge, the request deletes, the catalogue-upgrade report, the
   shipping preview, the backups: 401 for a guest, 403 for an account. An admin cookie without the CSRF
   token is refused on an unsafe request. A purge is written to the change log.
+- The upgrade from master's database (`master-upgrade-access.js`, the repo's own fixture of a database
+  written by origin/master: two parts with no owner): a stranger with no account and a stranger with a
+  new account, knowing both part ids, made 48 tries each to price, preview, measure or change them, with no
+  key and five guessed keys: all refused. The visitor who made the old quote opens it by its link, is
+  handed the key of its part and prices it again ($892.91; master had $892.9166). A part that is on no
+  quote stays usable by the admin only, as the author says: its uploader has to upload it again. Nobody
+  else gains it.
 - By design, and worth knowing: a quote made without an account is opened by its id alone, and anyone
   who learns that id can order it, after which the visitor's own key no longer opens the part
   (`access-matrix.js`, last two lines). The id is 122 random bits; it is only a risk if a visitor shares
@@ -284,93 +494,6 @@ c7221a0:server/routes/taxShipping.test.js`): see the changed-tests audit.
   `quotesStore.js` 212, `quoteGuards.js` 151, `storagePressure.js` 165); none wraps an order, a payment,
   an account or an admin edit, and any ordinary write takes waiting changes to disk with it
   (`database.js` `saveToDisk`).
-
-## The suite
-
-`npm test` on Node v20.20.0 in this worktree after `npm ci`: **88 of 88 suites passed** (run while other
-scripts were using the machine).
-
-## F-08 (Medium): one checkout stops the site for seconds once the database has grown
-
-**Where.** `server/routes/orders.js` lines 208 to 347: the re-pricing and every write of the order are
-one uninterrupted step, and each `ordersDB.insert`, `orderItemsDB.insert`, part claim and quote update is
-a separate save of the whole database file (`server/models/SqliteDB.js` line 328), each with two flushes.
-A 100-line order is more than 100 whole-file saves in that one step. Same cause as F-02.
-
-**Measured** (`checkout-hold.js 100 0,6,12`: one confirmed account, one press of "pay", quiet machine;
-the quote is 100 lines of a 12 mm cube in the first printing material, $1,654.36, open for checkout; the
-database is padded while the server is stopped, to stand in for a shop that has been running a while):
-
-| Database file | Checkout took | Longest wait of another visitor's health request |
-|---|---|---|
-| 0.2 MB (new) | 609 ms | 610 ms |
-| 6.1 MB | 2,183 ms | 2,183 ms |
-| 12.1 MB | 4,248 ms | 4,229 ms |
-
-With 25 lines of a machined cube ($4,831.65): 194 ms, 511 ms and 992 ms at the same three sizes.
-Nothing dense or clever is needed; the part is a cube. The author's open item 1 gives 0.51 to 0.59 s for
-a 100-line quote. That is the first row: a new database. The default ceiling is 16 MB and the runbook
-tells you to raise it if the database passes half of it, so 6 and 12 MB are sizes the site is expected to
-reach. The time spent writing is not charged to the sender's pricing allowance (`orders.js` line 213
-charges the pricing only), so the limit is the 12 checkouts per account per 15 minutes: at 12 MB one
-account can stop the site for about 50 seconds in every 15 minutes, in 4-second pieces, and each further
-account adds the same. During each piece no page, price or payment answer is served to anyone.
-
-An ordinary order is not affected much: about nine saves for a 5-line order, well under half a second at
-12 MB.
-
-**What a fix must achieve.** The time one checkout holds the thread must not grow with the number of
-lines times the size of the database: an order and its lines have to be one write. Whatever time
-remains must be charged to the sender.
-
-## F-10 (Medium): the catalogue upgrade undoes what the owner switched off
-
-**Where.** `server/config/seed.js` lines 63 to 69 delete every material, finish and process row when the
-catalogue version goes up; `server/config/seedCarry.js` puts back prices only
-(`server/config/seedHistory.js` line 132: `pricePerKg`, `pricePerCm3`, `pricePerPart`, `pricePerSqIn`).
-
-**Measured** (`catalogue-upgrade.js`, a version-3 database edited the way the owner edits it, then the
-real seed):
-
-| What the owner had done | After the upgrade | Said in the log |
-|---|---|---|
-| Changed a price (mild steel to $99.50 a kg; a finish) | kept | yes |
-| Changed a price on a resin that leaves the catalogue | not brought back | yes |
-| Switched a material off (stainless 304) | **back on** | no |
-| Switched a finish off (deburr) | **back on** | no |
-| Set machinability 0.2 and a waste factor on a material | **back at the default** | no |
-| Cut a thickness list down to what is stocked; renamed a grade | **back at the default (8 thicknesses)** | no |
-| Priced a material through "cost per kg" with "price per kg" empty (the admin form allows it) | **back at the default price** | a line that reads as if nothing had been set |
-| Added a material by hand | deleted | yes |
-
-The author lists this as open item 10, Low ("carry `active` the same way, if wanted") and the owner
-checklist asks you to write such changes down first. I rate it Medium because of what it does on the day:
-the default catalogue ships with three machining metals and five finishes switched off and everything else
-on. If on the live site you have switched off anything you do not stock or do not want to sell online, the
-upgrade puts it back on sale and nothing in the log or on the Pricing page names it. Machinability, waste
-factor, thicknesses and grade densities are all inputs to the price, so those materials are also priced
-differently from what you set.
-
-The upgrade from the live site's version 3 to version 4 is the first thing the deploy does.
-
-**What a fix must achieve.** Everything the owner changed on a catalogue row that still exists must
-survive the upgrade or be listed, row by row, where the owner will see it before the site takes an order.
-At the least: on/off, and the fields the price is computed from.
-
-## F-11 (Low): a missing version marker means "replace everything"
-
-`server/config/seed.js` line 62: `existingRules?.rules?.seedVersion || 1`. `catalogue-upgrade.js`
-section 4, on a version-4 database with two hand-edited prices: with the marker missing, null, 0 or -1
-the next start logs "seed v1 → v4", replaces every material and finish and keeps no price (mild steel
-$123.45 back to $1.10). With the marker "4" as text, "abc", 4.5 or 99 nothing is touched; with 3 the
-prices are carried correctly. The owner's own buttons do not move the marker (save, reset, restore: still
-4, same script section 5), so this needs a damaged or hand-edited rules row. If the rules row itself is
-lost the same thing happens.
-
-**What a fix must achieve.** An unreadable marker must never be read as "the oldest version"; the
-catalogue must not be replaced when the version it came from cannot be established.
-
-## What held (areas 6, 7, 8)
 
 **Catalogue upgrade** (`catalogue-upgrade.js`: 15 held)
 
@@ -417,7 +540,57 @@ catalogue must not be replaced when the version it came from cannot be establish
   (`server/security/testHooks.js`: `enabled() && NODE_ENV !== "production"`), and the parse delay and the
   email outbox need the switch.
 
-## The changed-tests audit (area 4)
+## Availability: what I re-measured, and what held
+
+Quiet means nothing else running on the machine. Loaded means four busy loops beside the server on these
+two cores (load average 3.5 to 4.7), the same load the author used.
+
+**The author's fairness test, run again** (`tools/security/rereview-availability/pricing-eight.js`, unchanged):
+
+| | Quiet (author) | Quiet (mine) | Loaded (author) | Loaded (mine) |
+|---|---|---|---|---|
+| One quote of 25 different 3,000-hole drawings, alone | 1,522 ms | 1,278 ms | refused `quote-too-slow` after 6.2 s | refused `quote-too-slow` after 5.9 s |
+| Health check, median, with 1, 2, 4, 8 attacking addresses | 2, 2, 2, 2 ms | 1, 1, 1, 1 ms | 9, 9, 8, 8 ms | 9, 8, 5, 5 ms |
+| Health check, worst sample | 76 to 170 ms | 87 to 168 ms | 585 to 845 ms | 585 to 795 ms |
+| Another visitor's one-line re-price: priced | 13 of 13 each phase | 13 of 13 each phase | 13, 13, 12 of 12, 13 | 12 of 12, 13, 13, 12 of 12 |
+| That visitor: median; worst | 14 to 17 ms; 80 to 227 ms | 12 to 15 ms; 89 to 245 ms | 35 to 76 ms; 148 to 259 ms | 38 to 94 ms; 178 to 382 ms |
+
+The author's figures for this test are right, and so is his statement that it is worse than
+availability-fixes alone. A real visitor is never refused and never waits more than 0.4 s for a price,
+quiet or loaded, with eight addresses pricing the heaviest quotes there are.
+
+**The open items, measured independently**
+
+| Item | Author | Mine |
+|---|---|---|
+| Checkout re-pricing outside the runner | 0.5 to 0.84 s | **F-08**: 0.6 s, 2.2 s, 4.2 s by database size; 3.9 s at 12 MB loaded. The writes, not the pricing, are most of it |
+| Units change re-prices every draft | 0.12 to 0.34 s measured, 0.8 s estimated | **F-13**: 0.6 to 0.75 s per change at the full allowance, repeatable |
+| Reorder, one after another and four at once | 76 to 131 ms each; health worst 80 ms, 167 ms four at once | The adapted script, run again: 84 to 125 ms each; health worst 76 ms, 168 ms four at once. Reproduced. A 25-line order of a light drawing: 38 to 41 ms each, health worst 34 ms |
+| At 1 GB after one large model, "busy" on every try | 7 of 7 for the heaviest mesh | `memory-poison.js`: see below |
+| Quote view under a rate table reads each part | 119 to 125 ms | Not re-measured |
+| The fingerprint hashed in one piece | 34 to 80 ms per dense part | Not measured by itself; it is inside the pricing-eight figures above |
+
+**Can one upload put the site into "busy" on purpose?** (`memory-poison.js`, memory budget at its 1,024 MB
+default.) One address sent 500,000 random triangles (25 MB): refused `parse-memory` after 13 s, with the
+server at 963 MB while it worked. Sent again after one more large file: `busy` after 11 s, and the log
+printed its "SHORT OF MEMORY" line. So yes: one sender, two uploads of 25 MB, about 25 seconds of its
+180 seconds of parsing an hour, and the state the author describes is reached. **But it is the sender's
+own heavy file that is refused. Ordinary customers were not touched:** before, right after, after three
+large files, and 30 seconds later, four customers from four addresses each had a cube, a 76,800-triangle
+block (3.8 MB), a 101,568-triangle block (5 MB) and a 248,832-triangle block (12.4 MB) read in 0.1 to
+1.7 s, 16 of 16 after the attack. The server settled at 373 to 426 MB between parses. What I could not
+test: this machine has 7.8 GB, so nothing here shows what Railway's own 1 GB limit does when the process
+really reaches it (a hard kill, which is the trigger for F-02 and F-05).
+
+**New attacks the existing scripts do not cover** (each is a finding above): the order list
+(`order-list-hold.js`, F-09); checkout against a grown database (`checkout-hold.js`, F-08); unpaid orders
+as the pin (`storage-pin-orders.js`, F-12); units flipped back and forth at the full draft allowance
+(`units-flip-hold.js`, F-13); units flipped during checkout (`units-race.js`, F-01); the server killed
+hard mid-checkout and mid-webhook (`durability-kill.js`, F-02, F-05).
+
+**Does the file-retention rule let an attacker pin storage with unpaid orders?** Yes: F-12.
+
+## The changed-tests audit
 
 Method: each changed file was diffed against the commit it came from (`c7221a0` for tax-shipping,
 `f706811` for the availability suites, `7c9de0f` for the re-review scripts). The original test files
@@ -450,91 +623,65 @@ marked.
 | `hardening-accounts.mjs` | waits for the sign-out answer before replaying the old token | Not run (browser) | Plausible; not verified |
 | `upgrade-proof.js` | a timer keeps the event loop busy | Not run | Not verified. The hang it works around is in the script's own process |
 
-## F-09 (High): one customer can blank the owner's admin panel
+## What you must test by hand
 
-**Where.** `server/routes/orders.js` lines 484 to 513 (`GET /api/orders`): for every order, every line's
-part is loaded with `partsDB.getById` and its measurements and DFM result are put in the answer. For the
-admin this is every order of every customer. `server/security/answerCeiling.js` (new with this merge)
-refuses any JSON answer over `JSON_ANSWER_MAX_MB` (16) with 500 `answer-too-large`.
-`client/src/pages/AdminPanel.jsx` lines 68 to 88: the admin panel loads materials, finishes, lead times,
-quotes, statistics, **orders** and parts in one `Promise.all`; if one of the seven fails, the `catch`
-logs to the browser console and none of the seven is shown.
+None of this can be judged in a sandbox. Each is a few minutes with real accounts.
 
-The order list has carried the measurements since before this merge; the ceiling arrived with it. Each
-is reasonable alone. Together a list that used to be slow is now refused.
+1. **Stripe, test mode, tax off (the launch setting).** Place one order by card. Check in the Stripe
+   dashboard that the amount is the total the checkout page showed. Then: start a second order, leave the
+   Stripe page open, go back, change nothing and press pay again (you should land on the same page); pay it;
+   press the browser's back button and pay again if Stripe lets you (the order must show paid once, and a
+   second payment must show up in Admin as "needs attention").
+2. **Stripe: closing a payment page.** With pickup or carrier account switched on in test mode: choose
+   pickup, reach the Stripe page, go back, choose ship, reach the new Stripe page. Open the first Stripe
+   page again: Stripe must say it has expired. My stand-in assumes that; only Stripe can show it.
+3. **Stripe: refund and dispute.** Refund a test order in full from the dashboard and check the order
+   becomes "refunded" and you get the email. Use Stripe's test card for a dispute and check the order is
+   flagged.
+4. **Stripe webhook.** In the dashboard, resend the same "checkout.session.completed" event twice. The
+   order must stay paid, with one confirmation email.
+5. **Stripe Tax** (before you ever switch it on): the four test-mode checkouts in
+   `docs/launch/tax-and-shipping.md` section 7. My runs and the author's use a stand-in that adds 7 %; nothing
+   here shows what Stripe really sends back, or that it accepts the Customer and address we create.
+6. **Shipping.** Ask your carrier for a real price on one 58 x 94 in sheet of 1/16 in acrylic, crated, to a
+   business address 500 miles away and to a home address. Compare with $28.75. That is F-03 in your own numbers.
+7. **Turnstile.** With the real keys: upload a file in a private window, and check a quote is refused
+   from a script without the token (the runbook's step 8).
+8. **Railway.** After the first deploy: confirm the volume is mounted (Admin → System shows the database
+   path and a size that is not a few hundred kB after you have used the site); set the draining time to 15
+   seconds; restart the service once and confirm your test order is still there.
+9. **The admin panel after F-09 is fixed.** Place four unpaid test orders of a many-line quote and open
+   Admin: the Orders tab and the Materials tab must both still fill.
+10. **The catalogue, on the day** (condition 5). Before the deploy, write down every material and finish
+    that is switched off and any machinability, waste factor, thickness or grade you changed. After the
+    deploy, compare, line by line.
+11. **Email.** One real order: you and the buyer each get the email, from the address you expect.
 
-**Measured** (`order-list-hold.js 6000 4`, twice): one confirmed account uploads a 100 mm disc drawn as
-6,000 short segments (a 138 kB DXF), prices 49 lines of it ($4,924.76, open for checkout) and presses
-"pay" four times on four quotes. Nothing is paid. Then:
+## Not verified
 
-| Request | Answer | Time | Thread held |
-|---|---|---|---|
-| `GET /api/orders` as that customer | **500 `answer-too-large`** | 626 to 756 ms | 621 to 754 ms |
-| `GET /api/orders` as the owner (what the admin panel loads) | **500 `answer-too-large`** | 580 ms | not sampled |
-| `GET /api/orders/admin/queue`, `/api/admin/quotes`, `/api/admin/parts` as the owner | 200 | 3 to 4 ms | |
-
-Read, not run in a browser: with that 500 the admin panel's `loadData` sets nothing, so the Orders tab,
-the materials and finishes tables, the quote list and the statistics are all empty, and the only sign is
-a line in the browser console. The production queue page uses its own route and still works.
-
-The orders do not go away by themselves: an unpaid order lapses to "expired" after its payment window,
-and expired orders stay in the list. There is no button in the admin panel that deletes an order, and
-the panel that would hold it is the one that is blank. The cure is a change to the database by hand.
-
-It needs no bad intent. Each line of an ordinary part adds 5 to 8 kB to the list (measured on seven of
-the repository's sample parts: 1.9 to 4.5 kB of measurements plus 2.4 to 3.3 kB of DFM result), so the
-owner's list passes 16 MB at roughly two to three thousand order lines; a few customers with detailed
-drawings bring that much nearer.
-
-Every call also reads each line's measurement file again on the one thread (0.6 to 0.75 s here for 196
-lines of a 93 kB file), limited only by the general 200 requests per 15 minutes per address.
-
-**What a fix must achieve.** The owner's order list and a customer's order list must load however many
-orders and lines there are and however detailed their parts: bounded in size (no per-line measurements,
-or pages), with no file read per line. One failed request must not empty the rest of the admin panel.
-
-## F-12 (Medium): unpaid orders hold the file store full
-
-**Where.** `server/services/rowRetention.js` lines 100 to 108 (`unpaidOrderIsPayable`): a file on an
-unpaid order is held outright ("never removed") until the later of 48 hours after the order was made and
-30 minutes after its payment page lapses. `server/services/storagePressure.js` line 367 skips every part
-held outright. Each account may store 150 MB and the store's ceiling is 2,048 MB, so fourteen accounts'
-worth of unpaid orders is the whole store.
-
-**Measured** (`storage-pin-orders.js pin` and `control`, scaled 1:10 like the author's own
-`storage-pin.js`: ceiling 200 MB, 15 MB per address and per account; the two "minimum age" settings set
-to one minute, which favours the defender):
-
-| | Accounts | Store after the flood | After the pressure pass | Two minutes on |
-|---|---|---|---|---|
-| `pin`: each account prices its uploads and presses "pay", never pays | 13 (31 seconds) | 100 % | 100 %; visitor `storage-full`, new customer `storage-full` | the same |
-| `control`: the same uploads and quotes, no checkout | 13 | 100 % | 63 %; visitor accepted, new customer accepted | the same |
-
-While it lasts every upload is answered "We can't take new files right now. Email them to
-quotes@... or call ... and we'll quote them by hand." It lasts 48 hours by itself, and an account can
-press "pay" again on the quote it gets back (12 checkouts per 15 minutes), so in practice until the owner
-cancels those orders by hand. Each account needs a confirmed email address and its own network address
-(a /64 counts as one). That is a real cost and a small one.
-
-The rule is the author's deliberate answer to "a file must never be removed while its order can still be
-paid", and that half holds (checkout checks the files are present). The other half is this.
-
-**What a fix must achieve.** What unpaid orders can hold, summed over all senders, must stay well short
-of the store, so that paying customers can always upload; or an unpaid order's files must be allowed to
-go under pressure, with the order closed and its buyer told, before the store is refused to everyone.
-
-## F-13 (Medium): a units change re-prices every draft in one step
-
-**Where.** `server/routes/api.js` lines 901 to 925 (`refreshDraftQuotesFor`): every draft that holds the
-part is priced again inside the units request, with no yielding.
-
-**Measured** (`units-flip-hold.js`): one confirmed account holds 25 drafts of 100 lines of a 40-hole
-plate, which is what the default 512 kB allowance takes (the 26th is refused `drafts-full`). Six unit
-changes in a row: each request took 621 to 846 ms and held the thread 592 to 753 ms. The author's open
-item 2 estimated "about 0.8 s"; the estimate was honest. What he did not say is that the change can be
-repeated back and forth: here the site was stopped for about two thirds of six seconds, and the limits
-that apply are the general 200 requests per 15 minutes and the sender's parse seconds, not the pricing
-allowance.
-
-**What a fix must achieve.** A units change must cost the thread no more than the one part's own
-re-reading; the drafts that hold it are priced when they are next opened, or in pieces.
+- **Anything at Stripe, Resend, Turnstile or Railway.** No call left the machine. The Stripe stand-ins
+  (the repo's and my own `stripe-stub-preload.js`) behave the way I read Stripe's documentation, most
+  importantly: a session we expire can no longer be paid, and `amount_total`, `amount_discount` and
+  `amount_tax` mean what the settle check assumes.
+- **F-09 in a browser.** The two 500 answers are measured. That the admin panel then shows nothing is from
+  reading `AdminPanel.jsx` lines 68 to 88, not from opening it.
+- **Carrier prices in F-03.** The sizes, weights and what the site charges are measured. The freight
+  figures are my assumption, stated as one.
+- **A real memory limit.** The 1 GB budget is the server's own bookkeeping on a 7.8 GB machine. A real
+  out-of-memory kill was imitated with SIGKILL, not provoked.
+- **Firm quotes, purchase orders and reorder as money paths**: read (`server/routes/rfq.js` 655 to 795,
+  `orders.js` 674 to 756), and covered by the author's suites, which pass; I wrote no attack script of my own
+  for them.
+- **Promotion codes switched on** with a real code: read only (`orderLifecycle.js` `checkSession`); the
+  switched-off case was run.
+- **Under-load figures** come from four busy loops on two cores. They show the shape, not Railway's numbers.
+- **The browser runs** (`scripts/e2e/*.mjs`, the accessibility walk, the CSP check) and the geometry
+  baseline, the vetting comparison and `upgrade-proof.js`: not re-run. I did not check prices against the
+  vetting set.
+- **`encryption.js`, `migration.js`, `retention-encryption.js`, `memo-check.js`**: their changes were read
+  and judged; the adapted scripts were not re-run. `master-upgrade-access.js` covers the upgrade from
+  master's database from the access side.
+- **Whether each slug shared by catalogue versions 3 and 4 is the same physical material**: the history
+  keeps prices, not names.
+- **The quote view under a rate table** (author's open item 5) and the fingerprint cost by itself (item 4).
+- **The author's scratch logs** were not read, as instructed.
