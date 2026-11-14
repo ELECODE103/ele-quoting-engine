@@ -385,7 +385,7 @@ const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#toke
     await page.getByLabel("Full Name").fill("Browser Check");
     await page.getByLabel("Street Address").fill("1 Test Street");
     await page.getByLabel("City").fill("Elgin");
-    await page.getByLabel("State").fill("IL");
+    await page.getByLabel("State").selectOption("IL");
     await page.getByLabel("ZIP Code").fill("60120");
     await page.getByRole("region", { name: "Confirm your email address" }).waitFor({ state: "hidden", timeout: 30000 });
     // Stripe is stubbed in the server: its "hosted page" is the order's own return URL, already paid.

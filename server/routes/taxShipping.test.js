@@ -259,7 +259,8 @@ const cents = (n) => Math.round(n * 100) / 100;
     }
     assert.strictEqual(ordersDB.query((o) => o.quoteId === q.body.quoteId).length, 0);
     assert.strictEqual(quotesDB.getById(q.body.quoteId).status, "draft", "the quote can still be bought for an address we do ship to");
-    assert.strictEqual((await checkout(q.body.quoteId, { shippingState: "Illinois" })).status, 200);
+    // (The state and the ZIP code have to agree since 2026-11-13, so the Illinois address is given an Illinois ZIP code.)
+    assert.strictEqual((await checkout(q.body.quoteId, { shippingState: "Illinois", shippingCity: "Springfield", shippingZip: "62701" })).status, 200);
   });
 
   test("rate table: an order over the parcel weight limit is not priced: it goes to a firm quote, with the reason", async () => {
@@ -613,7 +614,8 @@ const cents = (n) => Math.round(n * 100) / 100;
   test("Stripe Tax: an address Stripe cannot place is refused in words, and no order is left behind", async () => {
     const q = await price(2);
     h.stripe.failCustomer = true;
-    const c = await checkout(q.body.quoteId, { shippingZip: "00000" });
+    // A ZIP code of the right shape, in the right state, that Stripe cannot place ("00000" is no longer let through to Stripe at all: it is not a ZIP code).
+    const c = await checkout(q.body.quoteId, { shippingZip: "43299" });
     assert.deepStrictEqual([c.status, c.body.code], [400, "tax-address"]);
     assert.ok(/couldn't work out sales tax for that address/.test(c.body.error));
     assert.strictEqual(ordersDB.query((o) => o.quoteId === q.body.quoteId).length, 0);

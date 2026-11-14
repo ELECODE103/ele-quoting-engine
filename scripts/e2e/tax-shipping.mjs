@@ -140,7 +140,7 @@ async function fillAddress(page, { pickup = false } = {}) {
   if (pickup) return;
   await page.locator('#co-street').fill(SHIP.street);
   await page.locator('#co-city').fill(SHIP.city);
-  await page.locator('#co-state').fill(SHIP.state);
+  await page.locator('#co-state').selectOption(SHIP.state);
   await page.locator('#co-zip').fill(SHIP.zip);
 }
 /** Pay (the stubbed Stripe page is the return URL, already paid) and land on the paid order page. Returns the order id. */

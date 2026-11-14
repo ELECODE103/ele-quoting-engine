@@ -39,6 +39,44 @@ const money = (n) => "$" + Number(n || 0).toLocaleString("en-US", { minimumFract
 /** The current rule set (schema defaults with the admin's stored values laid over them). */
 const COUNTRY_ERROR = "Choose the country from the list: we could not read the one that was sent.";
 
+/**
+ * The ship-to block of a request, cleaned and checked. One place for every route that takes an
+ * address: instant checkout, a firm-quote request, a firm-quote acceptance, the owner's phone order.
+ *
+ * The country is a two-letter code or the request is refused. For a United States address the state
+ * is read the ways people write it ("Ill.", "N.Y.", "D.C.", "Washington DC") and stored as its
+ * two-letter code, and it is held against the ZIP code (services/usAddress.js; review of 2026-11-13,
+ * N-03): a state that is not the ZIP code's state is refused, in words that ask the buyer to check
+ * the address. A ZIP code in Alaska, Hawaii, a territory or a military post office is not a mistake:
+ * it comes back `contiguous: false`, whatever the state box says, and the caller decides what that
+ * means (no parcel price online; fine on a firm quote, which a person prices).
+ *
+ * @param {object} body    the request body (shippingName … shippingCountry)
+ * @param {{ pickup?: boolean }} [o]  pickup: nothing is shipped, only the name is kept
+ * @returns {{ ok: true, address: object, contiguous: boolean } | { ok: false, status: 400, code: string, error: string, field?: string }}
+ */
+function shipTo(body = {}, { pickup = false } = {}) {
+  const address = {
+    shippingName: sanitizeString(body.shippingName || "", 200),
+    shippingAddress: sanitizeString(body.shippingAddress || "", 500),
+    shippingCity: sanitizeString(body.shippingCity || "", 100),
+    shippingState: sanitizeString(body.shippingState || "", 100),
+    shippingZip: sanitizeString(body.shippingZip || "", 20),
+    shippingCountry: shipping.countryCode(body.shippingCountry),
+  };
+  if (pickup) {
+    // Nothing is shipped: only the name of who is collecting is kept.
+    if (!address.shippingName) return { ok: false, status: 400, code: "pickup-name", error: "Tell us who is picking the order up." };
+    return { ok: true, address: { ...address, shippingAddress: "", shippingCity: "", shippingState: "", shippingZip: "", shippingCountry: "US" }, contiguous: true };
+  }
+  // The country is one of a list on the page: a two-letter code. Anything else is not stored.
+  if (!address.shippingCountry) return { ok: false, status: 400, code: "ship-country", error: COUNTRY_ERROR };
+  if (address.shippingCountry !== "US") return { ok: true, address, contiguous: false };
+  const checked = require("./usAddress").checkUsAddress({ state: address.shippingState, zip: address.shippingZip });
+  if (!checked.ok) return { ok: false, status: 400, code: checked.code, error: checked.error, field: checked.field };
+  return { ok: true, address: { ...address, shippingState: checked.state, shippingZip: checked.zip }, contiguous: checked.contiguous };
+}
+
 function currentRules() {
   const row = pricingDB.getAll()[0];
   return ruleSchema.mergeRules(row && row.rules && typeof row.rules === "object" ? row.rules : {});
@@ -198,30 +236,19 @@ function resolve(quote, body = {}, { rules = currentRules(), certificate = null,
   if (method === "carrier-account" && !s.carrierAccount) return { ok: false, status: 400, code: "shipping-option", error: "Shipping on your own carrier account isn't offered. Choose another delivery option." };
   if (method === "pickup" && !s.pickup) return { ok: false, status: 400, code: "shipping-option", error: "Pickup isn't offered. Choose another delivery option." };
 
-  const address = {
-    shippingName: sanitizeString(body.shippingName || "", 200),
-    shippingAddress: sanitizeString(body.shippingAddress || "", 500),
-    shippingCity: sanitizeString(body.shippingCity || "", 100),
-    shippingState: sanitizeString(body.shippingState || "", 100),
-    shippingZip: sanitizeString(body.shippingZip || "", 20),
-    shippingCountry: shipping.countryCode(body.shippingCountry),
-  };
-  // The country is one of a list on the page: a two-letter code. Anything else is not stored.
-  if (method !== "pickup" && !address.shippingCountry) return { ok: false, status: 400, code: "ship-country", error: COUNTRY_ERROR };
-
   let carrier = null;
   if (method === "carrier-account") {
     carrier = shipping.cleanCarrierAccount({ carrier: body.carrier, account: body.carrierAccount, service: body.carrierService });
     if (!carrier.ok) return { ok: false, status: 400, code: "carrier-account", error: carrier.error };
   }
-  if (method === "pickup") {
-    // Nothing is shipped: only the name of who is collecting is kept.
-    if (!address.shippingName) return { ok: false, status: 400, code: "pickup-name", error: "Tell us who is picking the order up." };
-    Object.assign(address, { shippingAddress: "", shippingCity: "", shippingState: "", shippingZip: "", shippingCountry: "US" });
-  }
+  // The ship-to address, with the state held against the ZIP code (shipTo above).
+  const to = shipTo(body, { pickup: method === "pickup" });
+  if (!to.ok) return to;
+  const address = to.address;
 
   const q = quoteParts(quote, rules, priced);
-  const ship = method === "ship" ? shipping.atDestination(q.fresh, { country: address.shippingCountry, state: address.shippingState }, rules) : q.fresh;
+  // "We ship it" has a price only inside the contiguous United States, by the state AND the ZIP code.
+  const ship = method === "ship" ? shipping.atDestination(q.fresh, { country: address.shippingCountry, state: address.shippingState, zip: address.shippingZip }, rules) : q.fresh;
   const sum = totalFor(method, q, ship);
   if (sum.total === null) {
     return { ok: false, status: 409, code: "shipping-manual", error: `${ship.reason} ${s.carrierAccount || s.pickup ? "Choose another delivery option, or request a firm quote." : "Request a firm quote and we will price the freight."}`, reasonCode: ship.reasonCode };
@@ -274,24 +301,16 @@ function resolveFirm(body = {}, { rules = currentRules(), certificate = null } =
   if (!method) return { ok: false, status: 400, code: "shipping-option", error: "Choose how you want the order delivered." };
   if (method === "carrier-account" && !s.carrierAccount) return { ok: false, status: 400, code: "shipping-option", error: "Shipping on your own carrier account isn't offered. Choose another delivery option." };
   if (method === "pickup" && !s.pickup) return { ok: false, status: 400, code: "shipping-option", error: "Pickup isn't offered. Choose another delivery option." };
-  const address = {
-    shippingName: sanitizeString(body.shippingName || "", 200),
-    shippingAddress: sanitizeString(body.shippingAddress || "", 500),
-    shippingCity: sanitizeString(body.shippingCity || "", 100),
-    shippingState: sanitizeString(body.shippingState || "", 100),
-    shippingZip: sanitizeString(body.shippingZip || "", 20),
-    shippingCountry: shipping.countryCode(body.shippingCountry),
-  };
-  if (method !== "pickup" && !address.shippingCountry) return { ok: false, status: 400, code: "ship-country", error: COUNTRY_ERROR };
   let carrier = null;
   if (method === "carrier-account") {
     carrier = shipping.cleanCarrierAccount({ carrier: body.carrier, account: body.carrierAccount, service: body.carrierService });
     if (!carrier.ok) return { ok: false, status: 400, code: "carrier-account", error: carrier.error };
   }
-  if (method === "pickup") {
-    if (!address.shippingName) return { ok: false, status: 400, code: "pickup-name", error: "Tell us who is picking the order up." };
-    Object.assign(address, { shippingAddress: "", shippingCity: "", shippingState: "", shippingZip: "", shippingCountry: "US" });
-  }
+  // The same address check as instant checkout (shipTo above). A firm quote is priced by a person,
+  // so an address outside the contiguous states is not refused here: it is the address the price is for.
+  const to = shipTo(body, { pickup: method === "pickup" });
+  if (!to.ok) return to;
+  const address = to.address;
   const exemption = tax.exemptionFor({ declared: body.taxExempt, reason: body.taxExemptReason, hasCertificate: Boolean(certificate && certificate.path) }, rules);
   if (!exemption.ok) return { ok: false, status: 400, code: exemption.code, error: exemption.error };
   return { ok: true, method, address, carrier, shippingMode: "firm", packedWeightLb: null, taxMode: tax.settings(rules).mode, exemption, certificate: exemption.declared ? certificate : null };
@@ -347,4 +366,4 @@ function pickupDisclosed(order) {
   return order.shippingMethod === "pickup" && Boolean(order.paidAt) && !["pending_payment", "pending_po", "cancelled", "expired", "refunded", "paid_amount_mismatch"].includes(order.status);
 }
 
-module.exports = { currentRules, shipmentFor, quoteParts, totalFor, optionsFor, viewFor, gateWithShipping, resolve, firmView, resolveFirm, orderFields, orderView, pickupDisclosed, money };
+module.exports = { shipTo, currentRules, shipmentFor, quoteParts, totalFor, optionsFor, viewFor, gateWithShipping, resolve, firmView, resolveFirm, orderFields, orderView, pickupDisclosed, money };

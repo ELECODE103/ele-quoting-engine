@@ -273,7 +273,7 @@ async function phaseWithKeys() {
     await buyer.getByLabel('Full Name').fill('Dana Buyer');
     await buyer.getByLabel('Street Address').fill('100 Main St');
     await buyer.getByLabel('City').fill('Elgin');
-    await buyer.getByLabel('State').fill('IL');
+    await buyer.getByLabel('State').selectOption('IL');
     await buyer.getByLabel('ZIP Code').fill('60120');
     await shot(buyer, 'checkout-confirm-email', { fullPage: false });
     const direct = await apiFrom(buyer, 'POST', '/api/orders/checkout-session', { quoteId: state.buyerQuote, shippingName: 'Dana Buyer', shippingAddress: '100 Main St', shippingCity: 'Elgin', shippingState: 'IL', shippingZip: '60120' });
@@ -1126,7 +1126,7 @@ async function phaseReviewFixes() {
     await page.getByLabel('Full Name').fill('Erin Buyer');
     await page.getByLabel('Street Address').fill('5 Mill Rd');
     await page.getByLabel('City').fill('Elgin');
-    await page.getByLabel('State').fill('IL');
+    await page.getByLabel('State').selectOption('IL');
     await page.getByLabel('ZIP Code').fill('60120');
     const pay = page.getByRole('button', { name: /Pay and place order/ }); // button wording changed in the journey pass (merge 2026-11-12: this section came from review-fixes)
     await pay.click();

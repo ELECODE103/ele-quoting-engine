@@ -23,6 +23,22 @@ finding. Nothing here has been merged or deployed; the site stays offline until 
 
 A figure that is not in this file has not been measured.
 
+**Corrections (2026-11-13, after the independent review of this work,
+`docs/security/rereview-fixes-review-2026-11-13.md`, section 9).** Four statements in this file were
+wrong or said more than was shown, and are corrected where they stand, each marked "Corrected":
+the time an unpaid order keeps its files after its payment page closes (30 minutes, not ten); "a
+material you deleted stays deleted" (not when the whole list is emptied); a new price-baseline file
+that section 6 did not mention; and the repeat-email counts for F-05, which were measured without a
+mail provider. The review also measured four things this file did not, and its figures are the ones
+to hold: a visitor on a new connection waits longer during a checkout than the F-08 figures here
+show (its section F-08 and N-09); server memory reached 1,000 MB in its run of `memory-poison.js`,
+not the 463 MB reported here; F-03 decided the destination from the state box alone, so a ZIP code
+in Hawaii under a mainland state was sold (its N-03), and a firm quote could be accepted to any
+address (its N-05); and "a phone order is never touched" by the storage clean-up was true of the
+closing step but not of the list the clean-up built (its section F-12). The last three are fixed in
+`docs/security/review-conditions-fixes-2026-11-13.md`. No behaviour was changed to make these
+corrections.
+
 ## 1. Bottom line
 
 All thirteen findings are fixed in code, each with new tests, and each measured against the line the
@@ -134,8 +150,10 @@ had no payment page, and the clean-up never touched a file held that way. Accoun
 and never paid filled the store.
 
 **What changed.** An unpaid card order protects its files only while it can still be paid: until its
-payment page closes (plus the ten minutes the expiry sweep allows), or for ten minutes when no page
-was ever opened. The 48-hour floor and its setting are gone. When the store is still past the line
+payment page closes plus 30 minutes (`AFTER_SESSION_MS` in `server/services/rowRetention.js`), or for
+ten minutes when no page was ever opened. (Corrected: this said "plus the ten minutes the expiry
+sweep allows". The code allows 30 minutes after the page closes; ten minutes is the allowance for an
+order with no page.) The 48-hour floor and its setting are gone. When the store is still past the line
 where visitors are turned away after everything else has been cleared, unpaid card orders are closed
 from whoever holds the most first: the payment page is closed at Stripe first (an order that turns
 out to be paid is settled; one Stripe cannot answer for is left alone), the buyer is emailed that
@@ -187,7 +205,8 @@ which replaced everything.
 version the database was seeded from (`server/config/seedSnapshots/`: versions 2 and 3 read from git,
 version 4 from the current file). A field that still holds the old default takes the new one;
 anything else is yours and stays: a price, the on/off switch both ways, machinability, the thickness
-list, grades, a name, a material you added, a material you deleted. A row whose slug left the
+list, grades, a name, a material you added, a material you deleted (corrected: unless you deleted
+every one of them; see judgment call 4 in section 5). A row whose slug left the
 catalogue is not brought back, and what you had changed on it is reported. Every change kept and not
 kept is one line in the start-up log, one row in the admin change log and one line on Admin →
 Pricing (checked in a browser at both widths). The upgrade is one database change. A marker that is
@@ -229,6 +248,12 @@ start-up, and every five minutes; a refused send waits and is given up, in the l
 
 **Measured.** `tools/security/rereview-fixes/paid-mail-kill.js`, 40 hard kills at a random moment in
 the webhook, exact counts. Same event delivered again: 0 orders untold, 38 told once, 2 told twice.
+(Corrected: every "told twice" count in this file, here and in section 4, was measured on a test
+server with NO mail provider configured. That closes the record of an owed email at once and is not
+the production path, so these counts understate repeats. The independent review measured it with a
+provider stand-in switched on: 59 of 98 kills inside the window sent the message a second time, each
+with the same Idempotency-Key, and 0 of 102 left a paid order untold. "Nobody untold" stands; "a
+repeat is rare" does not, and rests on the mail provider dropping a repeated key.)
 Nothing delivered again (start-up only): 0 untold, 32 once, 8 twice. The reviewer's section D, 30
 kills: 0 paid orders with nobody emailed (was 5 of 8 and 7 of 8). On the final run all 50 of that
 section's kills landed before the answer (section 4), so `paid-mail-kill.js`, which reports how many
@@ -358,8 +383,8 @@ acceptance line.
 | `storage-pin-orders-full.js pin 1` (F-12 at full scale: 2,048 MB) | Holds. 30 accounts and 90 unpaid orders; the flood took 364 s because the clean-up was already closing orders; 99 % at the end of the flood; 62 s later 82 %, a visitor and a new customer uploaded; 81 orders closed, 81 buyers emailed |
 | `units-flip-worst.js`, new database, 40-hole drawing | Quiet: longest hold 59 ms, health median 18 ms or under, follow-up work over in 1.1 to 1.4 s |
 | the same, 12.7 MB database, 1,600-hole drawing | Quiet: longest hold 96 ms, follow-up over in 5.0 to 5.8 s. Loaded: longest hold 195 ms, health median 3 to 5 ms, follow-up over in 17 to 20 s; another visitor's re-price median 26 to 40 ms, worst 256 ms, never refused |
-| `paid-mail-kill.js 40 40 event` (F-05: killed around the payment event) | 40 kills, 33 before the answer, 19 with the payment already on disk: 0 paid orders with no email; 36 got the emails once, 4 twice |
-| `paid-mail-kill.js 40 40 start` (delivery left to the restart alone) | 40 kills, 26 before the answer, 18 with the payment already on disk: 0 with no email; 35 once, 5 twice |
+| `paid-mail-kill.js 40 40 event` (F-05: killed around the payment event) | 40 kills, 33 before the answer, 19 with the payment already on disk: 0 paid orders with no email; 36 got the emails once, 4 twice (no mail provider configured: see the correction under F-05 in section 2) |
+| `paid-mail-kill.js 40 40 start` (delivery left to the restart alone) | 40 kills, 26 before the answer, 18 with the payment already on disk: 0 with no email; 35 once, 5 twice (no mail provider configured, as above) |
 
 ### Other proofs
 
@@ -408,6 +433,10 @@ support code and is fixed there (section 6); it did not recur in the 50 rounds a
    two (up to about 25 s for the heaviest case under load) a saved quote can show the old price; it
    cannot be ordered or sent as a request at that price.
 4. **F-10, what counts as yours.** A material you deleted stays deleted and one you added is kept.
+   (Corrected: that is true through a catalogue upgrade, and while at least one material is left. If
+   the materials list is emptied completely, the next start reads an empty list as a new database
+   and seeds the whole default catalogue again; the same for finishes. Leave one row, switched off,
+   if you ever want an empty list.)
    A row that existed before keeps its id. When the version cannot be established the lists are left
    alone AND the marker is set to the current version, so the next real upgrade treats what is there
    as yours.
@@ -437,9 +466,9 @@ support code and is fixed there (section 6); it did not recur in the 50 rounds a
 | `server/config/seedCarry.test.js` | rewritten and extended | Three cases asserted what F-10 and F-11 remove: only prices carried, a hand-added row deleted, an unknown version replaces everything |
 | `server/services/shipping.test.js` | three cases | They asserted that the formula never goes to a firm quote and has no destination rule: F-03 |
 | `server/models/taxShippingMigration.test.js` | the fixture's old quote is given the part its line names | The line pointed at a part that was not in the database; a shipping price now depends on the part's size in every mode (F-03). A quote without its part cannot be checked out anyway |
-| `tools/geometry-bench/baseline/` (held by `server/geometry/speed.test.js`) | re-recorded with the command the test's header gives | It records whole quotes, shipping included. Compared field by field with the old one: 404 priced cases in 113 files differ, only in the shipping block, `shippingEstimate` and `orderTotal` (orders of 100 pieces that pack to over 50 lb). No geometry, DFM or line-price field differs |
+| `tools/geometry-bench/baseline/` (held by `server/geometry/speed.test.js`) | re-recorded with the command the test's header gives | It records whole quotes, shipping included. Compared field by field with the old one: 404 priced cases in 113 files differ, only in the shipping block, `shippingEstimate` and `orderTotal` (orders of 100 pieces that pack to over 50 lb). No geometry, DFM or line-price field differs. (Corrected: the re-recording also wrote one snapshot that had no earlier version, `snapshots/soup-wide-100k.json.gz`, 252 bytes. It records that this test model is refused as "not measurable" and so has no price; it was in the test set before and had no recorded snapshot. The first version of this row did not mention it) |
 | `server/ops/shutdown.test.js` | one case added | The kill-during-a-save case the audit said was missing |
-| `server/testSupport/harness.js` | the unpaid-order ceilings are lifted for suites unless asked for | Most suites place many unpaid orders from one account |
+| `server/testSupport/harness.js` | the unpaid-order ceilings are lifted for suites unless asked for | Most suites place many unpaid orders from one account. (Corrected: the comment in the harness named `routes/orderCaps.test.js` as the suite that runs the real ceilings; no such file existed. `routes/orderList.test.js` ran them, for the per-account ceilings only. Since the review-conditions fixes there is a `routes/orderCaps.test.js`, which runs the per-address ceilings too, and the comment names both) |
 | `server/testSupport/liveServer.js` | keeps a folder the caller handed in when a start is refused; skips an outbox file a kill cut short | To look at what a refused start left on disk (F-04); the reader stopped the reviewer's script once in 30 kill rounds |
 | `tools/security/review-uploads/preload-stubs.js` (the local Stripe stand-in) | session ids unique per process; `checkout.sessions.expire` added | It handed out the same id after a restart (real Stripe never does; the server used to swallow the failed insert). It had no way to close a payment page, which real Stripe has, so nothing that depends on closing one could be shown |
 | `scripts/dev/upgrade-proof.js` | extended for F-10; the fixture's unpaid orders are given a recent date | Since 2026-11-13 01:17 UTC the 24-hour payment window closed the fixture's two unpaid orders at the first start, and two checks failed on the calendar |

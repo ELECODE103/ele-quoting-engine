@@ -49,9 +49,8 @@ const G_PER_LB = 453.59237;
 
 const METHODS = ["ship", "carrier-account", "pickup"];
 const CARRIERS = ["UPS", "FedEx", "Other"];
-// The contiguous states and DC: the only destinations a table or "included" price is good for.
-const CONTIGUOUS = new Set("AL AZ AR CA CO CT DE DC FL GA ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" "));
-const STATE_NAMES = { alabama: "AL", arizona: "AZ", arkansas: "AR", california: "CA", colorado: "CO", connecticut: "CT", delaware: "DE", "district of columbia": "DC", florida: "FL", georgia: "GA", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA", kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD", massachusetts: "MA", michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO", montana: "MT", nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND", ohio: "OH", oklahoma: "OK", oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC", "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT", virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI", wyoming: "WY", alaska: "AK", hawaii: "HI", "puerto rico": "PR" };
+// Which state a ZIP code is in, how a state is spelled, and which are the contiguous states: services/usAddress.js.
+const usAddress = require("./usAddress");
 
 const num = (v, fallback) => (v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : fallback);
 const cents = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -313,15 +312,29 @@ function storedFor(quote) {
 
 // ─── Destination ─────────────────────────────────────────────────────────────
 
-/** "il", "Illinois", " IL " → "IL"; anything else comes back trimmed and upper-cased. */
+/** "il", "Illinois", "Ill.", "N.Y.", "D.C." → the two-letter code; anything that is not a state comes back trimmed and upper-cased. */
 function stateCode(state) {
-  const t = String(state || "").trim();
-  return STATE_NAMES[t.toLowerCase()] || t.toUpperCase();
+  return usAddress.stateCode(state) || String(state || "").trim().toUpperCase();
 }
 
-/** Is this ship-to address one a table or "included" price covers (the contiguous United States)? */
-function destinationCovered({ country, state } = {}) {
-  return countryCode(country) === "US" && CONTIGUOUS.has(stateCode(state));
+/**
+ * Is this ship-to address one a parcel price covers (the contiguous United States)?
+ *
+ * By the STATE and by the ZIP CODE (review of 2026-11-13, N-03). Until then only the state box was
+ * read, and it was free text: Honolulu 96813 typed under "CA" was sold at the mainland price. A ZIP
+ * code in Alaska, Hawaii, a territory or a military post office now makes the address "not covered"
+ * whatever the state box says, and so does a ZIP code that is not one, or one that is in another
+ * state than the one chosen (the order routes refuse that last case in words before they get here:
+ * services/checkout.js shipTo). Without a ZIP code (the admin's "what would this cost" example,
+ * which names a state only) the state alone decides.
+ */
+function destinationCovered({ country, state, zip } = {}) {
+  if (countryCode(country) !== "US") return false;
+  const code = usAddress.stateCode(state);
+  if (!code || !usAddress.isContiguous(code)) return false;
+  if (zip === undefined || zip === null || String(zip).trim() === "") return true;
+  const checked = usAddress.checkUsAddress({ state: code, zip });
+  return checked.ok && checked.contiguous;
 }
 
 /**

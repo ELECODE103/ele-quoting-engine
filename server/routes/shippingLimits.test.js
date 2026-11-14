@@ -111,5 +111,71 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
     assert.strictEqual(ordersDB.getById(usa.body.orderId).shippingCountry, "US");
   });
 
+  // ── Review of 2026-11-13, N-03: the ZIP code decides as well as the state ──────────────────────
+  test("a ZIP code outside the contiguous states under a mainland state is not sold at the parcel price (the review sold 6 of 6)", async () => {
+    const tricks = [
+      ["Honolulu 96813 under CA", { shippingState: "CA", shippingCity: "Honolulu", shippingZip: "96813" }, 409, "shipping-manual"],
+      ["Anchorage 99501 under WA", { shippingState: "WA", shippingCity: "Anchorage", shippingZip: "99501" }, 409, "shipping-manual"],
+      ["San Juan 00901 under FL", { shippingState: "FL", shippingCity: "San Juan", shippingZip: "00901" }, 409, "shipping-manual"],
+      ["military 09012 under NY", { shippingState: "NY", shippingCity: "APO", shippingZip: "09012" }, 409, "shipping-manual"],
+      ["Guam 96910 under CA", { shippingState: "CA", shippingCity: "Hagatna", shippingZip: "96910" }, 409, "shipping-manual"],
+      ["Hamburg typed into the city, state DE, postcode 20095", { shippingState: "DE", shippingCity: "Hamburg, Germany", shippingAddress: "Jungfernstieg 1, 20095 Hamburg, GERMANY", shippingZip: "20095" }, 400, "address-mismatch"],
+    ];
+    for (const [label, where, status, code] of tricks) {
+      const q = await sheet(10, 12, thin);
+      const c = await checkout(q.quoteId, where, q.orderTotal);
+      assert.deepStrictEqual([c.status, c.body.code], [status, code], `${label}: ${c.text.slice(0, 200)}`);
+      if (code === "shipping-manual") assert.ok(/contiguous United States/.test(c.body.error) && /firm quote/.test(c.body.error), c.body.error);
+      else assert.ok(/don't match/.test(c.body.error) && /Check the address/.test(c.body.error), c.body.error);
+      assert.strictEqual(ordersDB.query((o) => o.quoteId === q.quoteId).length, 0, `${label}: no order`);
+    }
+  });
+
+  test("a state that is not the ZIP code's state is refused in words, and the same quote is then bought with the address put right", async () => {
+    const q = await sheet(10, 12, thin);
+    const wrong = await checkout(q.quoteId, { shippingState: "IL", shippingCity: "Columbus", shippingZip: "43215" }, q.orderTotal);
+    assert.deepStrictEqual([wrong.status, wrong.body.code], [400, "address-mismatch"]);
+    assert.strictEqual(wrong.body.error, "The state and the ZIP code don't match: ZIP code 43215 is in Ohio, and the state chosen is Illinois. Check the address and try again.");
+    for (const [over, code] of [[{ shippingZip: "" }, "ship-zip"], [{ shippingZip: "6270" }, "ship-zip"], [{ shippingZip: "00000" }, "ship-zip"], [{ shippingState: "" }, "ship-state"], [{ shippingState: "Narnia" }, "ship-state"]]) {
+      const c = await checkout(q.quoteId, over, q.orderTotal);
+      assert.deepStrictEqual([c.status, c.body.code], [400, code], JSON.stringify(over));
+    }
+    assert.strictEqual(ordersDB.query((o) => o.quoteId === q.quoteId).length, 0);
+    const right = await checkout(q.quoteId, { shippingState: "OH", shippingCity: "Columbus", shippingZip: "43215" }, q.orderTotal);
+    assert.strictEqual(right.status, 200, right.text.slice(0, 200));
+    assert.strictEqual(ordersDB.getById(right.body.orderId).total, q.orderTotal, "at the quoted total: nothing about the price changed");
+  });
+
+  test("a mainland buyer who writes the state another way is not sent to a firm quote: D.C., Washington DC, Ill., N.Y. (the review: 4 of 4 refused)", async () => {
+    const ways = [["D.C.", "Washington", "20001", "DC"], ["Washington DC", "Washington", "20001", "DC"], ["Ill.", "Chicago", "60601", "IL"], ["N.Y.", "Albany", "12207", "NY"], [" new york ", "Albany", "12207-0001", "NY"], ["illinois", "Springfield", "62701", "IL"]];
+    for (const [state, city, zip, code] of ways) {
+      const q = await sheet(10, 12, thin);
+      const c = await checkout(q.quoteId, { shippingState: state, shippingCity: city, shippingZip: zip }, q.orderTotal);
+      assert.strictEqual(c.status, 200, `${state}: ${c.text.slice(0, 200)}`);
+      const order = ordersDB.getById(c.body.orderId);
+      assert.deepStrictEqual([order.shippingState, order.total, order.shippingCost > 12], [code, q.orderTotal, true], "stored as the two-letter code, at the quoted total, with the formula's shipping");
+    }
+  });
+
+  test("an unpaid order to Ohio cannot be re-addressed to a Hawaii ZIP code under a mainland state", async () => {
+    const q = await sheet(10, 12, thin);
+    const first = await checkout(q.quoteId, { shippingState: "OH", shippingCity: "Columbus", shippingZip: "43215" }, q.orderTotal);
+    assert.strictEqual(first.status, 200, first.text.slice(0, 200));
+    const again = await checkout(q.quoteId, { shippingState: "CA", shippingCity: "Honolulu", shippingZip: "96813" }, q.orderTotal);
+    assert.deepStrictEqual([again.status, again.body.code], [409, "shipping-manual"]);
+    const order = ordersDB.getById(first.body.orderId);
+    assert.deepStrictEqual([order.shippingState, order.shippingZip, order.status], ["OH", "43215", "pending_payment"]);
+  });
+
+  test("the owner's phone order: a state and ZIP code that disagree are caught when the order is entered", async () => {
+    const owner = await h.adminLogin();
+    const q = await sheet(10, 12, thin);
+    const slip = await h.post("/api/orders", { quoteId: q.quoteId, ...SHIP, shippingState: "IN" }, owner);
+    assert.deepStrictEqual([slip.status, slip.body.code], [400, "address-mismatch"], slip.text.slice(0, 200));
+    const ok = await h.post("/api/orders", { quoteId: q.quoteId, ...SHIP, shippingState: "Ill." }, owner);
+    assert.strictEqual(ok.status, 201, ok.text.slice(0, 200));
+    assert.strictEqual(ordersDB.getById(ok.body.orderId).shippingState, "IL");
+  });
+
   await run(h.stop);
 })().catch((err) => { console.error(err); process.exit(1); });

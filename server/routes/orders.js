@@ -565,6 +565,14 @@ router.post("/", authenticate, requireAdmin, requireShipToLines, (req, res) => {
 
     // Sanitize all user-provided shipping fields
     const cleanShippingCost = nonNegativeNumber(shippingCost, 0);
+    // A phone order's address is the owner's own typing, and its shipping is the figure typed with it:
+    // nothing here is priced by destination. When a United States state or ZIP code is given, the two
+    // are still held against each other (services/checkout.js shipTo; review of 2026-11-13, N-03), so
+    // a slip of the keyboard is caught here and not at the label.
+    const usCountry = (require("../services/shipping").countryCode(shippingCountry) || "US") === "US";
+    const typedTo = usCountry && (String(shippingState || "").trim() || String(shippingZip || "").trim())
+      ? checkout.shipTo({ ...req.body, shippingCountry: "US" }) : null;
+    if (typedTo && !typedTo.ok) return res.status(typedTo.status).json({ error: typedTo.error, code: typedTo.code, field: typedTo.field });
 
     // Create the order, its lines and the quote's new status as ONE change to the database
     // (models/database.js transaction(): all of it reaches the file, or none of it).
@@ -578,8 +586,8 @@ router.post("/", authenticate, requireAdmin, requireShipToLines, (req, res) => {
       shippingName: sanitizeString(shippingName || "", 200),
       shippingAddress: sanitizeString(shippingAddress || "", 500),
       shippingCity: sanitizeString(shippingCity || "", 100),
-      shippingState: sanitizeString(shippingState || "", 100),
-      shippingZip: sanitizeString(shippingZip || "", 20),
+      shippingState: typedTo ? typedTo.address.shippingState : sanitizeString(shippingState || "", 100),
+      shippingZip: typedTo ? typedTo.address.shippingZip : sanitizeString(shippingZip || "", 20),
       // (The owner's own phone order: a two-letter code, or the United States when it is not one.)
       shippingCountry: require("../services/shipping").countryCode(shippingCountry) || "US",
       shippingMethod: sanitizeString(shippingMethod || "standard", 50),

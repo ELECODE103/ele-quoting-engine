@@ -247,6 +247,10 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     // A request the server could not read as a quote at all (price-integrity fixes): nothing for the buyer to fix.
     'config-invalid': { '*': { text: `We couldn't price this as it was sent. That is most likely a page that is out of date: reload the page and try again. If it keeps happening, ask for a firm quote and a person prices it, or call ${PHONE}.`, action: 'rfq' } },
 
+    // The database file could not be written (a full disk): whatever was asked for has not gone through
+    // (server/middleware/saveGuard.js; review of 2026-11-13, N-08). One sentence wherever it happens.
+    'save-failed': { '*': { text: `We could not save that just now, so it has not gone through. That is a fault on our side. Try again in a few minutes, or ${REACH}.`, action: 'retry' } },
+
     // ─── Limits per sender, a busy moment, and models a person has to price (availability work, 2026-11-12) ───
     // Every one of these says what happened, that nothing is wrong with the buyer's work where that is true, and
     // the way on: wait (with the time, when the server gives one), keep working on what is open, sign in, or ask
@@ -322,6 +326,11 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'carrier-account': { '*': { text: 'Check the carrier and the account number: the number is 5 to 20 letters and digits. Then continue.', keep: true } },
     'pickup-name': { '*': { text: 'Tell us who is picking the order up, then continue.' } },
     'ship-country': { '*': { text: 'Choose the country from the list, then try again. Nothing was charged.' } },
+    // The state and the ZIP code of a United States address are held against each other (review of 2026-11-13, N-03;
+    // server/services/usAddress.js). The server's sentence for a mismatch names the ZIP code and both states, so it is kept.
+    'ship-state': { '*': { text: 'Choose the state from the list, then try again. Nothing was charged or sent.' } },
+    'ship-zip': { '*': { text: 'That ZIP code is not one we recognise. A ZIP code is five digits (or five and four). Check it and try again. Nothing was charged or sent.' } },
+    'address-mismatch': { '*': { text: `The state and the ZIP code of the ship-to address don't match. Check the address and try again. Nothing was charged or sent. If the address is right as typed, call ${PHONE} and we'll take it from there.`, keep: true } },
     'shipping-manual': { '*': { text: `We can't give this order a shipping price online, so nothing was charged. Choose another delivery option if one is offered, or ask for a firm quote and we price the freight${within}.`, keep: true, action: 'rfq' } },
     'tax-address': { '*': { text: `We couldn't work out sales tax for that address, so nothing was charged. Check the street, city, state and ZIP code and try again, or call ${PHONE}.` } },
     'exemption-reason': { '*': { text: 'Choose the reason this order is tax-exempt, then continue.' } },

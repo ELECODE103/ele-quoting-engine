@@ -9,6 +9,7 @@ import Notice, { FormError } from '../components/form/Notice';
 import brand from '../brand';
 import { notePendingCheckout, saveCheckoutDraft, loadCheckoutDraft } from '../utils/returnTo';
 import { DeliveryChoice, TaxExemption, deliveryPayload } from '../components/DeliveryOptions';
+import StateSelect from '../components/form/StateSelect';
 
 // Where each "settled somewhere else" refusal leads (the catalogue's `action` for the code, utils/messageCatalogue.js).
 const NEXT_STEP = {
@@ -212,14 +213,17 @@ export default function CheckoutPage() {
                     <input id="co-city" type="text" className="input" value={city} onChange={(e) => setCity(e.target.value)} autoComplete="shipping address-level2" required />
                   </div>
                   <div className="field">
-                    <label className="field-label" htmlFor="co-state">State</label>
-                    <input id="co-state" type="text" className="input" value={state} onChange={(e) => setState(e.target.value)} autoComplete="shipping address-level1" autoCapitalize="characters" required />
+                    <label className="field-label" htmlFor="co-state">{country === 'US' ? 'State' : 'State or province'}</label>
+                    {/* A United States state is chosen from a list (the server holds it against the ZIP code); a province is typed. */}
+                    {country === 'US'
+                      ? <StateSelect id="co-state" value={state} onChange={setState} autoComplete="shipping address-level1" />
+                      : <input id="co-state" type="text" className="input" value={state} onChange={(e) => setState(e.target.value)} autoComplete="shipping address-level1" autoCapitalize="characters" required />}
                   </div>
                 </div>
 
                 <div className="field-row field-row-1-1" style={{ marginBottom: 8 }}>
                   <div className="field">
-                    <label className="field-label" htmlFor="co-zip">ZIP code</label>
+                    <label className="field-label" htmlFor="co-zip">{country === 'US' ? 'ZIP code' : 'Postal code'}</label>
                     <input id="co-zip" type="text" className="input" value={zip} onChange={(e) => setZip(e.target.value)} autoComplete="shipping postal-code" inputMode={country === 'US' ? 'numeric' : 'text'} required />
                   </div>
                   <div className="field">

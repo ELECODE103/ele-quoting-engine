@@ -313,7 +313,7 @@ async function fillCheckout(page) {
   await page.getByLabel('Full Name').fill(SHIP.name);
   await page.getByLabel('Street Address').fill(SHIP.street);
   await page.getByLabel('City').fill(SHIP.city);
-  await page.getByLabel('State').fill(SHIP.state);
+  await page.getByLabel('State').selectOption(SHIP.state);
   await page.getByLabel('ZIP Code').fill(SHIP.zip);
 }
 async function fillFirmQuote(page) {

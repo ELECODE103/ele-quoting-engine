@@ -348,7 +348,7 @@ const fillCheckout = async (page) => {
   await page.locator('#co-name').fill('Dana Whitfield');
   await page.locator('#co-street').fill('410 Industrial Dr');
   await page.locator('#co-city').fill('Rockford');
-  await page.locator('#co-state').fill('IL');
+  await page.locator('#co-state').selectOption('IL');
   await page.locator('#co-zip').fill('61109');
 };
 
