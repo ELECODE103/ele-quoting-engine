@@ -31,7 +31,7 @@ anything that was in flight was run again.
 | F-12 storage side | Done: reviewer's script reproduced; `r3-pressure-collateral.js` (one run) |
 | F-02 kills, F-04 | Done: `durability-kill.js` both ways; `r3-full-disk.js` (finding N-08) |
 | F-01, F-13 | Done: `r3-units-paths.js`; author's stress reproduced |
-| F-10/F-11 | Not yet attacked |
+| F-10/F-11 | Done: `r3-catalogue-odd.js` |
 | Reorder money path | Not yet attacked |
 | Changed-tests audit, price baseline, vetting comparison | Started (five test files read); not finished |
 | Browser check of the admin panel | Not started |
@@ -233,6 +233,38 @@ the file it found.
 
 Can a stranger, over HTTP, produce a file the next start refuses? I found no way to damage the file. But
 a **full disk** makes the start refuse a perfectly good file: finding N-08.
+
+### F-10 and F-11 (the catalogue upgrade): closed, with one corner that Admin cannot reach
+
+The earlier reviewer's `catalogue-upgrade.js`: 22 held, 0 findings (was 8 findings). Reproduced.
+
+Ran `r3-catalogue-odd.js`: **25 held, 1 finding, 2 notes.**
+- **Markers, 17 of 17.** On a current catalogue carrying an edited price, an edited machinability, a
+  material switched off, a material added by hand and a material deleted, with the marker missing, null,
+  0, -1, "4", "3", "abc", 4.5, 3, 99, 1000, true, a list, an object, 1, 2, and with the pricing-rules row
+  deleted outright: the start never fails, every edit is exactly as it was, a second start changes
+  nothing, and no active material is left without a price. For all but the two real older versions (2
+  and 3) the start prints "CATALOGUE NOT UPDATED" and records it. A marker newer than the code (99, 1000)
+  is left as it is. A bad marker never means "replace everything".
+- **Odd catalogues through a real upgrade from version 3, 8 of 9.** Two rows with one slug; a row with no
+  slug; a renamed slug; rows named `__proto__`, `constructor`, `toString`, `hasOwnProperty`, `valueOf`;
+  an edited row with fields of the wrong type and a 5,000-character name; a price of a trillion, a
+  negative price and a text price; every material deleted; one material left and switched off. The start
+  never fails, nothing the owner had deleted from the old catalogue comes back (the eight resins that are
+  new in this version arrive, which is right), no unusable price is left in force, and each case prints
+  lines that name what was kept or could not be.
+- **The one that does not hold (Low, was there):** with every finish deleted, the upgrade itself keeps
+  them deleted and says so, and the NEXT start seeds all 32 default finishes again, printing only "Seeding
+  finishes...". The same goes for an empty materials table. An empty table is read as "a new database".
+  Admin has no button that deletes a finish (there is no such route), and nobody deletes every material,
+  so I do not expect the owner to meet this.
+- Note (was there, narrowed by the author): a catalogue in which no material has a price in any of three
+  fields is still replaced by the defaults at start, finishes included, with nothing in the change log.
+  It now needs every row to be like that, not just the first.
+
+Read: the upgrade is one database change, so a failure part way leaves the catalogue as it was. That the
+kept and not-kept lines appear on Admin → Pricing is from the author's browser run, which I have not
+repeated yet.
 
 ### F-12 (unpaid orders hold the file store): closed for unpaid orders; the store can still be held for an hour at a time by new files (N-07, was there)
 
