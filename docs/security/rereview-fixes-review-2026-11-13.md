@@ -107,7 +107,7 @@ author's claim that the proofs made on `b184dc1` stand for the head commit is ri
 
 ## 4. Per original finding
 
-(Filled in as each is finished. Findings not listed here have not been judged yet.)
+All thirteen are here, in the order they were worked. The table in section 2 has them in one view.
 
 ### F-01 (units switched while an order is made): closed
 
@@ -318,8 +318,8 @@ Ran `r3-catalogue-odd.js`: **25 held, 1 finding, 2 notes.**
   It now needs every row to be like that, not just the first.
 
 Read: the upgrade is one database change, so a failure part way leaves the catalogue as it was. That the
-kept and not-kept lines appear on Admin → Pricing is from the author's browser run, which I have not
-repeated yet.
+kept and not-kept lines appear on Admin → Pricing: the author's browser script, which I re-ran (58 of 58),
+checks that notice in both its forms at both widths.
 
 ### F-12 (unpaid orders hold the file store): closed for unpaid orders; the store can still be held for an hour at a time by new files (N-07, was there)
 
