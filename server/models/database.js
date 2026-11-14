@@ -398,7 +398,16 @@ function unusableReason(SQLlib, buffer) {
     const bytesBefore = fileSize();
     const moved = require("./partPayloadMigration").apply(dbInstance);
 
-    saveToDisk();
+    // The one write every start makes. If it fails because the disk is full, the file that was read
+    // is whole and untouched (the write goes to a temporary file first): the start is refused with
+    // THAT reason, not with "the database cannot be used" (review of 2026-11-13, N-08).
+    try { saveToDisk(); } catch (err) {
+      if (!isDiskFull(err)) throw err;
+      openFailure = { reason: `there is no space left on the disk that holds it (${String((err.cause && err.cause.message) || err.message).slice(0, 120)})`, bytes: null, diskFull: true };
+      dbInstance = null;
+      readyResolve();
+      return;
+    }
     if (moved.vacuumed) console.log(`  Database file: ${(bytesBefore / 1e6).toFixed(1)} MB → ${(fileSize() / 1e6).toFixed(1)} MB after moving part payloads out.`);
     payloadMigration = moved;
     readyResolve();
@@ -412,10 +421,10 @@ function unusableReason(SQLlib, buffer) {
   }
 })();
 
-/** null when the database is open; otherwise why it is not: { reason, path }. */
+/** null when the database is open; otherwise why it is not: { reason, path, bytes, diskFull }. */
 function openError() {
   if (dbInstance && !openFailure) return null;
-  return { reason: openFailure ? openFailure.reason : "it has not been opened", path: DB_PATH, bytes: openFailure ? openFailure.bytes : null };
+  return { reason: openFailure ? openFailure.reason : "it has not been opened", path: DB_PATH, bytes: openFailure ? openFailure.bytes : null, diskFull: Boolean(openFailure && openFailure.diskFull) };
 }
 /** Is the database open and answering? (the health check asks) */
 function isUsable() {
@@ -443,15 +452,90 @@ function saveToDisk() {
     // Marked "may wait": one save for everything that arrives in the next moment.
     dirty = true;
     if (!deferTimer) {
-      deferTimer = setTimeout(() => { deferTimer = null; if (dirty) saveToDisk(); }, DEFER_MS);
+      // (A write that fails here has nobody to tell: it is counted and remembered by saveToDisk, the
+      // health check says so, and it is tried again. An exception in a timer would stop the process.)
+      deferTimer = setTimeout(() => { deferTimer = null; if (dirty) { try { saveToDisk(); } catch (err) { if (!(err && err.saveFailed)) console.error("Database: a waiting change could not be written:", err && err.message); } } }, DEFER_MS);
       if (deferTimer.unref) deferTimer.unref();
     }
     return;
   }
   if (deferTimer) { clearTimeout(deferTimer); deferTimer = null; }
   const buffer = Buffer.from(dbInstance.export());
-  writeDurably(DB_PATH, buffer);
+  try {
+    writeDurably(DB_PATH, buffer);
+  } catch (err) {
+    // The change is in memory and NOT in the file. It stays marked as waiting, so the next write
+    // that succeeds takes it to the disk; the failure is counted (middleware/saveGuard.js refuses
+    // the request it happened under) and remembered (the health check says "unavailable").
+    dirty = true;
+    throw noteSaveFailed(err);
+  }
   dirty = false;
+  noteSaved();
+}
+
+// ─── A write of the file that fails (review of 2026-11-13, N-08) ───────────────────────────────
+//
+// Until 2026-11-13 a failed write was logged by whoever had asked for it and stepped over: with a
+// full disk the site answered "created" for an account that existed only in memory, and the health
+// check went on saying "ok". Now:
+//
+//   saveFailures()   how many writes of the file have failed since the process started. A request
+//                    that sees this number move while it is being handled is answered 503
+//                    "save-failed" in place of whatever its route was going to say (saveGuard.js).
+//   saveState()      { failing, since, reason, diskFull }: is the LAST attempt to write the file a
+//                    failure? The health check answers "unavailable" while it is.
+//   a retry          every SAVE_RETRY_MS while it is failing, the waiting changes are written again
+//                    without anybody asking, so the site recovers by itself when there is room
+//                    (the retries are not counted against any request).
+let failedSaves = 0;
+let failing = null; // { since, reason, diskFull } while the last attempt to write the file failed
+let retryTimer = null;
+let retrying = false;
+const SAVE_RETRY_MS = Math.max(200, Math.min(600000, Number(process.env.DB_SAVE_RETRY_MS) || 15000));
+
+function isDiskFull(err) {
+  const code = err && (err.code || (err.cause && err.cause.code));
+  return code === "ENOSPC" || code === "EDQUOT" || Boolean(err && err.diskFull);
+}
+
+function noteSaveFailed(err) {
+  if (!retrying) failedSaves++;
+  const diskFull = isDiskFull(err);
+  const reason = diskFull ? "no space left on the disk" : String((err && (err.code || err.message)) || "write failed").slice(0, 120);
+  if (!failing) {
+    failing = { since: new Date().toISOString(), reason, diskFull };
+    console.error(`DATABASE NOT SAVED: the database file ${DB_PATH} could not be written (${reason}). ${diskFull ? "THE DISK IS FULL: free space on the volume or make it larger (docs/launch/go-live-runbook.md, \"The volume is full\"). " : ""}Changes are being refused until a write succeeds; the file on the disk is whole and holds everything up to the last successful write.`);
+  } else {
+    failing.reason = reason;
+    failing.diskFull = diskFull;
+  }
+  if (!retryTimer && !stopping) {
+    retryTimer = setInterval(() => {
+      if (!failing || !dbInstance) { clearInterval(retryTimer); retryTimer = null; return; }
+      if (batchDepth > 0 || transactionDepth > 0) return;
+      retrying = true;
+      const depth = deferDepth;
+      deferDepth = 0;
+      try { saveToDisk(); } catch (_) { /* still failing: said once above, tried again next time */ } finally { deferDepth = depth; retrying = false; }
+    }, SAVE_RETRY_MS);
+    if (retryTimer.unref) retryTimer.unref();
+  }
+  return Object.assign(new Error(`database: the file could not be written (${reason})`), { code: "save-failed", saveFailed: true, diskFull, status: 503, cause: err });
+}
+
+function noteSaved() {
+  if (!failing) return;
+  console.error(`DATABASE SAVED AGAIN: the database file was written after failing since ${failing.since} (${failing.reason}). Everything that was waiting is on the disk.`);
+  failing = null;
+  if (retryTimer) { clearInterval(retryTimer); retryTimer = null; }
+}
+
+/** How many writes of the database file have failed since this process started (retries not counted). */
+function saveFailures() { return failedSaves; }
+/** Is the last attempt to write the file a failure? { failing, since, reason, diskFull } */
+function saveState() {
+  return failing ? { failing: true, since: failing.since, reason: failing.reason, diskFull: failing.diskFull } : { failing: false, since: null, reason: "", diskFull: false };
 }
 
 /**
@@ -509,13 +593,20 @@ function whenSaved() {
 const FOLDER_FSYNC_UNSUPPORTED = new Set(["EISDIR", "EPERM", "EACCES", "EINVAL", "ENOTSUP", "ENOSYS", "EBADF"]);
 function writeDurably(file, buffer) {
   const tmp = `${file}.tmp`;
-  const fd = fs.openSync(tmp, "w");
   try {
-    let written = 0;
-    while (written < buffer.length) written += fs.writeSync(fd, buffer, written, buffer.length - written, written);
-    fs.fsyncSync(fd);
-  } finally {
-    fs.closeSync(fd);
+    const fd = fs.openSync(tmp, "w");
+    try {
+      let written = 0;
+      while (written < buffer.length) written += fs.writeSync(fd, buffer, written, buffer.length - written, written);
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (err) {
+    // Not written whole (a full disk, most likely): the database file itself has not been touched.
+    // The part-written temporary file is removed so it does not sit on the last free space.
+    try { fs.unlinkSync(tmp); } catch (_) { /* it was never made, or is already gone */ }
+    throw err;
   }
   fs.renameSync(tmp, file);
   let dir = null;
@@ -700,4 +791,4 @@ process.on("SIGTERM", () => onStop("SIGTERM"));
 process.on("SIGINT", () => onStop("SIGINT"));
 process.once("beforeExit", () => { try { flush(); } catch { /* nothing more to do */ } });
 
-module.exports = { getDatabase, openError, isUsable, wasCreated, unusableReason, saveToDisk, writeDurably, batch, transaction, inTransaction, whenSaved, deferred, flush, pending, compact, vacuum, fileSize, liveSize, usedSize, ready, DB_PATH, payloadMigration: () => payloadMigration };
+module.exports = { saveFailures, saveState, getDatabase, openError, isUsable, wasCreated, unusableReason, saveToDisk, writeDurably, batch, transaction, inTransaction, whenSaved, deferred, flush, pending, compact, vacuum, fileSize, liveSize, usedSize, ready, DB_PATH, payloadMigration: () => payloadMigration };

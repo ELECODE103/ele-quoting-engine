@@ -113,14 +113,22 @@ app.use(express.json({ limit: require("./security/limits").limits.jsonBodyBytes 
 // ─── Health Check (no version exposure) ──────────────────────────
 // "ok" only when the database is open and answers (re-review 2026-11-12, F-04): the host's health
 // check must not call a site healthy that cannot read its accounts and orders.
+// And only while the last write of the database file succeeded (review of 2026-11-13, N-08): with a
+// full disk the site used to answer "ok" here while it could keep nothing. It answers "ok" again by
+// itself after the next write that succeeds (models/database.js tries again every few seconds).
 app.get("/api/health", (req, res) => {
-  const usable = !require("./models").USE_SQLITE || require("./models/database").isUsable();
+  const database = require("./models").USE_SQLITE ? require("./models/database") : null;
+  const usable = !database || (database.isUsable() && !database.saveState().failing);
   if (!usable) res.set("Retry-After", "30");
   res.status(usable ? 200 : 503).json({
     status: usable ? "ok" : "unavailable",
     timestamp: new Date().toISOString(),
   });
 });
+
+// A request whose change could not be written to the database file is answered "we could not save
+// that", whatever its route was about to say (middleware/saveGuard.js; review of 2026-11-13, N-08).
+if (require("./models").USE_SQLITE) app.use("/api", require("./middleware/saveGuard").saveGuard);
 
 // ─── API Routes ─────────────────────────────────────────────────
 require("./security").mount(app); // bot check, form tokens and the gates in front of upload / pricing
@@ -216,6 +224,12 @@ async function start() {
   if (require("./models").USE_SQLITE) {
     const database = require("./models/database");
     const problem = database.openError();
+    if (problem && problem.diskFull) {
+      // A full disk is not a damaged database (review of 2026-11-13, N-08). Until then this start said
+      // "restore the volume from its backup", when the cure is to make room.
+      console.error(`FATAL: THE DISK IS FULL, so the site has NOT started. The database file ${problem.path} was read and is whole; it has not been changed and it is not damaged. The site writes that file once at every start and there was no room to (${problem.reason}). Free space on the volume (remove backups, exports or logs that were put on it) or make the volume larger in Railway, then restart. Do NOT restore from a backup and do NOT delete the database file (docs/launch/go-live-runbook.md, "The volume is full").`);
+      process.exit(1);
+    }
     if (problem) {
       console.error(`FATAL: the database file ${problem.path} is there but cannot be used: ${problem.reason}. Nothing was written to it and the site has NOT started. Restore the volume from its backup; do not delete the file (docs/launch/go-live-runbook.md, step 5 table, "The database will not open").`);
       process.exit(1);

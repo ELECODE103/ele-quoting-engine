@@ -101,7 +101,10 @@ test("every save the app makes goes through it: a row written through the model 
   // (relaunch merge 2) saveToDisk grew when re-priced drafts were allowed to wait a moment for the file (deferred()):
   // what is held is that the function's own body ends in writeDurably, not how many characters come before it.
   const body = (/function saveToDisk\(\) \{([\s\S]*?)\n\}/.exec(src) || [])[1] || "";
-  assert.ok(/writeDurably\(DB_PATH, buffer\);\s*dirty = false;\s*$/.test(body), "saveToDisk writes through writeDurably and nothing else");
+  // (review of 2026-11-13, N-08) The one call is now inside a try: a write that fails is counted and passed on
+  // (noteSaveFailed), and a write that succeeds clears the "failing" mark (noteSaved). What is held is unchanged:
+  // the body ends in the one writeDurably call, and "saved" is only ever set after it returned.
+  assert.ok(/try \{\s*writeDurably\(DB_PATH, buffer\);\s*\} catch \(err\) \{\s*dirty = true;\s*throw noteSaveFailed\(err\);\s*\}\s*dirty = false;\s*noteSaved\(\);\s*$/.test(body), "saveToDisk writes through writeDurably and nothing else");
   assert.strictEqual((src.match(/writeDurably\(/g) || []).length, 2, "one definition, one call");
 });
 

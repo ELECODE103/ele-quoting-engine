@@ -340,7 +340,19 @@ class SqliteDB {
       // which is why delete() used to answer "nothing deleted" for a row it had just removed.
       const changed = db.getRowsModified();
       revisions[this.tableName] = (revisions[this.tableName] || 0) + 1;
-      saveToDisk();
+      try {
+        saveToDisk();
+      } catch (err) {
+        // The statement ran and the FILE could not be written (a full disk). That is not a failed
+        // statement: models/database.js has counted it, the request it happened under is answered
+        // "we could not save that" (middleware/saveGuard.js) and the health check says "unavailable".
+        // The change stays in memory, marked as waiting, and goes to the disk with the next write
+        // that succeeds — except a new row, which the caller takes back out (insert() below), so
+        // that what was refused does not turn up later as if it had been accepted.
+        if (!(err && err.saveFailed)) throw err;
+        this._notSaved = true;
+        console.error(`SqliteDB [${this.tableName}]: the change was not written to the database file (${err.message})`);
+      }
       return changed;
     } catch (err) {
       // Inside database.transaction() a failed write stops the whole change (it is rolled back);
@@ -381,10 +393,17 @@ class SqliteDB {
     const placeholders = columns.map(() => "?").join(", ");
     const values = columns.map((c) => serialized[c]);
 
+    this._notSaved = false;
     this._run(
       `INSERT INTO ${this.tableName} (${columns.join(", ")}) VALUES (${placeholders})`,
       values
     );
+    if (this._notSaved) {
+      // The file could not be written (see _run): the new row is taken back out of memory, so the
+      // database in memory is what the disk holds. Nothing is saved here; there is nothing to save.
+      this._notSaved = false;
+      try { this._db().run(`DELETE FROM ${this.tableName} WHERE id = ?`, [full.id]); } catch (_) { /* it stays, waiting for the next write */ }
+    }
 
     return this._deserialize({ ...serialized, id: full.id });
   }

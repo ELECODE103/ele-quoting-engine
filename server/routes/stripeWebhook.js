@@ -121,6 +121,13 @@ router.post("/", async (req, res) => {
 
   // Stripe delivers an event at least once. One that has been handled is acknowledged, not run again.
   if (typeof event.id === "string" && lifecycle.eventSeen(event.id)) {
+    // "Handled before" is read from memory. While the database file cannot be written (a full disk)
+    // memory may be ahead of the disk, so the event is NOT acknowledged: Stripe sends it again later
+    // (review of 2026-11-13, N-08).
+    if (require("../models").USE_SQLITE && require("../models/database").saveState().failing) {
+      res.set("Retry-After", "120");
+      return res.status(503).json({ error: "Could not process the event" });
+    }
     // Handled before: nothing is run again. But if the first handling was cut short after the
     // payment was written and before its emails went (a kill, a provider fault), they are still on
     // record as owed, and this second delivery is when they are sent (services/owedEmails.js).

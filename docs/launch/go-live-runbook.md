@@ -422,6 +422,7 @@ browser shows `{"status":"ok", …}`.
 | `ALERT [startup-protections…]` with a list | The same, summarised: each name in the list is a setting that is off | Fix each; you also get this by email once email works |
 | Deployment stays "Deploying" for five minutes and then fails | The site did not answer its health check | Read the Deploy Log from the top for the first `FATAL` or `Error`. If nothing explains it: Rollback, option A |
 | Deploy log: `FATAL: the database file … is there but cannot be used: …` | **The database will not open.** The file on the volume is empty, cut short or damaged (the line says which). The site has not started and has written nothing to the file | **Do not delete the file.** Rollback, option C (restore the volume backup). If there is no backup to go to, tell me before doing anything else |
+| Deploy log: `FATAL: THE DISK IS FULL, so the site has NOT started …` | **The volume is full.** The database file is whole and has not been touched; the site writes it once at every start and there was no room | **Do not restore a backup and do not delete the database file.** See "The volume is full" under The first week: make room or make the volume larger, then **Redeploy** |
 | Deploy log: a block starting `NO DATABASE WAS FOUND at … A NEW, EMPTY ONE WAS CREATED` | There was no database file where the site looks. Right on the very first start of a new site; wrong on a site that had accounts and orders: the volume is not mounted at `/app/data`, or came up empty | If the site had data: **Stop.** Do not register anything. Step 1, item 1; then Rollback, option A, and tell me |
 | The site is up but the database looks empty (no orders, your sign-in is unknown) | The volume is not mounted at `/app/data` (the deploy log has the `NO DATABASE WAS FOUND` block) | **Stop.** Do not register anything. Step 1, item 1; tell me |
 
@@ -871,6 +872,7 @@ alert is not repeated for six hours, so one email means "now".
 | Alert "restarted after a crash" | Railway restarted the site after an error | Once: note the time. Repeating: Rollback B and tell me |
 | Alert "was killed and restarted" | The container ran out of memory (usually a huge or hostile upload), or a deploy happened with the draining time at 0 | Railway → Metrics → Memory at that time; step 3's memory and draining settings |
 | Alert "N orders need a look" | Orders flagged for you. The alert lists how many of each: *Duplicate payment*, *Late payment* (money arrived for an order that was cancelled or had closed), *Payment does not match the order*, *Nothing was collected* (a 100% promotion code), *Payment disputed*, *Refund problem*. A flagged order keeps its status; nothing was cancelled or refunded for you | Admin → Orders → the order: the banner says what happened. Deal with it in Stripe (refund the extra payment, answer the dispute), then **clear the flag with a note**. The alert stops when no order is flagged |
+| Log: `DATABASE NOT SAVED: … THE DISK IS FULL`, customers are told "We could not save that just now", the health check (`/api/health`) answers 503 "unavailable" | **The volume is full.** Nothing new can be kept until there is room | "The volume is full", below this table |
 | Alert "Upload storage is N% full" | Customer files are accumulating | Decline spam requests; if genuine, raise `UPLOAD_DIR_MAX_MB` (the volume has room) |
 | Alert "The database is N% of its ceiling" | Unsaved quotes are piling up, or the business has outgrown the 16 MB default | Admin → Quotes → **Clear old drafts**. If it is still above half afterwards, it is real orders and requests: raise `DB_MAX_MB` (double it) and redeploy |
 | UptimeRobot "Down" | The site is not answering from outside | Railway → Deployments: is one Active? Deploy log. Railway's status page |
@@ -882,3 +884,38 @@ alert is not repeated for six hours, so one email means "now".
 What the counters do **not** remember: they start from zero at every restart or deploy (the
 digest and the System page say when counting began). Orders, requests and sizes are always read
 fresh.
+
+### The volume is full
+
+*How you would know.* Any of these: the log line `DATABASE NOT SAVED: … THE DISK IS FULL`; a
+customer or you being told "We could not save that just now, so it has not gone through"; the health
+check `/api/health` answering 503 "unavailable" (an outside monitor then reports the site down);
+or, after a restart, a deployment that fails with `FATAL: THE DISK IS FULL, so the site has NOT
+started`.
+
+*What it means.* The disk that holds the database and the customer files has no room left. The
+database file is not damaged: the site writes a complete new copy beside it and swaps the two, and
+with no room the copy is never made, so the old file stays exactly as it was. While the disk is
+full the site still shows pages, but everything that has to be kept (a new account, a quote, an
+order, a sign-in) is refused with the sentence above, and nothing is acknowledged that was not
+saved. One exception: a change to a draft quote is answered first and written up to 1.5 seconds
+later, so the last change to a draft made at the moment the disk filled can be lost.
+
+*What to do.*
+
+1. **Do not restore a backup and do not delete the database file.** Neither helps and either loses
+   data.
+2. Make room. Railway → the service → the volume → **Settings** → make the volume larger (5 GB or
+   more; the customer files alone may use 2 GB). If you cannot, remove what does not belong on the
+   volume: backups, exports or logs that were copied onto it.
+3. If the site is still running, it recovers by itself: within about 15 seconds of there being room
+   the log says `DATABASE SAVED AGAIN` and the health check answers "ok". No restart is needed.
+4. If the site had stopped (the `FATAL` line), **Redeploy** once there is room. It starts with
+   everything that was saved before the disk filled.
+5. Afterwards, check Admin → Orders against the Stripe dashboard for the hour before: a payment
+   Stripe took while the disk was full is not acknowledged to Stripe, which sends it again for up to
+   three days, so it normally settles by itself once there is room. An order that still shows
+   "awaiting payment" with a payment in Stripe: open it and use **Mark paid**, or tell me.
+
+*How to keep it from happening.* Keep the volume at 5 GB or more, and do not write backups onto the
+same volume.

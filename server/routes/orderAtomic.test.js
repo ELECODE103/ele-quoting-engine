@@ -10,6 +10,9 @@
  */
 const assert = require("assert");
 const fs = require("fs");
+// A disk that is "full" for the database file while this flag file exists (testSupport/fullDiskPreload.js).
+process.env.SE_TEST_DISK_FULL_FLAG = require("path").join(require("os").tmpdir(), `se-order-atomic-full-${process.pid}.flag`);
+require("../testSupport/fullDiskPreload");
 const { start, runner } = require("../testSupport/harness");
 const { boxStl } = require("../testSupport/shapes");
 
@@ -127,6 +130,35 @@ const SHIP = { shippingName: "Pat Buyer", shippingAddress: "1 Main St", shipping
     const again = await pay(q.quoteId);
     assert.strictEqual(again.status, 200, again.text.slice(0, 200));
     assert.strictEqual(orderItemsDB.query((i) => i.orderId === again.body.orderId).length, 20);
+    await h.completed(String(again.body.sessionUrl).split("/").pop());
+  });
+
+  test("the disk is full when the order is written (review N-08): no payment page is opened and nothing is acknowledged; with room again the buyer pays for one whole order", async () => {
+    const q = await quoteOf(3);
+    database.flush();
+    const flag = process.env.SE_TEST_DISK_FULL_FLAG;
+    const before = { failures: database.saveFailures(), sessions: h.stripe.created.length, bytes: fs.readFileSync(database.DB_PATH) };
+    const errors = [];
+    const realError = console.error;
+    console.error = (...a) => errors.push(a.join(" "));
+    let c;
+    fs.writeFileSync(flag, "full");
+    try { c = await pay(q.quoteId); } finally { console.error = realError; }
+    try {
+      assert.strictEqual(c.status, 500, c.text.slice(0, 200)); // (this bare test app has no saveGuard; on the real server the buyer reads 503 "we could not save that": models/diskFull.test.js)
+      assert.ok(!c.body.sessionUrl && !/ENOSPC/.test(c.text), c.text.slice(0, 200));
+      assert.strictEqual(h.stripe.created.length, before.sessions, "no payment page was opened at Stripe for an order that is not on the disk");
+      assert.ok(database.saveFailures() > before.failures && database.saveState().failing && database.saveState().diskFull, JSON.stringify(database.saveState()));
+      assert.ok(fs.readFileSync(database.DB_PATH).equals(before.bytes), "the database file was not touched");
+      assert.strictEqual(onDisk("SELECT COUNT(*) AS n FROM orders WHERE quote_id = ?", [q.quoteId])[0].n, 0);
+    } finally { fs.rmSync(flag, { force: true }); }
+    // Room again: the same button, one order, one payment page.
+    const again = await pay(q.quoteId);
+    assert.strictEqual(again.status, 200, again.text.slice(0, 200));
+    assert.strictEqual(database.saveState().failing, false, "a write that succeeds clears the mark");
+    assert.strictEqual(ordersDB.query((o) => o.quoteId === q.quoteId).length, 1, "one order, not two");
+    assert.strictEqual(onDisk("SELECT COUNT(*) AS n FROM orders WHERE quote_id = ?", [q.quoteId])[0].n, 1);
+    assert.strictEqual(h.stripe.created.length, before.sessions + 1);
     await h.completed(String(again.body.sessionUrl).split("/").pop());
   });
 
