@@ -56,6 +56,11 @@ Three things you should know before reading on (details in sections 6 and 8):
    of the table is exercised, but a wrong row would turn away honest buyers in that area ("the state
    and the ZIP code don't match"). **Before launch, try your own ZIP code and three or four of your
    customers' on the checkout page.**
+   *Added after this write-up by the session lead (the commit after `230c0bb`):* the table was then
+   compared with a public list of 42,724 ZIP codes (`tools/security/review-conditions/zip-table-check.js`).
+   It agreed on 42,701. The one row that mattered, military codes starting 099 (11 codes), read as
+   "not a ZIP code" and is corrected; after that 42,712 agree and none of the 12 left would turn away
+   or mis-price a mainland buyer. The list has one state per ZIP code, so point 2 below still stands.
 2. A few dozen rural ZIP codes cross a state line. Four are handled; a buyer at one of the others is
    told the state and ZIP code do not match and to call. That is an order by phone, not a lost one.
 3. A firm-quote request that reaches the site WITHOUT an address (only possible by sending the form

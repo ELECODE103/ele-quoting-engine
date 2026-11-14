@@ -25,7 +25,7 @@ const KNOWN = {
   OH: ["43215", "45999"], OK: ["73102", "74966", "73001"], OR: ["97301", "97914"], PA: ["17101", "19104", "15201"], RI: ["02903", "02840"],
   SC: ["29201", "29901"], SD: ["57501", "57701"], TN: ["37219", "38501"], TX: ["78701", "75201", "73301", "88510", "79901"], UT: ["84111", "84770"],
   VT: ["05602", "05001", "05901"], VA: ["23219", "20101", "24601"], WA: ["98501", "99201"], WV: ["25301", "24701", "26801"], WI: ["53703", "54990"],
-  WY: ["82001", "83101"], PR: ["00901", "00601", "00950"], VI: ["00802"], GU: ["96910"], AE: ["09012", "09801"], AA: ["34002"], AP: ["96201", "96601"],
+  WY: ["82001", "83101"], PR: ["00901", "00601", "00950"], VI: ["00802"], GU: ["96910"], AE: ["09012", "09801", "09901"], AA: ["34002"], AP: ["96201", "96601"],
 };
 
 test("every state, DC, AK, HI, PR, VI, GU and the military prefixes: a known ZIP code is read as its state", () => {
@@ -57,7 +57,7 @@ test("59 places: 48 contiguous states and DC, and ten that are not (AK, HI, five
 });
 
 test("a ZIP code that is not one, or whose prefix nobody uses, is not read as any state", () => {
-  for (const bad of ["", " ", "4321", "432155", "ABCDE", "00000", "00123", "09999", "42800", "21", "M5V 2T6", "20095 Hamburg", null, undefined, 43215.5, {}]) {
+  for (const bad of ["", " ", "4321", "432155", "ABCDE", "00000", "00123", "42800", "21", "M5V 2T6", "20095 Hamburg", null, undefined, 43215.5, {}]) {
     assert.strictEqual(us.statesOfZip(bad), null, JSON.stringify(bad));
   }
   assert.deepStrictEqual(us.statesOfZip("43215-1234"), ["OH"]);
