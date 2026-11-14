@@ -1,5 +1,9 @@
 # Independent review of the fixes for the review's conditions (2026-11-13)
 
+**Verdict: yes, `1fff088` can go online and take payment, with three conditions** (section 1): keep the
+volume from filling and be told if it does; if it fills, make room before any restart; do the hand
+tests. Three of the four findings are closed. The full-disk one is partly closed (P-01, P-02).
+
 Reviewer: independent (wrote none of the code under review). Code reviewed: `git diff 0af96f9..1fff088`
 (64 files, about 3,700 added lines). Everything was run from a fresh clone of `1fff088` in a scratch
 folder, Node 20.20.0 (`/opt/node20/bin/node`), two cores, local stand-ins for Stripe and mail only.
@@ -263,7 +267,7 @@ requires or follows the wording of a real change.
 - `r3-caps-and-lists.js`, exit 1. (1) "going back to pay for an order that already exists": it expects
   the OLDEST order back, and that order was closed when its quote was changed, so a new order is made
   for that version (200). **Intended.** (2) two buyers behind one address: N-02, **was there**.
-- `r3-pressure-collateral.js`: see P-05 and the table in section 5. **Was there** (N-07), and the phone
+- `r3-pressure-collateral.js`: see P-05 and appendix A. **Was there** (N-07), and the phone
   order is no longer closed.
 - `r3-catalogue-odd.js`, exit 1: "every finish deleted" is seeded again. **Was there**, reported by the
   earlier review, not in this work.
@@ -271,7 +275,83 @@ requires or follows the wording of a real change.
 **`r4-f06-race.js` really is section E of the reviewer's script.** Ran `diff` on the two files from
 the "E." marker to the end: one line differs, the comment on the marker itself.
 
-## 5. Regression: the author's figures and mine
+## 5. Where the write-up is wrong or says more than was shown
+
+- **"Nothing is acknowledged to a customer that is not on the disk"** (the guard's own comment; the
+  runbook says "nothing is acknowledged that was not saved"). Ran: a second press of Accept is answered
+  200 "accepted" with no order on the disk; "confirm payment" answers 200 "paid" for an order that is
+  not paid on the disk; three kinds of Stripe event are answered 200 (P-01, P-02).
+- **"Every route is covered at once."** The Stripe webhook is mounted before the guard and is not
+  covered (read, and ran). Requests that are GET are not looked at; of 40 GET requests tried with the
+  disk full, 1 tried to write (the database backup download) and it answered 500, which is honest.
+- **"A new row whose write failed is also taken back out of memory, so what was refused does not turn
+  up later as if it had been accepted."** True for a single row (an account). Not for an order or an
+  acceptance, which are several rows in one change: those stay, and do turn up (P-02).
+- **The customer message "it has not gone through."** For an instant checkout and a purchase-order
+  acceptance it has gone through in memory, and will be on the disk when room returns.
+- **Runbook, "The volume is full", step 5** tells you to check payments. Refunds, disputes and
+  purchase-order acceptances are the ones that need checking; payments heal by themselves. Step 2 says
+  to make the volume larger and does not say whether that restarts the service, which matters (P-01).
+- **Section 6, point 8: "one stray confirmation email."** Also 2 for a refused request, one of them to
+  you (P-03).
+- **"What counts as the same address … ZIP code (first five digits)".** With a hyphen or a space, yes.
+  Nine digits run together count as a different address (ran).
+- **"A buyer can go back and change an order seven times in a day and is refused on the ninth unpaid
+  checkout."** Right (ran). Worth adding: a buyer who has also cancelled the last one has nothing to
+  pay for and is shut out of card checkout until the next day.
+- **"From reading `relieveStorage` … I did not test that reading."** Tested here: right (P-05).
+- **Right, and worth saying:** every figure of the author's that I re-ran reproduced or came out within
+  run-to-run noise (appendix A). The differences above come from attacking what he did not, not from
+  his numbers being off.
+
+## 6. What I did not cover, and why
+
+- **A real small disk for my own attack script.** `r5-full-disk-attacks.js` uses the author's stand-in
+  (the write of the database's temporary file fails while a flag file exists). The author's and the
+  reviewer's scripts were run on a real 3 MB memory disk (appendix A) and show the same error reaching
+  the same code. EDQUOT was simulated the same way; no quota-limited volume was available.
+- **Whether enlarging a Railway volume restarts the service**, and what Railway does when the health
+  check fails on a running service. Not visible from here. Condition 2 depends on it.
+- **Stripe itself.** That an expired page cannot be paid; what Stripe sends when a card is charged at
+  the instant a page is expired. Every "replace" and "cancel" result rests on the stand-in refusing
+  payment on an expired page, as Stripe documents.
+- **The browser's own autofill** into the state list (P-04), and any browser but Chromium.
+- **"With the two rules put back, 4 of the 5 cases fail".** I did not put two rules back one at a time. I
+  ran the new test files against the whole of the old code instead (appendix A): 4 of 5 fail there too.
+- **Promotion codes on, Stripe Tax on** with the new paths: not attacked beyond the suites.
+- **The admin screens** for the new address box were exercised by the author's browser run (appendix A)
+  and read as text by me; I did not drive them by hand.
+- **The firm-quote PDF**: it does not carry the ship-to address (the author says so), so there was
+  nothing to inject into. The emails and the admin queue were tested.
+- **The container restarted once** while the last runs were going. Everything already measured was on
+  the disk and is in appendix A. One run was lost and repeated: the paid-while-replacing race, planned
+  at 300 rounds, was run again at 200 (260 with the first 60).
+- **Text that reads like an instruction to a reviewer:** I saw none in the files, logs or tool output I
+  read.
+
+## 7. Hand tests to add to the earlier review's twelve
+
+Only new ones. Tests 5, 6 and 7 of the earlier list now have the results the author's write-up gives.
+
+1. **The health monitor.** Point your uptime monitor at `/api/health` and confirm it alerts you on a
+   503 (most have a "test alert" button).
+2. **Stripe, a replaced page.** In test mode reach the Stripe page, go back, change a quantity, reach
+   the new page. Open the first page again: Stripe must say it has expired. "Your orders" shows the
+   first as "Not paid, closed" and the second as waiting.
+3. **Cancel.** Reach the Stripe page, go to "Your orders", press Cancel. Open the Stripe page again: it
+   must say expired. Check out the same quote again: it works.
+4. **The state list on your own phone.** Let the phone fill your saved address into the checkout page.
+   The state must end up on your state. Then tab to the list on a computer and type "texas": today it
+   lands on Tennessee (P-04).
+5. **A firm quote to another address.** Send yourself a firm quote for your shop address, open the
+   link, press "Ship to a different address", give another one. You must get the "address changed,
+   re-confirm the price" email, see the warning box in Admin → RFQs with both addresses, and the old
+   link must say it is being confirmed. Press Send: the new link accepts.
+6. **A phone order.** Enter one in Admin with the state and ZIP code, and one with neither (P-06).
+7. **Railway.** Read or ask: does making a volume larger restart the service? Write the answer into
+   the runbook's "The volume is full" section.
+
+## Appendix A. Regression: the author's figures and mine
 
 Fresh clone of `1fff088` in an empty scratch folder, Node 20.20.0. `npm ci`: exit 0, 0 vulnerabilities.
 Each script was run once unless a count is given. The container restarted once during this review;
@@ -377,76 +457,17 @@ the same as his: no difference shown, a slowdown of up to about 20 ms in the med
 of more than about 25 ms ruled out. N-09 stands as the earlier review wrote it: on both commits about
 a fifth of new connections waited 250 ms or more during a 100-line checkout.
 
+**My proof scripts** (`tools/security/review-conditions/`, each as committed; a "finding" line is the
+script's own word for a check that did not hold)
 
-## 6. Where the write-up is wrong or says more than was shown
-
-- **"Nothing is acknowledged to a customer that is not on the disk"** (the guard's own comment; the
-  runbook says "nothing is acknowledged that was not saved"). Ran: a second press of Accept is answered
-  200 "accepted" with no order on the disk; "confirm payment" answers 200 "paid" for an order that is
-  not paid on the disk; three kinds of Stripe event are answered 200 (P-01, P-02).
-- **"Every route is covered at once."** The Stripe webhook is mounted before the guard and is not
-  covered (read, and ran). Requests that are GET are not looked at; of 40 GET requests tried with the
-  disk full, 1 tried to write (the database backup download) and it answered 500, which is honest.
-- **"A new row whose write failed is also taken back out of memory, so what was refused does not turn
-  up later as if it had been accepted."** True for a single row (an account). Not for an order or an
-  acceptance, which are several rows in one change: those stay, and do turn up (P-02).
-- **The customer message "it has not gone through."** For an instant checkout and a purchase-order
-  acceptance it has gone through in memory, and will be on the disk when room returns.
-- **Runbook, "The volume is full", step 5** tells you to check payments. Refunds, disputes and
-  purchase-order acceptances are the ones that need checking; payments heal by themselves. Step 2 says
-  to make the volume larger and does not say whether that restarts the service, which matters (P-01).
-- **Section 6, point 8: "one stray confirmation email."** Also 2 for a refused request, one of them to
-  you (P-03).
-- **"What counts as the same address … ZIP code (first five digits)".** With a hyphen or a space, yes.
-  Nine digits run together count as a different address (ran).
-- **"A buyer can go back and change an order seven times in a day and is refused on the ninth unpaid
-  checkout."** Right (ran). Worth adding: a buyer who has also cancelled the last one has nothing to
-  pay for and is shut out of card checkout until the next day.
-- **"From reading `relieveStorage` … I did not test that reading."** Tested here: right (P-05).
-- **Right, and worth saying:** every figure of the author's that I re-ran reproduced or came out within
-  run-to-run noise (section 5). The differences above come from attacking what he did not, not from
-  his numbers being off.
-
-## 7. What I did not cover, and why
-
-- **A real small disk for my own attack script.** `r5-full-disk-attacks.js` uses the author's stand-in
-  (the write of the database's temporary file fails while a flag file exists). The author's and the
-  reviewer's scripts were run on a real 3 MB memory disk (section 5) and show the same error reaching
-  the same code. EDQUOT was simulated the same way; no quota-limited volume was available.
-- **Whether enlarging a Railway volume restarts the service**, and what Railway does when the health
-  check fails on a running service. Not visible from here. Condition 2 depends on it.
-- **Stripe itself.** That an expired page cannot be paid; what Stripe sends when a card is charged at
-  the instant a page is expired. Every "replace" and "cancel" result rests on the stand-in refusing
-  payment on an expired page, as Stripe documents.
-- **The browser's own autofill** into the state list (P-04), and any browser but Chromium.
-- **"With the two rules put back, 4 of the 5 cases fail".** I did not put two rules back one at a time. I
-  ran the new test files against the whole of the old code instead (section 5): 4 of 5 fail there too.
-- **Promotion codes on, Stripe Tax on** with the new paths: not attacked beyond the suites.
-- **The admin screens** for the new address box were exercised by the author's browser run (section 5)
-  and read as text by me; I did not drive them by hand.
-- **The firm-quote PDF**: it does not carry the ship-to address (the author says so), so there was
-  nothing to inject into. The emails and the admin queue were tested.
-- **Text that reads like an instruction to a reviewer:** I saw none in the files, logs or tool output I
-  read.
-
-## 8. Hand tests to add to the earlier review's twelve
-
-Only new ones. Tests 5, 6 and 7 of the earlier list now have the results the author's write-up gives.
-
-1. **The health monitor.** Point your uptime monitor at `/api/health` and confirm it alerts you on a
-   503 (most have a "test alert" button).
-2. **Stripe, a replaced page.** In test mode reach the Stripe page, go back, change a quantity, reach
-   the new page. Open the first page again: Stripe must say it has expired. "Your orders" shows the
-   first as "Not paid, closed" and the second as waiting.
-3. **Cancel.** Reach the Stripe page, go to "Your orders", press Cancel. Open the Stripe page again: it
-   must say expired. Check out the same quote again: it works.
-4. **The state list on your own phone.** Let the phone fill your saved address into the checkout page.
-   The state must end up on your state. Then tab to the list on a computer and type "texas": today it
-   lands on Tennessee (P-04).
-5. **A firm quote to another address.** Send yourself a firm quote for your shop address, open the
-   link, press "Ship to a different address", give another one. You must get the "address changed,
-   re-confirm the price" email, see the warning box in Admin → RFQs with both addresses, and the old
-   link must say it is being confirmed. Press Send: the new link accepts.
-6. **A phone order.** Enter one in Admin with the state and ZIP code, and one with neither (P-06).
-7. **Railway.** Read or ask: does making a volume larger restart the service? Write the answer into
-   the runbook's "The volume is full" section.
+| Script | What it attacks | Result |
+|---|---|---|
+| `r5-full-disk-attacks.js restart` | money while the database file cannot be written, then a restart | 11 held, 8 findings, 8 info (the same with `R5_ERRNO=EDQUOT`) |
+| `r5-full-disk-attacks.js recover` | the same, then room without a restart | 11 held, 9 findings, 11 info |
+| `r5-full-disk-reads.js` | GET requests that write; the health check through ten rounds of full and room | 6 held, 0 findings |
+| `r5-edquot-start.js` (with `r5-edquot-preload.js`) | a start on ENOSPC, on EDQUOT, and when the temporary file cannot be opened | 9 held, 0 findings |
+| `r5-address-paths.js` | N-03 and N-05 on every path that takes an address | 16 held, 0 findings, 8 info |
+| `r5-state-picklist.js` | the pick list in Chromium at 390 and 1360 px | 15 held, 2 findings, 2 info |
+| `r5-chain-cancel.js 60`, then `200` | replace, payment in flight, the ceilings, cancel | 26 held, 0 findings, 11 info, both runs |
+| `r5-pressure-honest.js` | when the clean-up closes an honest order; what it never closes | 12 held, 0 findings, 4 info |
+| `r5-replace-timing.js 100 12`, three times | what the replace path costs | +41, +43, +44 ms in the answer; +2 to +4 ms in the longest hold |
