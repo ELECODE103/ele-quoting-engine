@@ -27,6 +27,11 @@ async function start({ env = {}, webhookSecret } = {}) {
       // No secret is passed as an empty one: production now refuses to start without it (F-18),
       // and the helper that starts the server would otherwise supply a throwaway secret of its own.
       STRIPE_WEBHOOK_SECRET: whsec || "",
+      // (2026-11-13) These scripts press "pay" many times from one account and never pay, on purpose. Since
+      // the re-review fixes one account may hold 3 unpaid orders (8 new a day); the fourth checkout was
+      // refused and every check after it read an order that did not exist. The ceilings have their own
+      // tests (server/routes/orderList.test.js); here they are lifted so the scripts test what they were written for.
+      ORDERS_UNPAID_PER_ACCOUNT: "100000", ORDERS_UNPAID_PER_CLIENT: "100000", ORDERS_UNPAID_NEW_PER_ACCOUNT_DAY: "100000", ORDERS_UNPAID_NEW_PER_CLIENT_DAY: "100000",
       ...env,
     },
   });

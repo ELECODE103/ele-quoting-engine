@@ -45,7 +45,7 @@ const { pdfText } = require(path.join(ROOT, "server", "testSupport", "pdfText.js
     r.note(`  customer confirmation PDF shows: ${JSON.stringify(shows(conf))}`);
     r.note(`  packing slip shows:              ${JSON.stringify(shows(slip))}`);
     r.note(`  job traveler PDF shows:          ${JSON.stringify(shows(trav))}`);
-    const order = (await h.get("/api/orders", admin)).body.find((o) => o.id === co.body.orderId);
+    const order = (await h.get(`/api/orders/${co.body.orderId}`, admin)).body; // (2026-11-13: lines come from the single-order route, not the list)
     r.note(`  admin order line (what the drawer prints): process "${order.items[0].process}", material "${order.items[0].materialName}", finish "${order.items[0].finishName}", qty ${order.items[0].quantity}; thickness and grade are only inside the stored config (${order.items[0].config.thicknessMm} mm, "${order.items[0].config.grade}")`);
     const t = shows(trav);
     r.finding(!t.thickness || !t.grade || !t.paperwork, `F-16: the job traveler does not state ${[!t.thickness && "the stock thickness (a DXF has none of its own)", !t.grade && "the grade/colour", !t.paperwork && "that a first-article report and certificate were bought"].filter(Boolean).join(", ")}`);

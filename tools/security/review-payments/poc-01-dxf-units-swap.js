@@ -17,14 +17,14 @@ const { dxfPlate } = require("./fixtures");
   const h = await start();
   const r = report("F-01 DXF units changed between pricing and checkout");
   try {
-    const config = (partId) => ({ partId, process: "routing", materialSlug: "rt-hdpe", thicknessMm: 19.1, quantity: 20 });
+    const config = (partId) => ({ partId, process: "routing", materialSlug: "rt-hdpe", thicknessMm: 19.1, quantity: 1 }); // (2026-11-13: one piece, was 20. Twenty of these pack to far over 50 lb, which now goes to a firm quote for its freight under every shipping rule, so the order this script needs could not be placed at all.)
     const size = (p) => `${Math.round(p.geometry.flatWidth)} x ${Math.round(p.geometry.flatHeight)} mm`;
     const setUnits = (p, units) => h.post(`/api/parts/${p.partId}/units`, { units }, undefined, { "X-Part-Key": p.editKey });
 
     // What the job honestly costs.
     const honest = await h.uploadData("panel-40x30in.dxf", dxfPlate(40, 30));
     const honestQuote = await h.post("/api/quote", { parts: [config(honest.partId)], leadTimeSlug: "standard" });
-    r.note(`honest: part ${size(honest)}, 20 pcs in 3/4" HDPE -> ${money(honestQuote.body.orderTotal)} (gate: ${honestQuote.body.gate.reasons.map((x) => x.code).join(",") || "none"})`);
+    r.note(`honest: part ${size(honest)}, 1 pc in 3/4" HDPE -> ${money(honestQuote.body.orderTotal)} (gate: ${honestQuote.body.gate.reasons.map((x) => x.code).join(",") || "none"})`);
 
     // The swap.
     const part = await h.uploadData("panel-40x30in.dxf", dxfPlate(40, 30));
@@ -41,7 +41,8 @@ const { dxfPlate } = require("./fixtures");
     r.note(`checkout: ${co.status}; amount sent to Stripe ${money(session.amount_total / 100)}`);
     const hook = await h.webhook(h.completed(session));
     const admin = await h.admin();
-    const order = (await h.get("/api/orders", admin)).body.find((o) => o.id === co.body.orderId);
+    // (2026-11-13: the order list is a page of summaries now; an order's lines come from the single-order route.)
+    const order = (await h.get(`/api/orders/${co.body.orderId}`, admin)).body;
     const g = order.items[0].geometry;
     r.note(`webhook ${hook.status}; order status "${order.status}", total ${money(order.total)}; part on the order as the shop sees it: ${Math.round(g.flatWidth)} x ${Math.round(g.flatHeight)} mm`);
     const lockedNow = await setUnits(part, "mm");
