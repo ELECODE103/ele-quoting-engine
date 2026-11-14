@@ -27,7 +27,8 @@ anything that was in flight was run again.
 | F-03 shipping limits on every route; firm quote and purchase order | Done: `r3-shipping-firm-f06.js` (findings N-03, N-04, N-05) |
 | F-06 two tabs under a race | Done: `r3-shipping-firm-f06.js` section E, 200 rounds |
 | F-08 / F-02 checkout hold | Single-checkout distribution done (87 samples, written up). Not yet: kills (F-02), the swap attack, several checkouts at once |
-| F-01, F-13, F-12 (storage side), F-10/F-11, F-04, F-05 | Not yet attacked (scripts for F-05 and F-12 are written, not yet run) |
+| F-05 | Done: `r3-paid-mail-window.js`, 102 kills |
+| F-01, F-13, F-12 (storage side), F-10/F-11, F-04 | Not yet attacked (the script for F-12 is written, not yet run) |
 | Reorder money path | Not yet attacked |
 | Changed-tests audit, price baseline, vetting comparison | Started (five test files read); not finished |
 | Browser check of the admin panel | Not started |
@@ -140,6 +141,47 @@ The ceilings on unpaid orders that the author added under this finding are findi
 The author's statement that the test harness lifts the ceilings by default is true; one suite
 (`server/routes/orderList.test.js`) runs with the real ceilings, and the comment in the harness names a
 file, `routes/orderCaps.test.js`, that does not exist.
+
+### F-05 (paid, and nobody is told): closed; a repeat email after a kill is likelier than the author's figures suggest and rests on the mail provider
+
+The author's proof (`paid-mail-kill.js`) runs the server with **no mail provider**, which is a different
+path in the code: without a provider the "email owed" record is closed at once. In production the
+provider is on, a message counts as sent only when the provider answers, and that call is the window.
+
+Ran `r3-paid-mail-window.js` (three runs): the server as in production with a placeholder mail key; the
+provider's API answered by a local stand-in that takes 40 ms to accept a message and 40 ms more to
+answer, and writes each step to a file; the script kills the server at an exact step. Counted from what
+the provider accepted.
+
+| Kill lands | Afterwards | Kills | In the window | Never told | Told once | Told twice |
+|---|---|---|---|---|---|---|
+| the first email has just reached the provider | event sent again | 15 | 15 | 0 | 15 | 0 |
+| the provider has accepted, not yet answered | event sent again | 15 | 15 | 0 | 0 | 15 |
+| the provider has just answered | event sent again | 12 | 12 | 0 | 0 | 12 |
+| random, 1 to 120 ms | event sent again | 12 | 10 | 0 | 7 | 5 |
+| the first email has just reached the provider | restart only | 12 | 12 | 0 | 12 | 0 |
+| the provider has accepted, not yet answered | restart only | 12 | 12 | 0 | 0 | 12 |
+| the provider has just answered | restart only | 12 | 12 | 0 | 0 | 12 |
+| random, 1 to 120 ms | restart only | 12 | 10 | 0 | 9 | 3 |
+| **Total** | | **102** | **98** | **0** | 43 | 59 |
+
+**0 of 102 paid orders with nobody told** (it was 5 of 8 and 7 of 8 before the fix). Every order was
+paid; none was lost. Every one of the 59 repeats carried the **same Idempotency-Key** as the first
+request (0 with a different key, 0 messages without a key), so a provider that honours the key drops
+the repeat.
+
+Author's figure against mine: he reports 2 of 40 and 4 to 8 of 40 told twice. With the provider on, a
+kill anywhere between "the provider has it" and "the server has written that down" repeats the message,
+and I got 59 of 98. That is the design he chose ("at least once") working as designed; the number of
+repeats a customer would see is zero only if Resend drops a repeated key. A hard kill during a payment
+is itself rare.
+
+Looked at, read only: the "email owed" record holds the order id, the kind of message, the site address
+and, for a payment notice, the flag's note and amounts; the message itself is built from the order when
+it is sent, so no extra copy of a name or address is stored. Records are closed, not deleted (two or
+three small rows per paid order; nothing a stranger can add to without a signed Stripe event). A record
+that cannot be sent is tried again with a growing wait and given up after a day with a line in the log;
+one bad record does not stop the others. A repeated event sends only what is still owed.
 
 ### F-08 (checkout holds the site): closed in substance; the 250 ms line is met on a quiet machine and is not met under load for a visitor on a new connection
 
