@@ -171,7 +171,11 @@ What holds (ran `r3-shipping-firm-f06.js` sections A to C, and the earlier revie
 
 What does not hold: findings **N-03** (the ZIP code is not looked at), **N-04** (a long part drawn on
 the diagonal), **N-05** (the firm quote, which is where every refused order is sent, takes any address).
-The independent 300-quote vetting comparison has not been run yet.
+**No part price moved (ran, independently).** `vetting-compare.js dce1e38`: 300 quotes on the commit
+before the fixes and 300 on this one, each "0 fails, 63 warnings". 64 rows differ and the only columns
+that differ are `gateCodes` and `requiresRfq`: 55 rows that were already firm-quote rows gain the reason
+`shipping-freight`, and 9 rows change from "sold online" to "firm quote" with that reason alone. No
+price, cost, time or DFM column differs in any row. The author's figures are the same: 64, 55 and 9.
 
 ### F-09 (order list, admin panel): server side closed; browser not yet checked
 
@@ -589,6 +593,8 @@ Not finished. Read so far, each against `git diff dce1e38..28cb39d -- <file>`:
 | `tools/security/review-payments/poc-01-dxf-units-swap.js` | 20 pieces cut to 1. Still proves what it was written to prove: its finding fires on "paid less than half the honest price for the full-size part", and at one piece the honest part (40 x 30 in, 3/4 in HDPE, about 35 lb packed) is still orderable online, so the swap can still be attempted. Not yet re-run by me |
 | `tools/security/review-payments/lib.js`, `poc-09-…` | Ceilings lifted for proofs that make many unpaid orders; order read from the single-order route. Follows real changes |
 | `tools/security/review-uploads/preload-stubs.js` (Stripe stand-in) | Ids unique per process; `expire` added, refusing a page that is not open, as Stripe does. Not more forgiving than Stripe in what I read. With `REVIEW_STUB_PAY=1` an open page counts as paid when asked about, which is only set by scripts that need a paid order |
+| `tools/geometry-bench/baseline/` (re-recorded price baseline) | **Verified field by field** with `r3-baseline-diff.js`: 197 snapshot files now, 196 compared with their version at `dce1e38`; **113 files differ, 404 priced cases differ, and every differing value is one of `shipping.amount`, `shipping.manual`, `shipping.reason`, `shipping.reasonCode`, `shippingEstimate`, `orderTotal`**, all at quantity 100. 0 values differ anywhere else (geometry, DFM, line prices). The author's "404 cases in 113 files, shipping fields only" is exact. One snapshot file is new and has no older version (`soup-wide-100k.json.gz`, 252 bytes); the write-up does not mention it |
+| `tools/security/rereview-availability/vetting-compare.js` | Now prints every kind of difference, not the first three. Sees more, not less. Run by me (F-03 above) |
 | the rest of the author's section 6 | not yet read |
 
 ## 7. Not covered yet, and what a sandbox cannot show
