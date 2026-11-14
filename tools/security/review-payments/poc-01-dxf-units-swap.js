@@ -43,7 +43,9 @@ const { dxfPlate } = require("./fixtures");
     const admin = await h.admin();
     // (2026-11-13: the order list is a page of summaries now; an order's lines come from the single-order route.)
     const order = (await h.get(`/api/orders/${co.body.orderId}`, admin)).body;
-    const g = order.items[0].geometry;
+    // (2026-11-13: an order's lines no longer carry the part's measurements (re-review F-09); the shop
+    // sees them on the traveler, so that is where "the part as the shop sees it" is read from.)
+    const g = (await h.get(`/api/orders/${co.body.orderId}/traveler`, admin)).body.items[0].geometry;
     r.note(`webhook ${hook.status}; order status "${order.status}", total ${money(order.total)}; part on the order as the shop sees it: ${Math.round(g.flatWidth)} x ${Math.round(g.flatHeight)} mm`);
     const lockedNow = await setUnits(part, "mm");
     r.note(`units change after the order exists: ${lockedNow.status} (${lockedNow.body.code || ""})`);
