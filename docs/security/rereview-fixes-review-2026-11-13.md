@@ -28,7 +28,8 @@ anything that was in flight was run again.
 | F-06 two tabs under a race | Done: `r3-shipping-firm-f06.js` section E, 200 rounds |
 | F-08 / F-02 checkout hold | Single-checkout distribution done (87 samples, written up). Not yet: kills (F-02), the swap attack, several checkouts at once |
 | F-05 | Done: `r3-paid-mail-window.js`, 102 kills |
-| F-01, F-13, F-12 (storage side), F-10/F-11, F-04 | Not yet attacked (the script for F-12 is written, not yet run) |
+| F-12 storage side | Done: reviewer's script reproduced; `r3-pressure-collateral.js` (one run) |
+| F-01, F-13, F-10/F-11, F-04, F-02 kills | Not yet attacked |
 | Reorder money path | Not yet attacked |
 | Changed-tests audit, price baseline, vetting comparison | Started (five test files read); not finished |
 | Browser check of the admin panel | Not started |
@@ -61,7 +62,8 @@ author's claim that the proofs made on `b184dc1` stand for the head commit is ri
 | `master-upgrade-access.js` | 3 held | 3 held, 0 findings, 1 info |
 | `public-surface.js` | 6 held | 6 held, 0 findings |
 | `shipping-exposure.js` | exit 0, table in the write-up | exit 0; the table matches (58 x 94 and 6 x 94 sheets: firm quote; 48 x 48 at 1/16 in still sold at $17.76 to $20.23; every one-piece row to Honolulu and Germany: 409) |
-| `durability-kill.js`, `storage-pin-orders.js`, `memory-poison.js` | see the write-up | not yet run |
+| `storage-pin-orders.js pin` | holds, 74 % after the clean-up | holds, 74 %; customer and visitor upload again |
+| `durability-kill.js`, `memory-poison.js` | see the write-up | not yet run |
 
 ## 4. Per original finding
 
@@ -141,6 +143,37 @@ The ceilings on unpaid orders that the author added under this finding are findi
 The author's statement that the test harness lifts the ceilings by default is true; one suite
 (`server/routes/orderList.test.js`) runs with the real ceilings, and the comment in the harness names a
 file, `routes/orderCaps.test.js`, that does not exist.
+
+### F-12 (unpaid orders hold the file store): closed for unpaid orders; the store can still be held for an hour at a time by new files (N-07, was there)
+
+Ran the earlier reviewer's `storage-pin-orders.js pin` (1:10 scale): 13 accounts, store at 100 % right
+after the flood with a visitor and a customer both refused; after the clean-up **74 %**, a customer
+accepted at the first knock and a visitor at the second. The author's figure for the same run: 74 %.
+Reproduced.
+
+The other direction, "can the new closing of unpaid orders hurt an honest customer". Ran
+`r3-pressure-collateral.js` once (1:10 scale; the customer's protected "first hour" set to 4 minutes):
+two honest customers on the payment page with files older than the protected time, the owner's phone
+order waiting for a cheque, then 12 accounts filling the store to 97 % with new files in 27 seconds.
+Watched for 96 seconds with four refused uploads to trigger the clean-up. **Neither honest order was
+closed, the phone order was not touched, nobody was emailed (0 of 3 hurt, 1 run).** From reading
+`relieveStorage`: unpaid orders are closed only when the store is still at or over 85 % after everything
+that nothing refers to has been removed, and a flood's own unreferenced files go first once they are no
+longer new. So an honest order is closed only when the flood itself is made of unpaid orders, and then
+the heaviest holder (the flood) is closed first. I could not construct a case that closes an honest
+order ahead of the attacker's, in one attempt; I did not try a second construction.
+
+Two things from reading that I could not show either way, because nothing was closed in my run:
+- The author writes that a phone order is never touched. The list the clean-up builds
+  (`storagePressure.js` line 522) takes every unpaid order whose payment method is "card" **or empty**,
+  and a phone order made in Admin is stored with the method empty (`routes/orders.js`, the admin
+  `POST /api/orders` sets none). `closeUnderPressure` keeps an order only when its method is set and is
+  not "card". So a phone order is on the list and would be closed like a card order if the pass got to
+  it. If that happens its lines can later be cleared under database pressure, after which it "cannot be
+  marked paid" by hand. Unproven; worth one line of code and a test before it matters.
+- A payment that arrives after an order was closed to make room is flagged "late payment" and not
+  released (ran, in `r3-event-orderings.js`). By then the file may have gone. The site relies on Stripe
+  refusing payment on a page it has expired; see the hand tests.
 
 ### F-05 (paid, and nobody is told): closed; a repeat email after a kill is likelier than the author's figures suggest and rests on the mail provider
 
@@ -373,6 +406,19 @@ quote it is not. Twelve checkouts per account per 15 minutes still applies.
 
 **What would close it.** Have the runner compare the quote's own revision (or its updated-at) before the
 final pass, as it does for parts, and start again when it moved.
+
+### N-07 (Low to Medium, was there): new files from confirmed accounts hold the file store for their first hour, with or without orders
+
+Ran `r3-pressure-collateral.js`, 1 of 1: 12 confirmed accounts (1:10 scale; 14 at full scale) fill the
+store to 97 % in 27 seconds with uploads and nothing else: no quote, no order. For the rest of the run
+(96 seconds, four tries) a visitor without an account was answered "uploads paused". A signed-in
+customer's file is not removed by any clean-up in its first 60 minutes (`CUSTOMER_PART_KEEP_MINUTES`),
+so the store stays there until those files are an hour old, and the same accounts can then upload
+again. I did not run through the protected time; the earlier reviewer's control run shows the store
+clears once it has passed. The earlier review mentioned this in a bracket and did not list it. The fix
+for F-12 does not touch it and was not asked to. While it lasts every visitor is told to email the files
+or phone. Cost to the attacker: 14 confirmed email addresses and 14 network addresses per hour held.
+What would shorten it: a lower `CUSTOMER_PART_KEEP_MINUTES` for parts that are on no quote.
 
 ## 6. Changed-tests audit
 
