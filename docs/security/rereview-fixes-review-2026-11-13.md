@@ -192,7 +192,7 @@ disk. On this machine that is a local disk. On Railway the volume is network sto
 take longer; the figure to check after the first deploy is how long a save takes there (Admin → System
 shows the database size; the log line for a slow save, if any, is the thing to look for).
 
-Still to run under this finding: several checkouts at once, the kill tests (F-02), and the swap attack.
+Still to run under this finding: several checkouts at once and the kill tests (F-02). The swap attack is finding N-06.
 
 ## 5. New findings
 
@@ -306,6 +306,31 @@ units changed (409 `part-locked`); an unconfirmed purchase-order order cannot be
 Worth knowing, by design: a purchase-order acceptance needs no login and no card. The link in the email
 is the only credential, and the order goes straight into the production queue as "pending PO" with
 nothing charged. The owner confirming the PO by hand is the only check.
+
+### N-06 (Low, new): the checkout's final pass prices a quote that was swapped in after its warm-up, in one piece
+
+**What happens (read).** Checkout prices in "warm-up" pieces and then runs a final pass "with everything
+priced already in the runner's memo" (`routes/orders.js` `orderStep`, `services/pricingMemo.js`). Before
+the final pass the runner checks that no part and no catalogue table changed. It does not check the
+quote, which the final pass reads afresh. If the buyer re-prices that same draft into a heavier quote
+between the warm-up and the final pass, the final pass finds none of it in the memo and prices it all in
+one uninterrupted step, with the write of the order behind it.
+
+**Measured.** Ran `r3-swap-under-checkout.js 20 0` (quiet, new database): one account re-prices its
+one-cube draft as 25 different 6,000-segment discs ($2,518.51, the heaviest quote of that kind that can
+be ordered online) and presses pay 90 to 260 ms behind it. Re-pricing alone: a new connection waited 186
+to 220 ms (4 runs). With the checkout sent 90 to 135 ms behind: 343 to 376 ms (6 of 6); **10 of 20 tries
+at or over 250 ms, worst 376 ms**; once the checkout arrives after the re-price has finished the figure
+is back to about 200 ms. I did not separate "the final pass priced it in one step" from "two jobs
+overlapped" beyond that; the cause is from reading the code.
+
+**Cost.** Small. The step is bounded by the most expensive quote that can still be ordered online, which
+on this machine prices in about a quarter of a second. It is not the seconds-long stop F-08 was. It is
+listed because the comment in the code says the final pass is "lookups, then the save", and for a swapped
+quote it is not. Twelve checkouts per account per 15 minutes still applies.
+
+**What would close it.** Have the runner compare the quote's own revision (or its updated-at) before the
+final pass, as it does for parts, and start again when it moved.
 
 ## 6. Changed-tests audit
 
