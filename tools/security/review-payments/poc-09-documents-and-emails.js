@@ -75,7 +75,7 @@ const { pdfText } = require(path.join(ROOT, "server", "testSupport", "pdfText.js
     r.note(`order under the minimum: line ${money(o4.items[0].lineTotal)}, quote shipping ${money(q4.body.shippingEstimate)}, charged ${money(o4.total)}; the order stores subtotal ${money(o4.subtotal)}, shipping ${money(o4.shippingCost)}: the difference is the order minimum, shown on the confirmation only as a larger subtotal (${hasMoney(conf4, o4.total)})`);
 
     // ── a send-us-the-part job: return of the original ──
-    const c = await h.s.rfq({ contactName: "Part Sender", email: "part@example.test", requestType: "part", returnPart: "true", paperwork: "true", notes: `worn sprocket ${Math.random()}`, quantities: "4" }, [], { ip: nextIp() });
+    const c = await h.s.rfq({ contactName: "Part Sender", email: "part@example.test", requestType: "part", returnPart: "true", paperwork: "true", notes: `worn sprocket ${Math.random()}`, quantities: "4", ...SHIP }, [], { ip: nextIp() }); // (review of 2026-11-13, N-05: a request carries its ship-to address, and the acceptance further down ships there)
     const sent = await h.put(`/api/rfq/admin/${c.body.rfqId}`, { status: "quoted", quotedTotal: 880, quotedLeadDays: 12 }, admin);
     const token = sent.body.acceptUrl.split("/firm-quote/")[1];
     await h.post(`/api/rfq/quote/${token}/accept`, { ...SHIP, method: "po", poNumber: "PO-5521" });

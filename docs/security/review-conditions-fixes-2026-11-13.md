@@ -9,10 +9,10 @@ merged or deployed. The site stays offline until you approve.
 | Item | State | Commit |
 |---|---|---|
 | 1. Destination decided by ZIP code as well as state (N-03) | fixed, tests pass; final verification not yet run | `851fde1` |
-| 2. A firm quote knows where it is going (N-05) | not started | |
-| 3. A buyer is not locked out by their own changes (N-01); phone orders safe from the clean-up (F-12) | fixed, tests pass; final verification not yet run | this commit |
-| 4. A full disk is visible and says what it is (N-08) | fixed, tests pass, shown on a real 3 MB disk; final verification not yet run | `e5efc4e` |
-| 5. Small corrections the review asked for | done: previous write-up corrected (`851fde1`); the per-address ceilings are run by `server/routes/orderCaps.test.js` and the harness comment is corrected (this commit) | `851fde1`, this commit |
+| 2. A firm quote knows where it is going (N-05) | fixed, tests pass; final verification not yet run | this commit |
+| 3. A buyer is not locked out by their own changes (N-01); phone orders safe from the clean-up (F-12) | fixed; final verification not yet run. (At `62a37ff` one suite failed that I had not run: the route inventory in `server/routes/authorization.test.js` did not list the new cancel route. Fixed in the commit this file is in.) | `62a37ff`, this commit |
+| 4. A full disk is visible and says what it is (N-08) | fixed, shown on a real 3 MB disk; final verification not yet run. (At `e5efc4e` one suite failed that I had not run: `server/security/envExample.test.js` wants every setting listed in `.env.example`, and `DB_SAVE_RETRY_MS` was not. Fixed in the commit this file is in.) | `e5efc4e`, this commit |
+| 5. Small corrections the review asked for | done: previous write-up corrected (`851fde1`); the per-address ceilings are run by `server/routes/orderCaps.test.js` and the harness comment is corrected (`62a37ff`) | `851fde1`, `62a37ff` |
 | Final verification from a fresh clone on Node 20 | not yet run | |
 
 A figure that is not in this file has not been measured. The full write-up (what was wrong, what
@@ -61,3 +61,17 @@ changed, what was run, what a customer now reads) is added item by item as each 
   `r3-caps-and-lists.js`: "six changes of quantity, six checkouts: never refused" now HOLDS. It prints
   one new FINDING that is the script's own assumption no longer holding: it picks "the oldest unpaid
   order" and expects paying for its quote to give that order back, and that order is now closed.
+
+## 2. A firm quote knows where it is going (N-05): notes so far
+
+- The request form asks for the ship-to address (or pickup, when the shop offers it); the server
+  checks it the way checkout does and stores it with the request; the owner sees it beside the price
+  box and in the notification email; the address is one of the terms the emailed link is good for.
+  At acceptance the order ships to that address. Another address (or the first one, on a request
+  that had none) is not accepted at the quoted total: it is stored, the link closes, the owner is
+  emailed "address changed, re-confirm the price", and the buyer is told what happens next.
+- Measured on the working tree of this commit, Node 20.20.0: the whole suite once, 95 of 103, the 8
+  failures being suites that asked for a firm quote without an address and then accepted it, the
+  route inventory and the settings list; each was then corrected and passes run by itself (the whole
+  suite has not been run again yet). `server/routes/firmQuoteShipTo.test.js` 14 of 14 (new).
+  My `tools/security/rereview-fixes/r4-shipping-firm.js`: 34 held, 0 findings (1 run).

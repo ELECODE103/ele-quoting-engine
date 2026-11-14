@@ -22,7 +22,7 @@ const { start, report, money, SHIP } = require("./lib");
     const s = h.lastSession();
     r.note(`checkout with Host: evil.example (FRONTEND_URL unset): ${co.status}; success_url ${s._args.success_url.replace(/[0-9a-f-]{36}/, "<order>")}`);
     r.finding(/evil\.example/.test(s._args.success_url + s._args.cancel_url), "accounts 8b: a forged Host header reaches Stripe's return URLs");
-    const c = await h.s.rfq({ contactName: "Host Check", email: "hostcheck@example.test", notes: "host header" }, [], { ip: "198.51.77.2" });
+    const c = await h.s.rfq({ contactName: "Host Check", email: "hostcheck@example.test", notes: "host header", ...SHIP }, [], { ip: "198.51.77.2" }); // (review of 2026-11-13, N-05: a request carries its ship-to address, and the acceptance further down ships there)
     const sent = await h.s.req({ method: "PUT", url: `/api/rfq/admin/${c.body.rfqId}`, json: { status: "quoted", quotedTotal: 500, quotedLeadDays: 5 }, token: admin, headers: { Host: "evil.example" }, ip: "198.51.77.3" });
     const mail = h.s.mail("hostcheck@example.test", /quote/i).pop();
     r.finding(/evil\.example/.test(sent.body.acceptUrl + (mail ? mail.text : "")), `accounts 8b: a forged Host header reaches the emailed firm-quote link (${(sent.body.acceptUrl || "").split("/firm-quote/")[0]})`);

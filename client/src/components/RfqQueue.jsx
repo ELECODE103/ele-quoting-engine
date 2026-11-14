@@ -10,6 +10,32 @@ const AUTO_STATUSES = ['accepted', 'expired'];
 const STATUS_TAG = { new: 'tag-warn', 'in-review': 'tag-info', quoted: 'tag-pass', accepted: 'tag-pass', expired: 'tag-fail', won: 'tag-pass', lost: 'tag-fail', declined: 'tag-fail' };
 
 /**
+ * Where a request ships, for the owner pricing it: the address the buyer gave with the request,
+ * "pickup", or a plain statement that none was given. When the buyer gave another address at
+ * acceptance the order was NOT made: the new address is shown with the one it replaced, and the
+ * quote has to be sent again (the server keeps the buyer's link closed until then).
+ */
+function ShipToBox({ r }) {
+  const changed = Boolean(r.shipToChangedAt);
+  return (
+    <div className={changed || !r.shipToKind ? 'gate-box' : 'plain-box'} role={changed ? 'alert' : undefined} style={{ marginBottom: 10, padding: '8px 10px' }} data-testid="rfq-ship-to">
+      <div className="field-label" style={{ marginBottom: 2 }}>{r.shipToKind === 'pickup' ? 'Delivery' : 'Ships to'}</div>
+      {r.shipToKind === 'pickup' && <div><b>Pickup at the shop.</b> No freight in this price. Collected by {r.shippingName || 'the buyer'}.</div>}
+      {r.shipToKind === 'address' && <div style={{ fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{r.shipToLine}</div>}
+      {r.shipToKind === 'address' && r.shipToZone !== 'contiguous' && <div style={{ marginTop: 4 }}><b>Outside the contiguous United States.</b> Price the freight for this address; the parcel formula does not cover it.</div>}
+      {!r.shipToKind && <div><b>No ship-to address came with this request.</b> Ask the buyer before you price freight. If you send a price anyway, the buyer is asked for the address when they accept, no order is made, and the quote comes back here for you to confirm.</div>}
+      {changed && (
+        <div style={{ marginTop: 6 }}>
+          <b>The buyer gave {r.shipToPrevious ? 'a different address' : 'this address'} when accepting ({formatDate(r.shipToChangedAt)}), so no order was made.</b>{' '}
+          {r.shipToPrevious ? <>The price was for: {r.shipToPrevious}. </> : 'The price was sent before any address was known. '}
+          Check the total for the address above, change it if freight differs, and send the quote again. The buyer's link stays closed until you do.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Admin RFQ queue. Shows what the buyer saw (budgetary numbers, the gate's
  * reasons, engine assumptions) so the firm quote starts from facts.
  */
@@ -216,6 +242,8 @@ export default function RfqQueue() {
                                   <input className="input" type="number" min="1" step="1" style={{ width: 90 }} defaultValue={p.quotedQuantity || p.quantity} id={`qq-${p.partId}-${r.id}`} />
                                 </label>
                               ))}
+                              {/* Where it is going, beside the price it has to cover (review of 2026-11-13, N-05). */}
+                              <ShipToBox r={r} />
                               <div style={{ display: 'flex', gap: 8 }}>
                                 <label style={{ flex: 1 }}>
                                   <span className="field-label">Quoted total ($)</span>

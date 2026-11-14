@@ -17,7 +17,7 @@ const { start, report, money, SHIP, ROOT, nextIp } = require("./lib");
     /** A request sent from the form, quoted by the owner; returns the emailed link's token. */
     async function quoted(total = 1500, days = 10) {
       const email = `fq${++n}@example.test`;
-      const c = await h.s.rfq({ contactName: `Buyer ${n}`, email, company: "Acme Conveyors", notes: `job ${n} ${Math.random()}`, quantities: "250", process: "cnc" }, [], { ip: nextIp() });
+      const c = await h.s.rfq({ contactName: `Buyer ${n}`, email, company: "Acme Conveyors", notes: `job ${n} ${Math.random()}`, quantities: "250", process: "cnc", ...SHIP }, [], { ip: nextIp() }); // (review of 2026-11-13, N-05: a request carries its ship-to address, and the acceptance further down ships there)
       if (c.status !== 201) throw new Error(`rfq create ${c.status}: ${c.text}`);
       const q = await h.put(`/api/rfq/admin/${c.body.rfqId}`, { status: "quoted", quotedTotal: total, quotedLeadDays: days }, admin);
       if (q.status !== 200 || !q.body.acceptUrl) throw new Error(`quote send ${q.status}: ${q.text}`);

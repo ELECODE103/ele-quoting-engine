@@ -10,6 +10,8 @@ import { fact, when, PAPERWORK_HELP } from '../facts';
 import useFormGuard from '../utils/useFormGuard';
 import VerifyEmailNotice from '../components/security/VerifyEmailNotice';
 import { FormError } from '../components/form/Notice';
+import ShipToFields, { EMPTY_SHIP_TO, shipToLine } from '../components/form/ShipToFields';
+import { publicConfig } from '../utils/security';
 
 const within = when('quote-turnaround', (v) => ` within ${v}`);
 const UPLOAD_EXT = ['.pdf', '.dxf', '.dwg', '.png', '.jpg', '.jpeg']; // what POST /api/rfq accepts
@@ -43,6 +45,11 @@ const PART_QUOTE_TIME = fact('part-quote-time');
  * request (owner decision, 2026-11-11: with no Turnstile keys there is no
  * automatic confirmation and no address on screen).
  *
+ * Where the finished parts go rides with the request too (review of 2026-11-13, N-05): the ship-to
+ * address, or "I will pick them up" when the shop offers pickup (`pickupOffered` in the public
+ * config). The owner prices freight for that address, so it is required; the server checks it the
+ * way checkout does (the state against the ZIP code) and says which field to correct.
+ *
  * Two checkboxes ride as their own fields, because the owner prices both into
  * the firm quote: `paperwork` (a first-article inspection report and a
  * certificate of conformance; off unless ticked, or already chosen on the
@@ -65,6 +72,11 @@ export default function RfqPage() {
     quantities: '', tolerance: '', finishNotes: '', dueDate: '', notes: '', lives: '',
     machine: '', material: '', soon: '',
   });
+  // Where the finished parts ship: the address, or pickup when the shop offers it.
+  const [shipTo, setShipTo] = useState(EMPTY_SHIP_TO);
+  const [delivery, setDelivery] = useState('ship');
+  const [pickupOffered, setPickupOffered] = useState(false);
+  useEffect(() => { publicConfig().then((c) => setPickupOffered(Boolean(c && c.pickupOffered))).catch(() => {}); }, []);
   const [paperwork, setPaperwork] = useState(false);
   const [returnPart, setReturnPart] = useState(true);
   const [drawing, setDrawing] = useState(null);
@@ -128,6 +140,11 @@ export default function RfqPage() {
     if (!form.contactName.trim()) return fail('Add your name so we know who to send it to.', 'contactName');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return fail(form.email.trim() ? 'That email address doesn\'t look complete. Check it, so the quote has somewhere to go.' : 'Add your email so the quote has somewhere to go.', 'email');
     if (part && !form.notes.trim()) return fail('Say what the part is and what it does, so we know what is coming.', 'notes');
+    const pickup = pickupOffered && delivery === 'pickup';
+    if (!pickup) {
+      const missing = [['shippingAddress', 'the street address'], ['shippingCity', 'the city'], ['shippingState', 'the state'], ['shippingZip', 'the ZIP code']].find(([k]) => !String(shipTo[k] || '').trim());
+      if (missing) return fail(`Add ${missing[1]} the finished parts ship to. The price we quote covers getting them there.`, missing[0]);
+    }
     setBusy(true);
     try {
       // Extra fields ride in the notes: the endpoint stores and emails `notes` as written.
@@ -145,13 +162,17 @@ export default function RfqPage() {
         ...fields,
         ...(part ? { requestType: 'part', returnPart, tolerance: '', finishNotes: '', dueDate: '' } : {}),
         paperwork,
+        // Where the finished parts go: the address the quote is priced for, or pickup.
+        ...(pickup
+          ? { shippingOption: 'pickup', shippingName: shipTo.shippingName.trim() || form.contactName }
+          : { ...shipTo, shippingName: shipTo.shippingName.trim() || form.company.trim() || form.contactName }),
         notes: extra.filter(Boolean).join('\n').slice(0, 2000),
         quoteId: quote?.quoteId || quote?.id || quoteId || '',
         ...trap,
       }, part ? null : drawing, headers));
       setSent(res);
     } catch (err) {
-      fail(err.message || `It didn't send. Call ${brand.phone} and we'll take it by phone.`, err.code === 'content-mismatch' ? 'drawing' : '');
+      fail(err.message || `It didn't send. Call ${brand.phone} and we'll take it by phone.`, err.code === 'content-mismatch' ? 'drawing' : (err.data && err.data.field) || (err.code === 'address-mismatch' ? 'shippingZip' : ''));
     }
     setBusy(false);
   }
@@ -235,6 +256,7 @@ export default function RfqPage() {
             <VerifyEmailNotice reason="to get our emails about this request" why="Your request is in either way. We only send automatic emails to an address its owner has confirmed." />
             <p className="body-copy" style={{ marginBottom: 20 }}>
               {paperwork ? 'You asked for a first-article inspection report and a certificate of conformance: the price we quote will include them, and the quote will say so. ' : ''}
+              {pickupOffered && delivery === 'pickup' ? 'We price it for pickup at our shop. ' : `We price it delivered to ${shipToLine(shipTo)}. `}
               {emailed
                 ? 'A confirmation email is on its way. More files? Reply to it and attach them. '
                 : `${whyNoEmail ? `${whyNoEmail} ` : ''}More files? Email them to ${brand.email} with the reference below. `}
@@ -345,7 +367,7 @@ export default function RfqPage() {
                 </div>
               )}
               <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
-                {part ? 'Name, email and what the part is are required. No file to attach: the part itself is what we work from.' : 'Name and email are required. Everything else helps the number.'}
+                {part ? 'Name, email, where the finished parts ship and what the part is are required. No file to attach: the part itself is what we work from.' : 'Name, email and where the parts ship are required. Everything else helps the number.'}
               </p>
               <div className="rfq-grid">
                 <label><span className="field-label">Name <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span><input className="input" value={form.contactName} onChange={set('contactName')} autoComplete="name" required aria-required="true" aria-invalid={error?.field === 'contactName' || undefined} aria-describedby={error?.field === 'contactName' ? 'rfq-error' : undefined} /></label>
@@ -385,6 +407,22 @@ export default function RfqPage() {
                     </label>
                     <label className="full"><span className="field-label">Anything else</span><textarea className="input" rows={4} placeholder="What the part does, what it mates with, what went wrong with the last supplier." value={form.notes} onChange={set('notes')} /></label>
                   </>
+                )}
+                {/* Where the finished parts go. The price is for this address (N-05). */}
+                <div className="full" style={{ marginTop: 6 }}>
+                  <span className="field-label">Where the finished parts go <span aria-hidden="true" style={{ color: 'var(--error)' }}>*</span></span>
+                  <span className="field-hint" style={{ display: 'block' }}>The price we quote covers delivery to this address, so we ask for it now.</span>
+                </div>
+                {pickupOffered && (
+                  <div className="full mode-toggle" role="group" aria-label="Delivery">
+                    <button type="button" aria-pressed={delivery === 'ship'} onClick={() => setDelivery('ship')}>Ship them to me</button>
+                    <button type="button" aria-pressed={delivery === 'pickup'} onClick={() => setDelivery('pickup')}>I will pick them up at your shop</button>
+                  </div>
+                )}
+                {pickupOffered && delivery === 'pickup' ? (
+                  <label className="full"><span className="field-label">Who is picking them up</span><input id="rfq-ship-name" className="input" value={shipTo.shippingName} onChange={(e) => setShipTo({ ...shipTo, shippingName: e.target.value })} placeholder={form.contactName || ''} autoComplete="name" /></label>
+                ) : (
+                  <ShipToFields value={shipTo} onChange={setShipTo} idPrefix="rfq-ship" nameLabel="Ship-to name (if not you)" nameRequired={false} invalid={error?.field || ''} describedBy="rfq-error" />
                 )}
                 <label className="full check-row">
                   <input type="checkbox" name="paperwork" checked={paperwork} onChange={(e) => setPaperwork(e.target.checked)} />

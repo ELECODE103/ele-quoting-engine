@@ -43,7 +43,23 @@ function termsFingerprint(rfq) {
     String(rfq.quoteNote || ""),
     (rfq.parts || []).map((p) => [p.partId || "", p.fileName || "", p.quotedQuantity || p.quantity || null, p.process || "", p.materialSlug || "", p.finishSlug || ""]),
   ];
+  // Where it ships is one of the terms (review of 2026-11-13, N-05): a price is for a destination.
+  // Added to the list only when the request has one, so the fingerprint of a quote sent before
+  // requests carried an address is what it always was and its link still opens.
+  if (rfq.shipToKind) terms.push(shipToKey(rfq));
   return crypto.createHash("sha256").update(JSON.stringify(terms)).digest("hex").slice(0, 40);
+}
+
+/**
+ * Where a request ships, as one comparable value: "pickup", or the street, city, state, ZIP code
+ * and country in one case with single spaces. The NAME on the box is not part of it: who signs for
+ * the parcel does not change what freight costs.
+ */
+function shipToKey(a) {
+  if (!a) return "";
+  if (a.shipToKind === "pickup") return "pickup";
+  const norm = (v) => String(v === undefined || v === null ? "" : v).toLowerCase().replace(/[.,#]/g, " ").replace(/\s+/g, " ").trim();
+  return ["address", norm(a.shippingAddress), norm(a.shippingCity), norm(a.shippingState), norm(a.shippingZip).replace(/[-\s]\d{4}$/, ""), norm(a.shippingCountry || "US")].join("|");
 }
 
 /**
@@ -71,4 +87,4 @@ function verify(token) {
   }
 }
 
-module.exports = { sign, verify, termsFingerprint, amountCents };
+module.exports = { sign, verify, termsFingerprint, amountCents, shipToKey };

@@ -164,7 +164,19 @@ test("the lists agree: every new column has a field name, and every statement on
     await h.put(`/api/rfq/admin/${made.quotedRfq}`, { quotedTotal: 18500 }, owner);
     assert.strictEqual((await h.get(`/api/rfq/quote/${link}`)).body.code, "quote-changed");
     await h.put(`/api/rfq/admin/${made.quotedRfq}`, { quotedTotal: 1850 }, owner);
-    const ok = await h.post(`/api/rfq/quote/${link}/accept`, { method: "po", poNumber: "PO-OLD-LINK", ...SHIP });
+    // (review of 2026-11-13, N-05) This request was made before requests carried a ship-to address, so the
+    // owner priced it without one. Accepting it gives the address for the first time: no order is made at the
+    // quoted total; the address is stored and the quote goes back to the owner, once. After the owner has
+    // sent it again, the same address is accepted from the new link.
+    const first = await h.post(`/api/rfq/quote/${link}/accept`, { method: "po", poNumber: "PO-OLD-LINK", ...SHIP });
+    assert.deepStrictEqual([first.status, first.body.code, first.body.hadAddress], [409, "address-reconfirm", false], first.text);
+    assert.deepStrictEqual([rfqsDB.getById(made.quotedRfq).status, rfqsDB.getById(made.quotedRfq).orderId || null, rfqsDB.getById(made.quotedRfq).shippingCity], ["quoted", null, SHIP.shippingCity]);
+    assert.strictEqual((await h.get(`/api/rfq/quote/${link}`)).body.code, "address-reconfirm", "the old link is closed while the owner confirms the price");
+    h.sent.length = 0;
+    const resent = await h.put(`/api/rfq/admin/${made.quotedRfq}`, { status: "quoted", quotedTotal: 1850, quotedLeadDays: 12 }, owner);
+    assert.deepStrictEqual([resent.status, resent.body.quoteSent], [200, true], resent.text);
+    const newLink = (h.sent[0].text.match(/\/firm-quote\/(\S+)/) || [])[1];
+    const ok = await h.post(`/api/rfq/quote/${newLink}/accept`, { method: "po", poNumber: "PO-OLD-LINK", ...SHIP });
     assert.strictEqual(ok.status, 201, ok.text);
     rfq = rfqsDB.getById(made.quotedRfq);
     assert.deepStrictEqual([rfq.status, ordersDB.getById(rfq.orderId).status, ordersDB.getById(rfq.orderId).total], ["accepted", "pending_po", 1850]);

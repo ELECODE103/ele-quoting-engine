@@ -342,6 +342,14 @@ async function fillRfq(page, { name = 'Dana Whitfield', email, notes = 'Carton g
   await rfq.name(page).fill(name);
   await rfq.email(page).fill(email);
   await rfq.notes(page).fill(notes);
+  await fillRfqShipTo(page);
+}
+// Where the finished parts ship: asked for on the request form since 2026-11-13 (review N-05).
+async function fillRfqShipTo(page) {
+  await page.locator('#rfq-ship-street').fill('410 Industrial Dr');
+  await page.locator('#rfq-ship-city').fill('Rockford');
+  await page.locator('#rfq-ship-state').selectOption('IL');
+  await page.locator('#rfq-ship-zip').fill('61109');
 }
 const received = (page) => page.getByText(/Request received/i).first();
 const fillCheckout = async (page) => {
@@ -556,6 +564,7 @@ async function journeyC() {
     probe('rfq: where focus is after a refused send', await page.evaluate(() => `${document.activeElement.tagName.toLowerCase()}${document.activeElement.id ? `#${document.activeElement.id}` : ''}`));
     await rfq.name(page).fill('Dana Whitfield');
     await rfq.email(page).fill(`gated-${width}@buyer.test`);
+    await fillRfqShipTo(page);
     await rfq.send(page).click();
     await received(page).waitFor({ timeout: 20000 });
     await shot(page, 'c04-rfq-received');
@@ -1035,6 +1044,7 @@ async function journeyNoKeys() {
     await register(page, acc);
     await page.goto(`${BASE}/rfq`);
     await rfq.notes(page).fill('Two guide rails, UHMW, drawing to follow.');
+    await fillRfqShipTo(page);
     await page.waitForTimeout(3300);
     await rfq.send(page).click();
     await received(page).waitFor({ timeout: 20000 });

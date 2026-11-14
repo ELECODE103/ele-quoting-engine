@@ -7,6 +7,7 @@ import brand, { PROCESS_LABELS } from '../brand';
 import { DeliveryChoice, TaxExemption, deliveryPayload } from '../components/DeliveryOptions';
 import { QUOTE_LINK_KEY } from './FirmQuoteReturnPage';
 import { describeOrderState } from '../utils/messages';
+import ShipToFields, { shipToComplete } from '../components/form/ShipToFields';
 
 /** Remember this quote's link in this tab, so the page the card processor returns to can come back here. */
 function rememberLink(token) {
@@ -18,6 +19,14 @@ function rememberLink(token) {
  * the signed link is the key. The buyer reviews the price, lead time and
  * validity, then accepts by card (Stripe) or with a purchase order number.
  * After acceptance the same link is their order status page.
+ *
+ * Where it ships (review of 2026-11-13, N-05): the quote was priced for the address given with the
+ * request (`quote.shipTo`), and the order ships there. The buyer may type another address, and is
+ * told first what that means: the server does not accept the quote at the quoted total for a
+ * different address; it keeps the new address, closes this link and sends the quote back to the
+ * shop to confirm the price (`address-reconfirm`). A quote priced before requests carried an
+ * address asks for the address here and goes the same way, once. Pickup needs no freight and is
+ * accepted as it is.
  */
 export default function FirmQuotePage() {
   const { token } = useParams();
@@ -28,7 +37,9 @@ export default function FirmQuotePage() {
   const [quote, setQuote] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [method, setMethod] = useState('card');
-  const [form, setForm] = useState({ shippingName: '', shippingAddress: '', shippingCity: '', shippingState: '', shippingZip: '', poNumber: '' });
+  const [form, setForm] = useState({ shippingName: '', shippingAddress: '', shippingCity: '', shippingState: '', shippingZip: '', shippingCountry: 'US', poNumber: '' });
+  // The buyer has asked to ship somewhere other than the address the quote was priced for.
+  const [otherAddress, setOtherAddress] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // Delivery choice and tax exemption: shown only when the shop offers a choice or collects tax.
@@ -41,7 +52,9 @@ export default function FirmQuotePage() {
       // Back from Stripe: have the server check the payment before showing the page.
       const q = justPaid ? await api.confirmFirmQuotePayment(token).catch(() => api.getFirmQuote(token)) : await api.getFirmQuote(token);
       setQuote(q);
-      setForm((f) => ({ ...f, shippingName: f.shippingName || q.contactName || '' }));
+      setForm((f) => ({ ...f, shippingName: f.shippingName || (q.shipTo && q.shipTo.shippingName) || q.contactName || '' }));
+      // A quote priced for pickup starts on pickup, when the shop still offers it.
+      if (q.shipTo && q.shipTo.kind === 'pickup' && (q.checkout?.options || []).some((o) => o.method === 'pickup')) setOption('pickup');
     } catch (err) {
       setLoadError(err);
     }
@@ -56,14 +69,19 @@ export default function FirmQuotePage() {
     setError('');
     const co = quote.checkout;
     const pickup = Boolean(co?.showOptions) && option === 'pickup';
-    if (pickup ? !form.shippingName.trim() : (!form.shippingName.trim() || !form.shippingAddress.trim() || !form.shippingCity.trim() || !form.shippingState.trim() || !form.shippingZip.trim())) {
+    // The address the quote was priced for stands unless the buyer chose to give another.
+    const priced = quote.shipTo && quote.shipTo.kind === 'address' && !otherAddress;
+    if (pickup ? !form.shippingName.trim() : (!priced && !shipToComplete(form))) {
       return setError(pickup ? 'Tell us who is picking the order up.' : 'Add the full ship-to address.');
     }
     if (method === 'po' && !form.poNumber.trim()) return setError('Enter your purchase order number.');
     setBusy(true);
     try {
+      const { shippingName, shippingAddress, shippingCity, shippingState, shippingZip, shippingCountry, poNumber } = form;
       const r = await api.acceptFirmQuote(token, {
-        method, ...form,
+        method, poNumber, shippingName,
+        // Only an address the buyer typed is sent: with none, the server ships to the address the quote was priced for.
+        ...(pickup || priced ? {} : { shippingAddress, shippingCity, shippingState, shippingZip, shippingCountry }),
         // Which delivery choice, a carrier account, a declared exemption. The quoted total is the total either way.
         ...deliveryPayload({ showOptions: Boolean(co?.showOptions), option, carrier, exemption: co?.tax?.exemption, declared: exempt.declared, reason: exempt.reason }),
         // The total on screen goes with the acceptance: if the quote's price is no longer that, nothing is ordered.
@@ -73,8 +91,9 @@ export default function FirmQuotePage() {
       await load();
       window.scrollTo(0, 0);
     } catch (err) {
-      // The quote changed while this page was open: show what it says now.
-      if (err.code === 'quote-changed') { setLoadError(err); return; }
+      // The quote changed while this page was open: show what it says now. The same for an address
+      // the shop has to confirm the price for: nothing was accepted, and the page says what happens next.
+      if (err.code === 'quote-changed' || err.code === 'address-reconfirm') { setLoadError(err); return; }
       setError(err.message || `That didn't go through. Call ${brand.phone} and we'll take it by phone.`);
     }
     setBusy(false);
@@ -97,6 +116,24 @@ export default function FirmQuotePage() {
   if (loadError) {
     const expired = loadError.code === 'quote-expired';
     const changed = loadError.code === 'quote-changed';
+    const reconfirm = loadError.code === 'address-reconfirm';
+    if (reconfirm) {
+      return (
+        <PublicLayout title="Confirming the price for your address">
+          <section className="section">
+            <div className="pub-wrap" style={{ maxWidth: 680 }}>
+              <div className="eyebrow" style={{ marginBottom: 14 }}>Firm quote</div>
+              <h1 className="display" style={{ marginBottom: 16 }}>We are confirming the price for your address.</h1>
+              <p className="lede" role="status" style={{ marginBottom: 24 }} data-testid="address-reconfirm">{loadError.message}</p>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <a className="btn btn-primary" href={`mailto:${brand.email}?subject=${encodeURIComponent('My quote: ship-to address')}`}>Email {brand.email}</a>
+                <a className="btn btn-ghost" href={brand.phoneHref}>Call {brand.phone}</a>
+              </div>
+            </div>
+          </section>
+        </PublicLayout>
+      );
+    }
     return (
       <PublicLayout title={expired ? 'Quote expired' : changed ? 'Quote updated' : 'Quote link'}>
         <section className="section">
@@ -133,6 +170,9 @@ export default function FirmQuotePage() {
   const showOptions = Boolean(co?.showOptions);
   const pickup = showOptions && option === 'pickup';
   const taxOn = co?.tax?.mode === 'stripe';
+  // The address this quote was priced for, when the request gave one.
+  const pricedFor = quote.shipTo && quote.shipTo.kind === 'address' ? quote.shipTo : null;
+  const usePriced = Boolean(pricedFor) && !otherAddress;
 
   return (
     <PublicLayout title="Your firm quote">
@@ -283,14 +323,33 @@ export default function FirmQuotePage() {
                   <DeliveryChoice options={co.options} carriers={co.carriers} value={option} onChange={setOption} carrier={carrier} onCarrierChange={setCarrier} showTotals={false} />
                 )}
                 <div className="field-label" style={{ marginBottom: 10 }}>{pickup ? 'Pickup' : 'Ship to'}</div>
+                {/* The address the quote was priced for: shown, not asked for again. */}
+                {!pickup && usePriced && (
+                  <div className="plain-box" style={{ marginBottom: 12 }} data-testid="priced-ship-to">
+                    <div style={{ fontSize: 13, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{pricedFor.line}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+                      This is the address the price is for.{' '}
+                      <button type="button" className="linklike-inline" onClick={() => { setOtherAddress(true); setForm((f) => ({ ...f, shippingAddress: '', shippingCity: '', shippingState: '', shippingZip: '', shippingCountry: 'US' })); }}>Ship to a different address</button>
+                    </div>
+                  </div>
+                )}
+                {!pickup && !usePriced && (
+                  <div className="gate-box" role="status" style={{ marginBottom: 12 }} data-testid="address-needs-confirming">
+                    {pricedFor
+                      ? <>The price is for delivery to {pricedFor.line}. For a different address we confirm the price first: when you press the button below, nothing is ordered or charged, and we email you the quote again for the new address.{' '}
+                        <button type="button" className="linklike-inline" onClick={() => setOtherAddress(false)}>Keep the original address</button></>
+                      : quote.shipTo && quote.shipTo.kind === 'pickup'
+                        ? 'This quote was priced for pickup at our shop. To have it shipped we confirm the price first: when you press the button below, nothing is ordered or charged, and we email you the quote again with shipping to this address.'
+                        : 'We priced this quote before we had a ship-to address. Enter it here: when you press the button below, nothing is ordered or charged yet. We confirm the price for this address and email you the quote again.'}
+                  </div>
+                )}
                 <div className="rfq-grid">
-                  <label className="full"><span className="field-label">{pickup ? 'Who is picking it up' : 'Name / company'}</span><input className="input" value={form.shippingName} onChange={set('shippingName')} autoComplete="name" required /></label>
-                  {!pickup && (<>
-                  <label className="full"><span className="field-label">Street address</span><input className="input" value={form.shippingAddress} onChange={set('shippingAddress')} autoComplete="street-address" required /></label>
-                  <label><span className="field-label">City</span><input className="input" value={form.shippingCity} onChange={set('shippingCity')} autoComplete="address-level2" required /></label>
-                  <label><span className="field-label">State</span><input className="input" value={form.shippingState} onChange={set('shippingState')} autoComplete="address-level1" required /></label>
-                  <label><span className="field-label">ZIP</span><input className="input" value={form.shippingZip} onChange={set('shippingZip')} autoComplete="postal-code" required /></label>
-                  </>)}
+                  {(pickup || usePriced) && (
+                    <label className="full"><span className="field-label">{pickup ? 'Who is picking it up' : 'Name / company on the box'}</span><input className="input" value={form.shippingName} onChange={set('shippingName')} autoComplete="name" required /></label>
+                  )}
+                  {!pickup && !usePriced && (
+                    <ShipToFields value={form} onChange={(v) => setForm((f) => ({ ...f, ...v }))} idPrefix="fq-ship" />
+                  )}
                 </div>
                 {pickup && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>We confirm the pickup address and a time with you once the order is in.</div>}
 
@@ -340,7 +399,7 @@ export default function FirmQuotePage() {
                 {cancelled && <div className="gate-box" role="status" style={{ marginTop: 14 }}>The card payment was cancelled. Nothing was charged.</div>}
                 {error && <div role="alert" style={{ color: 'var(--error-text)', fontSize: 13, marginTop: 12 }}>{error}</div>}
                 <button className="btn btn-primary btn-lg" type="submit" disabled={busy} style={{ width: '100%', justifyContent: 'center', marginTop: 18 }}>
-                  {busy ? 'Working…' : method === 'card' ? `Accept and pay ${formatCurrency(price)}${taxOn && !(exempt.declared && co.tax.exemption.trusted) ? ' plus tax' : ''}` : 'Accept on this PO'}
+                  {busy ? 'Working…' : (!pickup && !usePriced) ? 'Send this address for a confirmed price' : method === 'card' ? `Accept and pay ${formatCurrency(price)}${taxOn && !(exempt.declared && co.tax.exemption.trusted) ? ' plus tax' : ''}` : 'Accept on this PO'}
                 </button>
                 <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 10, textAlign: 'center' }}>
                   The ship date counts from the day you accept. Weekends and federal holidays don't count.

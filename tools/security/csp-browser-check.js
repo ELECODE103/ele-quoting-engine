@@ -442,6 +442,7 @@ const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#toke
     await page.getByRole("textbox", { name: "Anything else" }).fill("Runs on a stainless rail. tone = 5; 5 < 10 > 3");
     await page.setInputFiles('input[type="file"]', { name: "print.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n% browser check\n%%EOF\n") });
     await checkPassed();
+    await page.locator("#rfq-ship-street").fill("500 Plant Rd"); await page.locator("#rfq-ship-city").fill("Rockford"); await page.locator("#rfq-ship-state").selectOption("IL"); await page.locator("#rfq-ship-zip").fill("61101"); // where the finished parts ship: asked for on the request since 2026-11-13 (review N-05)
     await page.getByRole("button", { name: "Send for a firm quote" }).click();
     await page.getByRole("heading", { name: "It's in the queue." }).waitFor({ timeout: 15000 });
     await settle();
@@ -454,6 +455,7 @@ const linkIn = (mail, page) => (mail.text.match(new RegExp(`${BASE}/${page}#toke
     await page.getByLabel(/^Email/).fill("sam@csp-check.test");
     await page.getByLabel(/What the part is and what it does/).fill("Carton guide on the sealer infeed. Worn on the leading edge.");
     await checkPassed();
+    await page.locator("#rfq-ship-street").fill("500 Plant Rd"); await page.locator("#rfq-ship-city").fill("Rockford"); await page.locator("#rfq-ship-state").selectOption("IL"); await page.locator("#rfq-ship-zip").fill("61101"); // where the finished parts ship: asked for on the request since 2026-11-13 (review N-05)
     await page.getByRole("button", { name: "Send the request" }).click();
     await page.getByRole("heading", { name: "Now send us the part." }).waitFor({ timeout: 15000 });
     await settle();

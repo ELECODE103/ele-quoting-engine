@@ -434,6 +434,8 @@ function rfqReceivedShop({ rfq, adminUrl, part, unverified = false, buyerEmailed
       ["FAI + CoC", rfq.paperwork ? "YES — price it in" : "Not requested"],
       ["Original part back", part ? (rfq.returnPart ? "YES — price in the return shipping" : "No") : ""],
       ["Budgetary total shown", part ? "" : money(rfq.budgetTotal)],
+      // Where the finished parts go: the price has to cover getting them there (review of 2026-11-13, N-05).
+      [rfq.shipToKind === "pickup" ? "Delivery" : "Ship finished parts to", rfqShipTo(rfq) || "NOT GIVEN. Ask before pricing freight"],
       ["Sender", unverified ? "UNVERIFIED (no bot check, no confirmed account)" : ""],
       ["Reference", shortId(rfq.id)],
     ],
@@ -479,6 +481,8 @@ function rfqQuoted({ rfq, acceptUrl, shipBy }) {
       ["Inspection paperwork", rfq.paperwork ? "First-article report and certificate of conformance: included" : "Not requested, not included"],
       ["Original part", isPartRequest(rfq) ? (rfq.returnPart ? "Returned with your order: return shipping included" : "Not being returned") : ""],
       ["Lead time", days != null ? `${days} business day${days === 1 ? "" : "s"}${shipBy ? ` (ships by ${formatShipBy(shipBy)} if ordered today)` : ""}` : ""],
+      // What address the price is for. A different address at acceptance is confirmed by us first.
+      [rfq.shipToKind === "pickup" ? "Delivery" : "Priced for delivery to", rfqShipTo(rfq)],
       ["Good until", longDate(rfq.validUntil)],
       ["Reference", shortId(rfq.id)],
     ],
@@ -486,6 +490,41 @@ function rfqQuoted({ rfq, acceptUrl, shipBy }) {
     after: [
       `The link is yours alone and stops working after ${longDate(rfq.validUntil)}. Questions? Reply to this email or call ${brand.phone}.`,
     ],
+  });
+}
+
+/** Where a firm-quote request ships, as one line: the address, "Pickup at our shop", or "" when the request has none. */
+function rfqShipTo(rfq) {
+  if (!rfq || !rfq.shipToKind) return "";
+  if (rfq.shipToKind === "pickup") return `Pickup at our shop${rfq.shippingName ? ` (collected by ${rfq.shippingName})` : ""}`;
+  const country = rfq.shippingCountry && rfq.shippingCountry !== "US" ? rfq.shippingCountry : "";
+  return [rfq.shippingName, rfq.shippingAddress, [rfq.shippingCity, [rfq.shippingState, rfq.shippingZip].filter(Boolean).join(" ")].filter(Boolean).join(", "), country].filter(Boolean).join(", ");
+}
+
+/**
+ * To the shop: the buyer gave another ship-to address when accepting a firm quote (or the quote had
+ * been priced with none). No order was made; the quote waits for the owner to confirm the price for
+ * the new address and send it again (routes/rfq.js; review of 2026-11-13, N-05).
+ */
+function rfqAddressChangedShop({ rfq, previous, adminUrl }) {
+  return layout({
+    subject: `Quote ${shortId(rfq.id)}: ship-to address ${previous ? "changed" : "given"} at acceptance, re-confirm the price`,
+    preheader: "No order was made. The buyer's link is closed until you send the quote again.",
+    heading: previous ? "Address changed, re-confirm the price" : "Address given, confirm the price",
+    paragraphs: [
+      `${rfq.contactName} <${rfq.email}>${rfq.company ? " — " + rfq.company : ""}${rfq.phone ? " — " + rfq.phone : ""}`,
+      previous
+        ? "The customer went to accept this firm quote and gave a different ship-to address from the one it was priced for. NO ORDER WAS MADE and nothing was charged."
+        : "The customer went to accept this firm quote and gave the ship-to address for the first time: the quote had been priced without one. NO ORDER WAS MADE and nothing was charged.",
+      "Check the quoted total against freight to the new address. Change the total if it differs, then press Send in the RFQ queue: the customer gets a new link for the new address. The link they hold is closed until you do.",
+    ],
+    facts: [
+      ["Quoted total", money(rfq.quotedTotal)],
+      ["New ship-to", rfqShipTo(rfq)],
+      ["Priced for", previous || "No address"],
+      ["RFQ", shortId(rfq.id)],
+    ],
+    cta: { label: "Open the RFQ queue", url: adminUrl },
   });
 }
 
@@ -788,7 +827,7 @@ function orderClosedBuyer({ order, quoteUrl }) {
 
 const MESSAGES = {
   verifyEmail, passwordResetRequested, passwordChanged, signInAttempts, twoFactorChanged,
-  rfqReceivedBuyer, partRequestBuyer, rfqReceivedShop, rfqQuoted, rfqAcceptedShop,
+  rfqReceivedBuyer, partRequestBuyer, rfqReceivedShop, rfqQuoted, rfqAcceptedShop, rfqAddressChangedShop,
   orderConfirmation, newOrderShop, orderShipped, orderClosedBuyer,
 };
 const named = {};
@@ -804,5 +843,5 @@ module.exports = {
   esc, safeHref, greeting, LAYOUT_STYLE,
   layout, trackingUrl, shortId, money, DRAWING_NOTE,
   PAPERWORK_LABEL, PAPERWORK_SHORT, PAPERWORK_INCLUDED, PAPERWORK_NOT_INCLUDED, RETURN_INCLUDED, RETURN_NOT_INCLUDED, RETURN_REMINDER, PAPERWORK_REMINDER,
-  chargeRows, quoteCovers, isPartRequest, discountOf, amountPaidOf, deliveryFacts,
+  chargeRows, quoteCovers, isPartRequest, discountOf, amountPaidOf, deliveryFacts, rfqShipTo,
 };

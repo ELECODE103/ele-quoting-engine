@@ -348,6 +348,7 @@ async function phaseWithKeys() {
     await page.getByLabel('Quantities to quote').fill('250 / 500');
     await page.getByRole('textbox', { name: 'Anything else' }).fill('Runs on a stainless rail.');
     await page.getByRole('group', { name: 'Spam check' }).getByText('Check passed.').waitFor();
+    await page.locator('#rfq-ship-street').fill('500 Plant Rd'); await page.locator('#rfq-ship-city').fill('Rockford'); await page.locator('#rfq-ship-state').selectOption('IL'); await page.locator('#rfq-ship-zip').fill('61101'); // where the finished parts ship: asked for on the request since 2026-11-13 (review N-05)
     await page.getByRole('button', { name: 'Send for a firm quote' }).scrollIntoViewIfNeeded();
     await shot(page, 'rfq-form-with-check', { fullPage: false });
     const before = mails().length;
@@ -364,6 +365,7 @@ async function phaseWithKeys() {
     await page.getByLabel(/^Email/).fill('sam@plant.test');
     await page.getByLabel(/What the part is and what it does/).fill('Carton guide on the sealer infeed. Worn on the leading edge.');
     await page.getByRole('group', { name: 'Spam check' }).getByText('Check passed.').waitFor();
+    await page.locator('#rfq-ship-street').fill('500 Plant Rd'); await page.locator('#rfq-ship-city').fill('Rockford'); await page.locator('#rfq-ship-state').selectOption('IL'); await page.locator('#rfq-ship-zip').fill('61101'); // where the finished parts ship: asked for on the request since 2026-11-13 (review N-05)
     await page.getByRole('button', { name: 'Send the request' }).click();
     await page.getByRole('heading', { name: 'Now send us the part.' }).waitFor({ timeout: 15000 });
     const body = await page.textContent('body');
@@ -387,6 +389,7 @@ async function phaseWithKeys() {
     await page.getByLabel(/^Name/).fill('Blocked Visitor');
     await page.getByLabel(/^Email/).fill('blocked@visitor.test');
     const before = mails().length;
+    await page.locator('#rfq-ship-street').fill('500 Plant Rd'); await page.locator('#rfq-ship-city').fill('Rockford'); await page.locator('#rfq-ship-state').selectOption('IL'); await page.locator('#rfq-ship-zip').fill('61101'); // where the finished parts ship: asked for on the request since 2026-11-13 (review N-05)
     await page.getByRole('button', { name: 'Send for a firm quote' }).click();
     await page.locator('form#request > [role=alert]').filter({ hasText: "didn't load" }).waitFor({ timeout: 15000 });
     await page.getByRole('button', { name: 'Send for a firm quote' }).scrollIntoViewIfNeeded();
@@ -692,6 +695,7 @@ async function phaseWithKeys() {
     await dana.getByRole('heading', { name: /Tell us what matters/ }).waitFor();
     await dana.getByRole('textbox', { name: 'Anything else' }).fill('Signed-in request.');
     await dana.getByRole('group', { name: 'Spam check' }).getByText('Check passed.').waitFor();
+    await dana.locator('#rfq-ship-street').fill('500 Plant Rd'); await dana.locator('#rfq-ship-city').fill('Rockford'); await dana.locator('#rfq-ship-state').selectOption('IL'); await dana.locator('#rfq-ship-zip').fill('61101'); // where the finished parts ship: asked for on the request since 2026-11-13 (review N-05)
     await dana.getByRole('button', { name: 'Send for a firm quote' }).click();
     await dana.getByRole('heading', { name: "It's in the queue." }).waitFor({ timeout: 15000 });
     const list = JSON.parse((await owner.evaluate(() => fetch('/api/rfq/admin/list').then((r) => r.text()))));
@@ -873,6 +877,7 @@ async function phaseWithKeys() {
     await page.getByLabel('Company').fill(`5 < 10 > 3 ${hostile}`);
     await page.getByRole('textbox', { name: 'Anything else' }).fill(`tone = 5 and 5 < 10 > 3 ${hostile}`);
     await page.getByRole('group', { name: 'Spam check' }).getByText('Check passed.').waitFor();
+    await page.locator('#rfq-ship-street').fill('500 Plant Rd'); await page.locator('#rfq-ship-city').fill('Rockford'); await page.locator('#rfq-ship-state').selectOption('IL'); await page.locator('#rfq-ship-zip').fill('61101'); // where the finished parts ship: asked for on the request since 2026-11-13 (review N-05)
     await page.getByRole('button', { name: 'Send for a firm quote' }).click();
     await page.getByRole('heading', { name: "It's in the queue." }).waitFor({ timeout: 15000 });
     await ctx.close();
@@ -925,6 +930,7 @@ async function phaseWithoutKeys() {
     await page.getByLabel(/^Name/).fill('Sam Maint');
     await page.getByLabel(/^Email/).fill('stranger@elsewhere.test');
     await page.getByLabel(/What the part is and what it does/).fill('Lane divider, worn.');
+    await page.locator('#rfq-ship-street').fill('500 Plant Rd'); await page.locator('#rfq-ship-city').fill('Rockford'); await page.locator('#rfq-ship-state').selectOption('IL'); await page.locator('#rfq-ship-zip').fill('61101'); // where the finished parts ship: asked for on the request since 2026-11-13 (review N-05)
     await page.getByRole('button', { name: 'Send the request' }).click();
     await page.getByRole('heading', { name: 'We have your request.' }).waitFor({ timeout: 15000 });
     const body = await page.textContent('body');
@@ -941,6 +947,7 @@ async function phaseWithoutKeys() {
     await page.getByLabel(/^Name/).fill('Free money at https://evil.example');
     await page.getByLabel(/^Email/).fill('victim@elsewhere.test');
     await page.getByLabel('Company').fill('<script>alert(1)</script>');
+    await page.locator('#rfq-ship-street').fill('500 Plant Rd'); await page.locator('#rfq-ship-city').fill('Rockford'); await page.locator('#rfq-ship-state').selectOption('IL'); await page.locator('#rfq-ship-zip').fill('61101'); // where the finished parts ship: asked for on the request since 2026-11-13 (review N-05)
     await page.getByRole('button', { name: 'Send for a firm quote' }).click();
     await page.getByRole('heading', { name: "It's in the queue." }).waitFor({ timeout: 15000 });
     const text2 = await page.textContent('body');

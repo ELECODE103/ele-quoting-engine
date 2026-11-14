@@ -68,6 +68,11 @@ function partEditGate(req, res, next) {
   next();
 }
 
+/** Has the owner switched local pickup on? (false when the settings cannot be read) */
+function pickupOffered() {
+  try { const checkout = require("../services/checkout"); return require("../services/shipping").settings(checkout.currentRules()).pickup === true; } catch { return false; }
+}
+
 function mount(app) {
   // No JSON answer leaves the API larger than JSON_ANSWER_MAX_MB (security/answerCeiling.js).
   require("./answerCeiling").install(app);
@@ -81,6 +86,8 @@ function mount(app) {
       emailVerification: mailer.configured(),
       honeypotField: botGuard.HONEYPOT_FIELD,
       minFormSeconds: botGuard.MIN_FILL_SECONDS,
+      // The firm-quote request form offers "I will pick it up" only when the shop has switched pickup on.
+      pickupOffered: pickupOffered(),
     });
   });
   router.get("/public/form-token", botGuard.formTokenHandler);

@@ -24,7 +24,8 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
   async function newRfq(email = "pat@oem.test") {
     const q = await h.post("/api/quote", { parts: [h.cncConfig(partId, 500)], leadTimeSlug: "standard" });
     assert.strictEqual(q.body.gate.requiresRfq, true, "500 pieces is gated to RFQ");
-    const r = await h.form("/api/rfq", { quoteId: q.body.quoteId, contactName: "Pat Purchasing", email, company: "OEM Co", quantities: "500 / 1000" });
+    // (The request carries the ship-to address since 2026-11-13, review N-05: the quote is priced for it and accepted to it.)
+    const r = await h.form("/api/rfq", { quoteId: q.body.quoteId, contactName: "Pat Purchasing", email, company: "OEM Co", quantities: "500 / 1000", ...SHIP });
     assert.strictEqual(r.status, 201, r.text);
     return r.body.rfqId;
   }
@@ -118,8 +119,16 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
 
   test("accept needs a method, a ship-to address, and a PO number for PO", async () => {
     assert.strictEqual((await h.post(`/api/rfq/quote/${token}/accept`, { ...SHIP })).status, 400);
-    assert.strictEqual((await h.post(`/api/rfq/quote/${token}/accept`, { method: "po", poNumber: "PO-1" })).status, 400);
     assert.strictEqual((await h.post(`/api/rfq/quote/${token}/accept`, { method: "po", ...SHIP })).status, 400);
+    // (review of 2026-11-13, N-05) This quote was priced for the address on its request, so accepting it no longer
+    // needs the address typed again (that is the next case). A request that came WITHOUT an address still needs
+    // one before anything else happens:
+    const bare = await h.form("/api/rfq", { contactName: "Pat Purchasing", email: "bare@oem.test", quantities: "10" });
+    const bareQuote = await quoted(bare.body.rfqId, { partQuantities: undefined, quotedTotal: 300, quotedLeadDays: 5 });
+    const noAddress = await h.post(`/api/rfq/quote/${bareQuote.token}/accept`, { method: "po", poNumber: "PO-1" });
+    assert.deepStrictEqual([noAddress.status, noAddress.body.code], [400, "address-required"]);
+    assert.strictEqual(rfqsDB.getById(bare.body.rfqId).status, "quoted");
+    rfqsDB.delete(bare.body.rfqId);
     assert.strictEqual(rfqsDB.getById(rfqId).status, "quoted");
     assert.strictEqual(ordersDB.getAll().length, 0);
   });
@@ -304,7 +313,7 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
   });
 
   test("an RFQ with no online quote attached still becomes a one-line order", async () => {
-    const r = await h.form("/api/rfq", { contactName: "No Cad", email: "nocad@plant.test", notes: "Broken UHMW guide, photo attached" });
+    const r = await h.form("/api/rfq", { contactName: "No Cad", email: "nocad@plant.test", notes: "Broken UHMW guide, photo attached", ...SHIP });
     const { token: t } = await quoted(r.body.rfqId, { partQuantities: undefined, quotedTotal: 300, quotedLeadDays: 5 });
     const a = await h.post(`/api/rfq/quote/${t}/accept`, { method: "po", poNumber: "VERBAL-1", ...SHIP });
     assert.strictEqual(a.status, 201, a.text);
@@ -396,7 +405,7 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
   });
 
   test("the firm quote says whether the price includes the paperwork: email, quote page and PDF agree", async () => {
-    const yes = await h.form("/api/rfq", { contactName: "Pat Purchasing", email: "pat@oem.test", quantities: "250", paperwork: "true" });
+    const yes = await h.form("/api/rfq", { contactName: "Pat Purchasing", email: "pat@oem.test", quantities: "250", paperwork: "true", ...SHIP });
     const q = await quoted(yes.body.rfqId, { partQuantities: undefined, quotedTotal: 900, quotedLeadDays: 10 });
     const included = "This price includes a first-article inspection report and a signed certificate of conformance, shipped with the parts.";
     assert.ok(q.mail.text.includes(included) && q.mail.html.includes("first-article inspection report and a signed certificate of conformance"));
@@ -451,7 +460,7 @@ const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/
 
   test("send-the-part request with the return box ticked: stored, and the shop is reminded to price the return shipping in", async () => {
     h.sent.length = 0;
-    const r = await h.form("/api/rfq", { requestType: "part", returnPart: "true", contactName: "Sam Maint", email: "sam@plant.test", quantities: "2 now", notes: "NO DRAWING. The customer is sending the part.\nWhat it is and does: UHMW carton guide" });
+    const r = await h.form("/api/rfq", { requestType: "part", returnPart: "true", contactName: "Sam Maint", email: "sam@plant.test", quantities: "2 now", notes: "NO DRAWING. The customer is sending the part.\nWhat it is and does: UHMW carton guide", ...SHIP });
     assert.strictEqual(r.status, 201, r.text);
     assert.strictEqual(r.body.returnPart, true);
     const rfq = rfqsDB.getById(r.body.rfqId);

@@ -767,15 +767,17 @@ const cents = (n) => Math.round(n * 100) / 100;
 
   // ═══ 8. Firm quotes and purchase orders ══════════════════════
   const tokenFrom = (m) => (m.text.match(/https:\/\/shop\.test\/firm-quote\/(\S+)/) || [])[1];
-  async function firmQuote({ part = false, returnPart = false } = {}) {
-    const fields = part ? { requestType: "part", contactName: "Pat Purchasing", email: "pat@oem.test", returnPart: String(returnPart), notes: "worn guide block" } : null;
+  // (review of 2026-11-13, N-05) A request carries the address the quote is priced for, and is accepted to it:
+  // `shipTo` is SHIP unless a case asks for a request with no address (`shipTo: null`).
+  async function firmQuote({ part = false, returnPart = false, shipTo = SHIP } = {}) {
+    const fields = part ? { requestType: "part", contactName: "Pat Purchasing", email: "pat@oem.test", returnPart: String(returnPart), notes: "worn guide block", ...(shipTo || {}) } : null;
     let rfqId;
     if (part) rfqId = (await h.form("/api/rfq", fields)).body.rfqId;
     else {
       // (A visitor's own upload: the part the suite began with belongs to the buyer's account by now.)
       const q = await h.post("/api/quote", { parts: [h.cncConfig(await h.uploadCube(), 500)], leadTimeSlug: "standard" });
       assert.strictEqual(q.status, 200, q.text);
-      rfqId = (await h.form("/api/rfq", { quoteId: q.body.quoteId, contactName: "Pat Purchasing", email: "pat@oem.test" })).body.rfqId;
+      rfqId = (await h.form("/api/rfq", { quoteId: q.body.quoteId, contactName: "Pat Purchasing", email: "pat@oem.test", ...(shipTo || {}) })).body.rfqId;
     }
     h.sent.length = 0;
     const r = await h.put(`/api/rfq/admin/${rfqId}`, { status: "quoted", quotedTotal: 4250, quotedLeadDays: 15 }, owner);
@@ -835,8 +837,8 @@ const cents = (n) => Math.round(n * 100) / 100;
     assert.ok(/address and a time are confirmed with you before pickup/.test(h.sent.find((m) => m.to === "pat@oem.test").text));
     const page = await h.get(`/api/rfq/quote/${token}`);
     assert.ok(!page.text.includes(STREET) && page.body.order.pickupAddress === null);
-    // Without pickup, the address is still required.
-    const other = await firmQuote();
+    // Without pickup, an address is still required: here on a request that came with none.
+    const other = await firmQuote({ shipTo: null });
     assert.strictEqual((await h.post(`/api/rfq/quote/${other.token}/accept`, { method: "po", poNumber: "PO-1", shippingName: "Pat" })).status, 400);
   });
 

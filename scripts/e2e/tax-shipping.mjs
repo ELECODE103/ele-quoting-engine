@@ -389,7 +389,8 @@ try {
   await step('11. Firm quote on a purchase order: tax is per invoice; delivery choices on the quote page', async () => {
     await settings({ taxMode: 'stripe', shippingCarrierAccount: 'on', shippingLocalPickup: 'on' });
     const big = await newQuote(500);
-    const sent = await s.rfq({ quoteId: big.quoteId, contactName: 'Pat Purchasing', email: 'pat@oem.test', company: 'OEM Co' }, [], { token: buyerToken, ip: nextIp() });
+    // (The request carries the ship-to address since 2026-11-13, review N-05; the quote page shows it and the order ships there.)
+    const sent = await s.rfq({ quoteId: big.quoteId, contactName: 'Pat Purchasing', email: 'pat@oem.test', company: 'OEM Co', shippingName: 'OEM Co', shippingAddress: '500 Plant Rd', shippingCity: 'Rockford', shippingState: 'IL', shippingZip: '61101' }, [], { token: buyerToken, ip: nextIp() });
     if (sent.status !== 201) throw new Error(`rfq: ${sent.status} ${sent.text}`);
     const quoted = await api('PUT', `/api/rfq/admin/${sent.body.rfqId}`, { status: 'quoted', quotedTotal: 4250, quotedLeadDays: 15 }, adminToken);
     if (quoted.status !== 200) throw new Error(`quote the rfq: ${quoted.status} ${quoted.text}`);
@@ -401,10 +402,7 @@ try {
     await guest.getByTestId('delivery-choice').waitFor({ timeout: 20000 });
     await guest.getByText('Purchase order', { exact: false }).first().click();
     await guest.getByRole('textbox', { name: 'PO number' }).fill('PO-88213');
-    await guest.locator('input[autocomplete=street-address]').fill('500 Plant Rd');
-    await guest.locator('input[autocomplete=address-level2]').fill('Rockford');
-    await guest.locator('input[autocomplete=address-level1]').fill('IL');
-    await guest.locator('input[autocomplete=postal-code]').fill('61101');
+    check('firm quote page: the address the price is for is shown, not asked for again', /500 Plant Rd, Rockford, IL 61101/.test(await text(guest, 'priced-ship-to')));
     check('firm quote page: three delivery choices, and a PO\'s tax is said to be per invoice', await guest.getByTestId('delivery-choice').locator('label.lead-option').count() === 3 && /per invoice/.test(await text(guest, 'firm-tax-note')));
     await shot(guest, '24-firm-quote-po-per-invoice');
     await guest.getByRole('button', { name: 'Accept on this PO' }).click();

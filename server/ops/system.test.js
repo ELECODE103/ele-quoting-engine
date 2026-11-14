@@ -158,7 +158,7 @@ test("restore drill: full backup → wipe → restore → start → the order, t
     const quote = await s.post("/api/quote", { parts: [{ partId: part.partId, materialSlug: mat.slug, quantity: 250, process: "cnc", subProcess: "milling" }] }, { token: buyer });
     assert.strictEqual(quote.status, 200, quote.text);
     const quoteId = quote.body.quoteId;
-    const rfq = await s.rfq({ quoteId, contactName: "Dana Buyer", email: "buyer@oem.test", company: "OEM Co", quantities: "250 / 1000" }, [{ name: "drawing.pdf", data: pdf, type: "application/pdf" }], { token: buyer });
+    const rfq = await s.rfq({ quoteId, contactName: "Dana Buyer", email: "buyer@oem.test", company: "OEM Co", quantities: "250 / 1000", ...SHIP }, [{ name: "drawing.pdf", data: pdf, type: "application/pdf" }], { token: buyer });
     assert.strictEqual(rfq.status, 201, rfq.text);
     const quoted = await s.req({ method: "PUT", url: `/api/rfq/admin/${rfq.body.rfqId}`, token: admin, json: { status: "quoted", quotedTotal: 4250, quotedLeadDays: 15, quoteNote: "Covers 1,000 pcs." } });
     assert.strictEqual(quoted.status, 200, quoted.text);

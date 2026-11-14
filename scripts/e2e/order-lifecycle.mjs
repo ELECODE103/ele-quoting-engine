@@ -202,7 +202,8 @@ let rfqSeq = 0;
 async function firmQuote(owner, total, days = 10) {
   const email = `pat${++rfqSeq}@oem.test`;
   const fd = new FormData();
-  for (const [k, v] of Object.entries({ contactName: 'Pat Purchasing', email, company: 'OEM Conveyors', notes: `Guide rails, job ${rfqSeq}`, quantities: '250', process: 'cnc' })) fd.append(k, v);
+  // (The request carries the ship-to address since 2026-11-13, review N-05: the owner prices for it and the order ships there.)
+  for (const [k, v] of Object.entries({ contactName: 'Pat Purchasing', email, company: 'OEM Conveyors', notes: `Guide rails, job ${rfqSeq}`, quantities: '250', process: 'cnc', shippingName: 'OEM Conveyors', shippingAddress: '500 Plant Rd', shippingCity: 'Rockford', shippingState: 'IL', shippingZip: '61101', shippingCountry: 'US' })) fd.append(k, v);
   const c = await call('POST', '/api/rfq', { body: fd, headers: { 'X-Form-Token': formToken('rfq'), 'X-Turnstile-Token': 'e2e-pass-rfq' } });
   if (c.status !== 201) throw new Error(`rfq: ${c.status} ${c.text}`);
   const q = await call('PUT', `/api/rfq/admin/${c.body.rfqId}`, { json: { status: 'quoted', quotedTotal: total, quotedLeadDays: days }, token: owner });
@@ -316,12 +317,11 @@ async function fillCheckout(page) {
   await page.getByLabel('State').selectOption(SHIP.state);
   await page.getByLabel('ZIP Code').fill(SHIP.zip);
 }
+// The firm-quote page shows the address the quote was priced for (it came with the request) and asks
+// only for the name on the box; the order ships to that address.
 async function fillFirmQuote(page) {
-  await page.getByLabel('Name / company').fill('OEM Conveyors, Receiving');
-  await page.getByLabel('Street address').fill('500 Plant Rd');
-  await page.getByLabel('City').fill('Rockford');
-  await page.getByLabel('State').fill('IL');
-  await page.getByLabel('ZIP').fill('61101');
+  await page.getByTestId('priced-ship-to').waitFor({ timeout: 10000 });
+  await page.getByLabel('Name / company on the box').fill('OEM Conveyors, Receiving');
 }
 const stripeSessionIn = (url) => (url.match(/checkout\.stripe\.test\/pay\/(cs_e2e_\d+)/) || [])[1];
 

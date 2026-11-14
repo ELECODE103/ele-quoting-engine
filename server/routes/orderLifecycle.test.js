@@ -56,7 +56,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   /** A firm quote that has been sent: { id, token, email } */
   async function quoted(total = 1500, days = 10, extra = {}) {
     const email = `fq${++n}@oem.test`;
-    const c = await h.form("/api/rfq", { contactName: `Pat Buyer`, email, company: "OEM Co", notes: `job ${n}`, quantities: "250", process: "cnc" });
+    const c = await h.form("/api/rfq", { contactName: `Pat Buyer`, email, company: "OEM Co", notes: `job ${n}`, quantities: "250", process: "cnc", ...SHIP }); // (the request carries the ship-to address since 2026-11-13, review N-05; accept() below ships there)
     assert.strictEqual(c.status, 201, c.text);
     h.sent.length = 0;
     const q = await h.put(`/api/rfq/admin/${c.body.rfqId}`, { status: "quoted", quotedTotal: total, quotedLeadDays: days, ...extra }, owner);
@@ -639,7 +639,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const linesPart = await h.uploadCube();
     const q = await h.post("/api/quote", { parts: [h.cncConfig(linesPart, 500)], leadTimeSlug: "standard" });
     assert.strictEqual(q.status, 200, q.text);
-    const c = await h.form("/api/rfq", { quoteId: q.body.quoteId, contactName: "Lee Lines", email: "lines@oem.test" });
+    const c = await h.form("/api/rfq", { quoteId: q.body.quoteId, contactName: "Lee Lines", email: "lines@oem.test", ...SHIP });
     h.sent.length = 0;
     await h.put(`/api/rfq/admin/${c.body.rfqId}`, { status: "quoted", quotedTotal: 4000, quotedLeadDays: 12, partQuantities: { [linesPart]: 500 } }, owner);
     const token = tokenFrom(h.sent.find((m) => m.to === "lines@oem.test"));
@@ -737,7 +737,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     assert.deepStrictEqual([t.status, t.body.code, t.body.field], [400, "field-single-line", "trackingNumber"]);
     assert.strictEqual(order(p.orderId).status, "paid");
     // Ordinary punctuation and accents are text, not an attack.
-    const fine = await accept(f.token, { method: "po", poNumber: "PO-1", shippingName: "Zoë O'Brien & Sons <Receiving>", shippingAddress: "500 Plant Rd, Dock #4" });
+    // (review of 2026-11-13, N-05: a firm quote is accepted to the address it was priced for, so the street with
+    // punctuation in it is sent where an address is now given, on the request; the name on the box may differ.)
+    const dock = await h.form("/api/rfq", { contactName: "Pat Buyer", email: "dock@oem.test", notes: "punctuation", ...SHIP, shippingAddress: "500 Plant Rd, Dock #4" });
+    assert.strictEqual(dock.status, 201, dock.text);
+    assert.strictEqual(rfqsDB.getById(dock.body.rfqId).shippingAddress, "500 Plant Rd, Dock #4");
+    const fine = await accept(f.token, { method: "po", poNumber: "PO-1", shippingName: "Zoë O'Brien & Sons <Receiving>" });
     assert.strictEqual(fine.status, 201, fine.text);
   });
 

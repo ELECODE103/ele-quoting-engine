@@ -111,6 +111,7 @@ const INVENTORY = {
   "POST /api/orders/:id/resolve-attention": "admin",
   "GET /api/orders/admin/payment-settings": "admin",
   "POST /api/orders/:id/confirm-payment": "auth",
+  "POST /api/orders/:id/cancel": "auth", // the buyer's own unpaid order only (ownedOrder; routes/orderCaps.test.js)
   "POST /api/orders/:id/reorder": "auth",
   "GET /api/orders/:id/drawing": "auth",
   "GET /api/orders/:id/traveler": "admin",
@@ -193,7 +194,7 @@ function routesOf(prefix, router) {
     const q2 = await h.post("/api/quote", { parts: [h.cncConfig(partId, 4)], leadTimeSlug: "standard", notes: "Alice's draft" }, alice);
     aliceQuote = q2.body.quoteId;
     assert.strictEqual((await h.form(`/api/quote/${aliceQuote}/drawing`, {}, { drawing: PDF }, alice)).status, 200);
-    const r = await h.form("/api/rfq", { contactName: "Alice Buyer", email: "alice@buyer.test", phone: "815-555-0101", notes: "Alice's request" }, { drawing: PDF }, alice);
+    const r = await h.form("/api/rfq", { contactName: "Alice Buyer", email: "alice@buyer.test", phone: "815-555-0101", notes: "Alice's request", ...SHIP }, { drawing: PDF }, alice); // (requests carry the ship-to address since 2026-11-13, review N-05)
     assert.strictEqual(r.status, 201, r.text);
     aliceRfq = r.body.rfqId;
     // A guest's quote and request (no account behind them).
@@ -201,7 +202,7 @@ function routesOf(prefix, router) {
     guestPart = await h.uploadCube();
     anonQuote = (await h.post("/api/quote", { parts: [h.cncConfig(guestPart, 500)], leadTimeSlug: "standard" })).body.quoteId;
     assert.ok(anonQuote, "the guest's quote was priced");
-    anonRfq = (await h.form("/api/rfq", { quoteId: anonQuote, contactName: "Gil Guest", email: "gil@guest.test", phone: "815-555-0199", notes: "private words" })).body.rfqId;
+    anonRfq = (await h.form("/api/rfq", { quoteId: anonQuote, contactName: "Gil Guest", email: "gil@guest.test", phone: "815-555-0199", notes: "private words", ...SHIP })).body.rfqId;
     anonQuoted = await quoteRfq(anonRfq);
     assert.ok(anonQuoted);
   });

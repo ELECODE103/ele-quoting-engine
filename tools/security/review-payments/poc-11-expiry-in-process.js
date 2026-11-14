@@ -27,7 +27,7 @@ const { report, SHIP, ROOT } = require("./lib");
     h.pay(Object.keys(h.stripe.sessions).pop());
     const settle = await h.post(`/api/orders/${first.body.orderId}/confirm-payment`, {}, buyer);
     r.note(`a Stripe session opened before the quote lapsed is still honoured when paid: order "${settle.body.status}" (bounded by Stripe's own session lifetime)`);
-    const c = await h.form("/api/rfq", { contactName: "Late Buyer", email: "late@example.test", notes: "expiry check" });
+    const c = await h.form("/api/rfq", { contactName: "Late Buyer", email: "late@example.test", notes: "expiry check", ...SHIP }); // (review of 2026-11-13, N-05: a request carries its ship-to address, and the acceptance further down ships there)
     const sent = await h.put(`/api/rfq/admin/${c.body.rfqId}`, { status: "quoted", quotedTotal: 900, quotedLeadDays: 5 }, admin);
     const token = sent.body.acceptUrl.split("/firm-quote/")[1];
     rfqsDB.update(c.body.rfqId, { validUntil: past });

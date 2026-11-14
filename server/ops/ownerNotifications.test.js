@@ -60,7 +60,7 @@ function assertCleanSubject(subject, label) {
     // A name with a line break and a header in it is refused outright: nothing is stored and nobody is emailed.
     const hostile = await h.form("/api/rfq", { quoteId: q.body.quoteId, contactName: REFUSED.contactName, email: "buyer@oem.test", company: TYPED.company, notes: TYPED.notes }, {}, buyer);
     assert.deepStrictEqual([hostile.status, hostile.body.code, hostile.body.field, h.sent.length], [400, "field-single-line", "contactName", 0], hostile.text);
-    const r = await h.form("/api/rfq", { quoteId: q.body.quoteId, contactName: TYPED.contactName, email: "buyer@oem.test", company: TYPED.company, quantities: "500 / 1000", notes: TYPED.notes, finishNotes: TYPED.finishNotes }, {}, buyer);
+    const r = await h.form("/api/rfq", { quoteId: q.body.quoteId, contactName: TYPED.contactName, email: "buyer@oem.test", company: TYPED.company, quantities: "500 / 1000", notes: TYPED.notes, finishNotes: TYPED.finishNotes, ...SHIP }, {}, buyer); // (the request carries the ship-to address since 2026-11-13; the acceptance below ships there)
     assert.strictEqual(r.status, 201, r.text);
     firmRfqId = r.body.rfqId;
     const mail = shopMail(h);

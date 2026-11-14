@@ -208,6 +208,16 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'payments-unavailable': { '*': { text: `Card payment isn't available right now. That is a fault on our side, and nothing was charged. Try again in a few minutes, or call ${PHONE} and we'll take the order by phone.`, action: 'retry' } },
     'card-unavailable': { '*': { text: `We couldn't open the card page. That is a fault on our side, and nothing was charged. Try again in a few minutes, or call ${PHONE} and we'll take the order by phone.`, action: 'retry' } },
     'method-required': { '*': { text: 'Choose how you want to pay, by card or on a purchase order, then accept.' } },
+    // A firm quote is priced for one ship-to address (review of 2026-11-13, N-05; server/routes/rfq.js). Another address at
+    // acceptance, or the first address on a quote priced before requests carried one, goes back to the shop: nothing is
+    // accepted at the quoted total. `data.hadAddress` says which of the two it was.
+    'address-reconfirm': {
+      '*': {
+        text: ({ data }) => (data && data.hadAddress
+          ? `This quote was priced for delivery to a different address, so nothing was accepted and nothing was charged. We have the new address and are confirming the price for it. We will email you the quote again: use the link in that email to accept. Questions: ${PHONE}.`
+          : `This quote was priced before we had a ship-to address, so nothing was accepted and nothing was charged. We have your address now and are confirming the price for it. We will email you the quote again: use the link in that email to accept. Questions: ${PHONE}.`),
+      },
+    },
     'address-required': { '*': { text: 'Add the full ship-to address: name, street, city, state and ZIP.' } },
     'quote-changed': {
       '*': {

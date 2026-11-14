@@ -18,6 +18,12 @@
  *                                          of conformance are wanted; returnPart=true (part requests):
  *                                          the original goes back with the order. Both are stored so
  *                                          the owner prices them in, and the firm quote says so.
+ *                                          WHERE IT SHIPS (review of 2026-11-13, N-05): the request carries
+ *                                          the ship-to address (shippingName … shippingCountry, checked the
+ *                                          same way as at checkout) or shippingOption=pickup. The owner prices
+ *                                          for that address; it is stored with the request and is one of the
+ *                                          terms the emailed link is good for. A request sent without one is
+ *                                          taken (no lead is lost) and the buyer is asked at acceptance.
  *   GET  /api/rfq/:id                      read: the signed-in owner or an admin gets the request;
  *                                          anyone else holding the id of a request sent without an
  *                                          account gets its status only (no contact details)
@@ -32,6 +38,11 @@
  *                                          shippingOption ("ship" | "carrier-account" | "pickup") is honoured
  *                                          only when the admin has switched that choice on; the quoted
  *                                          total never changes with it. A purchase order's tax is per invoice.
+ *                                          The order ships to the address the quote was priced for. Another
+ *                                          address (or the first one, for a request that had none) is NOT
+ *                                          accepted at the quoted total: it is stored, the link is closed,
+ *                                          and the quote goes back to the owner to confirm the price and
+ *                                          send again (409 `address-reconfirm`). Pickup is always accepted.
  *   POST|DELETE /api/rfq/quote/:token/tax-certificate   customer: attach / remove an exemption certificate
  *                                          before accepting (same guards as a drawing)
  *   POST /api/rfq/quote/:token/confirm-payment   customer: settle on return from Stripe
@@ -138,6 +149,51 @@ function attachment(req, res, next) {
   });
 }
 
+const SHIP_TO_FIELDS = ["shippingName", "shippingAddress", "shippingCity", "shippingState", "shippingZip", "shippingCountry"];
+const SHIP_TO_RULES = Object.fromEntries(SHIP_TO_FIELDS.map((k) => [k, SHIPPING_RULES[k]]));
+
+/**
+ * Where a firm-quote request ships (review of 2026-11-13, N-05). Until then the request carried no
+ * address: the owner priced blind and the buyer could accept to any address in the world at the
+ * quoted total.
+ *
+ *   shippingOption=pickup   collected at the shop (only when the owner has switched pickup on)
+ *   an address              name, street, city, state, ZIP code, country: one printable line each,
+ *                           and for a United States address the state held against the ZIP code,
+ *                           exactly as at checkout (services/checkout.js shipTo). An address outside
+ *                           the contiguous states is NOT refused here: a person prices this freight.
+ *   nothing                 taken as it is (the request is not lost); the owner is told there is no
+ *                           address, and the buyer is asked for it at acceptance
+ *
+ * @returns {{ ok: true, fields: object } | { ok: false, status: number, code: string, error: string, field?: string }}
+ */
+function requestShipTo(b, contactName) {
+  const pickup = b.shippingOption === "pickup";
+  // (The country alone is not an address: the form sends "US" whether or not anything was typed.)
+  const typed = SHIP_TO_FIELDS.slice(0, 5).some((k) => typeof b[k] === "string" && b[k].trim() !== "");
+  if (!pickup && !typed) return { ok: true, fields: {} };
+  const lines = singleLines({ ...b, shippingCountry: b.shippingCountry || "US" }, SHIP_TO_RULES);
+  if (!lines.ok) return { ok: false, status: 400, code: lines.code, error: lines.error, field: lines.field };
+  if (pickup && !shippingService.settings(checkout.currentRules()).pickup) {
+    return { ok: false, status: 400, code: "shipping-option", error: "Pickup isn't offered. Give us the address to ship the parts to." };
+  }
+  const to = checkout.shipTo({ ...lines.values, shippingName: lines.values.shippingName || contactName }, { pickup });
+  if (!to.ok) return to;
+  const a = to.address;
+  if (!pickup && (!a.shippingName || !a.shippingAddress || !a.shippingCity || !a.shippingState || !a.shippingZip)) {
+    return { ok: false, status: 400, code: "address-required", error: "Add the full ship-to address" };
+  }
+  return { ok: true, fields: { shipToKind: pickup ? "pickup" : "address", ...a } };
+}
+
+/** "contiguous" | "offshore" (Alaska, Hawaii, a territory, a military address) | "foreign" | "" for a request's address. */
+function shipToZone(rfq) {
+  if (!rfq || rfq.shipToKind !== "address") return "";
+  if ((rfq.shippingCountry || "US") !== "US") return "foreign";
+  const checked = require("../services/usAddress").checkUsAddress({ state: rfq.shippingState, zip: rfq.shippingZip });
+  return checked.ok && checked.contiguous ? "contiguous" : "offshore";
+}
+
 // "accepted" and "expired" are set by the customer's actions and the calendar, not by hand.
 const ADMIN_STATUSES = ["new", "in-review", "quoted", "won", "lost", "declined"];
 const QUOTE_VALID_DAYS = 30;
@@ -219,6 +275,11 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
     if (!isValidEmail(email) || !mailer.cleanAddress(email)) { await dropFile(); return res.status(400).json({ error: "A valid email is required" }); }
 
     const sendPart = !quoteId && String(b.requestType || "") === "part";
+
+    // Where the finished parts go (see requestShipTo). Checked here, before the form's token is
+    // spent, so a buyer who mistypes the ZIP code corrects it and sends the same form again.
+    const shipTo = requestShipTo(b, contactName);
+    if (!shipTo.ok) { await dropFile(); return res.status(shipTo.status).json({ error: shipTo.error, code: shipTo.code, ...(shipTo.field ? { field: shipTo.field } : {}) }); }
 
     // Honeypot, per-IP and per-address limits, minimum time to submit, duplicates.
     check = botGuard.checkForm(req, {
@@ -333,6 +394,8 @@ router.post("/", optionalAuth, attachment, async (req, res) => {
       reasons: quote?.gate?.reasons || [],
       parts,
       requestType: sendPart ? "part" : "",
+      // Where it ships: the address (or "pickup") the owner prices for; nothing when the request gave none.
+      ...shipTo.fields,
       // The owner prices both of these into the firm quote; the quote then says so.
       paperwork,
       returnPart,
@@ -427,6 +490,9 @@ function adminView(rfq, base) {
     acceptUrl: rfq.status === "quoted" && rfq.quoteSentAt && !termsChanged(rfq) ? acceptUrl(rfq, base) : null,
     needsResend: termsChanged(rfq),
     orderStatus: order?.status || null,
+    // Where it ships, as one line, and whether that is inside the contiguous states (the owner prices the freight).
+    shipToLine: templates.rfqShipTo(rfq),
+    shipToZone: shipToZone(rfq),
   };
 }
 
@@ -527,7 +593,11 @@ router.put("/admin/:id", authenticate, requireAdmin, async (req, res) => {
     updates.quotedAt = rfq.quotedAt || now.toISOString();
     updates.quoteSentAt = now.toISOString();
     updates.validUntil = new Date(now.getTime() + QUOTE_VALID_DAYS * 864e5).toISOString();
-    // The link that goes out is for exactly these terms.
+    // Sending is the owner confirming the price for the address on the request: an address the buyer
+    // gave at acceptance is no longer "changed, to be confirmed" (review of 2026-11-13, N-05).
+    updates.shipToChangedAt = null;
+    updates.shipToPrevious = "";
+    // The link that goes out is for exactly these terms (the ship-to address is one of them).
     updates.sentTerms = rfqToken.termsFingerprint({ ...next, ...updates });
   }
 
@@ -562,6 +632,11 @@ router.get("/admin/:id/drawing", authenticate, requireAdmin, (req, res) => {
 // ─── Customer: the firm quote behind an emailed link ──────────
 // (declared before /:id so "quote" isn't read as an id)
 
+/** What the buyer is told when a firm quote goes back to the owner for a new ship-to address. */
+const ADDRESS_RECONFIRM = (hadAddress) => (hadAddress
+  ? `This quote was priced for delivery to a different address, so nothing was accepted and nothing was charged. We have the new address and are confirming the price for it. We will email you the quote again: use the link in that email to accept. Questions: ${brand.phone}.`
+  : `This quote was priced before we had a ship-to address, so nothing was accepted and nothing was charged. We have your address now and are confirming the price for it. We will email you the quote again: use the link in that email to accept. Questions: ${brand.phone}.`);
+
 /** Resolve a quote link to its RFQ, or answer why it can't be used. */
 function rfqFromToken(req, res) {
   const claim = rfqToken.verify(req.params.token);
@@ -578,6 +653,12 @@ function rfqFromToken(req, res) {
   req.rfqClaim = claim;
   // The link was issued for one set of terms and one amount. If the quote has been edited since
   // and not sent again, the link does not open it: nobody accepts terms they were not sent.
+  // The terms changed because the BUYER gave another ship-to address when accepting: the quote is
+  // with the owner, who confirms the price for that address and sends it again (N-05).
+  if (rfq.status === "quoted" && rfq.shipToChangedAt && termsChanged(rfq)) {
+    res.status(409).json({ error: ADDRESS_RECONFIRM(Boolean(rfq.shipToPrevious)), code: "address-reconfirm", hadAddress: Boolean(rfq.shipToPrevious) });
+    return null;
+  }
   if (rfq.status === "quoted" && (termsChanged(rfq) || (claim.amt !== null && claim.amt !== rfqToken.amountCents(rfq)))) {
     res.status(409).json({ error: `This quote was changed after this link was sent, so the link no longer works. We'll email you the updated quote; use the link in that email, or call ${brand.phone}.`, code: "quote-changed", linkReplaced: true });
     return null;
@@ -616,6 +697,8 @@ function customerView(rfq, claim) {
     partRequest: templates.isPartRequest(rfq),
     returnPart: Boolean(rfq.returnPart),
     covers: templates.quoteCovers(rfq),
+    // Where the price is for: the address given with the request (or "pickup"); null when there was none.
+    shipTo: rfq.shipToKind ? { kind: rfq.shipToKind, line: templates.rfqShipTo(rfq), shippingName: rfq.shippingName || "", shippingAddress: rfq.shippingAddress || "", shippingCity: rfq.shippingCity || "", shippingState: rfq.shippingState || "", shippingZip: rfq.shippingZip || "", shippingCountry: rfq.shippingCountry || "US" } : null,
     acceptedAt: rfq.acceptedAt || null,
     acceptedVia: rfq.acceptedVia || null,
     poNumber: rfq.poNumber || "",
@@ -742,8 +825,20 @@ router.post("/quote/:token/accept", async (req, res) => {
     // How the order is delivered, and whether an exemption is declared (services/checkout.js). A choice
     // is honoured only if the admin has switched it on; the quoted total is the total whatever is chosen.
     // The ship-to fields it reads are the ones checked just above.
-    const firm = checkout.resolveFirm({ ...b, ...ship.values }, { certificate: rfq.taxCertPath ? { fileName: rfq.taxCertFileName || "certificate", path: rfq.taxCertPath } : null });
-    if (!firm.ok) return res.status(firm.status).json({ error: firm.error, code: firm.code });
+    // WHERE IT SHIPS (review of 2026-11-13, N-05). The quote was priced for the address on the request.
+    // That address stands unless the buyer typed another one on this page; a name alone ("Attn:
+    // Receiving") changes nothing about freight and is taken as typed.
+    const typedAddress = ["shippingAddress", "shippingCity", "shippingState", "shippingZip"].some((k) => ship.values[k]);
+    const accepting = { ...b, ...ship.values };
+    if (b.shippingOption !== "pickup" && !typedAddress && rfq.shipToKind === "address") {
+      Object.assign(accepting, { shippingName: ship.values.shippingName || rfq.shippingName, shippingAddress: rfq.shippingAddress, shippingCity: rfq.shippingCity, shippingState: rfq.shippingState, shippingZip: rfq.shippingZip, shippingCountry: rfq.shippingCountry || "US" });
+    }
+    // No address at all (a request that had none, and nothing typed): said as that, before any one field is faulted.
+    if (b.shippingOption !== "pickup" && !["shippingAddress", "shippingCity", "shippingState", "shippingZip"].some((k) => accepting[k])) {
+      return res.status(400).json({ error: "Add the full ship-to address", code: "address-required" });
+    }
+    const firm = checkout.resolveFirm(accepting, { certificate: rfq.taxCertPath ? { fileName: rfq.taxCertFileName || "certificate", path: rfq.taxCertPath } : null });
+    if (!firm.ok) return res.status(firm.status).json({ error: firm.error, code: firm.code, ...(firm.field ? { field: firm.field } : {}) });
     const shipping = firm.address;
     if (firm.method !== "pickup" && (!shipping.shippingName || !shipping.shippingAddress || !shipping.shippingCity || !shipping.shippingState || !shipping.shippingZip)) {
       return res.status(400).json({ error: "Add the full ship-to address", code: "address-required" });
@@ -755,6 +850,19 @@ router.post("/quote/:token/accept", async (req, res) => {
       poNumber = po.value;
     }
     if (method === "card" && !stripeClient.get()) return res.status(503).json({ error: `Card payment isn't available right now. Call ${brand.phone}.`, code: "card-unavailable" });
+
+    // A different address from the one the quote was priced for (or the first address, for a request
+    // that had none): the acceptance is NOT completed at the quoted total. The address is stored with
+    // the request, which closes this link (the address is one of the link's terms), and the quote
+    // goes back to the owner: "address changed, re-confirm price". Collecting at the shop needs no
+    // freight and is always accepted. One synchronous step, like the claim below.
+    if (firm.method !== "pickup" && rfqToken.shipToKey({ shipToKind: "address", ...shipping }) !== (rfq.shipToKind ? rfqToken.shipToKey(rfq) : null)) {
+      const previous = templates.rfqShipTo(rfq);
+      const waiting = rfqsDB.update(rfq.id, { shipToKind: "address", ...shipping, shipToChangedAt: new Date().toISOString(), shipToPrevious: previous });
+      console.log(`Firm quote ${templates.shortId(rfq.id)}: ship-to address ${previous ? "changed" : "given"} at acceptance; no order made, waiting for the owner to confirm the price`);
+      await mailer.send({ to: mailer.shopNotifyAddress(), replyTo: rfq.email, ...templates.rfqAddressChangedShop({ rfq: waiting, previous, adminUrl: `${base}/admin` }) });
+      return res.status(409).json({ error: ADDRESS_RECONFIRM(Boolean(previous)), code: "address-reconfirm", hadAddress: Boolean(previous) });
+    }
 
     // ── The claim. Everything from here to the end of this block is synchronous, and ONE change to
     // the database (models/database.js transaction()): the order, its lines and the quote's
