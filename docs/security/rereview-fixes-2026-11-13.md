@@ -3,7 +3,7 @@
 Branch `relaunch-2026-11-12`. This answers `docs/security/rereview-relaunch-2026-11-12.md`, finding by
 finding. Nothing here has been merged or deployed; the site stays offline until you approve.
 
-## Running state (kept current while the work is in progress)
+## State of each finding (final)
 
 | Finding | State | Commit |
 |---|---|---|
@@ -18,15 +18,16 @@ finding. Nothing here has been merged or deployed; the site stays offline until 
 | F-07 refund before "completed" | fixed | `fdd876b` |
 | F-03 shipping limits in every mode | fixed; code in `1f2d1e8` (saved as a work-in-progress commit by the coordinator when the session was cut off), tests and docs in `3a63579` | `1f2d1e8`, `3a63579` |
 | Tests the audit flagged | kill-during-a-save case restored (`682ee01`); `reorder-block.js` runs the 100-line order too (`7c21810`) | |
-| Final verification from a fresh clone | SEE THE LAST LINE OF THIS TABLE | |
-| Verification status | in progress: section 4 is filled in as each run finishes | |
+| Follow-ups the final run from a fresh clone turned up (tests, fixtures and proof scripts only; section 6) | fixed | `b184dc1`, `af99f26`, `10d910a`, `f4ff03a`, `e02b11b` |
+| Final verification from a fresh clone, Node 20.20.0 | done; every figure is in section 4 | proofs and browser runs on `b184dc1`; the full test suite, the claims check and the payments proofs again on `e02b11b` |
 
 A figure that is not in this file has not been measured.
 
 ## 1. Bottom line
 
-All thirteen findings are fixed in code, each with tests that fail on the code before the fix, and
-each measured against the line the re-review set. One finding changes what the site sells (F-03: a
+All thirteen findings are fixed in code, each with new tests, and each measured against the line the
+re-review set: the reviewer's proof scripts that reported the findings now report them held, and my
+own worst-case scripts beside them are in section 4. One finding changes what the site sells (F-03: a
 part over 48 in, a packed order over 50 lb, or an address outside the contiguous United States now
 goes to a firm quote instead of being given a shipping price). No part price changed: the 300-quote
 vetting comparison shows no difference in any price column.
@@ -61,7 +62,9 @@ when its measurements are replaced; the number is part of what an order line rec
 order whose part is at another revision is flagged for the owner (`part-changed`) and the shop
 emailed. Order creation reads, prices, compares and writes in one step (see F-08).
 
-**Measured.** The reviewer's `units-race.js`: holds at all five gaps. My
+**Measured.** The reviewer's `units-race.js`: 2 held, 0 findings (the checkout that arrives in the
+gap makes its order and the units change is refused 409 `part-locked`; a new units request after the
+order is refused too; the traveler says the stored part matches what was paid for). My
 `tools/security/rereview-fixes/units-race-stress.js`, 200 attempts in four interleavings (units first,
 checkout first, a firm-quote request, two units changes then checkout): 0 mismatched orders or
 requests, quiet and loaded. A units change on a draft still works and the draft is priced again
@@ -147,7 +150,10 @@ went from 97 % to 79 % and a visitor and a new customer both uploaded. My
 `storage-pin-orders-full.js` at **full scale (1:1)**: a 2,048 MB store, 150 MB per account, three
 unpaid orders per account; 14 accounts and 42 unpaid orders filled it to 100 % in 204 s; 43 s after
 the flood it was at 75 %, a visitor and a new customer uploaded, 18 orders had been closed and 18
-buyers emailed.
+buyers emailed. The run on the final commit went differently and is the harder case: the clean-up
+closed orders while the flood was still going, so the flood needed 30 accounts and 90 unpaid orders
+and 364 s to reach 99 %; 62 s after it stopped the store was at 82 %, a visitor and a new customer
+uploaded, and 81 orders had been closed with 81 buyers emailed.
 
 **Tests.** `server/services/unpaidOrdersPressure.test.js` (4), `unpaidOrderLines.test.js` (5).
 
@@ -224,7 +230,9 @@ start-up, and every five minutes; a refused send waits and is given up, in the l
 **Measured.** `tools/security/rereview-fixes/paid-mail-kill.js`, 40 hard kills at a random moment in
 the webhook, exact counts. Same event delivered again: 0 orders untold, 38 told once, 2 told twice.
 Nothing delivered again (start-up only): 0 untold, 32 once, 8 twice. The reviewer's section D, 30
-kills: 0 paid orders with nobody emailed (was 5 of 8 and 7 of 8).
+kills: 0 paid orders with nobody emailed (was 5 of 8 and 7 of 8). On the final run all 50 of that
+section's kills landed before the answer (section 4), so `paid-mail-kill.js`, which reports how many
+kills found the payment already on disk, is the one to hold against the acceptance line.
 
 **About "twice".** A kill after the message has gone and before that reaches the disk sends it again.
 The request to the mail provider carries an Idempotency-Key (the row's id) so that the provider drops
@@ -289,12 +297,104 @@ over 50 lb.
   fails if no kill landed inside a save.
 - **`reorder-block.js`** now runs two orders and reports both: the dense drawing at as many lines as
   checkout allows (3 lines, $4,102.19) and 100 lines of a printed cube ($1,654.36), the most lines an
-  order can have. Dense: 68 to 88 ms a reorder, health check worst 52 ms, four at once worst 176 ms.
-  100 lines: 39 to 54 ms a reorder, health worst 42 ms, four at once worst 54 ms.
+  order can have. Dense: 68 to 88 ms a reorder, health check worst 52 ms, four reorders at once done
+  in 176 ms. 100 lines: 39 to 54 ms a reorder, health worst 42 ms, four at once done in 54 ms. The run
+  on the final commit was slower (section 4): dense 74 to 90 ms, health worst 73 ms, four at once done
+  in 365 ms with the health check at worst 149 ms; 100 lines 52 to 69 ms, health worst 20 ms, four at
+  once done in 188 ms with the health check at worst 74 ms.
 
 ## 4. Verification on the final commit
 
-VERIFICATION-TABLE-GOES-HERE
+Everything below was run from a fresh clone of this branch in a scratch folder, with Node 20.20.0
+(`/opt/node20/bin/node`), on a two-core machine, against local stand-ins only.
+
+**Which commit.** The proofs and the browser runs were made on `b184dc1`. Five later commits change
+one test file, one browser script and three proof scripts (section 6) and no server or client code;
+what they touch was run again: the accounts browser run on `f4ff03a`, and the full test suite, the
+claims check and the payments proofs on `e02b11b`. The commits after `e02b11b` change this file only.
+
+"Quiet" and "loaded" are as in section 2. A figure marked "worst" is the worst single sample of the
+run. Where a figure here and the one in section 2 differ, hold the worse of the two against the
+acceptance line.
+
+### Build, tests, audit
+
+| Check | Result |
+|---|---|
+| `npm ci` | exit 0; 0 vulnerabilities reported |
+| `npm test` (all suites) | 99 of 99 suites passed on `e02b11b` and on `f4ff03a`. On the way: 97 of 99 on the first run from the clone and 98 of 99 on `b184dc1`; the three failures were a recorded baseline, a fixture and a test that F-03 made out of date, each fixed with its reason in section 6 |
+| `NODE_ENV=production npm run build` | exit 0; 22 of 22 routes prerendered |
+| `node scripts/claims-check.js` | exit 0; 257 built files (21.3 MB, one PDF) read; the street address is in none |
+| `npm audit --omit=dev` | server 0, client 0 |
+| Vetting comparison with `dce1e38` (the commit before the re-review), 300 quotes each | Both runs: 0 fails, 63 warnings. 64 rows differ and every difference is the same one: the reason "freight is confirmed first" (`shipping-freight`) is added. 55 of the 64 were already firm-quote rows for another reason; 9 are new firm-quote rows, all orders of 25 or 100 pieces that pack to over 50 lb. No price column differs in any row |
+
+### The re-review's own scripts (`tools/security/rereview-relaunch/`)
+
+| Script | Result |
+|---|---|
+| `units-race.js` (F-01) | 2 held, 0 findings |
+| `order-list-hold.js` (F-09) | Quiet: 200 for the customer and for the owner, 3 to 4 ms, health check worst 3 ms. Loaded: 4 to 10 ms, health worst 8 ms |
+| `checkout-hold.js` (F-08), 100 lines, database 0.2, 6 and 12 MB | Longest hold of the health check: quiet 48 to 104 ms (worst 104), loaded 98 to 184 ms (worst 184); no sample over 250 ms. The checkout itself answered in 101 to 196 ms quiet, 236 to 408 ms loaded |
+| `durability-kill.js 50` (F-02, F-05, F-04) | 11 held, 0 findings, 3 info. Section C, 50 hard kills during the checkout of a 20-line quote: 26 no order, 24 a whole order, 0 partial (the script's own note: it saw no kill inside a partial-order window; there is none any more, the order is one save). Section D, 50 kills during the payment event, the event then sent again: every order paid, none lost; the script notes that all 50 kills landed before the answer and none between "paid on disk" and "emails sent", so in this run section D did not exercise F-05's window. `paid-mail-kill.js` below did (19 and 18 kills with the payment already on disk). Section E: a half-written temporary file beside a good database is ignored and the good one loaded; a zero-length file, a truncated file and a file that is not a database are each refused at start and left alone. Run with the unpaid-order ceilings lifted by environment variable, because the script places more unpaid orders from one account than the site now allows |
+| `storage-pin-orders.js` (F-12), its 1:10 scale | Holds: 74 % after the clean-up, a visitor and a new customer both uploaded. Control run 63 % |
+| `units-flip-hold.js` (F-13) | Longest hold: quiet 42 ms, loaded 147 ms |
+| `catalogue-upgrade.js` (F-10, F-11) | 22 held, 0 findings, 2 info |
+| `money-attacks.js` | 66 held, 0 findings |
+| `access-matrix.js` | 25 held, 0 findings |
+| `route-inventory.js` | 0 owner routes without a sign-in check |
+| `master-upgrade-access.js` | 3 held, 0 findings |
+| `public-surface.js` | 6 held, 0 findings |
+| `memory-poison.js` | exit 0; 0 customers refused after the attack; all 32 customer uploads made between and after the oversized files were read, the slowest in 1.2 s; server memory 463 MB at the highest reading, 314 MB thirty seconds after the last one |
+| `shipping-exposure.js` (F-03) | exit 0; the table is in section 2 under F-03 |
+
+### My worst-case scripts (`tools/security/rereview-fixes/`)
+
+| Script | Result |
+|---|---|
+| `units-race-stress.js 200`, quiet | 0 mismatched. 144 orders paid and compared, 43 requests, 6 checkouts refused with the new price, 204 units changes refused, 46 applied; the draft was priced again 200 of 200 |
+| the same, loaded | 0 mismatched. 139 orders, 46 requests, 11 checkouts refused with the new price, 206 units changes refused, 44 applied; 200 of 200 |
+| `order-list-worst.js` (12 MB, 876 orders, three unpaid 49-line orders on one account) | Quiet: lists worst 38 ms, health worst 33 ms. Loaded: worst 73 ms, health worst 67 ms |
+| `checkout-worst.js` (four heavier quotes, database up to about 14 MB) | Quiet: health worst 58 to 105 ms; checkout answered in 123 to 315 ms; another visitor's re-price median 12 to 15 ms, worst 164 ms. Loaded: health worst 94 to 247 ms; checkout 304 to 1,184 ms; the other visitor median 24 to 111 ms, worst 403 ms |
+| `storage-pin-orders-full.js pin 1` (F-12 at full scale: 2,048 MB) | Holds. 30 accounts and 90 unpaid orders; the flood took 364 s because the clean-up was already closing orders; 99 % at the end of the flood; 62 s later 82 %, a visitor and a new customer uploaded; 81 orders closed, 81 buyers emailed |
+| `units-flip-worst.js`, new database, 40-hole drawing | Quiet: longest hold 59 ms, health median 18 ms or under, follow-up work over in 1.1 to 1.4 s |
+| the same, 12.7 MB database, 1,600-hole drawing | Quiet: longest hold 96 ms, follow-up over in 5.0 to 5.8 s. Loaded: longest hold 195 ms, health median 3 to 5 ms, follow-up over in 17 to 20 s; another visitor's re-price median 26 to 40 ms, worst 256 ms, never refused |
+| `paid-mail-kill.js 40 40 event` (F-05: killed around the payment event) | 40 kills, 33 before the answer, 19 with the payment already on disk: 0 paid orders with no email; 36 got the emails once, 4 twice |
+| `paid-mail-kill.js 40 40 start` (delivery left to the restart alone) | 40 kills, 26 before the answer, 18 with the payment already on disk: 0 with no email; 35 once, 5 twice |
+
+### Other proofs
+
+| Check | Result |
+|---|---|
+| `scripts/dev/upgrade-proof.js` | 30 of 30 |
+| `tools/security/review/` (9 proofs) | exit 0; every attempt refused, no line marked as a weakness |
+| `tools/security/review-payments/run-all.sh` (12 proofs), on `e02b11b` | 0 of 79 checks show the weakness |
+| `reorder-block.js` | Dense drawing, 3 lines, $4,102.19: a reorder 74 to 90 ms, health worst 73 ms; four at once done in 365 ms, health worst 149 ms. 100 lines, $1,654.36: 52 to 69 ms, health worst 20 ms; four at once done in 188 ms, health worst 74 ms |
+| `pricing-eight.js` | One such quote alone 1,763 ms. With 1, 2, 4 and 8 attacking addresses: health median 2 ms, worst 99, 103, 113 and 220 ms; the other visitor priced 13 of 13 each time, median 14 to 16 ms, worst 146 ms |
+| `stall-probe.js` sizes, storm, held | exit 0. Storm: health median 2 ms, worst 440 ms, 27 of 866 samples over 100 ms. Held: health worst 10 ms while one address re-prices three times a second |
+| `db-ceiling.js` size; account 8 and 16; grow 8 and 16; anon 8 | exit 0. One account stops at 25 drafts ("drafts-full") with the database at 0.7 MB; growth by re-pricing ends at 10 % and 5 % of the ceiling; 23 addresses without accounts reach "quotes paused" at 6.8 of 8 MB, and a confirmed customer still uploads and quotes (a visitor without an account is asked to come back later, as designed) |
+| `eviction-collateral.js` | exit 0. After a 14-address flood (402 drafts) and the clean-up it caused (142 drafts removed, 3.4 to 2.3 MB, longest piece of work 24 ms): a visitor's quote is still there and can be changed, a customer's uploaded part and saved quote are still there |
+| `site-caps.js` rfq, mail, mail-one, bot check off and on | exit 0. Requests: with the bot check off, four addresses had 38 of 42 accepted before "requests paused", and a visitor and a customer were still served (201); with it on, 0 of 4 accepted. Mail: a new customer still registered and had one confirmation email |
+| `storage-pin.js` pin and control | exit 0 |
+| `parse-pool.js` pair, steal, solo | exit 0; every customer file parsed |
+| `linger.js` hold, many, pipeline, free | exit 0. 400 of 400 connections answered 413 and all closed within 7.1 s, none open after 40 s; a pipelined request was not run |
+| `geometry-price.js` volume, small, units | exit 0. `units` was run with quantity 1 (its default of 10 pieces of this plate now goes to a firm quote for freight, F-03): checkout at the old price refused 409 |
+| `encryption.js`, `memo-check.js`, `preview-access.js` off and on | exit 0; `problems: []`, `leaks: []` |
+| `migration.js` | exit 0; nothing lost, upgrade from `master` (`255753c`) is additive. It needs a local `master` branch, which I made in the scratch clone only |
+
+### In a browser (Playwright)
+
+| Run | Result |
+|---|---|
+| `scripts/e2e/hardening-accounts.mjs`, on `f4ff03a` | 121 of 121 checks (113 of 114 before the script read an order's lines from the single-order route; section 6) |
+| `scripts/e2e/order-lifecycle.mjs` | 63 of 63 |
+| `scripts/e2e/tax-shipping.mjs` | 56 of 56 |
+| `scripts/e2e/journey-qa.mjs`, 390 px and 1360 px | 204 screens; 0 scroll sideways; 0 serious or critical accessibility results; 0 problems |
+| `tools/security/csp-browser-check.js` | 68 steps, 68 clean, 0 violations, 0 page errors, 0 failed requests |
+| `scripts/e2e/admin-panel-load.mjs` (F-09, F-10) | 58 of 58 |
+
+Nothing intermittent was left unexplained. The one intermittent thing met on the way (the reviewer's
+`durability-kill.js` stopping once in 30 rounds on a half-written outbox file) was in the test
+support code and is fixed there (section 6); it did not recur in the 50 rounds above.
 
 ## 5. Judgment calls
 
@@ -344,9 +444,16 @@ VERIFICATION-TABLE-GOES-HERE
 | `tools/security/review-uploads/preload-stubs.js` (the local Stripe stand-in) | session ids unique per process; `checkout.sessions.expire` added | It handed out the same id after a restart (real Stripe never does; the server used to swallow the failed insert). It had no way to close a payment page, which real Stripe has, so nothing that depends on closing one could be shown |
 | `scripts/dev/upgrade-proof.js` | extended for F-10; the fixture's unpaid orders are given a recent date | Since 2026-11-13 01:17 UTC the 24-hour payment window closed the fixture's two unpaid orders at the first start, and two checks failed on the calendar |
 | `tools/security/rereview-availability/reorder-block.js` | runs a second, 100-line order | The audit's point |
+| `server/routes/unitsRefresh.test.js` (my own, added for F-13) | two cases use one line per saved quote and compare by a margin | Written before F-03; their 25-line quotes of the plate now go to a firm quote for freight, so the totals they compared no longer existed |
+| `scripts/e2e/hardening-accounts.mjs` | reads an order's lines from the single-order route | It read them from the order list, which no longer carries them (F-09). 113 of 114 before, 121 of 121 after |
+| `tools/security/review-payments/lib.js` | lifts the unpaid-order ceilings for these proofs | Several proofs place more than three unpaid orders from one account, which the site now refuses (F-09); they are testing something else |
+| `tools/security/review-payments/poc-01-dxf-units-swap.js` | one piece instead of 20; the order from the single-order route; the part's size from the traveler | Twenty of that plate pack to far over 50 lb and now go to a firm quote (F-03), so the order the proof needs could not be placed; order lines no longer carry measurements (F-09). Result: 0 of 1 checks show the weakness |
+| `tools/security/review-payments/poc-09-documents-and-emails.js` | the order from the single-order route | As above (F-09) |
 | `tools/security/rereview-availability/vetting-compare.js` | sums up every differing row | It showed only the first three |
 
-None of the reviewer's scripts in `tools/security/rereview-relaunch/` was edited.
+None of the reviewer's scripts in `tools/security/rereview-relaunch/` was edited. Two were run with
+different conditions and no edit: `durability-kill.js` with the unpaid-order ceilings lifted by
+environment variable, and `rereview-availability/geometry-price.js units` with quantity 1.
 
 **Changed outside the brief**, found on the way: the work queue was never sorted in production (the
 sort line had been joined to a comment); the two older "re-seed" checks looked at the first material
