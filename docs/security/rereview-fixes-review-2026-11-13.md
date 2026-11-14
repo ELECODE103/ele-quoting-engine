@@ -66,7 +66,8 @@ author's claim that the proofs made on `b184dc1` stand for the head commit is ri
 | `shipping-exposure.js` | exit 0, table in the write-up | exit 0; the table matches (58 x 94 and 6 x 94 sheets: firm quote; 48 x 48 at 1/16 in still sold at $17.76 to $20.23; every one-piece row to Honolulu and Germany: 409) |
 | `storage-pin-orders.js pin` | holds, 74 % after the clean-up | holds, 74 %; customer and visitor upload again |
 | `durability-kill.js 50` | 11 held, 0 findings, 3 info; section C 0 partial | Sections A, B, E as written: 10 held, 0 findings, 1 info. Section C: 0 partial of 50 both as written and with the ceilings lifted (see F-02). Section D (20 kills): 1 held, 1 info |
-| `memory-poison.js` | exit 0 | not yet run |
+| `memory-poison.js` | exit 0; 0 customers refused; "463 MB at the highest reading" | exit 0; 0 customers refused after the attack, 12 of 12 customer files read in 0.1 to 1.5 s. **Server memory read 1,000 MB** straight after the attacker's second 25 MB file, 552 MB after the third, 539 MB thirty seconds later. The author's 463 MB is not the highest reading I got; the earlier review also read 963 MB. On a 1 GB host that is the edge of a hard kill, which F-02 and F-05 now survive |
+| `tools/security/review-payments/run-all.sh` (12 proofs) | 0 of 79 checks show the weakness | 0 of 79 (1+4+4+6+8+15+15+5+5+5+2+9) |
 
 ## 4. Per original finding
 
@@ -579,6 +580,15 @@ while the disk was full (accounts, single-row changes) is lost at that restart.
 **What would close it.** Make the health check fail after a failed save; make a failed single write an
 error to the caller; word the start-up refusal for ENOSPC ("the disk is full") instead of "restore".
 
+## 5b. The four earlier scripts that had only been read
+
+| Script | Ran | Does it still test what it claims? |
+|---|---|---|
+| `rereview-availability/encryption.js` | exit 0 | Yes. With a key set: no stored file is unencrypted and the database holds no vertex lists or dense drawing loops; it still holds file names, overall measurements, DFM notes and quote lines in the clear, and says so. With the key removed: the start prints "EXISTING FILES CANNOT BE OPENED" and pricing a part whose detail is in a file answers 409 |
+| `rereview-availability/memo-check.js` | exit 0, `problems: []` | Yes. Prices with the memo and by the plain path (through a reorder) are identical to the last digit, line by line |
+| `rereview-availability/migration.js` | exit 0 (needs a local `master` branch, which I made in the scratch clone only, as the author did) | Yes for what it covers: a database written by `master` (`255753c`) comes up with no table, column or row lost. **Its fixture has no orders**, so it says nothing about the new start-up order check on the live database; the author's `scripts/dev/upgrade-proof.js` covers that and I have not re-run it |
+| `review-uploads/retention-encryption.js` | `retention`: exit 0, 5 of 5 pass. `encryption`: exit 0 with **one line marked FINDING** | Yes, and the finding it prints is not from these fixes (the script and the code it reads are unchanged by them): the database file itself is not encrypted, and for a small drawing its outline coordinates and the customer's file name can be read in it. Anyone who gets a copy of the database or of a backup can read those. The owner should know that a database backup is customer data |
+
 ## 6. Changed-tests audit
 
 Not finished. Read so far, each against `git diff dce1e38..28cb39d -- <file>`:
@@ -590,7 +600,7 @@ Not finished. Read so far, each against `git diff dce1e38..28cb39d -- <file>`:
 | `server/services/rowRetention.test.js` | Follows a real change (the 48-hour rule was F-12). New cases added for a card checkout with no page. Note: the code allows 30 minutes after a page lapses, the write-up says ten |
 | `server/routes/priceIntegrity.test.js` | One line waits for the deferred re-pricing (F-13). Asks the same question |
 | `server/models/taxShippingMigration.test.js` | The fixture's line now names a part that exists. Reasonable: a quote without its part could not be checked out before either |
-| `tools/security/review-payments/poc-01-dxf-units-swap.js` | 20 pieces cut to 1. Still proves what it was written to prove: its finding fires on "paid less than half the honest price for the full-size part", and at one piece the honest part (40 x 30 in, 3/4 in HDPE, about 35 lb packed) is still orderable online, so the swap can still be attempted. Not yet re-run by me |
+| `tools/security/review-payments/poc-01-dxf-units-swap.js` | 20 pieces cut to 1. **Still proves what it was written to prove.** Ran: honest price $351.94 for one piece; priced as millimetres $113.45; units set back to inches; checkout made the order at $351.94 (the script sends no confirmed total, so the site charges today's price, and Stripe shows it); the paid order carries the full-size part at the full price. Its finding fires on "paid less than half the honest price for the full-size part", which one piece can still show. The reason given (20 pieces now go to a firm quote for freight) is real |
 | `tools/security/review-payments/lib.js`, `poc-09-…` | Ceilings lifted for proofs that make many unpaid orders; order read from the single-order route. Follows real changes |
 | `tools/security/review-uploads/preload-stubs.js` (Stripe stand-in) | Ids unique per process; `expire` added, refusing a page that is not open, as Stripe does. Not more forgiving than Stripe in what I read. With `REVIEW_STUB_PAY=1` an open page counts as paid when asked about, which is only set by scripts that need a paid order |
 | `tools/geometry-bench/baseline/` (re-recorded price baseline) | **Verified field by field** with `r3-baseline-diff.js`: 197 snapshot files now, 196 compared with their version at `dce1e38`; **113 files differ, 404 priced cases differ, and every differing value is one of `shipping.amount`, `shipping.manual`, `shipping.reason`, `shipping.reasonCode`, `shippingEstimate`, `orderTotal`**, all at quantity 100. 0 values differ anywhere else (geometry, DFM, line prices). The author's "404 cases in 113 files, shipping fields only" is exact. One snapshot file is new and has no older version (`soup-wide-100k.json.gz`, 252 bytes); the write-up does not mention it |
