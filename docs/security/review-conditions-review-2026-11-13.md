@@ -46,7 +46,7 @@ columns, 0 rows differ; every honest address accepted in my runs was charged exa
 | Claim | State | The author's figure | Mine |
 |---|---|---|---|
 | **N-03** destination by ZIP code as well as state | **Closed** | 6 of 6 refused; 4 of 4 spellings accepted | 612 of 612 checkouts to an off-mainland address refused (12 ZIP codes written 22 ways, 17 spellings of the state, 20 of the country; mainland ZIP code with an off-mainland state or country; foreign postcodes), by checkout, by checking the same quote out again with another address, and by reorder. 4 of 4 spellings accepted. 21 of 25 honest spellings sent by hand accepted (the four refused cannot be chosen from the pick list). `r5-address-paths.js`: 16 held, 0 findings |
-| the state is a pick list | **Closed**, one flaw (P-04) | browser runs pass | Chromium at 390 px and 1360 px: 60 options, required, fits, Tab order right, the two-letter code typed picks the state. **Typing the state's name picks the wrong state for 2 of 9 names** (texas → Tennessee, new york → Nebraska); the ZIP code check then refuses it in words. `r5-state-picklist.js`: 14 held, 2 findings (the same one at both widths) |
+| the state is a pick list | **Closed**, one flaw (P-04) | browser runs pass | Chromium at 390 px and 1360 px: 60 options, required, fits, Tab order right, the two-letter code typed picks the state. **Typing the state's name picks the wrong state for 2 of 9 names** (texas → Tennessee, new york → Nebraska); the ZIP code check then refuses it in words. `r5-state-picklist.js`: 15 held, 2 findings (the same one at both widths) |
 | **N-05** a firm quote knows where it is going | **Closed** | 0 of 3 accepted to another address; 14 new cases; 34 held | 10 of 10 changed addresses made no order (street number, suite, city, ZIP code, state, Hawaii, Hawaii under "OH", Germany, Canada, a foreign address in the street line). 9 of 11 re-typings of the same address accepted. Card and purchase order at one moment with different addresses: 0 orders. 5 rounds of "another address": 5 emails to you, 25 further tries on closed links sent none. HTML in address fields is escaped in all three emails; control characters refused 6 of 6 |
 | **N-01** a changed quote closes the order it replaces; the buyer can cancel | **Closed** for what the review found; the day's ceiling still bites (section 3, note A) | six changes, six checkouts; 14 new cases; 11 held | `r5-chain-cancel.js`: 26 held, 0 findings. Never closed: another customer's order, an unrelated quote's order, a phone, purchase-order, firm-quote, flagged or paid order (7 of 7). Paid-while-replacing: 4 orderings and a race, section 3 note B. Cancel refused for someone else's (403), signed out (401), cookie without the CSRF token (403), paid, in production, firm quote, phone order. Checkout number 9 in a day is refused |
 | **F-12** the clean-up cannot close phone, purchase-order or firm-quote orders | **Closed** | 5 new cases; 4 of 4 runs | 12 of 12 orders with a payment method that is not exactly `card` (NULL, empty, `Card`, `CARD`, padded, `po`, `phone` and others) left alone through 3 file passes and 2 database passes and when asked directly; the `card` control beside them was closed. Flagged, paid and firm-quote card orders left alone. `r5-pressure-honest.js`: 12 held, 0 findings |
@@ -272,7 +272,110 @@ the "E." marker to the end: one line differs, the comment on the marker itself.
 
 ## 5. Regression: the author's figures and mine
 
-[REGRESSION]
+Fresh clone of `1fff088` in an empty scratch folder, Node 20.20.0. `npm ci`: exit 0, 0 vulnerabilities.
+Each script was run once unless a count is given. The container restarted once during this review;
+every figure below was on the disk before it and was read back from the script's own output.
+
+**Suite, build, comparisons**
+
+| What | Author (on `f840893`) | Mine (on `1fff088`) |
+|---|---|---|
+| `npm test` | 104 of 104 suites, 1,267 "ok", 10 min 26 s | 104 of 104 suites, 1,267 "ok" lines, 0 failures, about 11 min 40 s with other scripts running beside it |
+| Production build | exit 0, 22 of 22 pages | exit 0, 22 of 22 routes prerendered |
+| Claims check | exit 0; 257 files, 21.4 MB, 1 PDF | exit 0; 257 files, 21.4 MB, 1 PDF; the street address is in none |
+| `npm audit --omit=dev` | server 0, client 0 | server 0, client 0 |
+| 300-quote vetting comparison against `28cb39d` | 0 rows differ in 52 columns | 300 quotes each side, both "0 fails, 63 warnings", 52 columns, **0 rows differ** |
+| Payments proofs (`review-payments/run-all.sh`) | 0 of 79 | 0 of 79 show a weakness (1 + 4 + 4 + 6 + 8 + 15 + 15 + 5 + 5 + 5 + 2 + 9) |
+| The new test files run against the OLD code (`0af96f9`) | "each fails on the old code"; "4 of the 5 cases fail" for the clean-up | `ownerOrdersPressure` 4 of 5 fail; `orderCaps` 10 of 14; `firmQuoteShipTo` 12 of 14; `diskFull` 5 of 8; the 5 new cases of `shippingLimits` 5 of 5; the new case of `orderAtomic` 1 of 1. The new tests do test the new behaviour |
+
+**`tools/security/rereview-relaunch/`** (none edited)
+
+| Script | Author | Mine |
+|---|---|---|
+| `units-race.js` | 2 held, 0 findings | 2 held, 0 findings |
+| `order-list-hold.js` | six 200s, 5 to 16 ms, health worst 3 ms | six 200s, 4 to 5 ms, health worst 3 ms |
+| `checkout-hold.js 100 0,6,12` | 106 / 170 / 172 ms; health worst 75 / 90 / 93 ms; 0 over 250 ms | 119 / 170 / 267 ms; health worst 56 / 69 / 94 ms; 0 samples over 250 ms |
+| `units-flip-hold.js` | six flips 200, health worst 60 ms | six flips 200, health worst 92 ms |
+| `catalogue-upgrade.js` | 22 held, 0 findings, 2 info | 22 held, 0 findings, 2 info |
+| `money-attacks.js` | 66 held, 0 findings, 12 info | 66 held, 0 findings, 12 info |
+| `access-matrix.js` | 25 held, 0 findings, 2 info | 25 held, 0 findings, 2 info |
+| `route-inventory.js` | 0 owner routes unchecked | 0 owner routes without the sign-in and owner checks |
+| `master-upgrade-access.js` | 3 held, 0 findings, 1 info | 3 held, 0 findings, 1 info |
+| `public-surface.js` | 6 held, 0 findings | 6 held, 0 findings |
+| `shipping-exposure.js` | exit 0; table the same as on `6336917` | exit 0; its table compared with the one `0af96f9` prints: 0 lines differ |
+| `storage-pin-orders.js pin` | 97 % → 74 %, both accepted | 97 % after the flood, 74 % after the clean-up; a visitor and a customer both accepted |
+| `memory-poison.js` | exit 0; 990 MB after one hostile file; 16 of 16 honest files, 0.1 to 1.5 s; 0 refused | exit 0; 927 MB after the first hostile 25 MB file (refused at the memory line), one refused as not measurable, the third refused at the memory line (901 MB); 355 MB thirty seconds later; 16 of 16 honest files read in 0.1 to 1.4 s; 0 customers refused |
+| `durability-kill.js 50` (ceilings lifted by environment variable) | 11 held; C: 29 none, 21 whole, 0 partial; D: 50 of 50 | 11 held, 0 findings, 3 info. C: 25 no order, 25 a whole order, **0 partial**. D: 50 of 50 paid after the event was sent again, 0 untold. As for the author, none of D's kills landed between "paid on disk" and "emails sent" |
+
+**The earlier reviewer's `r3-*.js`** (none edited)
+
+| Script | Author | Mine |
+|---|---|---|
+| `r3-shipping-firm-f06.js` | N-03 and N-05 held; three findings, stops in section D (exit 2) | the same: 21 lines held, 3 "FINDING" lines, then a TypeError (exit 2). Each judged in section 4 |
+| `r3-caps-and-lists.js` | 10 held, 2 findings, 7 info | 10 held, 2 findings, 7 info (exit 1). Judged in section 4 |
+| `r3-full-disk.js` on a real 3 MB memory disk | 503 / 503 / 503; start refused with THE DISK IS FULL; starts with room | new account 503 `save-failed`, sign-in 503, health 503; restart refused, exit 1, "FATAL: THE DISK IS FULL, so the site has NOT started…"; with room it starts. "HOLDS: the database file stayed whole" |
+| `r3-pressure-collateral.js` | phone order kept 4 of 4; honest orders closed in 2 of 4 | 2 runs. Phone order kept **2 of 2**. Run 1 (store 97 %): nothing closed. Run 2 (store 100 %): both honest orders closed, each buyer emailed once, the one the script follows checked out again (200). Explained in P-05 |
+| `r3-event-orderings.js` | 29 held, 0 findings, 3 info | 29 held, 0 findings, 3 info |
+| `r3-units-paths.js` | 9 held, 0 findings | 9 held, 0 findings |
+| `r3-catalogue-odd.js` | 25 held, 1 finding, 2 info | 25 held, 1 finding, 2 info (exit 1; the finding was there, section 4) |
+| `r3-baseline-diff.js` | 0 values differ outside the shipping fields | 0 values differ outside the shipping block |
+| `r3-paid-mail-window.js` | 200 kills (195 in the window), nobody untold; 122 told twice, same key | 200 kills (187 inside the window): every order paid, nobody left untold; told twice 114, all with the same key, 0 with different keys |
+| `r3-loop-experiment.js` | new connection 921 ms, open 84 ms | new connection 922 ms, open connection 85 ms |
+| `r3-checkout-dist.js` | N-09 stands; medians 183 to 216 ms over six runs | see the timing table below |
+| `r3-swap-under-checkout.js 20 0` | N-06 stands; 9 to 20 of 20 at or over 250 ms | `0af96f9`: 7 of 20 (worst 346 ms), 15 of 20 (worst 445 ms). `1fff088`: 11 of 20 (worst 534 ms), 7 of 20 (worst 421 ms). The runs overlap; N-06 stands as it was |
+
+**The author's `r4-*.js`**
+
+| Script | Author | Mine |
+|---|---|---|
+| `r4-shipping-firm.js` | 34 held, 0 findings | 34 held, 0 findings |
+| `r4-caps-and-cancel.js` | 11 held, 0 findings, 1 info | 11 held, 0 findings, 1 info |
+| `r4-full-disk.js` on the real 3 MB disk | 12 held, 0 findings; 1 stray email | 12 held, 0 findings; 1 email written for the account that was not saved; health back to "ok" 1,019 ms after room was made (retry every 1 s in that script) |
+| `r4-f06-race.js 200` | 0 of 200 flagged, 0 wrong amount; 195 paid, 5 unpaid | 0 of 200 flagged, 0 of 200 with an amount that differs from the charge; 199 paid as pickup, 1 unpaid (nothing charged) |
+
+**Browser runs** (the preinstalled Chromium, against the production build)
+
+| Script | Author | Mine |
+|---|---|---|
+| `scripts/e2e/hardening-accounts.mjs` | 121 of 121 | 121 of 121 |
+| `scripts/e2e/order-lifecycle.mjs` | 72 of 72 | 72 of 72 |
+| `scripts/e2e/tax-shipping.mjs` | 57 of 57 | 57 of 57 |
+| `scripts/e2e/journey-qa.mjs` at 390 and 1360 px with the accessibility checker (axe-core 4.10.2, fetched into scratch) | 204 screens, 0 / 0 / 0 | 204 screens recorded, 0 scroll sideways, 0 with a serious or critical accessibility fault, 0 problems noted |
+
+**Is checkout slower? `r3-checkout-dist.js`, `0af96f9` against `1fff088`, runs alternated on a quiet
+machine** (30 checkouts of 100 lines a run, database 11.8 to 12.6 MB)
+
+| Run | Commit | Median answer | Median wait, new connection | Worst wait | At or over 250 ms |
+|---|---|---|---|---|---|
+| 1 | `0af96f9` | 267 ms | 254 ms | 355 ms | 17 of 30 |
+| 1 | `1fff088` | 278 ms | 262 ms | 407 ms | 17 of 30 |
+| 2 | `0af96f9` | 205 ms | 192 ms | 288 ms | 5 of 30 |
+| 2 | `1fff088` | 236 ms | 232.5 ms | 3,534 ms | 11 of 30 |
+| 3 | `0af96f9` | 203 ms | 197.5 ms | 269 ms | 1 of 30 |
+| 3 | `1fff088` | 209.5 ms | 199 ms | 277 ms | 5 of 30 |
+| 4 | `0af96f9` | 182 ms | 182.5 ms | 275 ms | 3 of 30 |
+| 4 | `1fff088` | 173 ms | 171.5 ms | 267 ms | 2 of 30 |
+
+Run 2 on `1fff088` has nine samples (three batches in a row) in which the machine itself stalled: the
+script's own reading with NO checkout in flight was 59 to 337 ms in those batches, where it is 2 to 16
+ms everywhere else. Something else on this shared machine was running. I left those nine out, by a
+rule applied to both sides (a batch whose quiet reading was over 50 ms, and the batch after it): 120
+samples remain for `0af96f9` and 111 for `1fff088`.
+
+| | `0af96f9` (120) | `1fff088` (111) | Difference |
+|---|---|---|---|
+| Checkout answered, median | 208.5 ms | 215 ms | +6.5 ms (middle 95 % of 5,000 resamples: -12 to +23 ms) |
+| New connection's wait, median | 201 ms | 206 ms | +5 ms (-14 to +18.5 ms) |
+| Open connection's wait, median | 66 ms | 70 ms | +4 ms (-3 to +10 ms) |
+| New connection at or over 250 ms | 26 of 120 | 26 of 111 | |
+| Open connection at or over 250 ms | 0 of 120 | 0 of 111 | |
+
+**What I take from it.** The machine drifted more between run 1 and run 4 (267 to 182 ms on the same
+commit) than the two commits differ in any one run. With four times the author's samples the answer is
+the same as his: no difference shown, a slowdown of up to about 20 ms in the median not ruled out, one
+of more than about 25 ms ruled out. N-09 stands as the earlier review wrote it: on both commits about
+a fifth of new connections waited 250 ms or more during a 100-line checkout.
+
 
 ## 6. Where the write-up is wrong or says more than was shown
 
@@ -315,8 +418,8 @@ the "E." marker to the end: one line differs, the comment on the marker itself.
   the instant a page is expired. Every "replace" and "cancel" result rests on the stand-in refusing
   payment on an expired page, as Stripe documents.
 - **The browser's own autofill** into the state list (P-04), and any browser but Chromium.
-- **"With the two rules put back, 4 of the 5 cases fail"** and the other "fails on the old code"
-  statements: [MUTATION]
+- **"With the two rules put back, 4 of the 5 cases fail".** I did not put two rules back one at a time. I
+  ran the new test files against the whole of the old code instead (section 5): 4 of 5 fail there too.
 - **Promotion codes on, Stripe Tax on** with the new paths: not attacked beyond the suites.
 - **The admin screens** for the new address box were exercised by the author's browser run (section 5)
   and read as text by me; I did not drive them by hand.
