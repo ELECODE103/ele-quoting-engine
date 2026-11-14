@@ -23,7 +23,7 @@ anything that was in flight was run again.
 |---|---|
 | Reproducing the author's figures on `28cb39d` | Done: `npm ci`, `npm test`, build, claims check, `npm audit`, and 11 of the 16 scripts in `rereview-relaunch/`. Not yet: `durability-kill.js`, `storage-pin-orders.js`, `memory-poison.js` |
 | F-07 event order | Done: `r3-event-orderings.js` |
-| F-09 lists, single-order route, ceilings on unpaid orders | Done except the browser check: `r3-caps-and-lists.js` (findings N-01, N-02) |
+| F-09 lists, single-order route, ceilings on unpaid orders | Done: `r3-caps-and-lists.js` (findings N-01, N-02) |
 | F-03 shipping limits on every route; firm quote and purchase order | Done: `r3-shipping-firm-f06.js` (findings N-03, N-04, N-05) |
 | F-06 two tabs under a race | Done: `r3-shipping-firm-f06.js` section E, 200 rounds |
 | F-08 / F-02 checkout hold | Single-checkout distribution done (87 samples, written up). Not yet: kills (F-02), the swap attack, several checkouts at once |
@@ -33,8 +33,9 @@ anything that was in flight was run again.
 | F-01, F-13 | Done: `r3-units-paths.js`; author's stress reproduced |
 | F-10/F-11 | Done: `r3-catalogue-odd.js` |
 | Reorder money path | Not yet attacked |
-| Changed-tests audit, price baseline, vetting comparison | Started (five test files read); not finished |
-| Browser check of the admin panel | Not started |
+| Changed-tests audit, price baseline, vetting comparison | Done |
+| Browser check of the admin panel | Done (author's script re-run, screenshots looked at) |
+| The four earlier scripts that had only been read | Done |
 
 ## 2. Verdict
 
@@ -178,7 +179,7 @@ that differ are `gateCodes` and `requiresRfq`: 55 rows that were already firm-qu
 `shipping-freight`, and 9 rows change from "sold online" to "firm quote" with that reason alone. No
 price, cost, time or DFM column differs in any row. The author's figures are the same: 64, 55 and 9.
 
-### F-09 (order list, admin panel): server side closed; browser not yet checked
+### F-09 (order list, admin panel): closed
 
 Ran `order-list-hold.js` (above) and `r3-caps-and-lists.js` section 5 and 6:
 - Another customer and a visitor, knowing the order id: 20 of 20 tries to read, reorder, confirm or print
@@ -190,6 +191,20 @@ Ran `order-list-hold.js` (above) and `r3-caps-and-lists.js` section 5 and 6:
 - A customer's list rows carry no lines, no address tag and no shop notes; the single-order answer
   carries the lines and none of the shop's fields or part measurements.
 - A 100-line order through the single-order route: 256 kB, 11 ms.
+
+In a browser (ran the author's `scripts/e2e/admin-panel-load.mjs` with the preinstalled Playwright, on a
+12 MB database of 442 orders, at 1360 px and 390 px): **58 of 58 checks**, the author's figure. I looked
+at the screenshots of the failed-order-list case at both widths myself: the Orders tab shows "The order
+list did not load. … The other tabs are not affected." with a "Try again" button, the figures above it
+and the tab bar are there, and nothing scrolls sideways. One small thing: the notice the OWNER sees ends
+"call 224-213-6727 or email quotes@straightedgemfg.com and we'll sort it out", which is the shop's own
+number; the wording was written for customers.
+
+Other admin lists (read): the quotes list and the parts list are capped (200 by default, 1,000 at most),
+the requests list stops before half the answer ceiling, the figures are counts. The production queue is
+not capped but only holds paid or purchase-order work. One order's traveler still reads every distinct
+part of that order with its measurements; a single order of many different dense drawings could pass the
+16 MB answer ceiling for that one traveler. I did not build that case.
 
 The ceilings on unpaid orders that the author added under this finding are findings **N-01** and **N-02**.
 The author's statement that the test harness lifts the ceilings by default is true; one suite
@@ -605,7 +620,18 @@ Not finished. Read so far, each against `git diff dce1e38..28cb39d -- <file>`:
 | `tools/security/review-uploads/preload-stubs.js` (Stripe stand-in) | Ids unique per process; `expire` added, refusing a page that is not open, as Stripe does. Not more forgiving than Stripe in what I read. With `REVIEW_STUB_PAY=1` an open page counts as paid when asked about, which is only set by scripts that need a paid order |
 | `tools/geometry-bench/baseline/` (re-recorded price baseline) | **Verified field by field** with `r3-baseline-diff.js`: 197 snapshot files now, 196 compared with their version at `dce1e38`; **113 files differ, 404 priced cases differ, and every differing value is one of `shipping.amount`, `shipping.manual`, `shipping.reason`, `shipping.reasonCode`, `shippingEstimate`, `orderTotal`**, all at quantity 100. 0 values differ anywhere else (geometry, DFM, line prices). The author's "404 cases in 113 files, shipping fields only" is exact. One snapshot file is new and has no older version (`soup-wide-100k.json.gz`, 252 bytes); the write-up does not mention it |
 | `tools/security/rereview-availability/vetting-compare.js` | Now prints every kind of difference, not the first three. Sees more, not less. Run by me (F-03 above) |
-| the rest of the author's section 6 | not yet read |
+| `server/services/shipping.test.js` | Three cases removed that asserted "the formula never goes to a firm quote" and "has no destination rule". That WAS F-03. New cases assert the limits in every mode. Follows the change |
+| `server/config/seedCarry.test.js` | Rewritten (21 cases). The three old cases asserted what F-10 and F-11 remove. My own `r3-catalogue-odd.js` checks the same behaviour from outside and agrees |
+| `server/ops/shutdown.test.js` | A case ADDED: SIGKILL at 12 delays during back-to-back saves of a 12 MB database; it fails unless at least one kill left a temporary file behind, so it cannot pass without landing inside a save. This is the coverage the earlier audit said was missing |
+| `server/testSupport/harness.js` | Lifts the four ceilings on unpaid orders unless a suite asks for them. True, and necessary for suites that make dozens of unpaid orders. **Only one suite runs with the real ceilings** (`server/routes/orderList.test.js`); its comment in the harness names a file that does not exist (`routes/orderCaps.test.js`). The live-server helper does NOT lift them, so every script that starts the real server meets the real ceilings unless it lifts them itself |
+| `server/testSupport/liveServer.js` | Keeps a folder the caller handed in when a start is refused; skips an outbox file a kill cut short. Neither makes a check easier to pass |
+| `scripts/dev/upgrade-proof.js` | Extended for F-10; fixture orders given a recent date. Not re-run by me |
+| `tools/security/rereview-availability/reorder-block.js` | Now runs a 100-line order as well as the dense one. Asks more. Not re-run by me |
+| `server/routes/unitsRefresh.test.js`, `unitsLock.test.js` | The author's own new tests; two cases reduced to one line per quote because 25 lines of that plate now go to a firm quote. Pass in the full suite |
+| `scripts/e2e/hardening-accounts.mjs` | Reads lines from the single-order route. Follows F-09. Not re-run by me |
+
+**No finding was edited away** in the files I read. Every change follows a real change of behaviour, and
+three of them ask more than before.
 
 ## 7. Not covered yet, and what a sandbox cannot show
 
