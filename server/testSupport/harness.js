@@ -63,7 +63,10 @@ async function start(opts = {}) {
   // (2026-11-13) One sender may hold only a few unpaid orders at once and start only a few a day
   // (security/orderCaps.js). The route suites make dozens of unpaid orders on one account inside a
   // second, so the ceilings are lifted here unless a suite sets them itself or asks for the real ones
-  // with start({ orderCaps: true }) (routes/orderCaps.test.js does). Nothing else about checkout changes.
+  // with start({ orderCaps: true }). Two suites do: routes/orderCaps.test.js (the per-account AND the
+  // per-address ceilings, the order a changed quote replaces, the buyer's own cancel) and
+  // routes/orderList.test.js (the per-account ceilings, for the order list). Nothing else about
+  // checkout changes. (Until 2026-11-13 this comment named orderCaps.test.js when no such file existed.)
   for (const key of ["ORDERS_UNPAID_PER_ACCOUNT", "ORDERS_UNPAID_PER_CLIENT", "ORDERS_UNPAID_NEW_PER_ACCOUNT_DAY", "ORDERS_UNPAID_NEW_PER_CLIENT_DAY"]) {
     if (opts.orderCaps === true) delete process.env[key];
     else if (process.env[key] === undefined) process.env[key] = "100000";

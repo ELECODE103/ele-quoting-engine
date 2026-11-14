@@ -63,6 +63,8 @@ function orderView(order, { admin = false, account = false } = {}) {
     trackingUrl: trackingUrl(order.carrier, order.trackingNumber),
     // Whether the order page offers Reorder (an order that was never paid for has nothing to reorder).
     canReorder: orderState.wasPlaced(order),
+    // Whether "Your orders" offers Cancel: the buyer's own order from instant checkout, still waiting for a card payment.
+    canCancel: lifecycle.isWaitingCardOrder(order),
   };
 }
 
@@ -142,7 +144,7 @@ function linesMatchQuote(items, lineItems) {
  * @returns {null | {refusal} | {closeFirst, orderId} | {order, resumed, itemCount, description, quoteWas}}
  *   null: a warm-up pass (nothing judged, nothing written).
  */
-function orderStep(req, quoteId) {
+function orderStep(req, quoteId, leaveAlone = new Set()) {
   let quote = quotesDB.getById(quoteId);
   if (!quote) return refuse(404, { error: "Quote not found" });
 
@@ -297,11 +299,28 @@ function orderStep(req, quoteId) {
     }
   }
 
-  // A NEW order from here on. One sender may hold only so many unpaid orders, at once and in a day
-  // (security/orderCaps.js): pressing "pay" is free, and each unpaid order holds database rows and files.
+  // A NEW order from here on.
+  //
+  // THE ORDER THIS ONE REPLACES (review of 2026-11-13, N-01). A buyer who reaches the card page, goes
+  // back, changes a quantity and presses pay again is checking out a NEW quote (a quote that has been
+  // to checkout is no longer a draft, so the change forks it: routes/api.js saveQuote), and the order
+  // of the earlier version used to stay "waiting" for two hours. The fourth such change met the
+  // ceiling of three and was refused, with no way for the buyer to close anything. Now the buyer's
+  // own waiting card orders of the SAME quote chain are closed here, in the same change that writes
+  // the new order. The rule of every other closing holds: a payment page that is open is closed AT
+  // STRIPE first (the caller does it and comes back; a page that turns out to be paid settles that
+  // order and this checkout stops), and an order whose page cannot be confirmed closed is left
+  // alone (`leaveAlone`) and goes on counting.
+  const replaced = replacedOrders(quote, req.user.userId).filter((o) => !leaveAlone.has(o.id));
+  const pageOpen = replaced.find((o) => lifecycle.sessionsOpenFor(o.id));
+  if (pageOpen) return { closeFirst: true, orderId: pageOpen.id, replaced: true };
+
+  // One sender may hold only so many unpaid orders, at once and in a day (security/orderCaps.js):
+  // pressing "pay" is free, and each unpaid order holds database rows and files. The orders this
+  // step is about to close are not counted "at once"; they still count in the day's total.
   const clientTag = require("../security/uploadGuards").clientTag(require("../security/clientKey").clientKey(req));
   if (req.user.role !== "admin") {
-    const capped = require("../security/orderCaps").refusalFor({ userId: req.user.userId, clientTag, sessionMinutes: lifecycle.sessionMinutes() });
+    const capped = require("../security/orderCaps").refusalFor({ userId: req.user.userId, clientTag, sessionMinutes: lifecycle.sessionMinutes(), closing: replaced.map((o) => o.id) });
     if (capped) return refuse(capped.status, capped.body, { "Retry-After": String(capped.retryAfterSeconds) });
   }
 
@@ -325,6 +344,8 @@ function orderStep(req, quoteId) {
 
   // ONE CHANGE: the order, every line, the part claims and the quote's status (see the block above).
   const order = require("../models/database").transaction(() => {
+    // The earlier version's unpaid order goes in the same change (see "the order this one replaces").
+    for (const old of replaced) lifecycle.expireOrder(old.id, `closed at checkout: the buyer changed the quote and checked out the new version (quote ${String(quoteId).slice(0, 8)}); nothing was paid`);
     // Create the order with pending_payment status
     let row = ordersDB.insert({
       userId: req.user.userId,
@@ -400,6 +421,30 @@ function orderStep(req, quoteId) {
   return { order, resumed: false, itemCount: lineItems.length, description: describe(lineItems), quoteWas: { status: quote.status || "draft", userId: quote.userId || null } };
 }
 
+/**
+ * The buyer's own orders that checking out `quote` replaces: waiting for a card payment, made at
+ * instant checkout (orderLifecycle.isWaitingCardOrder: never a phone, purchase-order or firm-quote
+ * order, never one flagged for the owner), and made from another quote of the same chain. A chain
+ * is a quote and every quote forked from it after it had been to checkout; each fork carries the
+ * first quote's id (`replacesQuoteId`, routes/api.js saveQuote).
+ */
+function replacedOrders(quote, userId) {
+  if (!quote || !userId) return [];
+  const root = quote.replacesQuoteId || quote.id;
+  const waiting = typeof ordersDB._query === "function"
+    ? ordersDB._query("SELECT id, quote_id FROM orders WHERE user_id = ? AND status = 'pending_payment' AND payment_method = 'card'", [userId]).map((r) => ({ id: r.id, quoteId: r.quote_id }))
+    : ordersDB.query((o) => o.userId === userId && o.status === "pending_payment" && o.paymentMethod === "card").map((o) => ({ id: o.id, quoteId: o.quoteId }));
+  const out = [];
+  for (const w of waiting) {
+    if (!w.quoteId || w.quoteId === quote.id) continue;
+    const other = w.quoteId === root ? { id: root } : quotesDB.getById(w.quoteId);
+    if (!other || (other.replacesQuoteId || other.id) !== root) continue;
+    const order = ordersDB.getById(w.id);
+    if (lifecycle.isWaitingCardOrder(order)) out.push(order);
+  }
+  return out;
+}
+
 /** The return pages and the metadata of an order's payment page. */
 function stripeUrls(req, orderId, quoteId) {
   const baseUrl = orderEvents.baseUrl(req);
@@ -445,11 +490,13 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
     const job = pricingGate.job(req, (first.config && Array.isArray(first.config.parts) ? first.config.parts : first.lineItems) || []);
     const base = orderEvents.baseUrl(req);
     let outcome = null;
-    // At most three rounds: a payment page that is open for another amount or delivery choice is
-    // settled or closed at Stripe first, and then the step runs again on the order as it is then.
-    for (let round = 0; round < 3; round++) {
+    // A few rounds at most: a payment page that is open for another amount or delivery choice, or for
+    // an order this checkout replaces, is settled or closed at Stripe first, and then the step runs
+    // again on the orders as they are then. (An account holds three waiting orders at most.)
+    const leaveAlone = new Set();
+    for (let round = 0; round < 6; round++) {
       try {
-        outcome = await pricingMemo.run(() => orderStep(req, quoteId), job);
+        outcome = await pricingMemo.run(() => orderStep(req, quoteId, leaveAlone), job);
       } catch (err) {
         // The runner's own refusals (the site is pricing a lot; this quote took too long to price) and
         // any refusal the pricing itself raises: answered as they are, with their Retry-After.
@@ -460,6 +507,26 @@ router.post("/checkout-session", authenticate, requireConfirmedEmail, checkoutGu
         throw err;
       }
       if (!outcome || !outcome.closeFirst) break;
+      if (outcome.replaced) {
+        // The unpaid order of an earlier version of this quote (N-01).
+        let closed;
+        try { closed = await lifecycle.closeForChange(outcome.orderId, { base }); } catch (err) {
+          // Its payment page could not be confirmed closed: that order is left exactly as it is.
+          if (!(err && err.code === "payment-session-busy")) throw err;
+          leaveAlone.add(outcome.orderId);
+          continue;
+        }
+        if (closed.paid) {
+          // That page had been paid (in another tab, a moment ago): the earlier order is settled as it
+          // stood, and no second payment is started. The buyer is told, and can check out again if
+          // they do want this version as well.
+          const settled = ordersDB.getById(outcome.orderId);
+          if (settled && settled.status !== "pending_payment" && settled.paidAt) {
+            return res.status(409).json({ error: "Your earlier order for these parts has just been paid, so we did not start a second payment. Open that order to see it. If you want this changed quote as well, check out again.", code: "earlier-order-paid", orderId: outcome.orderId });
+          }
+        }
+        continue;
+      }
       const closed = await lifecycle.closeForChange(outcome.orderId, { base });
       if (closed.paid) return res.json({ sessionUrl: stripeUrls(req, outcome.orderId, quoteId).successUrl, orderId: outcome.orderId });
     }
@@ -809,6 +876,38 @@ function ownedOrder(req, res) {
   if (req.user.role !== "admin" && order.userId !== req.user.userId) { res.status(403).json({ error: "Access denied" }); return null; }
   return order;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// POST /api/orders/:id/cancel — the buyer cancels their own unpaid order (review of 2026-11-13, N-01)
+//
+// Only an order made at instant checkout that is still waiting for a card payment and is not
+// flagged for the owner. Its payment page is closed at Stripe first: if that page turns out to be
+// paid the order is settled, not cancelled; if it cannot be confirmed closed, nothing is changed
+// and the buyer is asked to try again. The closed order is "not paid, closed": its quote is the
+// buyer's to use again, and a payment that still arrives for it is flagged for the owner.
+// A firm-quote order, a purchase-order order and an order the owner took by phone are the owner's.
+// ═══════════════════════════════════════════════════════════════
+router.post("/:id/cancel", authenticate, async (req, res) => {
+  try {
+    const order = ownedOrder(req, res);
+    if (!order) return;
+    const phone = require("../../shared/brand.json").phone;
+    const notHere = (status, error) => res.status(status).json({ error, code: "cancel-not-available", status: order.status });
+    if (order.rfqId || (order.paymentMethod && order.paymentMethod !== "card") || order.status === "pending_po") {
+      return notHere(409, `This order came from a firm quote or a purchase order, so it can't be cancelled from this page. Call ${phone} and we'll sort it out.`);
+    }
+    if (order.status !== "pending_payment") return notHere(409, "This order is not waiting for payment any more, so there is nothing to cancel here. Reload the page to see where it stands.");
+    if (!lifecycle.isWaitingCardOrder(order)) return notHere(409, `This order can't be cancelled from this page. Call ${phone} and we'll sort it out.`);
+    const r = await lifecycle.cancelByBuyer(order.id, { base: orderEvents.baseUrl(req) });
+    if (r.outcome === "closed") return res.json({ ...orderView(r.order), cancelled: true });
+    if (r.outcome === "paid") return res.status(409).json({ error: "This order has just been paid, so it was not cancelled. Reload the page to see it.", code: "cancel-order-paid", orderId: order.id });
+    if (r.outcome === "busy") return res.status(502).json({ error: "We couldn't confirm that the payment page for this order is closed, so the order was left as it is. Nothing was charged. Try again in a minute.", code: "payment-session-busy" });
+    return notHere(409, "This order is not waiting for payment any more, so there is nothing to cancel here. Reload the page to see where it stands.");
+  } catch (err) {
+    console.error("Cancel order error:", err.message);
+    res.status(500).json({ error: "Failed to cancel the order" });
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════
 // POST /api/orders/:id/confirm-payment — settle on return from Stripe

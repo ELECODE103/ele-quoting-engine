@@ -195,7 +195,10 @@ async function inPieces(items, work, { budgetMs = 40, sync = false } = {}) {
 //            closed at Stripe first, buyer emailed), and their lines go the same way.
 const LAPSED_LINES_KEEP_MS = 60 * MIN;
 const LINE_BYTES_SQL = "(SELECT COALESCE(SUM(200 + COALESCE(OCTET_LENGTH(i.config_json), 0) + COALESCE(OCTET_LENGTH(i.geometry_json), 0) + COALESCE(OCTET_LENGTH(i.dfm_json), 0)), 0) FROM order_items i WHERE i.order_id = o.id)";
-const NEVER_PAID_SQL = "o.paid_at IS NULL AND (o.amount_paid IS NULL OR o.amount_paid = 0) AND (o.refunded_amount IS NULL OR o.refunded_amount = 0) AND (o.attention IS NULL OR o.attention = '') AND (o.rfq_id IS NULL OR o.rfq_id = '') AND (o.payment_method IS NULL OR o.payment_method = 'card')";
+// (payment_method = 'card' exactly. Until 2026-11-13 this read "card or nothing", and "nothing" is how
+// an order the owner took by phone is stored: such an order was on the clean-up's lists. Review of
+// the re-review fixes, section F-12.)
+const NEVER_PAID_SQL = "o.paid_at IS NULL AND (o.amount_paid IS NULL OR o.amount_paid = 0) AND (o.refunded_amount IS NULL OR o.refunded_amount = 0) AND (o.attention IS NULL OR o.attention = '') AND (o.rfq_id IS NULL OR o.rfq_id = '') AND o.payment_method = 'card'";
 
 /** Orders that closed unpaid and still hold lines: [{ id, holder, bytes, lapsed }]. */
 function lapsedOrderLines(models) {
@@ -212,7 +215,7 @@ function lapsedOrderLines(models) {
 /** Remove the lines of one order that closed unpaid; its row stays. Returns the number of lines removed. */
 function clearOrderLines(models, orderId) {
   const order = models.ordersDB.getById(orderId);
-  if (!order || !["expired", "cancelled"].includes(order.status) || order.paidAt || order.attention || order.rfqId || order.linesClearedAt) return 0;
+  if (!order || !["expired", "cancelled"].includes(order.status) || order.paidAt || order.attention || order.rfqId || order.linesClearedAt || order.paymentMethod !== "card") return 0;
   return require("../models/database").transaction(() => {
     const removed = models.orderItemsDB._run("DELETE FROM order_items WHERE order_id = ?", [orderId]);
     models.ordersDB.update(orderId, { linesClearedAt: new Date().toISOString(), lineCount: 0 });
@@ -519,7 +522,9 @@ function planStorageRelief(models, { need, now = Date.now(), refs = rowRetention
 async function relieveUnpaidOrders(models, { need, now = Date.now(), graceMs = limits.storageEvictMinAgeMinutes * MIN, sync = false } = {}) {
   const out = { closed: 0, settled: 0, left: 0, plan: null, refs: null, nextMatureAt: null };
   if (!(need > 0) || typeof models.ordersDB._query !== "function") return out;
-  const waiting = models.ordersDB._query("SELECT id, user_id, client_tag, created_at FROM orders WHERE status = 'pending_payment' AND (rfq_id IS NULL OR rfq_id = '') AND (attention IS NULL OR attention = '') AND (payment_method IS NULL OR payment_method = 'card')");
+  // Card orders from instant checkout only: never a phone order (no payment method on record), a
+  // purchase-order order or a firm-quote order (orderLifecycle.isWaitingCardOrder says the same).
+  const waiting = models.ordersDB._query("SELECT id, user_id, client_tag, created_at FROM orders WHERE status = 'pending_payment' AND (rfq_id IS NULL OR rfq_id = '') AND (attention IS NULL OR attention = '') AND payment_method = 'card'");
   if (waiting.length === 0) return out;
   const candidate = new Map(waiting.map((o) => [o.id, o]));
   // What would still be held outright if every one of them were closed: a part that is ALSO on a paid

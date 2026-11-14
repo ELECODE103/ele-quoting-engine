@@ -26,6 +26,20 @@
  *                           written in the same change as the payment and closed when the mail
  *                           provider has taken the message (services/owedEmails.js).
  *
+ * Added for the conditions of the independent review (2026-11-13), in the same additive way:
+ *
+ *   quotes.replaces_quote_id  the quote this one was made from when the buyer went back from the
+ *                           card page and changed it (the first quote of the chain). An unpaid
+ *                           order of an earlier version is closed when a later version is checked
+ *                           out (routes/orders.js; review N-01).
+ *
+ *   rfqs.shipping_* , rfqs.ship_to_kind   where a firm-quote request ships: "address" with the six
+ *                           ship-to fields, or "pickup". NULL on a request made before this, or
+ *                           sent without one: the buyer is then asked at acceptance and the quote
+ *                           goes back to the owner (routes/rfq.js; review N-05).
+ *   rfqs.ship_to_changed_at, rfqs.ship_to_previous   when the buyer gave another address at
+ *                           acceptance, and the address the price had been for, for the owner.
+ *
  * Indexes: the questions the order routes ask on every request ("the lines of this order",
  * "is this part on an order", "this account's orders") are answered from an index, not by
  * reading every row of the table.
@@ -35,6 +49,17 @@ const COLUMNS = [
   ["orders", "client_tag", "TEXT"],
   ["orders", "line_count", "INTEGER"],
   ["orders", "lines_cleared_at", "TEXT"],
+  // Review conditions (2026-11-13)
+  ["quotes", "replaces_quote_id", "TEXT"],
+  ["rfqs", "shipping_name", "TEXT"],
+  ["rfqs", "shipping_address", "TEXT"],
+  ["rfqs", "shipping_city", "TEXT"],
+  ["rfqs", "shipping_state", "TEXT"],
+  ["rfqs", "shipping_zip", "TEXT"],
+  ["rfqs", "shipping_country", "TEXT"],
+  ["rfqs", "ship_to_kind", "TEXT"],
+  ["rfqs", "ship_to_changed_at", "TEXT"],
+  ["rfqs", "ship_to_previous", "TEXT"],
 ];
 
 const TABLES = {
@@ -75,6 +100,11 @@ const FIELD_MAP = {
   baseUrl: "base_url",
   lastTriedAt: "last_tried_at",
   doneAt: "done_at",
+  // review conditions (2026-11-13)
+  replacesQuoteId: "replaces_quote_id",
+  shipToKind: "ship_to_kind",
+  shipToChangedAt: "ship_to_changed_at",
+  shipToPrevious: "ship_to_previous",
 };
 
 // Table, column and index names and the column types are the only interpolated parts of these

@@ -25,11 +25,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const hasSql = typeof ordersDB._query === "function";
 const NOT_FIRM = "(rfq_id IS NULL OR rfq_id = '')";
 
-function countWaiting(column, value) {
+function countWaiting(column, value, except = []) {
   if (!value) return 0;
-  if (hasSql) return Number(ordersDB._query(`SELECT COUNT(*) AS n FROM orders WHERE ${column} = ? AND status = 'pending_payment' AND ${NOT_FIRM} AND (payment_method IS NULL OR payment_method = 'card')`, [value])[0].n) || 0;
+  const skip = (Array.isArray(except) ? except : []).filter((id) => typeof id === "string" && id).slice(0, 50);
+  if (hasSql) return Number(ordersDB._query(`SELECT COUNT(*) AS n FROM orders WHERE ${column} = ? AND status = 'pending_payment' AND ${NOT_FIRM} AND (payment_method IS NULL OR payment_method = 'card')${skip.length ? ` AND id NOT IN (${skip.map(() => "?").join(", ")})` : ""}`, [value, ...skip])[0].n) || 0;
   const field = column === "user_id" ? "userId" : "clientTag";
-  return ordersDB.query((o) => o[field] === value && o.status === "pending_payment" && !o.rfqId && (!o.paymentMethod || o.paymentMethod === "card")).length;
+  return ordersDB.query((o) => o[field] === value && o.status === "pending_payment" && !o.rfqId && (!o.paymentMethod || o.paymentMethod === "card") && !skip.includes(o.id)).length;
 }
 
 function countStartedUnpaid(column, value, since) {
@@ -43,19 +44,22 @@ const minutesText = (m) => (m >= 120 ? `${Math.round(m / 60)} hours` : `${m} min
 
 /**
  * May this sender start ONE MORE unpaid order now?
- * @param {{ userId?: string, clientTag?: string, sessionMinutes?: number, now?: number }} who
+ * @param {{ userId?: string, clientTag?: string, sessionMinutes?: number, now?: number, closing?: string[] }} who
+ *   closing: ids of the buyer's own unpaid orders that the same step is about to close because this
+ *   checkout replaces them (routes/orders.js; review of 2026-11-13, N-01). They are not counted as
+ *   "waiting at once". They ARE still counted in the day's total of checkouts started and not paid.
  * @returns {null | { status: 429, retryAfterSeconds: number, body: { error: string, code: string, waiting?: number } }}
  */
-function refusalFor({ userId = "", clientTag = "", sessionMinutes = 120, now = Date.now() } = {}) {
-  const waitingAccount = countWaiting("user_id", userId);
-  const waitingClient = countWaiting("client_tag", clientTag);
+function refusalFor({ userId = "", clientTag = "", sessionMinutes = 120, now = Date.now(), closing = [] } = {}) {
+  const waitingAccount = countWaiting("user_id", userId, closing);
+  const waitingClient = countWaiting("client_tag", clientTag, closing);
   if (waitingAccount >= limits.ordersUnpaidPerAccount || waitingClient >= limits.ordersUnpaidPerClient) {
     const n = Math.max(waitingAccount, waitingClient);
     return {
       status: 429,
       retryAfterSeconds: Math.min(3600, sessionMinutes * 60),
       body: {
-        error: `You have ${n} order${n === 1 ? "" : "s"} waiting for payment, which is the most we keep open at once. Pay for one of them from Your orders, or wait for it to close (a payment page stays open for ${minutesText(sessionMinutes)}), then check out again. To place this order by phone, call ${brand.phone}.`,
+        error: `You have ${n} order${n === 1 ? "" : "s"} waiting for payment, which is the most we keep open at once. Pay for one of them from Your orders, or cancel one there, then check out again. (An order nobody pays for closes by itself: a payment page stays open for ${minutesText(sessionMinutes)}.) To place this order by phone, call ${brand.phone}.`,
         code: "unpaid-orders-limit",
         waiting: n,
       },

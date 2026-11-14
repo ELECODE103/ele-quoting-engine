@@ -434,17 +434,28 @@ function closePartialOrder(orderId, cause) {
 }
 
 /**
- * Close an unpaid card order because the file store is full (services/storagePressure.js; re-review
- * 2026-11-12, F-12). Every payment page that is open for it is closed AT STRIPE first: one that
- * turns out to be paid settles the order (which then keeps its files for good); one that cannot be
- * confirmed closed leaves the order alone. Only then is the order closed ("not paid, closed"), its
- * quote given back, and the buyer told, once, that nothing was charged and what to do.
- * Firm-quote orders, phone orders and orders flagged for the owner are never closed here.
+ * Is this an order the site itself may close unpaid: made by a buyer at instant checkout, waiting
+ * for a CARD payment, not flagged for the owner? Everything else is the owner's and is never closed
+ * by a clean-up or from the buyer's side: an order the owner took by phone (it has no payment
+ * method on record), an order accepted on a purchase order, any order from a firm quote.
+ * (Until 2026-11-13 an order with NO payment method passed as a card order here, and that is how a
+ * phone order is stored: review of the re-review fixes, section F-12.)
+ */
+function isWaitingCardOrder(order) {
+  return Boolean(order) && order.status === "pending_payment" && !order.attention && !order.rfqId && order.paymentMethod === "card";
+}
+
+/**
+ * Close a waiting card order (isWaitingCardOrder) without payment. Every payment page that is open
+ * for it is closed AT STRIPE first: one that turns out to be paid settles the order as it stands;
+ * one that cannot be confirmed closed leaves the order alone ("busy"). Only then is the order closed
+ * ("not paid, closed") and its quote given back. A payment that still arrives for it afterwards is
+ * flagged for the owner as a late payment (applySessionNow), never accepted silently and never lost.
  * @returns {Promise<{outcome: "closed"|"paid"|"kept"|"busy", order?: object}>}
  */
-async function closeUnderPressure(orderId, { base, reason = "files" } = {}) {
+async function closeWaitingCardOrder(orderId, { base, cause, source = "close" } = {}) {
   const order = ordersDB.getById(orderId);
-  if (!order || order.status !== "pending_payment" || order.attention || order.rfqId || (order.paymentMethod && order.paymentMethod !== "card")) return { outcome: "kept" };
+  if (!isWaitingCardOrder(order)) return { outcome: "kept" };
   if (inFlight.has(orderId)) return { outcome: "busy" };
   if (order.stripeSessionId && !paymentSessionsDB.getById(order.stripeSessionId)) {
     paymentSessionsDB.insert({ id: order.stripeSessionId, orderId: order.id, status: "open", amountCents: null, currency: currencyOf(order), promoAllowed: true, expiresAt: null });
@@ -453,13 +464,41 @@ async function closeUnderPressure(orderId, { base, reason = "files" } = {}) {
     for (const rec of openSessionsFor(orderId)) {
       const closed = await closeSession(rec, "expired");
       if (closed.paid) {
-        await settleFromSession(orderId, closed.paid, { base, source: "pressure" });
-        return { outcome: "paid" };
+        await settleFromSession(orderId, closed.paid, { base, source });
+        return { outcome: "paid", order: ordersDB.getById(orderId) };
       }
     }
   } catch { return { outcome: "busy" }; }
-  const expired = expireOrder(orderId, `closed to make room: the ${reason === "database" ? "database" : "file store"} was full and this order had not been paid for`);
-  if (!expired) return { outcome: "kept" };
+  // Read again: the awaits above took time. Still a waiting card order, and no page opened meanwhile.
+  if (!isWaitingCardOrder(ordersDB.getById(orderId))) return { outcome: ordersDB.getById(orderId) && ordersDB.getById(orderId).paidAt ? "paid" : "kept", order: ordersDB.getById(orderId) };
+  if (sessionsOpenFor(orderId)) return { outcome: "busy" };
+  const expired = expireOrder(orderId, cause);
+  return expired ? { outcome: "closed", order: expired } : { outcome: "kept" };
+}
+
+/**
+ * The buyer cancels their own unpaid order from "Your orders" (review of 2026-11-13, N-01). The same
+ * rule as every other closing: the payment page is closed at Stripe first, and an order whose page
+ * cannot be confirmed closed is left exactly as it was.
+ */
+function cancelByBuyer(orderId, { base } = {}) {
+  return closeWaitingCardOrder(orderId, { base, cause: "cancelled by the buyer from Your orders; nothing was paid", source: "cancel" });
+}
+
+/**
+ * Close an unpaid card order because the file store is full (services/storagePressure.js; re-review
+ * 2026-11-12, F-12). Every payment page that is open for it is closed AT STRIPE first: one that
+ * turns out to be paid settles the order (which then keeps its files for good); one that cannot be
+ * confirmed closed leaves the order alone. Only then is the order closed ("not paid, closed"), its
+ * quote given back, and the buyer told, once, that nothing was charged and what to do.
+ * Firm-quote orders, phone orders, purchase-order orders and orders flagged for the owner are never
+ * closed here (isWaitingCardOrder).
+ * @returns {Promise<{outcome: "closed"|"paid"|"kept"|"busy", order?: object}>}
+ */
+async function closeUnderPressure(orderId, { base, reason = "files" } = {}) {
+  const r = await closeWaitingCardOrder(orderId, { base, source: "pressure", cause: `closed to make room: the ${reason === "database" ? "database" : "file store"} was full and this order had not been paid for` });
+  if (r.outcome !== "closed") return { outcome: r.outcome };
+  const expired = r.order;
   try {
     const orderEvents = require("./orderEvents");
     const to = orderEvents.customerEmail(expired);
@@ -1030,6 +1069,7 @@ module.exports = {
   sessionMinutes, promotionCodesAllowed, paymentSettings, expectedCents, currencyOf,
   checkoutSession, closeOpenSessions, applySession, settleFromSession, confirmPayment, checkSession,
   sessionsOpenFor, changeNeedsClosedSessions, closeForChange, closePartialOrder, closeUnderPressure,
+  isWaitingCardOrder, closeWaitingCardOrder, cancelByBuyer,
   expireOrder, releaseSource, handleSessionExpired, sweepExpired, startSweep,
   handleChargeRefunded, handleRefundUpdated, handleDispute,
   manualMove, resolveAttention, paymentView,

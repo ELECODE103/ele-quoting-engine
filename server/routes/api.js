@@ -810,6 +810,10 @@ function saveQuote({ parts: rawConfigs, leadTimeSlug = "standard", quoteId, proc
     const carry = existing && (!existing.userId || existing.userId === user?.userId)
       ? { notes: existing.notes || "", drawingFileName: existing.drawingFileName || "", drawingPath: existing.drawingPath || "" }
       : {};
+    // The buyer's own quote that has been taken to the card page, changed: the new quote remembers
+    // the first quote of that chain, so checkout can close the unpaid order of the earlier version
+    // instead of leaving it to count against the buyer (routes/orders.js; review of 2026-11-13, N-01).
+    if (existing && existing.status === "ordered" && existing.userId && existing.userId === user?.userId) carry.replacesQuoteId = existing.replacesQuoteId || existing.id;
     const row = { ...carry, ...record, clientTag };
     quoteGuards.assertRoomForDraft({ user, clientKey: ctx.clientKey, bytes: quotesDB.sizeOf(row) });
     saved = quotesDB.insert(row); // a new row is written at once (only re-pricing may wait)

@@ -10,9 +10,9 @@ merged or deployed. The site stays offline until you approve.
 |---|---|---|
 | 1. Destination decided by ZIP code as well as state (N-03) | fixed, tests pass; final verification not yet run | `851fde1` |
 | 2. A firm quote knows where it is going (N-05) | not started | |
-| 3. A buyer is not locked out by their own changes (N-01); phone orders safe from the clean-up (F-12) | not started | |
-| 4. A full disk is visible and says what it is (N-08) | fixed, tests pass, shown on a real 3 MB disk; final verification not yet run | this commit |
-| 5. Small corrections the review asked for | previous write-up corrected (`851fde1`); the per-address ceiling test and the harness comment not yet done | `851fde1` |
+| 3. A buyer is not locked out by their own changes (N-01); phone orders safe from the clean-up (F-12) | fixed, tests pass; final verification not yet run | this commit |
+| 4. A full disk is visible and says what it is (N-08) | fixed, tests pass, shown on a real 3 MB disk; final verification not yet run | `e5efc4e` |
+| 5. Small corrections the review asked for | done: previous write-up corrected (`851fde1`); the per-address ceilings are run by `server/routes/orderCaps.test.js` and the harness comment is corrected (this commit) | `851fde1`, this commit |
 | Final verification from a fresh clone on Node 20 | not yet run | |
 
 A figure that is not in this file has not been measured. The full write-up (what was wrong, what
@@ -43,3 +43,21 @@ changed, what was run, what a customer now reads) is added item by item as each 
   page); my `tools/security/rereview-fixes/r4-full-disk.js` on a real 3 MB disk: 12 held, 0 findings
   (1 run); the reviewer's `r3-full-disk.js` on the same disk now records 503 for the second account
   (it was 201), health 503 (it was 200), and the start refused with "THE DISK IS FULL".
+
+## 3. Replaced orders, the buyer's cancel, and phone orders (N-01, F-12): notes so far
+
+- Checking out a changed quote closes the buyer's own unpaid card order of the earlier version in the
+  same database change that writes the new order, payment page expired at Stripe first
+  (`server/routes/orders.js` `replacedOrders`, `orderStep`). `POST /api/orders/:id/cancel` lets a buyer
+  cancel their own unpaid card order; "Your orders" shows a Cancel button for it.
+- The storage clean-up and the closing step now take `payment_method = 'card'` exactly
+  (`orderLifecycle.isWaitingCardOrder`): a phone order (no method on record), a purchase-order order
+  and a firm-quote order cannot be closed by it.
+- Measured on the working tree of this commit, Node 20.20.0: `server/routes/orderCaps.test.js` 14 of 14
+  (new: the per-address ceilings 5 and 16 with the real numbers; five changes of quantity in a row never
+  refused, where the third used to be; the daily ceiling still refuses the 9th); `server/services/
+  ownerOrdersPressure.test.js` 5 of 5, and 1 of 5 when the two rules are put back as they were (the
+  phone order ended "expired": what the review had read and not run, now run). The reviewer's
+  `r3-caps-and-lists.js`: "six changes of quantity, six checkouts: never refused" now HOLDS. It prints
+  one new FINDING that is the script's own assumption no longer holding: it picks "the oldest unpaid
+  order" and expects paying for its quote to give that order back, and that order is now closed.

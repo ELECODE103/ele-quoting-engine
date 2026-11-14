@@ -77,7 +77,9 @@ test("in the source: a Stripe session is created in one function, and an order r
   const step = pieces.find((b) => b.startsWith("function orderStep("));
   assert.ok(step.indexOf("verifyQuoteForOrder(") >= 0 && step.indexOf("verifyQuoteForOrder(") < step.indexOf("resumed: true"), "a resumed order is re-checked before it is handed on");
   const checkout = pieces.find((b) => b.startsWith('router.post("/checkout-session"'));
-  assert.ok(checkout.indexOf("orderStep(req, quoteId)") >= 0 && checkout.indexOf("orderStep(req, quoteId)") < checkout.indexOf("checkoutGuard.sessionFor("), "a payment page is opened only after the step");
+  // (2026-11-13, review N-01) The step now takes a third argument: the earlier orders of this quote whose
+  // payment page could not be confirmed closed, which it must leave alone. The call is found by its first two.
+  assert.ok(checkout.indexOf("orderStep(req, quoteId") >= 0 && checkout.indexOf("orderStep(req, quoteId") < checkout.indexOf("checkoutGuard.sessionFor("), "a payment page is opened only after the step");
   assert.ok(!/verifyQuoteForOrder\(|ordersDB\.insert\(/.test(checkout), "and the handler itself neither prices nor inserts");
   // The firm-quote accept charges the owner's amount: it must be a positive amount of money and the terms that were sent.
   const rfq = code(path.join(root, "server", "routes", "rfq.js"));

@@ -408,6 +408,8 @@ export const api = {
 
   // Firm quote behind an emailed link (no account needed)
   async getFirmQuote(token) { return request(`/rfq/quote/${token}`); },
+  /** Cancel the buyer's own unpaid order (its payment page is closed first; nothing was charged). */
+  async cancelOrder(orderId) { return request(`/orders/${orderId}/cancel`, { method: 'POST', body: '{}' }); },
   async acceptFirmQuote(token, data) { return request(`/rfq/quote/${token}/accept`, { method: 'POST', body: JSON.stringify(data) }); },
   async confirmFirmQuotePayment(token) { return request(`/rfq/quote/${token}/confirm-payment`, { method: 'POST', body: '{}' }); },
   /** Back from the card page: ask where the order stands, with the return token from the address bar. */

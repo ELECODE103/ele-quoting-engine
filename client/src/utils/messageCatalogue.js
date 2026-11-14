@@ -190,9 +190,17 @@ export function createCatalogue(brand, { quoteTurnaround = '' } = {}) {
     'quoted-total-invalid': { '*': { text: 'The quoted total has to be an amount of money. A quote that is out with the customer can\'t be saved at nothing: enter the amount it should be, or withdraw the quote.', keep: true } },
 
     // Paying for an order, and the firm-quote link (codes from the order-lifecycle fixes, 2026-11-11)
-    'payment-session-busy': { '*': { text: `The card page that was opened for this order earlier is still closing, so we couldn't open a new one yet. Nothing was charged. Give it a minute and press the button again, or call ${PHONE}.`, action: 'retry' } },
+    'payment-session-busy': {
+      '*': { text: `The card page that was opened for this order earlier is still closing, so we couldn't open a new one yet. Nothing was charged. Give it a minute and press the button again, or call ${PHONE}.`, action: 'retry' },
+      // Cancelling an unpaid order from "Your orders": the page could not be confirmed closed, so the order was left alone.
+      order: { text: `We couldn't confirm that the card page for this order is closed, so the order was left as it is. Nothing was charged. Give it a minute and try again, or call ${PHONE}.`, action: 'retry' },
+    },
+    // Cancelling an unpaid order, and checking out a changed quote while its earlier order was being paid (review of 2026-11-13, N-01).
+    'cancel-not-available': { '*': { text: `This order can't be cancelled from this page: it has been paid or closed already, or it came from a firm quote. Reload the page to see where it stands, or call ${PHONE}.`, keep: true } },
+    'cancel-order-paid': { '*': { text: `This order has just been paid, so it was not cancelled. Reload the page to see it. If that is not what you meant, call ${PHONE}.` } },
+    'earlier-order-paid': { '*': { text: `Your earlier order for these parts has just been paid, so we did not start a second payment. Open that order to see it. If you want this changed quote as well, come back and check out again. Questions: ${PHONE}.`, action: 'open-order' } },
     // One sender may hold only so many unpaid orders (server/security/orderCaps.js). The server's sentence names the count and how long a payment page stays open.
-    'unpaid-orders-limit': { '*': { text: `You already have orders waiting for payment, which is the most we keep open at once. Pay for one of them from Your orders, or wait for it to close, then check out again. To place this order by phone, call ${PHONE}.`, keep: true } },
+    'unpaid-orders-limit': { '*': { text: `You already have orders waiting for payment, which is the most we keep open at once. Pay for one of them from Your orders, or cancel one there, then check out again. To place this order by phone, call ${PHONE}.`, keep: true } },
     'unpaid-orders-daily-limit': { '*': { text: `That is more checkouts started and not paid for than we take in one day. Nothing was charged. Pay for an order that is waiting in Your orders, try again tomorrow, or call ${PHONE} and we'll take the order by phone.` } },
     // An order that closed unpaid and whose lines were later cleared to keep the database inside its ceiling (server/services/storagePressure.js). Owner-only.
     'order-lines-cleared': { '*': { text: 'This order closed without payment and its lines have since been cleared, so it cannot be marked paid or moved on. Take the order again: have the customer check out their quote, or enter it as a phone order.', keep: true } },

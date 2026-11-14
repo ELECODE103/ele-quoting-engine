@@ -27,6 +27,25 @@ export default function CustomerDashboard() {
   };
   useEffect(() => { fetchOrders(1); }, []);
 
+  // Cancel an unpaid order (the server offers it only for the buyer's own order that is still waiting
+  // for a card payment: `canCancel`). The payment page is closed first; nothing was charged.
+  const [cancelling, setCancelling] = useState('');
+  const [notice, setNotice] = useState(null); // { kind: 'ok' | 'error', text }
+  const cancelOrder = async (order) => {
+    const ref = String(order.id).slice(0, 8).toUpperCase();
+    if (!window.confirm(`Cancel order ${ref}? It has not been paid for and nothing has been charged. Your quote stays saved, so you can order again.`)) return;
+    setCancelling(order.id);
+    setNotice(null);
+    try {
+      await api.cancelOrder(order.id);
+      setNotice({ kind: 'ok', text: `Order ${ref} was cancelled. Nothing was charged. Your quote is still saved in the quote tool.` });
+    } catch (err) {
+      setNotice({ kind: 'error', text: err.message });
+    }
+    setCancelling('');
+    fetchOrders(paging.page);
+  };
+
   const getStatusColor = (status) => {
     const colors = {
       pending: 'var(--warn-text)',
@@ -51,7 +70,11 @@ export default function CustomerDashboard() {
     <div className="app-page">
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <h1 className="app-h1">Your orders</h1>
-        <p style={{ color: 'var(--text-muted)', marginBottom: 32 }}>Open an order to see where it stands, or to reorder it.</p>
+        <p style={{ color: 'var(--text-muted)', marginBottom: 32 }}>Open an order to see where it stands, or to reorder it. An order you have not paid for can be cancelled here.</p>
+
+        {notice && (
+          <div role={notice.kind === 'error' ? 'alert' : 'status'} className={notice.kind === 'error' ? 'auth-error' : 'gate-box'} style={{ padding: 16, marginBottom: 24 }} data-testid="cancel-notice">{notice.text}</div>
+        )}
 
         {loading && (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
@@ -121,6 +144,18 @@ export default function CustomerDashboard() {
                       >
                         Open
                       </button>
+                      {order.canCancel && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ fontSize: 12, padding: '6px 12px', marginLeft: 6 }}
+                          aria-label={`Cancel unpaid order ${String(order.id).slice(0, 8).toUpperCase()}`}
+                          disabled={cancelling === order.id}
+                          onClick={() => cancelOrder(order)}
+                        >
+                          {cancelling === order.id ? 'Cancelling…' : 'Cancel'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
