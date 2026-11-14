@@ -206,6 +206,10 @@ const cube = fs.readFileSync(path.join(ROOT, "tools/vet-quotes/parts/cube_20mm.s
     R.check(again.status === 200 && onDisk((x) => x.order(waiting.orderId)).status === "paid", "Stripe's next delivery of the payment is acknowledged and the order is paid on the disk", `${again.status}; emails to the buyer naming the order: ${told}`);
     const poAgain = await s.post(`/api/rfq/quote/${firmToken}/accept`, { method: "po", poNumber: "PO-R5-1", shippingName: "Dana Buyer", seenTotal: 480 });
     R.info("the buyer, told to try again, presses Accept", `${poAgain.status} ${poAgain.body && (poAgain.body.code || poAgain.body.status || "")}: ${String(poAgain.body && poAgain.body.error || "").slice(0, 120)}`);
+    await sleep(500);
+    const poTold = s.mail().slice(mailAt2).filter((m) => /PO-R5-1|purchase order|accepted|8D0CA396|pending PO/i.test(`${m.subject} ${m.text || ""}`) && !/refund|dispute|paid/i.test(m.subject || ""));
+    if (d.po.length && poTold.length === 0) R.finding("…and NOBODY was emailed about that purchase-order order: not the owner (who must confirm the PO), not the buyer. The second press is answered from the order that exists and sends nothing", `emails since the first press that mention the PO or the acceptance: ${poTold.length}`);
+    else R.info("emails about the purchase-order order since the first press", `${poTold.length}: ${poTold.map((m) => m.subject).join(" | ").slice(0, 200)}`);
     const c3 = await checkout(draft.quoteId);
     const rows = onDisk((x) => x.q("SELECT COUNT(*) n FROM orders WHERE quote_id = ?", [draft.quoteId])[0].n);
     R.check(c3.status === 200 && rows === 1, "the buyer, told to try again, checks out: one order, not two", `${c3.status}; rows ${rows}`);
