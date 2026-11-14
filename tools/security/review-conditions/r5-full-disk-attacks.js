@@ -178,7 +178,7 @@ const cube = fs.readFileSync(path.join(ROOT, "tools/vet-quotes/parts/cube_20mm.s
     const told = s.mail("dana@buyer.test").filter((m) => m.text && m.text.includes(String(waiting.orderId).slice(0, 8).toUpperCase())).length;
     R.check(again.status === 200 && after.status === "paid", "the payment taken while the disk was full is settled when Stripe sends it again: the customer is not charged for nothing", `${again.status}; order ${after.status}; emails to the buyer naming it: ${told}`);
     const lost = [];
-    if (w2.status < 300 && d.refund.status !== "refunded") lost.push(`the refund of $${(toRefund.cents / 100).toFixed(2)}: the order is "${d.refund.status}" and still in the work queue`);
+    if (w2.status < 300 && d.refund.status !== "refunded") lost.push(`the refund of $${(toRefund.cents / 100).toFixed(2)}: the order is "${d.refund.status}", refunded amount on record $${d.refund.refunded_amount || 0}`);
     if (w3.status < 300 && d.dispute.attention !== "dispute") lost.push("the dispute: the order carries no flag");
     if (w4.status < 300 && d.lapse.status !== "expired") lost.push(`the lapsed page: the order is "${d.lapse.status}" (the sweep closes it later)`);
     if (lost.length) R.finding("LOST for good at the restart, because Stripe had been answered 'received'", lost.join("; "));

@@ -80,7 +80,7 @@ result both times). With the database file unwritable:
 | Stripe sends | The site answers | On the disk | After a restart |
 |---|---|---|---|
 | payment completed (a page opened before the disk filled) | 500, then 503 for the repeat | not paid | Stripe sends it again: paid, one email to the buyer |
-| charge refunded in full, $259.24 | **200 "refunded"** | still "paid" | **still "paid" and in the work queue; refunded amount $0** |
+| charge refunded in full, $259.24 | **200 "refunded"** | still "paid" | **still "paid"; refunded amount $0** |
 | dispute opened | **200 "dispute-opened"** | no flag | **no flag on the order** |
 | payment page expired | **200 "order-expired"** | still waiting | still waiting (read, not run: the ten-minute sweep closes it later) |
 
@@ -89,7 +89,7 @@ result both times). With the database file unwritable:
 When room comes back WITHOUT a restart, the three changes do reach the disk (ran, `recover`), but the
 three event records do not, so Admin's payment history for those orders has no line for them.
 
-**What you would see.** An order you refunded still listed as paid and waiting to be built; a disputed
+**What you would see.** An order you refunded still listed as paid; a disputed
 order with no warning on it.
 
 **Smallest fix.** In `server/routes/stripeWebhook.js`, read `database.saveFailures()` before
