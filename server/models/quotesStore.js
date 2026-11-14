@@ -146,6 +146,21 @@ class QuotesStore {
   }
 
   /**
+   * The first quote of the chain quote `id` belongs to: the quote it replaces (`replacesQuoteId`,
+   * routes/api.js saveQuote), or itself; null when there is no such quote. Two columns are read,
+   * not the quote: a 100-line quote is a third of a megabyte to unpack, and checkout asks this in
+   * its last, uninterrupted piece (routes/orders.js replacedOrders).
+   */
+  chainRoot(id) {
+    if (typeof this.table._query === "function") {
+      const rows = this.table._query(`SELECT id, replaces_quote_id FROM ${this.tableName} WHERE id = ?`, [id]);
+      return rows.length ? rows[0].replaces_quote_id || rows[0].id : null;
+    }
+    const row = this.table.getById(id);
+    return row ? row.replacesQuoteId || row.id : null;
+  }
+
+  /**
    * Bytes of DRAFT quotes a sender holds: by client tag, by account, or both (two numbers).
    * `exceptId` leaves one row out (the one about to be replaced by a re-price).
    * @returns {{ client: number, account: number }}

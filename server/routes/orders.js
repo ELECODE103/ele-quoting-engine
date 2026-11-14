@@ -437,8 +437,8 @@ function replacedOrders(quote, userId) {
   const out = [];
   for (const w of waiting) {
     if (!w.quoteId || w.quoteId === quote.id) continue;
-    const other = w.quoteId === root ? { id: root } : quotesDB.getById(w.quoteId);
-    if (!other || (other.replacesQuoteId || other.id) !== root) continue;
+    // quotesDB.chainRoot reads two columns, not the quote: this runs in the checkout's last, uninterrupted piece.
+    if (w.quoteId !== root && quotesDB.chainRoot(w.quoteId) !== root) continue;
     const order = ordersDB.getById(w.id);
     if (lifecycle.isWaitingCardOrder(order)) out.push(order);
   }

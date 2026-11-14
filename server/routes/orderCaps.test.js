@@ -113,6 +113,7 @@ const sessionOf = (c) => String(c.body.sessionUrl).split("/").pop();
       const next = await changeQuote(honest, quote.quoteId, 2 + change);
       assert.notStrictEqual(next.quoteId, quote.quoteId, "a quote that has been to checkout is forked, not changed in place");
       assert.strictEqual(quotesDB.getById(next.quoteId).replacesQuoteId, chain[0].quoteId, "the fork remembers the first quote of the chain");
+      assert.strictEqual(quotesDB.chainRoot(next.quoteId), chain[0].quoteId, "…and the store answers that without reading the quote's lines");
       c = await pay(honest, next.quoteId);
       assert.strictEqual(c.status, 200, `change ${change}: ${c.text.slice(0, 200)}`); // (before: change 3 was the fourth order and was refused, 429)
       const before = chain[chain.length - 1];
