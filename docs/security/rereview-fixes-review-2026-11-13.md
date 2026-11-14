@@ -26,7 +26,7 @@ anything that was in flight was run again.
 | F-09 lists, single-order route, ceilings on unpaid orders | Done except the browser check: `r3-caps-and-lists.js` (findings N-01, N-02) |
 | F-03 shipping limits on every route; firm quote and purchase order | Done: `r3-shipping-firm-f06.js` (findings N-03, N-04, N-05) |
 | F-06 two tabs under a race | Done: `r3-shipping-firm-f06.js` section E, 200 rounds |
-| F-08 / F-02 checkout hold | Partly: the single-checkout distribution is measured (quiet and loaded) and differs from the author's; the cause of the difference is still being pinned down. Kills, swap attack, several checkouts at once: not yet |
+| F-08 / F-02 checkout hold | Single-checkout distribution done (87 samples, written up). Not yet: kills (F-02), the swap attack, several checkouts at once |
 | F-01, F-13, F-12 (storage side), F-10/F-11, F-04, F-05 | Not yet attacked (scripts for F-05 and F-12 are written, not yet run) |
 | Reorder money path | Not yet attacked |
 | Changed-tests audit, price baseline, vetting comparison | Started (five test files read); not finished |
@@ -141,25 +141,58 @@ The author's statement that the test harness lifts the ceilings by default is tr
 (`server/routes/orderList.test.js`) runs with the real ceilings, and the comment in the harness names a
 file, `routes/orderCaps.test.js`, that does not exist.
 
-### F-08 (checkout holds the site): NOT YET JUDGED, the author's figure does not reproduce under my measurement
+### F-08 (checkout holds the site): closed in substance; the 250 ms line is met on a quiet machine and is not met under load for a visitor on a new connection
 
 The line was "longest hold under 250 ms with a 100-line quote on a 12 MB database". The author reports
 worst 104 ms quiet and 184 ms loaded with the earlier reviewer's script, and 247 ms loaded with his own.
 
-Ran `r3-checkout-dist.js single 11.7 10 3`: 30 checkouts of 100 lines of a printed cube ($1,654.36), the
-database between 11.8 and 12.6 MB for every sample, health page asked every 5 ms on overlapping new
-connections.
+Ran `r3-checkout-dist.js single 11.7 <batches> 3`: checkouts of 100 lines of a printed cube ($1,654.36),
+the database between 11.8 and 12.6 MB for every sample (a new server per three checkouts, because each
+100-line unpaid order adds 0.3 MB). The health page is asked for every 5 ms for the whole of each
+checkout, two ways at once:
 
-| | Samples | Median | 90th percentile | Worst | At or over 250 ms |
-|---|---|---|---|---|---|
-| Quiet | 30 | 142 ms | 171 ms | **196 ms** | 0 of 30 |
-| Loaded (four busy loops) | 30 | 357 ms | 457 ms | **475 ms** | **30 of 30** |
+- on connections that are **already open** (a browser that is on the site; a proxy in front of it). A
+  request on an open connection is answered at the server's next look at the network, so its longest
+  wait is the longest single piece of work: this is "how long the thread was held".
+- on **new connections** (a visitor arriving). A new connection is accepted at one look and read at the
+  next. Checkout now does its work in pieces with one look between them: the final pricing pass, then the
+  write of the database file, then a second write when the payment page is recorded. So a new connection
+  waits for two of those back to back. The earlier reviewer's script and the author's both use new
+  connections but ask one at a time every 20 ms, which mostly misses this.
 
-The same checkouts watched by the earlier reviewer's script in the same session read 100 ms quiet and
-176 ms loaded. So the two ways of watching disagree by a factor of two, and before I call this "not
-closed" I am separating two things: how much is the server's thread really being held, and how much is
-my own watcher (which opens about 200 connections a second) competing for two loaded cores. The script
-now takes a second reading on connections that are already open. Result to follow in the next commit.
+| Machine | Reading | Samples | Median | 90th pct | Worst | At or over 250 ms |
+|---|---|---|---|---|---|---|
+| Quiet | open connection (thread hold), both watchers running | 12 | 72 ms | 88 ms | **96 ms** | 0 of 12 |
+| Quiet | new connection, one watcher | 30 | 142 ms | 171 ms | **196 ms** | 0 of 30 |
+| Quiet | new connection, both watchers running | 12 | 235 ms | 250 ms | 287 ms | 2 of 12 |
+| Loaded | open connection (thread hold), both watchers running | 15 | 181 ms | 204 ms | **252 ms** | 1 of 15 |
+| Loaded | new connection, one watcher | 30 | 357 ms | 457 ms | **475 ms** | **30 of 30** |
+| Loaded | new connection, both watchers running | 15 | 626 ms | 858 ms | 908 ms | 15 of 15 |
+
+The checkout itself answered in 151 ms (median, quiet) and 376 ms (median, loaded). The watchers are
+themselves work for the server (200 to 400 small requests a second), so the "both watchers" rows are
+pessimistic; the "one watcher" rows are the ones to hold against the author's figures.
+
+**Author's figure against mine, and why they differ.** Author: 184 ms loaded (earlier reviewer's script),
+247 ms loaded (his own). The same reviewer's script run by me in the same session: 176 ms loaded. My
+watcher: 252 ms worst for the thread itself (in agreement with his 247: both are at the line, not inside
+it), and 475 ms worst for a new connection. The difference is not that his runs were lucky; it is what
+is being measured. His figure is honest for "longest single piece". A visitor who arrives during a
+checkout waits for two pieces.
+
+**Judgment.** The fault that was found is fixed: the time no longer grows with lines times database size
+(4.2 s became under half a second in every one of 87 samples), and nothing here stops the site. The
+acceptance line as written is met on a quiet machine and missed under load: a new visitor waited 285 to
+475 ms in 30 of 30 loaded checkouts. Each account is still limited to 12 checkouts in 15 minutes, so the
+most one account can do is slow new arrivals by under half a second, twelve times in a quarter of an
+hour. I would launch with this.
+
+Not shown here, and it matters for this number: each of those pieces ends in a flush of a 12 MB file to
+disk. On this machine that is a local disk. On Railway the volume is network storage and the flush may
+take longer; the figure to check after the first deploy is how long a save takes there (Admin → System
+shows the database size; the log line for a slow save, if any, is the thing to look for).
+
+Still to run under this finding: several checkouts at once, the kill tests (F-02), and the swap attack.
 
 ## 5. New findings
 
