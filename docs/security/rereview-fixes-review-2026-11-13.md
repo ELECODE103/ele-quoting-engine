@@ -29,7 +29,8 @@ anything that was in flight was run again.
 | F-08 / F-02 checkout hold | Single-checkout distribution done (87 samples, written up). Not yet: kills (F-02), the swap attack, several checkouts at once |
 | F-05 | Done: `r3-paid-mail-window.js`, 102 kills |
 | F-12 storage side | Done: reviewer's script reproduced; `r3-pressure-collateral.js` (one run) |
-| F-01, F-13, F-10/F-11, F-04, F-02 kills | Not yet attacked |
+| F-02 kills, F-04 | Done: `durability-kill.js` both ways; `r3-full-disk.js` (finding N-08) |
+| F-01, F-13, F-10/F-11 | Not yet attacked |
 | Reorder money path | Not yet attacked |
 | Changed-tests audit, price baseline, vetting comparison | Started (five test files read); not finished |
 | Browser check of the admin panel | Not started |
@@ -63,7 +64,8 @@ author's claim that the proofs made on `b184dc1` stand for the head commit is ri
 | `public-surface.js` | 6 held | 6 held, 0 findings |
 | `shipping-exposure.js` | exit 0, table in the write-up | exit 0; the table matches (58 x 94 and 6 x 94 sheets: firm quote; 48 x 48 at 1/16 in still sold at $17.76 to $20.23; every one-piece row to Honolulu and Germany: 409) |
 | `storage-pin-orders.js pin` | holds, 74 % after the clean-up | holds, 74 %; customer and visitor upload again |
-| `durability-kill.js`, `memory-poison.js` | see the write-up | not yet run |
+| `durability-kill.js 50` | 11 held, 0 findings, 3 info; section C 0 partial | Sections A, B, E as written: 10 held, 0 findings, 1 info. Section C: 0 partial of 50 both as written and with the ceilings lifted (see F-02). Section D (20 kills): 1 held, 1 info |
+| `memory-poison.js` | exit 0 | not yet run |
 
 ## 4. Per original finding
 
@@ -143,6 +145,49 @@ The ceilings on unpaid orders that the author added under this finding are findi
 The author's statement that the test harness lifts the ceilings by default is true; one suite
 (`server/routes/orderList.test.js`) runs with the real ceilings, and the comment in the harness names a
 file, `routes/orderCaps.test.js`, that does not exist.
+
+### F-02 (part of an order after a hard kill): closed
+
+Ran the earlier reviewer's `durability-kill.js 50`, section C (a 20-line quote, the server killed 4 to
+124 ms after "pay" is pressed):
+
+| How it was run | No order on disk | Whole order | Partial order |
+|---|---|---|---|
+| As written | 47 | 3 | **0** |
+| As the author ran it (the four ceilings on unpaid orders lifted by environment variable) | 28 | 22 | **0** |
+
+What each shows. As written, the script's one account is refused its fourth unpaid checkout by the new
+ceiling, so 47 of the 50 kills fall on a request that was never going to make an order: that run proves
+almost nothing about F-02 and the author was right to lift the ceilings for it. With them lifted, 22 of
+50 kills landed after the order was written and every one of those orders was whole; none of the 50 left
+a partial order (it was 5 or 6 of 8). The author's figures for the same run: 0 partial, twice. Sections
+A, B and E as written: 10 held, 0 findings, 1 note (a re-priced draft may lose its last re-price, as
+designed). Section D (20 kills): every order paid after the retry; none of the 20 kills landed in the
+email window, which is why F-05 has its own script above.
+
+The start-up close-out (`services/orderRepair.js`), read, not run beyond the author's tests: it looks
+only at orders with no line count on record, or whose lines no longer match the count. An order made by
+this code carries its count, so a complete order is never a candidate. For an older order it closes only
+an **unpaid card** order with fewer lines than its quote, or whose quote is still a draft; a paid order
+is only ever flagged. On the live database (written by `master`) every order is looked at once at the
+first start. An old unpaid order whose quote is still a draft will be closed as "not paid, closed" then;
+with the site having been offline, any such order's payment page lapsed long ago, so nothing a buyer can
+still use is lost. I did not find a way for it to close or alter a complete order.
+
+### F-04 (a database file that cannot be read): closed; and yes, there is now a state in which the site will not start (N-08)
+
+Ran `durability-kill.js` section E: a zero-length file, the first third of the file, and a file that is
+not a database are each refused at start (exit 1) and left byte for byte; a half-written temporary file
+beside a good database is ignored. The health check answering 503 without a database is covered by the
+author's `databaseOpen.test.js`, which passes in the full suite.
+
+Is the save atomic? Yes: a temporary file is written and flushed, then renamed over the database
+(`writeDurably`); a kill before the rename leaves the old file whole, after it the new one. In about 190
+hard kills in my runs (durability-kill and the email-window script) the server always started again on
+the file it found.
+
+Can a stranger, over HTTP, produce a file the next start refuses? I found no way to damage the file. But
+a **full disk** makes the start refuse a perfectly good file: finding N-08.
 
 ### F-12 (unpaid orders hold the file store): closed for unpaid orders; the store can still be held for an hour at a time by new files (N-07, was there)
 
@@ -419,6 +464,39 @@ clears once it has passed. The earlier review mentioned this in a bracket and di
 for F-12 does not touch it and was not asked to. While it lasts every visitor is told to email the files
 or phone. Cost to the attacker: 14 confirmed email addresses and 14 network addresses per hour held.
 What would shorten it: a lower `CUSTOMER_PART_KEEP_MINUTES` for parts that are on no quote.
+
+### N-08 (Medium; the silent part was there, the refusal to start is new): on a full disk the site says "saved" when it is not, and after a restart it will not start
+
+Ran `r3-full-disk.js` on a 3 MB disk (1 of 1): one account is made, the disk is filled, then:
+
+| Step | What the site did |
+|---|---|
+| A second account is registered with the disk full | **Answered 201 "created"**. The log says `SqliteDB run error [users]: ENOSPC`. The account exists in memory only |
+| Health check | **200 "ok"** |
+| The database file | whole (integrity "ok"), still holds the first account; the second is not in it |
+| Server stopped and started again, disk still full | **Does not start: exit 1.** "FATAL: the database file … is there but cannot be used: it could not be opened or brought up to date (ENOSPC: no space left on device, write) … Restore the volume from its backup; do not delete the file" |
+| Space freed, started again | Starts, health 200, first account there; the second account is gone |
+
+Two things are wrong here. (1) While the disk is full the site goes on answering "yes" to things it
+cannot keep, and the health check stays "ok", so Railway sees a healthy service. A single write that
+fails is logged and stepped over (`models/SqliteDB.js`); only the multi-row changes the fixes added
+(orders, payments) fail loudly. (2) Every start writes the file once, so with a full disk the new
+start-up check reads the failed write as "the database cannot be used" and stops, telling the owner to
+restore from backup when the cure is to free space. **The honest statement the brief asked for: if the
+volume fills, the site stays down after its next restart until the owner frees space; the database file
+itself is not harmed.**
+
+**How likely.** The file store may hold 2,048 MB by default, plus the measurement files beside it, the
+database twice over during a save, drawings, and whatever backups are kept on the same volume. If the
+Railway volume is not comfortably larger than that, fourteen confirmed accounts uploading to their
+allowance (N-07) can fill it. With a volume of 5 GB or more and no backups stored on it, I do not see a
+way for a stranger to reach it.
+
+**Cost.** Downtime from the restart until the owner notices and frees space; and anything acknowledged
+while the disk was full (accounts, single-row changes) is lost at that restart.
+
+**What would close it.** Make the health check fail after a failed save; make a failed single write an
+error to the caller; word the start-up refusal for ENOSPC ("the disk is full") instead of "restore".
 
 ## 6. Changed-tests audit
 
