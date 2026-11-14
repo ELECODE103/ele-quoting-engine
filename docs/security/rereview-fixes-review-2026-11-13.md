@@ -30,7 +30,8 @@ anything that was in flight was run again.
 | F-05 | Done: `r3-paid-mail-window.js`, 102 kills |
 | F-12 storage side | Done: reviewer's script reproduced; `r3-pressure-collateral.js` (one run) |
 | F-02 kills, F-04 | Done: `durability-kill.js` both ways; `r3-full-disk.js` (finding N-08) |
-| F-01, F-13, F-10/F-11 | Not yet attacked |
+| F-01, F-13 | Done: `r3-units-paths.js`; author's stress reproduced |
+| F-10/F-11 | Not yet attacked |
 | Reorder money path | Not yet attacked |
 | Changed-tests audit, price baseline, vetting comparison | Started (five test files read); not finished |
 | Browser check of the admin panel | Not started |
@@ -70,6 +71,50 @@ author's claim that the proofs made on `b184dc1` stand for the head commit is ri
 ## 4. Per original finding
 
 (Filled in as each is finished. Findings not listed here have not been judged yet.)
+
+### F-01 (units switched while an order is made): closed
+
+Ran, quiet only (loaded not run by me):
+- The author's `units-race-stress.js 200`: **0 mismatches in 200 attempts** (140 orders paid and compared
+  with the stored part, 45 requests, 10 checkouts refused with the new price, 200 units changes refused,
+  50 applied; the draft priced again 200 of 200). The author's figure: 0 of 200. Reproduced.
+- The earlier reviewer's `units-race.js`: 2 held, 0 findings (was 3 of 3 exploited).
+- Mine, `r3-units-paths.js`, the paths that script does not take: **9 held, 0 findings.** A visitor's
+  part (uploaded with no account) ordered by an account while the visitor's edit key changes the units,
+  40 rounds with a sweeping gap: 29 orders made, every one for the part as stored; 11 refused; 0
+  mismatches. After the order exists the visitor's key, the buyer, another account and the owner are all
+  refused. A paid order carries no "part changed" flag, and a reorder prices the stored part at the same
+  figure with the part still locked.
+
+Read: the only place that replaces a part's measurements is the units route (`partsDB.update` with
+measurements is called nowhere else; there is no replace or re-upload route). Claiming a part for an
+account writes the owner only and does not move the revision number, so an ordinary order is not flagged.
+The lock is asked again in the same step as the write, after the wait; a checkout's final pass is one
+step; the runner starts the pricing again when a part's revision moved during the warm-up.
+
+### F-13 (a units change re-prices every draft in one step): closed
+
+Hold, reproduced with the earlier reviewer's `units-flip-hold.js` (25 drafts of 100 lines): quiet worst
+54 ms, loaded worst 110 ms (author: 42 and 147 ms; it was 592 to 753 ms). I did not re-run the author's
+heavier `units-flip-worst.js` (his worst: 229 ms loaded) and did not watch this one with the denser
+watcher used for F-08; the same caveat about a visitor on a new connection applies.
+
+The sentence that had no measurement, "a saved quote can show the old price … it cannot be ordered or
+sent as a request at that price": ran `r3-units-paths.js` section 1. Straight after the units answer,
+with the stored quote still showing the small price (checked: 100 of 100 times), 20 rounds through each
+door:
+
+| Door | Result |
+|---|---|
+| pay, with the old total confirmed (what the page sends) | refused 20 of 20, `quote-changed` with the new price |
+| pay, with no total sent (a hand-built request) | 20 orders, each at the NEW price and matching the stored part; Stripe shows that amount |
+| send as a firm-quote request | refused 20 of 20, `quote-part-changed` |
+| the owner's phone order | refused 20 of 20 |
+| the owner's phone order with the old total confirmed | refused 20 of 20 |
+
+Nothing was made at the old price: 0 of 100. The sentence holds. (The quote PDF in Admin prints the
+stored figure, so for those seconds the owner could print a quote at the old price. It is the owner's own
+page.)
 
 ### F-07 (refund before "completed"): closed
 
