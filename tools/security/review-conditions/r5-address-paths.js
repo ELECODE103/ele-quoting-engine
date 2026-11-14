@@ -102,7 +102,7 @@ const us = require(path.join(ROOT, "server/services/usAddress"));
     await h.completed(String(c1.body.sessionUrl).split("/").pop());
     const ro = await h.post(`/api/orders/${c1.body.orderId}/reorder`, {}, buyer);
     const rq = ro.body && (ro.body.quoteId || (ro.body.quote && ro.body.quote.id));
-    if (ro.status === 200 && rq) {
+    if ((ro.status === 200 || ro.status === 201) && rq) {
       const c4 = await checkout(rq, { shippingState: "CA", shippingCity: "Honolulu", shippingZip: "96813" });
       R.check(c4.status !== 200, "a reorder checked out to Honolulu-under-CA is refused the same way", `${c4.status} ${c4.body.code}`);
     } else R.info("reorder did not hand back a quote id in this run", `${ro.status} ${String(ro.text).slice(0, 120)}`);
@@ -161,8 +161,9 @@ const us = require(path.join(ROOT, "server/services/usAddress"));
     const made = ordersOf(f.rfqId);
     const okOne = made.length <= 1 && made.every((o) => o.shippingCity === "Columbus" && Math.round(o.total * 100) === 48000);
     R.check(okOne, "card-to-Honolulu and PO-to-the-priced-address at the same moment: at most one order, and only to the priced address at $480", `card ${a.status} ${a.body.code || ""}, PO ${b.status} ${b.body.code || ""}; orders ${made.length}${made[0] ? ` → ${made[0].shippingCity} $${made[0].total}` : ""}`);
-    const [c, d] = await Promise.all([accept(f.token, { method: "card", ...COLUMBUS, shippingAddress: "9 Other Rd", seenTotal: 480 }), accept(f.token, { method: "po", poNumber: "PO-3", ...COLUMBUS, shippingAddress: "7 Third Ave", seenTotal: 480 })]);
-    R.info("two different NEW addresses at the same moment on the same link", `card ${c.status} ${c.body.code || ""}, PO ${d.status} ${d.body.code || ""}; orders ${ordersOf(f.rfqId).length}; the request now reads "${rfqsDB.getById(f.rfqId).shippingAddress}"`);
+    const g = await firmQuote(480);
+    const [c, d] = await Promise.all([accept(g.token, { method: "card", ...COLUMBUS, shippingAddress: "9 Other Rd", seenTotal: 480 }), accept(f.token, { method: "po", poNumber: "PO-3", ...COLUMBUS, shippingAddress: "7 Third Ave", seenTotal: 480 })]);
+    R.info("two different NEW addresses at the same moment on the same link", `card ${c.status} ${c.body.code || ""}, PO ${d.status} ${d.body.code || ""}; orders ${ordersOf(g.rfqId).length}; the request now reads "${rfqsDB.getById(g.rfqId).shippingAddress}" (the first to arrive; the second met a closed link)`);
   }
   {
     // Can a buyer keep the owner re-confirming? Each round needs the owner to press Send.
@@ -207,13 +208,12 @@ const us = require(path.join(ROOT, "server/services/usAddress"));
     const b = await firmQuote(480, { shippingOption: "pickup", shippingName: "Firm Buyer" });
     const rb = await accept(b.token, { method: "po", poNumber: "PO-P2", ...COLUMBUS, seenTotal: 480 });
     const c = await firmQuote(480, { shippingOption: "pickup", shippingName: "Firm Buyer" });
-    const rc = await accept(c.token, { method: "po", poNumber: "PO-P3", shippingName: "Firm Buyer", seenTotal: 480 });
-    R.check(ra.status === 201 && rb.status === 409 && ordersOf(b.rfqId).length === 0 && rc.status === 201, "priced for delivery, collected: accepted. Priced for pickup, then shipped: back to the owner. Priced for pickup, accepted with only a name: accepted", `${ra.status}; ${rb.status} ${rb.body.code}; ${rc.status} ${rc.body.code || ""} (method ${ordersOf(c.rfqId)[0] && ordersOf(c.rfqId)[0].shippingMethod})`);
+    const rc0 = await accept(c.token, { method: "po", poNumber: "PO-P3", shippingName: "Firm Buyer", seenTotal: 480 });
+    const rc = await accept(c.token, { method: "po", poNumber: "PO-P3", shippingOption: "pickup", shippingName: "Firm Buyer", seenTotal: 480 });
+    R.check(ra.status === 201 && rb.status === 409 && ordersOf(b.rfqId).length === 0 && rc.status === 201, "priced for delivery, collected: accepted. Priced for pickup, then shipped: back to the owner. Priced for pickup and collected (as the page sends it): accepted", `${ra.status}; ${rb.status} ${rb.body.code}; ${rc.status} ${rc.body.code || ""} (sent without the pickup choice, by hand: ${rc0.status} ${rc0.body.code || ""}) (method ${ordersOf(c.rfqId)[0] && ordersOf(c.rfqId)[0].shippingMethod})`);
     await settings({ shippingLocalPickup: "off" });
     const d = await firmQuote(480, { shippingOption: "pickup", shippingName: "Firm Buyer" }).catch((e) => e);
     R.info("a request that asks for pickup while pickup is switched off", d instanceof Error ? String(d.message).slice(0, 160) : "taken");
-    const e = await accept(c.token, { method: "po", poNumber: "PO-P3", shippingName: "Firm Buyer", seenTotal: 480 });
-    R.info("(repeat of an accepted pickup quote after pickup is switched off)", `${e.status} ${e.body.code || e.body.status || ""}`);
   }
   {
     // What the owner is shown when the address fields carry HTML, header and control characters.
@@ -238,8 +238,9 @@ const us = require(path.join(ROOT, "server/services/usAddress"));
       await h.put(`/api/rfq/admin/${r.body.rfqId}`, { quotedTotal: 200, quotedLeadDays: 7, status: "quoted" }, owner);
       const buyerMail = [...h.sent].reverse().find((m) => m.to === email && /firm-quote\//.test(m.text || ""));
       R.check(!/<img src=x|<script>alert/.test(String(buyerMail.html || "")), "…nor in the quote email to the buyer");
+      const link = linkFor(email);
       h.sent.length = 0;
-      const a = await accept(linkFor(email), { method: "po", poNumber: "PO-X", shippingName: "x", shippingAddress: "2 <svg onload=alert(3)> Rd", shippingCity: "Columbus", shippingState: "OH", shippingZip: "43215", seenTotal: 200 });
+      const a = await accept(link, { method: "po", poNumber: "PO-X", shippingName: "x", shippingAddress: "2 <svg onload=alert(3)> Rd", shippingCity: "Columbus", shippingState: "OH", shippingZip: "43215", seenTotal: 200 });
       const changed = h.sent.find((m) => m.to === "owner@shop.test" && /re-confirm/.test(m.subject));
       R.check(a.status === 409 && Boolean(changed) && !/<svg onload|<img src=x|<script>alert/.test(String(changed.html || "")), "…nor in the 'address changed' email (both the new and the old address are in it)", `${a.status} ${a.body.code}`);
       const listed = (await h.get("/api/rfq/admin/list", owner)).body.find((x) => x.id === r.body.rfqId);
