@@ -204,9 +204,10 @@ webhook not yet in: the earlier order is settled, no second payment is started, 
 (409 `earlier-order-paid`); (b) paid and the webhook already handled: the changed quote is checked out
 as a new order with no word about the first (as before this change; the buyer pressed pay twice on two
 versions); (c) a payment reported on a page the site had closed: flagged "late payment", you are
-emailed; (d) Stripe not answering: the earlier order and page are left as they were. The race, 60
-rounds: 50 ended (a), 6 ended "not paid, replaced", 4 ended (b); **0 ended charged-and-closed without
-a flag, 0 with a closed order whose page was still open, 0 with both pages open.** [RACE300]
+emailed; (d) Stripe not answering: the earlier order and page are left as they were. The race, two
+runs, 260 rounds in all: 188 ended (a), 49 ended "not paid, replaced", 23 ended (b); **0 of 260 ended
+charged-and-closed without a flag, 0 with a closed order whose page was still open, 0 with both pages
+open.**
 All of this rests on Stripe refusing payment on a page that has been expired (hand test 2).
 
 **C. What the replace path costs.** Ran `r5-replace-timing.js` three times, 12 samples each, 100
