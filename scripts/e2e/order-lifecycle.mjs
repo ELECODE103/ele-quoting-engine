@@ -622,6 +622,83 @@ async function main() {
     await ownerPage.getByText('Fulfillment Status').waitFor({ timeout: 10000 });
   };
 
+  // ─── E2 (review conditions, 2026-11-13: N-01 and N-05) ─────────
+  await step('E2. Your orders: cancel an unpaid order. A firm quote to a different address goes back to the shop', async () => {
+    // An unpaid order of the buyer's, made from the checkout page; then Cancel on "Your orders".
+    const q = await quote(partId, 6, buyerToken);
+    await buyer.goto(`${BASE}/checkout/${q.quoteId}`);
+    const made = await buyer.evaluate(async ({ quoteId, ship }) => {
+      const csrf = (await fetch('/api/auth/session').then((r) => r.json())).csrfToken;
+      const r = await fetch('/api/orders/checkout-session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify({ quoteId, shippingName: ship.name, shippingAddress: ship.street, shippingCity: ship.city, shippingState: ship.state, shippingZip: ship.zip, shippingCountry: 'US' }) });
+      return r.json();
+    }, { quoteId: q.quoteId, ship: SHIP });
+    const sessionId = stripeSessionIn(made.sessionUrl);
+    const ref = String(made.orderId).slice(0, 8).toUpperCase();
+    await buyer.goto(`${BASE}/dashboard`);
+    const cancel = buyer.getByRole('button', { name: `Cancel unpaid order ${ref}` });
+    await cancel.waitFor({ timeout: 15000 });
+    await shot(buyer, 'customer-orders-cancel-offered');
+    let asked = '';
+    buyer.once('dialog', (d) => { asked = d.message(); d.accept(); });
+    await cancel.click();
+    await buyer.getByTestId('cancel-notice').waitFor({ timeout: 15000 });
+    await shot(buyer, 'customer-orders-cancelled-unpaid');
+    const said = await buyer.getByTestId('cancel-notice').textContent();
+    check('Your orders: Cancel asks first, in words that say nothing was charged', /has not been paid for and nothing has been charged/.test(asked), asked);
+    check('the unpaid order is closed, its payment page is expired, and the page says so', /was cancelled\. Nothing was charged/.test(said) && (await orderRow(made.orderId)).status === 'expired' && session(sessionId).status === 'expired', said);
+    check('a closed order no longer offers Cancel; a paid one never did', (await buyer.getByRole('button', { name: `Cancel unpaid order ${ref}` }).count()) === 0 && (await buyer.getByRole('button', { name: `Cancel unpaid order ${String(state.a.orderId).slice(0, 8).toUpperCase()}` }).count()) === 0);
+
+    // A firm quote priced for Rockford, Illinois; the buyer asks for Honolulu on the quote page.
+    const f = await firmQuote(ownerToken, 900);
+    const ctx = await newContext();
+    const page = await ctx.newPage();
+    await page.goto(f.link);
+    await page.getByTestId('priced-ship-to').waitFor({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Ship to a different address' }).click();
+    await page.getByTestId('address-needs-confirming').waitFor({ timeout: 10000 });
+    const warned = await page.getByTestId('address-needs-confirming').textContent();
+    await page.locator('#fq-ship-name').fill('OEM Conveyors');
+    await page.locator('#fq-ship-street').fill('1 Ala Moana Blvd');
+    await page.locator('#fq-ship-city').fill('Honolulu');
+    await page.locator('#fq-ship-state').selectOption('HI');
+    await page.locator('#fq-ship-zip').fill('96813');
+    await shot(page, 'firm-quote-09-different-address');
+    await page.getByRole('button', { name: 'Send this address for a confirmed price' }).click();
+    await page.getByRole('heading', { name: 'We are confirming the price for your address.' }).waitFor({ timeout: 15000 });
+    await shot(page, 'firm-quote-10-address-being-confirmed');
+    const told = await page.getByTestId('address-reconfirm').textContent();
+    check('the page says beforehand that a different address is confirmed first and nothing is ordered', /For a different address we confirm the price first/.test(warned) && /nothing is ordered or charged/.test(warned), warned);
+    check('a firm quote sent to a different address makes no order and no payment page, and says what happens next', (await admin('GET', '/api/orders')).body.filter((o) => o.rfqId === f.id).length === 0 && /nothing was accepted and nothing was charged/.test(told) && /We will email you the quote again/.test(told), told);
+    const shopMail = await waitMail(OWNER, /ship-to address changed at acceptance, re-confirm the price/);
+    check('the shop is emailed "address changed, re-confirm the price"; the subject carries nothing the buyer typed', Boolean(shopMail) && !/Honolulu|Ala Moana/.test(shopMail.subject) && /NO ORDER WAS MADE/.test(shopMail.text), shopMail && shopMail.subject);
+    await page.goto(f.link);
+    await page.getByRole('heading', { name: 'We are confirming the price for your address.' }).waitFor({ timeout: 15000 });
+    check('the emailed link is closed until the shop sends the quote again', true);
+    // The owner's queue: the new address beside the price box, with the one the price was for.
+    await ownerPage.goto(`${BASE}/admin`);
+    await ownerPage.getByRole('button', { name: 'RFQs' }).click();
+    await ownerPage.locator('tr', { hasText: f.email }).getByRole('button', { name: 'Detail' }).click();
+    await ownerPage.getByTestId('rfq-ship-to').waitFor({ timeout: 10000 });
+    const box = await ownerPage.getByTestId('rfq-ship-to').textContent();
+    await ownerPage.getByTestId('rfq-ship-to').scrollIntoViewIfNeeded();
+    await shot(ownerPage, 'admin-rfq-address-changed', { fullPage: false });
+    check('Admin → RFQs shows the new address beside the price box, the address the price was for, and what to do', /1 Ala Moana Blvd, Honolulu, HI 96813/.test(box) && /Outside the contiguous United States/.test(box) && /The price was for: OEM Conveyors, 500 Plant Rd, Rockford, IL 61101/.test(box) && /send the quote again/.test(box), box);
+    // The owner confirms a price for Honolulu and sends; the new link is accepted to that address.
+    const resent = await admin('PUT', `/api/rfq/admin/${f.id}`, { status: 'quoted', quotedTotal: 1180, quotedLeadDays: 10 });
+    const mail2 = await waitMail(f.email, /firm quote/i, { after: 1 }); // the second quote email to this buyer
+    const link2 = (mail2.text.match(new RegExp(`${BASE}/firm-quote/\\S+`)) || [])[0];
+    await page.goto(link2);
+    await page.getByRole('heading', { name: '$1,180.00, firm.' }).waitFor({ timeout: 15000 });
+    const priced = await page.getByTestId('priced-ship-to').textContent();
+    await page.locator('label.lead-option', { hasText: 'Purchase order' }).click();
+    await page.getByRole('textbox', { name: 'PO number' }).fill('PO-HNL-1');
+    await page.getByRole('button', { name: 'Accept on this PO' }).click();
+    await page.getByRole('heading', { name: 'Order in. Thank you.' }).waitFor({ timeout: 15000 });
+    const hnl = (await admin('GET', '/api/orders')).body.filter((o) => o.rfqId === f.id);
+    check('after the shop confirms $1,180 for Honolulu, the new link is accepted to that address at that total', resent.status === 200 && /Honolulu, HI 96813/.test(priced) && hnl.length === 1 && hnl[0].total === 1180 && hnl[0].shippingCity === 'Honolulu' && hnl[0].shippingState === 'HI', JSON.stringify(hnl.map((o) => [o.total, o.shippingCity, o.shippingState])));
+    await ctx.close();
+  });
+
   await step('F. Admin: the order list and the order drawer in each new state', async () => {
     // An unpaid order to cancel, and one accepted on a card and left unpaid.
     const toCancel = await checkoutWithDoubleClick(7);

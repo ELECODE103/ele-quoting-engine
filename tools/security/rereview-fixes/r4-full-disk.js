@@ -56,7 +56,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const read = await s.get("/api/materials", {});
     check(read.status === 200, "a page that only reads still answers", `${read.status}`);
     check(fs.readFileSync(dbFile).equals(fileBefore) && !fs.existsSync(`${dbFile}.tmp`), "the database file is byte for byte what it was, and no part-written copy is left on the disk");
-    check(/THE DISK IS FULL/.test(s.log()), "the log says the disk is full", (s.log().split("\n").find((l) => /DATABASE NOT SAVED/.test(l)) || "").slice(0, 200));
+    // Not a check, a fact for the write-up: the route runs on after its failed write before its answer is replaced.
+    const stray = s.mail("second@customer.test").length;
+    console.log(`  INFO     emails written for the account that was NOT saved: ${stray} (the buyer was told it did not go through; a link in such an email opens nothing)`);
+        check(/THE DISK IS FULL/.test(s.log()), "the log says the disk is full", (s.log().split("\n").find((l) => /DATABASE NOT SAVED/.test(l)) || "").slice(0, 200));
 
     // Room, without a restart.
     fs.rmSync(filler, { force: true });
