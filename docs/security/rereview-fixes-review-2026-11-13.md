@@ -15,31 +15,66 @@ env -u HTTPS_PROXY -u HTTP_PROXY NO_PROXY=localhost,127.0.0.1 /opt/node20/bin/no
 
 ## 1. State of this review (true as of the last commit)
 
-**IN PROGRESS. No verdict yet. Do not read this file as a clearance.** The container restarted once
-during the review; everything listed as "done" below was finished and recorded before or after it, and
-anything that was in flight was run again.
+**FINISHED.** Every area of the brief has a result below or is named in section 7 as not covered. The
+container restarted once during the review; nothing below rests on a run that was cut short (anything in
+flight was run again from the start).
 
 | Area | State |
 |---|---|
-| Reproducing the author's figures on `28cb39d` | Done: `npm ci`, `npm test`, build, claims check, `npm audit`, and 11 of the 16 scripts in `rereview-relaunch/`. Not yet: `durability-kill.js`, `storage-pin-orders.js`, `memory-poison.js` |
-| F-07 event order | Done: `r3-event-orderings.js` |
-| F-09 lists, single-order route, ceilings on unpaid orders | Done: `r3-caps-and-lists.js` (findings N-01, N-02) |
-| F-03 shipping limits on every route; firm quote and purchase order | Done: `r3-shipping-firm-f06.js` (findings N-03, N-04, N-05) |
-| F-06 two tabs under a race | Done: `r3-shipping-firm-f06.js` section E, 200 rounds |
-| F-08 / F-02 checkout hold | Single-checkout distribution done (87 samples, written up). Not yet: kills (F-02), the swap attack, several checkouts at once |
-| F-05 | Done: `r3-paid-mail-window.js`, 102 kills |
-| F-12 storage side | Done: reviewer's script reproduced; `r3-pressure-collateral.js` (one run) |
-| F-02 kills, F-04 | Done: `durability-kill.js` both ways; `r3-full-disk.js` (finding N-08) |
-| F-01, F-13 | Done: `r3-units-paths.js`; author's stress reproduced |
-| F-10/F-11 | Done: `r3-catalogue-odd.js` |
-| Reorder money path | Not yet attacked |
-| Changed-tests audit, price baseline, vetting comparison | Done |
-| Browser check of the admin panel | Done (author's script re-run, screenshots looked at) |
-| The four earlier scripts that had only been read | Done |
+| Reproducing the author's figures on `28cb39d` | Done (section 3). Not re-run: his own heavier worst-case scripts except `units-race-stress.js`; the browser runs except the admin panel; `upgrade-proof.js` |
+| Each of the 13 findings attacked | Done (section 4) |
+| What the fixes added, as new code | Done (sections 4 and 5: nine new findings) |
+| Firm-quote, purchase-order and reorder money paths | Firm quote and purchase order attacked (N-05 and the list under it). Reorder: three checks only (section 7) |
+| The four earlier scripts that had only been read | Done (section 5b) |
+| Changed-tests audit, price baseline, vetting comparison | Done (section 6) |
+| Browser check of the admin panel | Done, with the author's script; screenshots looked at |
 
 ## 2. Verdict
 
-Not yet given.
+**Yes, `28cb39d` can be put online and take payment, once four conditions are met. None of the four needs
+a change to the code; two small code changes are recommended soon after.**
+
+All thirteen findings of the earlier review are closed, or closed in the part that mattered. In over 200
+hard kills, several hundred raced requests and every access test I ran, I found no way for a stranger or a customer to
+read another customer's data, to get an order marked paid for less than was charged, or to stop the site
+for seconds at a time. What I did find is nine smaller things. Two cost money if nobody is watching
+(N-03, N-05), one can take the site down until the owner acts (N-08), and one turns away an honest buyer
+(N-01).
+
+**The conditions.**
+1. **Firm quotes (N-05).** Until the request form asks for it, the owner asks every firm-quote buyer for
+   the ship-to address BEFORE sending a price. The site will take any address in the world at the quoted
+   total.
+2. **Labels (N-03).** Before a label is made, the owner checks the state against the ZIP code on every
+   order. An address in Hawaii, Alaska, a territory or on a military ZIP gets the mainland parcel price
+   when the state box says a mainland state.
+3. **The volume (N-08).** The Railway volume is at least 5 GB with no backups kept on it, and the owner
+   knows the sign of a full disk: the site answers but new accounts and quotes do not stick, and after a
+   restart it does not start (the message says "restore"; the cure is to free space).
+4. **The hand tests in section 8**, in particular the three the code relies on and no sandbox can show:
+   Stripe refuses payment on a page the site has expired; Resend drops a repeated message with the same
+   key; and how long a visitor on a fresh connection waits on Railway while someone checks out (N-09).
+
+**Recommended soon after launch (small code changes):** decide the destination by ZIP code as well as by
+state; keep the owner's phone orders off the list the storage clean-up may close (section 4, F-12); let a
+buyer's replaced unpaid order go when they check out a changed quote (N-01).
+
+### The thirteen findings at a glance
+
+| Finding | Status | My worst figure | Author's figure for the same thing |
+|---|---|---|---|
+| F-01 units switched under an order | Closed | 0 mismatches in 200 (his script) + 0 in 40 on a path he did not test; quiet only | 0 in 200, quiet and loaded |
+| F-09 order list / admin panel | Closed | lists 200 in 4 to 12 ms loaded; browser 58 of 58; 37 of 37 access tries refused | 4 to 10 ms loaded; 58 of 58 |
+| F-08 checkout holds the site | Closed in substance; the 250 ms line is missed under load | thread: 96 ms quiet, 252 ms loaded. A visitor on a NEW connection: 196 ms quiet, **475 ms loaded (30 of 30 over 250 ms)**; three checkouts at once: 504 ms quiet, **1,785 ms loaded** | 104 ms quiet, 184 to 247 ms loaded |
+| F-02 partial order after a kill | Closed | 0 partial in 50 kills (ceilings lifted); 0 in 50 as written, where 47 kills hit a refused request | 0 in 50, twice |
+| F-06 delivery changed in a second tab | Closed | 0 flagged in 200 raced rounds | tests only |
+| F-12 unpaid orders pin the store | Closed for unpaid orders | 74 % after the clean-up; 0 of 3 honest orders closed in one collateral run | 74 % |
+| F-13 units change re-prices every draft | Closed | 54 ms quiet, 110 ms loaded (reviewer's script); 0 of 100 stale-price orders or requests | 42 ms, 147 ms; no measurement of the second |
+| F-10 / F-11 catalogue upgrade | Closed (one corner Admin cannot reach) | 25 of 26 odd catalogues and markers held | 22 held; 21 tests |
+| F-04 unreadable database | Closed; a full disk now stops the start (N-08) | 3 of 3 damaged files refused and untouched | the same |
+| F-05 paid and nobody told | Closed | **0 untold in 102 kills, 98 inside the window**; 59 told twice, all with the same key | 0 untold in 80 on the final commit; 9 told twice (measured with no mail provider) |
+| F-07 refund before "completed" | Closed | 29 orderings held, 0 differ | tests only |
+| F-03 shipping limits | Partly closed (N-03, N-04, N-05) | 12 of 12 refused by state or country; **6 of 6 sold by ZIP under a mainland state; 3 of 3 firm quotes accepted off-mainland**; no price column moved in 300 quotes | table in his write-up; 300 quotes |
 
 ## 3. Reproduction of the author's figures on `28cb39d`
 
@@ -247,7 +282,7 @@ beside a good database is ignored. The health check answering 503 without a data
 author's `databaseOpen.test.js`, which passes in the full suite.
 
 Is the save atomic? Yes: a temporary file is written and flushed, then renamed over the database
-(`writeDurably`); a kill before the rename leaves the old file whole, after it the new one. In about 190
+(`writeDurably`); a kill before the rename leaves the old file whole, after it the new one. In over 200
 hard kills in my runs (durability-kill and the email-window script) the server always started again on
 the file it found.
 
@@ -409,7 +444,18 @@ disk. On this machine that is a local disk. On Railway the volume is network sto
 take longer; the figure to check after the first deploy is how long a save takes there (Admin → System
 shows the database size; the log line for a slow save, if any, is the thing to look for).
 
-Still to run under this finding: several checkouts at once and the kill tests (F-02). The swap attack is finding N-06.
+**Several checkouts at once.** Ran `r3-checkout-dist.js together 11.5 3 2` (three accounts press pay on
+their own 100-line quotes at the same instant, database 11.7 to 12.9 MB, 6 samples each way, all 18
+checkouts accepted):
+
+| Machine | Thread hold (open connection) worst | New connection: median, worst |
+|---|---|---|
+| Quiet | 117 ms | 474 ms, **504 ms** (6 of 6 at or over 250 ms) |
+| Loaded | 285 ms (2 of 6 at or over 250 ms) | 1,586 ms, **1,785 ms** (6 of 6) |
+
+So the pieces stay short, and a visitor on a new connection waits for all of them. That is finding N-09,
+which is about how the pieces are chained and not about checkout alone. The kill tests are under F-02 and
+the swap attack is N-06.
 
 ## 5. New findings
 
@@ -595,6 +641,35 @@ while the disk was full (accounts, single-row changes) is lost at that restart.
 **What would close it.** Make the health check fail after a failed save; make a failed single write an
 error to the caller; word the start-up refusal for ENOSPC ("the disk is full") instead of "restore".
 
+### N-09 (Low to Medium; the mechanism was there, the fixes rely on it more): "in pieces" protects visitors who are already connected, not visitors who are arriving
+
+**What happens.** The site's answer to every "this holds the thread" finding (F-08, F-13, and the pricing
+runner before them) is to do the work in short pieces and let the server look at the network between
+them. That works for a connection that is already open. A NEW connection is not served between pieces:
+it is answered when the whole chain of back-to-back pieces is over.
+
+**Shown without any of the site's code.** Ran `r3-loop-experiment.js` three times (a bare Node 20.20.0
+HTTP server doing 12 pieces of 80 ms chained with `setImmediate`, the same way the runner chains its
+pieces): a request on an open connection waited **87 to 88 ms**; a request on a new connection waited
+**930 to 931 ms of the 980 ms**. Three of three.
+
+**On the site.** One 100-line checkout: a new connection waited up to 196 ms quiet and 475 ms loaded
+(30 of 30 over 250 ms). Three at once: 504 ms quiet, 1,785 ms loaded (F-08 above). The heavy pricing lane
+rests between pieces, which breaks the chain, so pricing is less exposed than checkout; I did not measure
+it this way.
+
+**Does it matter in production?** It depends on something I cannot see from here: whether Railway's edge
+reaches the app over connections it keeps open (then visitors behave like the "open" rows and the
+author's figures are the right ones) or opens a new one per visitor (then the "new" rows are what a
+visitor gets). Either way it is fractions of a second to under two seconds, for the length of a burst,
+and a checkout is limited to 12 per account per 15 minutes. It is not the seconds-long stop of F-08.
+
+**Cost.** A slower first page for people arriving during a burst of checkouts. No money.
+
+**What would close it.** A real pause (a timer of a millisecond or two, not `setImmediate`) between
+pieces once a chain has run for, say, 50 ms; or serving the site behind something that keeps its
+connections to the app open. First: measure it on Railway (section 8).
+
 ## 5b. The four earlier scripts that had only been read
 
 | Script | Ran | Does it still test what it claims? |
@@ -633,11 +708,103 @@ Not finished. Read so far, each against `git diff dce1e38..28cb39d -- <file>`:
 **No finding was edited away** in the files I read. Every change follows a real change of behaviour, and
 three of them ask more than before.
 
-## 7. Not covered yet, and what a sandbox cannot show
+## 7. What I did not cover, and what a sandbox cannot show
 
-To be written at the end. Standing items: nothing here called Stripe, Resend, Turnstile, Railway or a
-carrier; "loaded" is four busy loops on two cores.
+**Not covered, or covered thinly, and why.**
+- **Reorder as a money path:** three checks only (another customer cannot reorder; a reorder prices the
+  stored part at the same figure; an unconfirmed purchase-order order cannot be reordered), plus the
+  five checks of the earlier payments proof. I wrote no dedicated attack; the reorder makes an ordinary
+  draft quote, which then goes through the checkout that was attacked at length.
+- **Loaded runs** of F-01, F-06, F-07 and the catalogue tests: quiet only. They are about order of
+  events, which I varied directly, and not about speed.
+- **A database near the 16 MB ceiling:** every timing was taken at 11.7 to 12.9 MB. I did not measure at
+  15 MB, where the database clean-up also runs.
+- **F-13's hold with the denser watcher**, and the author's `units-flip-worst.js`, `checkout-worst.js`,
+  `order-list-worst.js`, `storage-pin-orders-full.js`: not re-run. His `paid-mail-kill.js` was replaced
+  by a stricter script of mine.
+- **The storage clean-up closing an honest order or a phone order:** one construction, one run, nothing
+  closed. That the phone order is on the clean-up's list is from reading and is unproven either way.
+- **The per-address ceilings on unpaid orders (5 and 16)** are exercised by my script only; no test in
+  the suite runs them.
+- **Browser runs other than the admin panel** (accounts, order lifecycle, tax and shipping, the journey
+  walk, the content-security check) and `scripts/dev/upgrade-proof.js`: not re-run. They passed for the
+  author; nothing in my runs contradicts them.
+- **Promotion codes switched on, Stripe Tax switched on:** not attacked beyond the earlier reviewer's
+  `money-attacks.js`, which I re-ran (66 held).
+- **Text that reads like an instruction to a reviewer:** I saw none in the repository files, test
+  output or logs I read.
+
+**What no sandbox can show.**
+- **Stripe.** That a payment page the site has expired can no longer be paid (F-06 and F-12 rely on it,
+  and so does "an order is never paid for after its file has gone"); what Stripe sends when a card is
+  charged at the same instant a page is expired; the real order and timing of its events.
+- **Resend.** That a message repeated with the same Idempotency-Key is dropped. If it is not, a hard
+  kill during a payment sends the confirmation twice more often than not (59 of 98 in my runs).
+- **A real out-of-memory kill.** SIGKILL stands in for it. The server did read 1,000 MB after one
+  sender's two large files, which on a 1 GB host is where the real thing happens.
+- **Railway.** How long the flush of a 12 MB file takes on its network volume (every order and payment
+  waits for one); whether its edge keeps connections to the app open (N-09); the volume's size (N-08).
+- **Carriers.** What a parcel to Hawaii, a 62 in strip or a pallet really costs. The dollar figures in
+  N-03 to N-05 are my assumptions and are stated as such.
+- **Loaded figures** are four busy loops on two cores. They show the shape, not Railway's numbers.
 
 ## 8. What the owner must test by hand
 
-To be written at the end.
+Before the site is opened (test mode, a few minutes each):
+1. **Stripe, expired page.** Choose pickup, reach the Stripe page, go back, choose ship, reach the new
+   page. Open the first page again: Stripe must say it has expired. Then try to pay it.
+2. **Stripe, the normal order.** One card order: the amount in the Stripe dashboard is the total the
+   checkout page showed; you and the buyer each get one email.
+3. **Resend, repeats.** In the Stripe dashboard resend the same "checkout.session.completed" event twice:
+   the order stays paid and nobody gets a second email. Then ask Resend support, or read their page on
+   Idempotency-Key, whether a repeated key is dropped for at least an hour.
+4. **Refund and dispute.** Refund a test order in full from the dashboard: the order becomes "refunded"
+   and leaves the work queue. Use Stripe's dispute test card: the order is flagged.
+5. **The address rule.** Place a test order with city Honolulu, state "CA", ZIP 96813. Today it is
+   accepted at about $12 shipping (N-03). Decide whether you will catch that at the label.
+6. **A firm quote.** Send yourself a firm quote and accept it with an address in Hawaii. Today it is
+   accepted at the quoted total (N-05).
+7. **Go back and change the quantity three times** as a customer, reaching the card page each time. The
+   fourth is refused for about two hours (N-01). Decide whether three is the right number
+   (`ORDERS_UNPAID_PER_ACCOUNT`).
+8. **Catalogue.** After the first deploy read Admin → Pricing: the notice lists what the upgrade kept and
+   what it could not. Compare with what you had switched off.
+
+Just after going live:
+9. **The volume.** Admin → System: the database path is on the volume and its size is not a few hundred
+   kB. In Railway: the volume is 5 GB or more and is not also where backups are written.
+10. **Speed of a save on Railway.** Place a test order and look at how long the checkout answer takes;
+    then, with a second browser that has never opened the site, load the home page while a 20-line test
+    checkout is in flight. If the page takes over a second, tell whoever maintains the code (N-09).
+11. **A restart.** Restart the service once: the test order is still there, and the start-up log has no
+    "Order check" line that closes or flags an order you recognise as good.
+12. **Memory.** Upload one 25 MB model yourself and watch Railway's memory graph. If it touches the
+    limit, a hard kill is likely the first time a customer does the same.
+
+## 9. Where the fix write-up is wrong or says more than was shown
+
+- **F-08, "longest hold … 184 ms loaded (worst 184); no sample over 250 ms".** True for the watcher he
+  used (one request at a time, every 20 ms). A visitor on a new connection waited 285 to 475 ms in 30 of
+  30 loaded checkouts, and 1.4 to 1.8 s when three accounts checked out at once. His own worst figure,
+  247 ms, was already at the line; mine for the same quantity is 252 ms.
+- **F-05, "40 hard kills … 2 told twice" / "4 twice", "5 twice".** Measured with no mail provider, which
+  closes the record at once and is not the production path. With the provider on, 59 of 98 kills inside
+  the window sent the message a second time (same key). "Nobody untold" holds: 0 of 102.
+- **F-12, "Never touched: … a phone order".** The clean-up's own query lists orders whose payment method
+  is empty, which is how a phone order is stored. Read, not shown.
+- **F-12, "until its payment page closes (plus the ten minutes the expiry sweep allows)".** The code
+  allows 30 minutes (`AFTER_SESSION_MS`).
+- **F-03, "an address outside the contiguous United States now goes to a firm quote".** By state and
+  country, yes. By ZIP code under a mainland state, no (6 of 6 sold). And the firm quote it goes to takes
+  any address (3 of 3).
+- **F-10, "a material you deleted stays deleted".** Through the upgrade, yes. A table left completely
+  empty is seeded again at the following start.
+- **`memory-poison.js`, "server memory 463 MB at the highest reading".** I read 1,000 MB after the
+  attacker's second file. Customers were not affected in either run.
+- **Section 6, the harness.** It names `routes/orderCaps.test.js` as the suite that runs the real
+  ceilings; that file does not exist (`orderList.test.js` does it, for the per-account ceilings only).
+- **Section 6 does not mention** the new baseline file `soup-wide-100k.json.gz`.
+- **Right, and worth saying:** every figure of his that I re-ran with his own or the earlier reviewer's
+  scripts reproduced (99 of 99 suites, 22, 66, 25, 3, 6 held, 0 of 79, 74 %, 0 of 200, 58 of 58, the 64
+  / 55 / 9 vetting rows, the 404 cases in 113 files). The differences above come from measuring something
+  he did not, not from his numbers being off.
